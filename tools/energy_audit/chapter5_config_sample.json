@@ -1,0 +1,19 @@
+{
+  "project_id": 1,
+  "customer_id": 2021141050288398338,
+  "year_start": 2022,
+  "year_end": 2024,
+  "building_area": 67635.96,
+  "people_count": 3405,
+  "unit_name": "山东省省立医院东院",
+  "chart_dir": "./charts",
+  "database": {
+    "host": "10.10.1.165",
+    "port": "5432",
+    "database": "dc_energy_audit2",
+    "user": "postgres",
+    "password": "",
+    "sslmode": "prefer",
+    "_comment": "password 留空，由环境变量 EA_PG_PASSWORD 或 hermes config.yaml 提供"
+  }
+}

@@ -1,0 +1,570 @@
+"""
+第5章子Agent v2 —— 能源资源消费/消耗指标分析
+
+完整结构：
+  总述 → 5.1概况(流向图+饼图) → 5.2数据(按类型动态H3+费用) → 5.3指标 → 5.4建筑能耗基准
+
+数据来源：ts_institution_energy_main + ts_institution_energy_data (data_type: 1=能耗,2=费用,3=供冷,4=供热,5=交通)
+备选：Excel / 手动输入
+"""
+
+import argparse, json, os, sys
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
+
+from tools.energy_audit.indicators import (
+    YearlyEnergyData,
+    calc_unit_area_non_heating_energy,
+    calc_unit_area_electricity,
+    calc_per_capita_energy,
+    calc_per_capita_water,
+    calc_baseline,
+    institution_category_to_type,
+    COEFFICIENTS,
+)
+
+# 能源类型中英文映射（使用 indicators 中的标准 key）
+_ENERGY_CN_MAP = {
+    'electricity': '电', 'water': '水', 'natural_gas': '天然气',
+    'heat': '热', 'diesel': '柴油', 'gasoline': '汽油',
+}
+
+# 原始 energy_code → indicators 标准 key 的映射
+def _normalize_energy_code(code: str) -> str:
+    code = str(code or '').strip().lower()
+    mapping = {
+        'electricity': 'electricity', '45': 'electricity', '电能': 'electricity',
+        'water': 'water', '01': 'water', '水': 'water',
+        'natural_gas': 'natural_gas', '25': 'natural_gas', '天然气': 'natural_gas',
+        'heat': 'heat', '50': 'heat', '热能': 'heat', '供热': 'heat', '热量': 'heat',
+        'diesel': 'diesel', '300302': 'diesel', '柴油': 'diesel',
+        'gasoline': 'gasoline', 'petrol': 'gasoline', '300301': 'gasoline', '汽油': 'gasoline',
+    }
+    return mapping.get(code, code)
+
+
+def _coeff_info(energy_type: str) -> dict:
+    """返回能源类型的中文/单位/折标系数信息（基于 indicators.COEFFICIENTS）。"""
+    std = _normalize_energy_code(energy_type)
+    name = _ENERGY_CN_MAP.get(std, energy_type)
+    unit_map = {
+        'electricity': 'kWh', 'water': 'm³', 'natural_gas': 'm³',
+        'heat': 'GJ', 'diesel': 'kg', 'gasoline': 'kg',
+    }
+    coeff = COEFFICIENTS.get(std, 0)
+    return {
+        'name': name,
+        'unit': unit_map.get(std, ''),
+        'coeff': coeff,
+        'display': f"{'kgce' if std != 'heat' else 'tce'}/{unit_map.get(std, '')}",
+    }
+
+
+# ============================================================
+# 数据加载
+# ============================================================
+
+def load_from_db(config: dict) -> dict:
+    """从 ts_institution_energy_main + ts_institution_energy_data 加载能耗和费用数据"""
+    from tools.energy_audit.pg_query import PgDataQuery
+    from tools.energy_audit.db_config import get_pg_config
+    # 调用方 config['database'] 为显式覆盖；缺项/未提供时走统一解析链
+    db_cfg = get_pg_config(config.get('database'))
+
+    with PgDataQuery(db_cfg) as db:
+        customer_id = config.get('customer_id')
+        y1, y2 = int(config['year_start']), int(config['year_end'])
+
+        # 新两表结构统一查询：value1..value12 由 period_code 展开生成（见 pg_query）
+        rows = db.get_institution_energy(customer_id=customer_id)
+
+    def _in_range(r):
+        try:
+            y = int(r.get('year') or 0)
+        except (TypeError, ValueError):
+            return False
+        return y1 <= y <= y2
+
+    # 1. 能耗 (data_type=1)  2. 费用 (data_type=2)  3. 分项 (data_type=3,4,5)
+    energy_rows = [r for r in rows if str(r.get('data_type')) == '1' and _in_range(r)]
+    cost_rows = [r for r in rows if str(r.get('data_type')) == '2' and _in_range(r)]
+    sub_rows = [r for r in rows if str(r.get('data_type')) in ('3', '4', '5') and _in_range(r)]
+
+    # 整理为结构化数据
+    energy_data = {}  # {year: {energy_code: {name, unit, monthly: [v1..v12], total, building_total?}}}
+    cost_data = {}    # 同上
+    for r in energy_rows:
+        y = str(r['year'])
+        code = r['energy_code']
+        entry = {
+            'name': r['energy_name'] or '',
+            'unit': r['energy_unit'] or '',
+            'monthly': [float(r.get(f'value{i}', 0) or 0) for i in range(1, 13)],
+            'total': float(r['unit_total_value'] or 0),
+        }
+        # 合署办公追溯：整栋建筑用量 > 本单位用量时记录
+        building_total = float(r.get('building_total_value') or 0)
+        if building_total > entry['total'] > 0:
+            entry['building_total'] = building_total
+            entry['co_location_ratio'] = round(building_total / entry['total'], 2)
+        energy_data.setdefault(y, {})[code] = entry
+    for r in cost_rows:
+        y = str(r['year'])
+        code = r['energy_code']
+        cost_data.setdefault(y, {})[code] = {
+            'name': r['energy_name'] or '',
+            'unit': '万元',
+            'monthly': [float(r.get(f'value{i}', 0) or 0) for i in range(1, 13)],
+            'total': float(r['unit_total_value'] or 0),
+        }
+
+    sub_items = {}  # {year: {data_type: unit_total_value}}
+    for r in sub_rows:
+        y = str(r['year'])
+        dt = r['data_type']
+        sub_items.setdefault(y, {})[f'data_type_{dt}'] = float(r['unit_total_value'] or 0)
+
+    return {
+        'energy_data': energy_data,
+        'cost_data': cost_data,
+        'sub_items': sub_items,
+        'from_db': True,
+    }
+
+
+def load_from_user(config: dict) -> dict:
+    """用户手动输入或Excel提供的数据"""
+    manual = config.get('manual', {})
+    return {
+        'energy_data': manual.get('energy_data', {}),
+        'cost_data': manual.get('cost_data', {}),
+        'sub_items': manual.get('sub_items', {}),
+        'from_db': False,
+    }
+
+
+# ============================================================
+# 数据转换与计算（统一复用 indicators.py）
+# ============================================================
+
+def _convert_to_yearly_energy_data(energy_data: dict, config: dict) -> List[YearlyEnergyData]:
+    """把 chapter5_agent 的 energy_data 结构转换为 indicators.YearlyEnergyData 列表。"""
+    area = config.get('building_area', 0)
+    people = config.get('people_count', 0)
+
+    yd_list = []
+    for y in sorted(energy_data.keys()):
+        y_data = energy_data.get(y, {})
+        kwargs = {
+            'year': int(y),
+            'building_area': float(area),
+            'people_count': float(people),
+        }
+        for code, info in y_data.items():
+            std = _normalize_energy_code(code)
+            val = float(info.get('total', 0) or 0)
+            if std == 'electricity':
+                kwargs['electricity_kwh'] = kwargs.get('electricity_kwh', 0) + val
+            elif std == 'water':
+                kwargs['water_m3'] = kwargs.get('water_m3', 0) + val
+            elif std == 'natural_gas':
+                kwargs['natural_gas_m3'] = kwargs.get('natural_gas_m3', 0) + val
+            elif std == 'heat':
+                kwargs['heating_energy_heat'] = kwargs.get('heating_energy_heat', 0) + val
+            elif std == 'gasoline':
+                kwargs['transportation_petrol_kg'] = kwargs.get('transportation_petrol_kg', 0) + val
+            elif std == 'diesel':
+                kwargs['transportation_diesel_kg'] = kwargs.get('transportation_diesel_kg', 0) + val
+        yd_list.append(YearlyEnergyData(**kwargs))
+    return yd_list
+
+
+def calc_yearly_tce(energy_data: dict, years: list) -> dict:
+    """计算每年总TCE（复用 indicators.YearlyEnergyData.total_energy_tce）。"""
+    config = {'building_area': 0, 'people_count': 0}
+    yd_list = _convert_to_yearly_energy_data(energy_data, config)
+    return {str(yd.year): yd.total_energy_tce for yd in yd_list}
+
+
+def _co_location_note(en: dict, year: str, codes: list, unit_name: str) -> str:
+    """生成合署办公追溯说明（仅当存在 building_total > unit_total 时输出）。
+
+    数据来源说明：ts_institution_energy_main 同时维护两个值 —
+      total_value = 整栋建筑的合署办公总量
+      real_value  = 本单位实际用量（本次审计目标值）
+    """
+    y_data = en.get(year, {})
+    notes = []
+    for code in codes:
+        info = y_data.get(code, {})
+        building = info.get('building_total', 0)
+        unit = info.get('total', 0)
+        if building > unit > 0:
+            c = _coeff_info(code)
+            ratio = round(building / unit, 2)
+            notes.append(
+                f"- **{c['name']}**：整栋建筑共消耗 **{building:,.2f} {c['unit']}**，"
+                f"其中{unit_name}实际用量 **{unit:,.2f} {c['unit']}**（合署比 {ratio}，即建筑总量是本单位用量的 {ratio} 倍）"
+            )
+    if not notes:
+        return ""
+    header = "**📌 合署办公场景说明**：本审计周期内，能源消耗数据涉及合署办公情形，"\
+             "DB 中 `ts_institution_energy_main` 同时维护两个数值字段：\n\n"\
+             "- `total_value`：整栋建筑的合署办公总量（含同楼其他单位）\n"\
+             "- `real_value`：本次审计对象的本单位实际用量（审计报告目标值）\n\n"\
+             "本报告所有指标均以 `real_value` 为准。各能源合署情况如下：\n\n"
+    return header + "\n".join(notes) + "\n\n"
+
+
+# ============================================================
+# Markdown 生成
+# ============================================================
+
+def generate_chapter5_md(data: dict, config: dict) -> str:
+    en = data.get('energy_data', {})
+    co = data.get('cost_data', {})
+    years = sorted(en.keys())
+    if not years:
+        return "# 第5章\n\n无数据，请提供能耗数据。\n"
+
+    years_short = [y[:4] for y in years]
+    area = config.get('building_area', 0)
+    people = config.get('people_count', 0)
+    unit_name = config.get('unit_name', '被审计单位')
+
+    # 收集所有能源代码
+    all_codes = set()
+    for y_data in en.values():
+        all_codes.update(y_data.keys())
+    all_codes = sorted(all_codes)
+
+    year_tce = calc_yearly_tce(en, years)
+    md = f"# 第5章 能源资源消费/消耗指标分析\n\n"
+
+    # ===== 总述 =====
+    md += f"为全面准确分析{unit_name}用能情况和用能规律，此次能源审计工作选取{unit_name}"
+    md += f"{years_short[0]}年-{years_short[-1]}年完整年周期内"
+    md += "、".join([_coeff_info(c)['name'] for c in all_codes])
+    md += f"等用能数据，并根据近三年总用能及各项用能数据进行计算分析。\n\n"
+
+    # ===== 5.1 概况 =====
+    md += "## 5.1 能源资源消费/消耗概况\n\n"
+    md += f"{unit_name}主要用能类型包括"
+    md += "、".join([_coeff_info(c)['name'] for c in all_codes])
+    md += "。能源资源消费结构如图5.1所示。\n\n"
+    md += "![图5.1 能源消费结构](charts/chart_structure.png)\n\n"
+
+    # 各类型消费总量表
+    latest_year = years[-1]
+    md += f"**表5.1 {latest_year}年能源消费结构**\n\n"
+    md += "| 能源类型 | 消耗量 | 单位 | 折标系数 | 折标煤量(tce) | 占比 |\n"
+    md += "|----------|--------|------|----------|---------------|------|\n"
+    total_tce = year_tce[latest_year]
+    for code in all_codes:
+        info = en.get(latest_year, {}).get(code, {})
+        total = info.get('total', 0)
+        c = _coeff_info(code)
+        tce_val = round(total * c['coeff'] / 1000, 2)
+        pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
+        md += f"| {c['name']} | {total:,.2f} | {c['unit']} | {c['display']} | {tce_val:,.2f} | {pct}% |\n"
+    md += f"\n综合能耗总量：**{total_tce:,.2f} tce**\n\n"
+
+    # ===== 合署办公追溯说明 =====
+    md += _co_location_note(en, latest_year, all_codes, unit_name)
+
+    # 逐年对比
+    if len(years) > 1:
+        md += f"**表5.2 逐年能耗对比**\n\n"
+        header = "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+        sep = "|------|" + "|".join(["------"] * len(years)) + "|\n"
+        md += header + sep
+        md += "| 综合能耗(tce) | " + " | ".join(f"{year_tce[y]:,.2f}" for y in years) + " |\n"
+        md += "| 人均能耗(tce/人) | " + " | ".join(f"{year_tce[y]/people:.4f}" if people else "0" for y in years) + " |\n"
+        md += "| 单位面积能耗(tce/m²) | " + " | ".join(f"{year_tce[y]/area:.4f}" if area else "0" for y in years) + " |\n\n"
+
+    # ===== 5.2 数据（按类型动态H3） =====
+    md += "## 5.2 能源资源消耗/消费数据\n\n"
+    months_cn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+
+    for code in all_codes:
+        c = _coeff_info(code)
+        section_num = f"5.2.{list(all_codes).index(code)+1}"
+        md += f"### {section_num} {c['name']}消耗分析\n\n"
+
+        # 逐年总量
+        md += f"**表{section_num} 逐年{c['name']}消耗量**\n\n"
+        header = "| 年度 | " + " | ".join(f"{c['name']}消耗量({c['unit']})" for _ in years) + " |\n"
+        sep = "|------|" + "|".join(["------"] * len(years)) + "|\n"
+        md += header + sep
+        row = "| 总量 |"
+        for y in years:
+            val = en.get(y, {}).get(code, {}).get('total', 0)
+            row += f" {val:,.2f} |"
+        md += row + "\n\n"
+
+        # 月度趋势（最新年）
+        info = en.get(latest_year, {}).get(code, {})
+        monthly = info.get('monthly', [0]*12)
+        if any(monthly):
+            md += f"**{unit_name}{latest_year}年逐月{c['name']}消耗量**\n\n"
+            md += "| 月份 | " + " | ".join(months_cn) + " |\n"
+            md += "|------|" + "|".join(["------"]*12) + "|\n"
+            md += "| 消耗量 | " + " | ".join(f"{v:,.2f}" for v in monthly) + " |\n\n"
+
+            # 图表引用
+            md += f"![图5.{2+list(all_codes).index(code)} {latest_year}年逐月{c['name']}消耗趋势](charts/chart_{code}_monthly.png)\n\n"
+
+    # 费用分析（最后一节）
+    cost_section_num = f"5.2.{len(all_codes)+1}"
+    md += f"### {cost_section_num} 能源资源费用分析\n\n"
+    if co:
+        md += f"**表{cost_section_num} 逐年能源费用**\n\n"
+        cost_header = "| 年度 |"
+        cost_sep = "|------|"
+        for y in years:
+            cost_header += f" {y}年(万元) |"
+            cost_sep += "------|"
+        md += cost_header + "\n" + cost_sep + "\n"
+        for code in all_codes:
+            c = _coeff_info(code)
+            row = f"| {c['name']}费用 |"
+            for y in years:
+                val = co.get(y, {}).get(code, {}).get('total', 0)
+                row += f" {val:,.2f} |"
+            md += row + "\n"
+        md += "\n"
+    else:
+        md += "（费用数据待用户提供）\n\n"
+
+    # ===== 5.3 指标（统一复用 indicators.py） =====
+    md += "## 5.3 能耗资源消耗/消费指标\n\n"
+
+    # 统一转换为 YearlyEnergyData 并计算指标
+    institution_type = institution_category_to_type(config.get('institution_category', ''))
+    bed_count = config.get('beds_count', 0) or 0
+    yd_list = _convert_to_yearly_energy_data(en, config)
+
+    if not yd_list:
+        md += "（无可用能耗数据，无法计算指标）\n\n"
+    else:
+        # 5.3.1 单位建筑面积非供暖能耗
+        md += "### 5.3.1 单位建筑面积非供暖能耗\n\n"
+        md += "单位建筑面积非供暖能耗 = (综合能耗 - 供暖能耗 - 交通能耗) / 建筑面积\n\n"
+        md += "**表5.3 单位建筑面积非供暖能耗**\n\n"
+        md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+        md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+        row_nh = ["| 非供暖能耗(tce) |"]
+        row_nh_m2 = ["| 单位面积非供暖能耗(kgce/m²) |"]
+        row_nh_ev = ["| 评价结果 |"]
+        for yd in yd_list:
+            r = calc_unit_area_non_heating_energy(yd)
+            if 'benchmark' not in r:
+                from tools.energy_audit.indicators import compare_with_benchmark
+                r['benchmark'] = compare_with_benchmark(r['kgce_per_m2'], institution_type=institution_type)
+            row_nh.append(f" {r['non_heating_kgce']/1000:,.2f} |")
+            row_nh_m2.append(f" {r['kgce_per_m2']:,.2f} |")
+            row_nh_ev.append(f" {r['benchmark']['评价结果']} |")
+        md += "".join(row_nh) + "\n"
+        md += "".join(row_nh_m2) + "\n"
+        md += "".join(row_nh_ev) + "\n\n"
+
+        # 5.3.2 常规用能系统单位建筑面积电耗
+        md += "### 5.3.2 常规用能系统单位建筑面积电耗\n\n"
+        md += "常规用能系统单位建筑面积电耗 = 年总用电量 / 建筑面积\n\n"
+        if area:
+            md += "| 年度 | 用电量(kWh) | 单位面积电耗(kWh/m²) | 评价结果 |\n"
+            md += "|------|-------------|---------------------|----------|\n"
+            for yd in yd_list:
+                r = calc_unit_area_electricity(yd, institution_type=institution_type)
+                md += f"| {yd.year}年 | {r['total_electricity_kwh']:,.2f} | {r['kwh_per_m2']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        md += "\n"
+
+        # 5.3.3 人均综合能耗
+        md += "### 5.3.3 人均综合能耗\n\n"
+        md += "人均综合能耗 = 综合能耗 / 用能人数\n\n"
+        if people:
+            md += "| 年度 | 综合能耗(kgce) | 用能人数 | 人均综合能耗(kgce/人) | 评价结果 |\n"
+            md += "|------|---------------|----------|----------------------|----------|\n"
+            for yd in yd_list:
+                r = calc_per_capita_energy(yd, institution_type=institution_type)
+                md += f"| {yd.year}年 | {r['total_kgce']:,.2f} | {people} | {r['kgce_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        md += "\n"
+
+        # 5.3.4 人均取水量 / 单位开放床日用水量
+        if institution_type == 'medical' and bed_count:
+            md += "### 5.3.4 卫生业单位用水量\n\n"
+            md += "单位开放床日用水量 = 年用水总量 / (床位数 × 365)\n\n"
+            md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
+            md += "|------|-----------|--------|---------------------------|----------|\n"
+            for yd in yd_list:
+                r = calc_per_capita_water(yd, institution_type='medical', bed_count=bed_count)
+                md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        else:
+            md += "### 5.3.4 人均取水量\n\n"
+            md += "人均取水量 = 年总取水量 / 用能人数\n\n"
+            if people:
+                md += "| 年度 | 取水量(m³) | 用能人数 | 人均取水量(m³/人) | 评价结果 |\n"
+                md += "|------|-----------|----------|-------------------|----------|\n"
+                for yd in yd_list:
+                    r = calc_per_capita_water(yd, institution_type=institution_type)
+                    md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {people} | {r['m3_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        md += "\n"
+
+    # ===== 5.4 建筑能耗基准（复用 indicators.calc_baseline） =====
+    md += "## 5.4 建筑能耗基准\n\n"
+
+    # 5.4.1 用量基准
+    md += "### 5.4.1 能源资源用量基准\n\n"
+    md += "根据《山东省公共建筑节能改造节能量核定办法》（试行），各年能耗波动范围在±10%以内时，"
+    md += "取三年平均值作为基准年能耗。\n\n"
+    bl = calc_baseline(yd_list) if yd_list else {'usage': {}, 'cost': {}}
+    md += "**表5.4 能源资源用量基准**\n\n"
+    md += "| 能源类型 | 用量基准 | 单位 | 计算方法 |\n"
+    md += "|----------|----------|------|----------|\n"
+    for label, info in bl.get('usage', {}).items():
+        md += f"| {label} | {info['基准值']:,.2f} | {info.get('单位', '')} | {info.get('方法', '')} |\n"
+    if not bl.get('usage'):
+        for code in all_codes:
+            vals = [en.get(y, {}).get(code, {}).get('total', 0) for y in years]
+            avg = sum(vals) / len(vals) if vals else 0
+            c = _coeff_info(code)
+            md += f"| {c['name']} | {avg:,.2f} | {c['unit']} | 三年均值 |\n"
+    md += "\n"
+
+    # 5.4.2 费用基准
+    md += "### 5.4.2 能源资源费用基准\n\n"
+    if co:
+        md += "**表5.5 能源资源费用基准**\n\n"
+        md += "| 能源类型 | 费用基准(万元) | 计算方法 |\n"
+        md += "|----------|---------------|----------|\n"
+        for label, info in bl.get('cost', {}).items():
+            md += f"| {label} | {info['基准值']:,.2f} | {info.get('方法', '')} |\n"
+        if not bl.get('cost'):
+            for code in all_codes:
+                vals = [co.get(y, {}).get(code, {}).get('total', 0) for y in years]
+                avg = sum(vals) / len(vals) if vals else 0
+                c = _coeff_info(code)
+                md += f"| {c['name']} | {avg:,.2f} | 三年均值 |\n"
+        md += "\n"
+    else:
+        md += "（费用数据待用户提供）\n\n"
+
+    return md
+
+
+# ============================================================
+# 图表（matplotlib）
+# ============================================================
+
+def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei']
+        plt.rcParams['axes.unicode_minus'] = False
+    except ImportError:
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+    en = data.get('energy_data', {})
+    years = sorted(en.keys())
+
+    # 饼图（最新年）
+    if years:
+        y = years[-1]
+        codes = sorted(en[y].keys())
+        labels = [_coeff_info(c)['name'] for c in codes]
+        values = [en[y][c]['total'] * _coeff_info(c)['coeff'] / 1000 for c in codes]
+        if values and any(v > 0 for v in values):
+            fig, ax = plt.subplots(figsize=(7, 7))
+            ax.pie(values, labels=labels, autopct='%1.1f%%')
+            ax.set_title(f'{y}年能源消费结构')
+            fig.savefig(os.path.join(output_dir, 'chart_structure.png'), dpi=150, bbox_inches='tight')
+            plt.close(fig)
+
+    # 月度趋势图（每能源类型一张）
+    months_cn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+    if years:
+        latest = years[-1]
+        for code in sorted(en[latest].keys()):
+            monthly = en[latest][code].get('monthly', [0]*12)
+            if any(monthly):
+                fig, ax = plt.subplots(figsize=(10, 4))
+                ax.plot(range(12), monthly, marker='o')
+                ax.set_xticks(range(12))
+                ax.set_xticklabels(months_cn)
+                ax.set_title(f'{latest}年逐月{_coeff_info(code)["name"]}消耗趋势')
+                ax.grid(True, alpha=0.3)
+                fig.savefig(os.path.join(output_dir, f'chart_{code}_monthly.png'), dpi=150, bbox_inches='tight')
+                plt.close(fig)
+
+
+# ============================================================
+# 主流程
+# ============================================================
+
+def generate(config: dict, output_path: str = None) -> str:
+    # 加载
+    if config.get('manual'):
+        data = load_from_user(config)
+    else:
+        data = load_from_db(config)
+
+    if not data['energy_data']:
+        print("[WARN] 无能耗数据，请检查数据库或提供手动数据")
+        return ""
+
+    # 图表
+    chart_dir = config.get('chart_dir', './charts')
+    generate_charts(data, config, chart_dir)
+
+    # Markdown
+    md = generate_chapter5_md(data, config)
+
+    if output_path:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(md)
+        print(f"Saved: {output_path} ({len(md)} chars)")
+
+    return md
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', help='JSON config path')
+    parser.add_argument('--project-id', type=int)
+    parser.add_argument('--customer-id', type=int)
+    parser.add_argument('--year-start', type=int, default=2022)
+    parser.add_argument('--year-end', type=int, default=2024)
+    parser.add_argument('--building-area', type=float, default=0)
+    parser.add_argument('--people-count', type=int, default=1)
+    parser.add_argument('--unit-name', default='被审计单位')
+    parser.add_argument('--output', default='chapter5_output.md')
+    parser.add_argument('--chart-dir', default='./charts')
+
+    args = parser.parse_args()
+    if args.config:
+        with open(args.config, encoding="utf-8") as f:
+            config = json.load(f)
+    else:
+        config = {
+            'project_id': args.project_id,
+            'customer_id': args.customer_id,
+            'year_start': args.year_start,
+            'year_end': args.year_end,
+            'building_area': args.building_area,
+            'people_count': args.people_count,
+            'unit_name': args.unit_name,
+            'chart_dir': args.chart_dir,
+        }
+
+    md = generate(config, args.output)
+    print(f"Done: {len(md)} chars")
+
+
+if __name__ == '__main__':
+    main()
