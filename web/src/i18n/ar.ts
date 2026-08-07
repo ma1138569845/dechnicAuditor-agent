@@ -50,7 +50,7 @@ export const ar = defineLocale({
   },
 
   app: {
-    brand: "Hermes Agent",
+    brand: "DechnicAuditor Agent",
     brandShort: "HA",
     closeNavigation: "إغلاق التنقل",
     closeModelTools: "إغلاق النموذج والأدوات",

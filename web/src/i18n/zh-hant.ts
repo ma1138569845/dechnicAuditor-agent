@@ -50,7 +50,7 @@ export const zhHant: Translations = {
   },
 
   app: {
-    brand: "Hermes Agent",
+    brand: "DechnicAuditor Agent",
     brandShort: "HA",
     closeNavigation: "關閉導覽",
     closeModelTools: "關閉模型與工具",
@@ -120,8 +120,8 @@ export const zhHant: Translations = {
     starting: "啟動中",
     startedInBackground: "已於背景啟動 — 請查看日誌以取得進度",
     stopped: "已停止",
-    updateHermes: "更新 Hermes",
-    updatingHermes: "正在更新 Hermes…",
+    updateHermes: "更新 Dechnic",
+    updatingHermes: "正在更新 Dechnic…",
     waitingForOutput: "等待輸出…",
   },
 

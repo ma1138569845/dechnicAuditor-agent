@@ -23,7 +23,6 @@ import {
 import {
   Activity,
   BarChart3,
-  BookOpen,
   Clock,
   Code,
   Cpu,
@@ -214,12 +213,12 @@ const BUILTIN_NAV_REST: NavItem[] = [
   { path: "/config", labelKey: "config", label: "Config", icon: Settings },
   { path: "/env", labelKey: "keys", label: "Keys", icon: KeyRound },
   { path: "/system", label: "System", icon: Wrench },
-  {
+  /*{
     path: "/docs",
     labelKey: "documentation",
     label: "Documentation",
     icon: BookOpen,
-  },
+  },*/
 ];
 
 const ICON_MAP: Record<string, ComponentType<{ className?: string }>> = {
@@ -605,7 +604,7 @@ export default function App() {
                 <PluginSlot name="header-left" />
 
                 <Typography className="font-bold text-[1.125rem] leading-[0.95] tracking-[0.0525rem] text-midground uppercase">
-                  Hermes
+                  DechnicAuditor
                   <br />
                   Agent
                 </Typography>
