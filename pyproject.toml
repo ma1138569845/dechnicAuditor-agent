@@ -238,6 +238,15 @@ vision = []
 # any existing requests for the `pty` extra resolve cleanly
 # without pulling in extra packages.
 pty = []
+# RAG / knowledge-base stack (Qdrant vector store, PDF parsing via PyMuPDF,
+# knowledge graph via NetworkX + Graphviz). Opt-in; tools gracefully disable
+# themselves (check_fn) when the extra or backend (PG/Qdrant) is unavailable.
+rag = [
+  "qdrant-client>=1.16.0,<2",
+  "pymupdf>=1.26.0,<2",
+  "networkx>=3.5,<4",
+  "graphviz>=0.21,<1",
+]
 # CVE-2026-48710 (BadHost): Starlette is pulled transitively by mcp's
 # sse-starlette / HTTP-SSE stack (and by fastapi in the `web` extra). Before
 # 1.0.1, a malformed Host header makes `request.url.path` desync from the path
@@ -355,6 +364,8 @@ all = [
   "hermes-agent[google]",
   "hermes-agent[web]",
   "hermes-agent[youtube]",
+  # dechnic custom: RAG/knowledge-base stack
+  "hermes-agent[rag]",
 ]
 
 [build-system]
@@ -410,10 +421,17 @@ py-modules = [
   "hermes_logging",
   "utils",
   "mcp_serve",
+  # dechnic custom: deprecated root-level shims forwarded to rag.*
+  "energy_audit_importer",
+  "energy_audit_search",
+  "knowledge_graph",
+  "memory_storage",
+  "pdf_to_knowledge_graph",
+  "rag_energy_qa",
 ]
 
 [tool.setuptools.packages.find]
-include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*"]
+include = ["agent", "agent.*", "tools", "tools.*", "hermes_cli", "hermes_cli.*", "gateway", "gateway.*", "tui_gateway", "tui_gateway.*", "cron", "cron.*", "acp_adapter", "plugins", "plugins.*", "providers", "providers.*", "rag", "rag.*"]
 
 [tool.setuptools.package-data]
 hermes_cli = ["observability/schemas/*.json"]
