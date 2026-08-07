@@ -1,0 +1,73 @@
+# 能源审计工具配置文件
+# 注意：本文件只存非密配置。数据库密码请通过以下任一方式提供：
+#   1. 环境变量 EA_PG_PASSWORD（或 DB_PASSWORD）
+#   2. Hermes 全局 config.yaml → energy_audit.database.password
+# 解析逻辑见 db_config.py。
+
+# PostgreSQL数据库配置
+database:
+  host: "10.10.1.165"
+  port: "5432"
+  database: "dc_energy_audit2"
+  user: "postgres"
+  sslmode: "prefer"
+
+# RAG系统配置
+rag:
+  collection_name: "knowledge_segment_qwen"
+  qdrant_url: "http://10.10.2.55:6333"
+  deepseek_model: "deepseek-v4-flash"
+
+# 报告输出配置
+output:
+  format: "markdown"
+  directory: "./reports"
+  filename_template: "{audit_type}能源审计报告_{date}"
+
+# 审计类型配置
+audit_types:
+  公共机构:
+    chapters:
+      - "能源审计执行概要"
+      - "公共机构单位概况"
+      - "能源资源管理状况"
+      - "能源资源计量及统计状况"
+      - "能源资源消费/消耗指标分析"
+      - "主要能源资源利用系统分析"
+      - "节能效果与节能潜力分析"
+      - "审计结论"
+  公共建筑:
+    chapters:
+      - "审计执行概要"
+      - "建筑概况"
+      - "能源管理状况"
+      - "能源计量与统计"
+      - "能源消耗分析"
+      - "能源系统分析"
+      - "节能潜力分析"
+      - "审计结论与建议"
+  工业企业:
+    chapters:
+      - "审计执行概要"
+      - "企业概况"
+      - "能源管理状况"
+      - "能源计量与统计"
+      - "能源消耗分析"
+      - "主要用能系统分析"
+      - "节能潜力分析"
+      - "审计结论与建议"
+
+# 能耗指标计算
+indicators:
+  人均综合能耗:
+    formula: "综合能耗总量 / 用能人数"
+    unit: "tce/人"
+  单位建筑面积能耗:
+    formula: "综合能耗总量 / 建筑面积"
+    unit: "tce/m²"
+  单位建筑面积电耗:
+    formula: "电力消耗量 / 建筑面积"
+    unit: "kWh/m²"
+  人均电耗:
+    formula: "电力消耗量 / 用能人数"
+    unit: "kWh/人"
