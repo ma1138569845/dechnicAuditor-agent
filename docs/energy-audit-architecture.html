@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes + 能源审计报告编制 — 系统架构图</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --white: #ffffff;
+    --header-bg: #1a3342;
+    --header-end: #254f64;
+    --layer-interface: #6c3b9e;
+    --layer-interface-bg: #f8f5fb;
+    --layer-agent: #005ab4;
+    --layer-agent-bg: #e8f0fa;
+    --layer-app: #2d8a56;
+    --layer-app-bg: #eaf7f0;
+    --layer-domain: #e8833a;
+    --layer-domain-bg: #fef9f5;
+    --layer-data: #4a5568;
+    --layer-data-bg: #f1f3f5;
+    --text: #1a1c1e;
+    --text-secondary: #5a6068;
+    --border: #d5d9dd;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* ====== Header ====== */
+  .arch-header {
+    background: linear-gradient(135deg, #1a3342 0%, #1e3a4d 30%, #254f64 70%, #1e3a4d 100%);
+    color: #e8ecef;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .arch-header h1 { font-size: 20px; font-weight: 600; }
+  .arch-header .meta { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+  .arch-header .tags { display: flex; gap: 8px; }
+  .arch-header .tag {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 14px;
+    padding: 4px 14px;
+    font-size: 12px;
+  }
+
+  /* ====== Container ====== */
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 16px 60px; }
+
+  /* ====== Architecture Layers ====== */
+  .arch-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: var(--white);
+  }
+
+  .layer {
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+  }
+  .layer:last-child { border-bottom: none; }
+
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px;
+    cursor: default;
+  }
+  .layer-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .layer-name {
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .layer-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: auto;
+  }
+
+  .layer-body {
+    padding: 12px 18px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* Layer colors */
+  .layer-interface .layer-header { background: #f8f5fb; }
+  .layer-interface .layer-badge { background: var(--layer-interface); color: #fff; }
+  .layer-interface .layer-name { color: var(--layer-interface); }
+  .layer-interface .layer-body { background: #fdfcff; }
+
+  .layer-agent .layer-header { background: #e8f0fa; }
+  .layer-agent .layer-badge { background: var(--layer-agent); color: #fff; }
+  .layer-agent .layer-name { color: var(--layer-agent); }
+  .layer-agent .layer-body { background: #fcfdff; }
+
+  .layer-app .layer-header { background: #eaf7f0; }
+  .layer-app .layer-badge { background: var(--layer-app); color: #fff; }
+  .layer-app .layer-name { color: var(--layer-app); }
+  .layer-app .layer-body { background: #fcfffd; }
+
+  .layer-domain .layer-header { background: #fef9f5; }
+  .layer-domain .layer-badge { background: var(--layer-domain); color: #fff; }
+  .layer-domain .layer-name { color: var(--layer-domain); }
+  .layer-domain .layer-body { background: #fffdfb; }
+
+  .layer-data .layer-header { background: #f1f3f5; }
+  .layer-data .layer-badge { background: var(--layer-data); color: #fff; }
+  .layer-data .layer-name { color: var(--layer-data); }
+  .layer-data .layer-body { background: #fafbfc; }
+
+  /* ====== Component Boxes ====== */
+  .comp {
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 100px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    transition: box-shadow 0.15s;
+  }
+  .comp:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
+  .comp .comp-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .comp .comp-file {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+    margin-top: 3px;
+  }
+  .comp.core {
+    border-width: 2px;
+    border-color: var(--layer-agent);
+    background: linear-gradient(180deg, #fcfdff 0%, #e8f0fa 100%);
+  }
+  .comp.highlight {
+    border-width: 2px;
+    border-color: var(--layer-app);
+    background: linear-gradient(180deg, #fcfffd 0%, #eaf7f0 100%);
+  }
+
+  /* ====== Group within layer ====== */
+  .comp-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .comp-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding-left: 2px;
+  }
+  .comp-group-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ====== Cross-cutting bar ====== */
+  .cross-cutting {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 18px;
+    margin-top: 12px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    align-items: center;
+  }
+  .cross-cutting .cc-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-right: 8px;
+  }
+  .cc-badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: #f1f3f5;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  /* ====== Data connectors ====== */
+  .connectors {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding: 14px 18px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+  }
+  .connector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .connector .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ====== Section title ====== */
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 28px 0 14px;
+    padding-left: 10px;
+    border-left: 4px solid var(--layer-agent);
+  }
+
+  /* ====== Agent Flow Table ====== */
+  .agent-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 20px;
+    font-size: 12px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .agent-table th {
+    background: #e8f0fa;
+    color: var(--layer-agent);
+    font-weight: 700;
+    padding: 9px 14px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .agent-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+  }
+  .agent-table tr:last-child td { border-bottom: none; }
+
+  /* ====== Dependency graph ====== */
+  .dep-graph {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    margin: 10px 0 20px;
+    box-shadow: var(--shadow);
+    font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.9;
+    overflow-x: auto;
+  }
+  .dep-graph .dep-label { color: var(--text-secondary); font-weight: 600; }
+  .dep-graph .dep-module { color: var(--layer-agent); font-weight: 600; }
+  .dep-graph .dep-arrow { color: var(--text-secondary); }
+  .dep-graph .dep-file { color: var(--text-secondary); }
+
+  @media (max-width: 800px) {
+    .arch-header { flex-direction: column; gap: 8px; text-align: center; }
+    .comp { min-width: 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="arch-header">
+  <div>
+    <h1>🏗️ Hermes Agent + 能源审计报告编制 — 系统架构图</h1>
+    <div class="meta">同方德诚 · 公共机构能源审计 · 四Agent协同系统</div>
+  </div>
+  <div class="tags">
+    <span class="tag">🐍 Python 3.11+</span>
+    <span class="tag">🤖 4 Agent 协同</span>
+    <span class="tag">📄 8章报告</span>
+    <span class="tag">🧠 KG 因果推理</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ============================================================ -->
+<!-- LAYERED ARCHITECTURE -->
+<!-- ============================================================ -->
+<div class="section-title">📐 分层架构</div>
+
+<div class="arch-stack">
+
+  <!-- Layer 1: Interface -->
+  <div class="layer layer-interface">
+    <div class="layer-header">
+      <span class="layer-badge">L1</span>
+      <span class="layer-name">接口层 Interface</span>
+      <span class="layer-desc">用户交互入口</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp">
+        <div class="comp-name">🖥️ CLI</div>
+        <div class="comp-file">hermes_cli/main.py</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🖼️ TUI</div>
+        <div class="comp-file">ui-tui/ (React + Vite)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🌐 Web Dashboard</div>
+        <div class="comp-file">web/ (React 19 + FastAPI :9119)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">💬 Gateway 多平台</div>
+        <div class="comp-file">gateway/ (Telegram/Discord/WhatsApp/WeChat/QQ/Signal/...)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔌 ACP Server</div>
+        <div class="comp-file">hermes acp (Editor 集成)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">⏰ Cron Scheduler</div>
+        <div class="comp-file">hermes cron (定时任务)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 2: Agent Core -->
+  <div class="layer layer-agent">
+    <div class="layer-header">
+      <span class="layer-badge">L2</span>
+      <span class="layer-name">Agent 核心层 Agent Core</span>
+      <span class="layer-desc">对话循环 · 工具调度 · 会话管理</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp core">
+        <div class="comp-name">🔄 AIAgent 对话循环</div>
+        <div class="comp-file">run_agent.py (~12K LOC)</div>
+      </div>
+      <div class="comp core">
+        <div class="comp-name">🔧 工具注册 & 调度</div>
+        <div class="comp-file">model_tools.py + tools/registry.py</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">💾 会话持久化</div>
+        <div class="comp-file">hermes_state.py (SQLite + FTS5)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔌 Provider 适配器</div>
+        <div class="comp-file">agent/{anthropic,openai,gemini,bedrock,...}_adapter.py</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🧠 记忆 & 技能</div>
+        <div class="comp-file">memory_manager · skill_bundles · learning_graph</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">📐 上下文管理</div>
+        <div class="comp-file">context_engine · compressor · prompt_caching</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔗 MCP 协议</div>
+        <div class="comp-file">mcp_*.py (Model Context Protocol)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🛡️ 安全 & 审计</div>
+        <div class="comp-file">file_safety · secret_scope · curator.py</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 3: Energy Audit Application -->
+  <div class="layer layer-app">
+    <div class="layer-header">
+      <span class="layer-badge">L3</span>
+      <span class="layer-name">能源审计应用层 Application</span>
+      <span class="layer-desc">流水线编排 · Agent调度 · 报告流程控制</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp highlight">
+        <div class="comp-name">🎯 主流水线</div>
+        <div class="comp-file">run_pipeline.py (9步串行)</div>
+      </div>
+      <div class="comp highlight">
+        <div class="comp-name">⚡ 并行流水线 v3.0</div>
+        <div class="comp-file">run_pipeline_parallel.py (两阶段)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">📦 流程封装</div>
+        <div class="comp-file">tools/energy_audit/__init__.py :: EnergyAuditPipeline</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔵 小数 Agent</div>
+        <div class="comp-file">agent_xiaoshu() 数据初始化</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔵 小诚 Agent</div>
+        <div class="comp-file">agent_xiaocheng() 知识检索</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔵 小方 Agent</div>
+        <div class="comp-file">agent_xiaofang() 指标计算</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔵 小同 Agent</div>
+        <div class="comp-file">agent_xiaotong_generate() 报告组装</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 4: Energy Audit Domain -->
+  <div class="layer layer-domain">
+    <div class="layer-header">
+      <span class="layer-badge">L4</span>
+      <span class="layer-name">能源审计领域层 Domain</span>
+      <span class="layer-desc">业务逻辑 · 数据模型 · 算法引擎</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp-group">
+        <div class="comp-group-label">📥 数据采集</div>
+        <div class="comp-group-items">
+          <div class="comp"><div class="comp-name">PG 采集器</div><div class="comp-file">pg_collector.py</div></div>
+          <div class="comp"><div class="comp-name">PG 查询器</div><div class="comp-file">pg_query.py</div></div>
+          <div class="comp"><div class="comp-name">Excel 处理</div><div class="comp-file">excel_processor.py</div></div>
+          <div class="comp"><div class="comp-name">项目数据模型</div><div class="comp-file">project_data.py (9 dataclass)</div></div>
+        </div>
+      </div>
+      <div class="comp-group">
+        <div class="comp-group-label">🧠 知识引擎</div>
+        <div class="comp-group-items">
+          <div class="comp"><div class="comp-name">KG 因果推理</div><div class="comp-file">energy_kg.py (75KB, NetworkX)</div></div>
+          <div class="comp"><div class="comp-name">知识 Schema</div><div class="comp-file">knowledge_schema.py (枚举+数据类)</div></div>
+          <div class="comp"><div class="comp-name">RAG 检索</div><div class="comp-file">rag_search.py → Qdrant</div></div>
+          <div class="comp"><div class="comp-name">RAG 知识库</div><div class="comp-file">rag_retrieval.py</div></div>
+          <div class="comp"><div class="comp-name">KG 可视化</div><div class="comp-file">kg_visualizer.py</div></div>
+        </div>
+      </div>
+      <div class="comp-group">
+        <div class="comp-group-label">📊 计算引擎</div>
+        <div class="comp-group-items">
+          <div class="comp"><div class="comp-name">指标计算</div><div class="comp-file">indicators.py (3层回退)</div></div>
+          <div class="comp"><div class="comp-name">异常检测 v2.0</div><div class="comp-file">data_analysis.py</div></div>
+          <div class="comp"><div class="comp-name">Ch5 自动生成</div><div class="comp-file">chapter5_agent.py</div></div>
+          <div class="comp"><div class="comp-name">数据完整性检查</div><div class="comp-file">data_check.py</div></div>
+        </div>
+      </div>
+      <div class="comp-group">
+        <div class="comp-group-label">📄 报告引擎</div>
+        <div class="comp-group-items">
+          <div class="comp"><div class="comp-name">Word 报告生成</div><div class="comp-file">report_generator.py (154KB)</div></div>
+          <div class="comp"><div class="comp-name">自动质检</div><div class="comp-file">report_qa.py</div></div>
+          <div class="comp"><div class="comp-name">能流图</div><div class="comp-file">energy_flow_chart.py</div></div>
+          <div class="comp"><div class="comp-name">照片管理</div><div class="comp-file">photo_manager.py</div></div>
+          <div class="comp"><div class="comp-name">省级规章</div><div class="comp-file">province_regulations.py</div></div>
+          <div class="comp"><div class="comp-name">Config 校验</div><div class="comp-file">config_validator.py</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer 5: Data Infrastructure -->
+  <div class="layer layer-data">
+    <div class="layer-header">
+      <span class="layer-badge">L5</span>
+      <span class="layer-name">数据基础设施层 Infrastructure</span>
+      <span class="layer-desc">存储 · 向量检索 · 外部模型</span>
+    </div>
+    <div class="layer-body">
+      <div class="comp">
+        <div class="comp-name">🐘 PostgreSQL</div>
+        <div class="comp-file">dc_energy_audit2<br>ts_institution_*</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🔍 Qdrant</div>
+        <div class="comp-file">向量检索 (10.10.2.55:6333)<br>knowledge_segment_qwen</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🗄️ SQLite</div>
+        <div class="comp-file">Session DB (FTS5 全文搜索)</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">📁 File System</div>
+        <div class="comp-file">~/.hermes/projects/{unit}/<br>data.json · analysis_result.json</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">🤖 LLM Providers</div>
+        <div class="comp-file">Anthropic · OpenAI · Gemini<br>DeepSeek · OpenRouter · ...</div>
+      </div>
+      <div class="comp">
+        <div class="comp-name">📋 Excel</div>
+        <div class="comp-file">能耗数据导入</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .arch-stack -->
+
+<!-- ============================================================ -->
+<!-- CROSS-CUTTING -->
+<!-- ============================================================ -->
+<div class="cross-cutting">
+  <span class="cc-label">🔀 横切关注点</span>
+  <span class="cc-badge">📝 Logging (logging 模块)</span>
+  <span class="cc-badge">⚙️ Config (~/.hermes/config)</span>
+  <span class="cc-badge">🔐 安全 (环境变量 + 权限控制)</span>
+  <span class="cc-badge">📊 观测 (agent/observability/)</span>
+  <span class="cc-badge">🔌 插件系统 (plugins/)</span>
+  <span class="cc-badge">📦 技能系统 (skills/)</span>
+  <span class="cc-badge">🔄 热更新 (hermes update)</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- DATA CONNECTORS -->
+<!-- ============================================================ -->
+<div class="connectors">
+  <span style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-right:8px;">🔗 数据连接器</span>
+  <div class="connector"><span class="dot" style="background:var(--layer-agent)"></span> pg_query.py → PostgreSQL:5432</div>
+  <div class="connector"><span class="dot" style="background:var(--layer-domain)"></span> rag_search.py → Qdrant:6333</div>
+  <div class="connector"><span class="dot" style="background:var(--layer-data)"></span> hermes_state.py → SQLite (FTS5)</div>
+  <div class="connector"><span class="dot" style="background:var(--layer-interface)"></span> run_agent.py → LLM API (OpenAI 兼容)</div>
+  <div class="connector"><span class="dot" style="background:var(--layer-interface)"></span> gateway/ → 消息平台 (Telegram/Discord/...)</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- AGENT ORCHESTRATION -->
+<!-- ============================================================ -->
+<div class="section-title">🤖 Agent 协同架构</div>
+
+<table class="agent-table">
+  <tr>
+    <th>Agent</th>
+    <th>角色</th>
+    <th>输入</th>
+    <th>核心依赖</th>
+    <th>输出</th>
+    <th>数据流</th>
+  </tr>
+  <tr>
+    <td>🔵 <strong>小数</strong><br><small>Xiaoshu</small></td>
+    <td>数据初始化</td>
+    <td>Config JSON + PG</td>
+    <td>pg_collector.py<br>pg_query.py<br>project_data.py</td>
+    <td>AuditProject</td>
+    <td>PG (3层回退) → data.json</td>
+  </tr>
+  <tr>
+    <td>🔵 <strong>小诚</strong><br><small>Xiaocheng</small></td>
+    <td>知识检索 + 对标</td>
+    <td>tags + chapters</td>
+    <td>rag_search.py<br>indicators.py</td>
+    <td>chapter_refs<br>_benchmarks</td>
+    <td>Qdrant → refs + 定额</td>
+  </tr>
+  <tr>
+    <td>🔵 <strong>小方</strong><br><small>Xiaofang</small></td>
+    <td>指标计算</td>
+    <td>AuditProject</td>
+    <td>indicators.py</td>
+    <td>energy_data<br>baselines</td>
+    <td>折标系数 × 3层定额</td>
+  </tr>
+  <tr>
+    <td>🔵 <strong>小同</strong><br><small>Xiaotong</small></td>
+    <td>主编组装</td>
+    <td>report_data (rd)</td>
+    <td>report_generator.py</td>
+    <td>.docx 报告</td>
+    <td>rd → Word (python-docx)</td>
+  </tr>
+  <tr>
+    <td>🧠 <strong>KG 引擎</strong><br><small>EnergyKG</small></td>
+    <td>因果诊断</td>
+    <td>AnalysisResult</td>
+    <td>energy_kg.py<br>knowledge_schema.py</td>
+    <td>DiagnosisReport</td>
+    <td>异常 → 因果链匹配 → 措施</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<!-- MODULE DEPENDENCY -->
+<!-- ============================================================ -->
+<div class="section-title">📦 模块依赖关系</div>
+
+<div class="dep-graph">
+<span class="dep-label"># === 入口层 ===</span>
+<span class="dep-module">run_pipeline.py</span> <span class="dep-arrow">──></span> <span class="dep-file">tools/energy_audit/</span>
+<span class="dep-module">run_pipeline_parallel.py</span> <span class="dep-arrow">──></span> <span class="dep-file">run_pipeline.py (subprocess)</span>
+
+<span class="dep-label"># === 应用层 (Agent定义) ===</span>
+<span class="dep-module">run_pipeline.py</span>
+  <span class="dep-arrow">├── agent_xiaoshu()</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_collector.py</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">──></span> <span class="dep-file">project_data.py</span>
+  <span class="dep-arrow">├── agent_xiaocheng()</span> <span class="dep-arrow">──></span> <span class="dep-file">rag_search.py</span> <span class="dep-arrow">──></span> <span class="dep-file">Qdrant</span>
+  <span class="dep-arrow">│                    </span> <span class="dep-arrow">──></span> <span class="dep-file">indicators.py (resolve_benchmark)</span>
+  <span class="dep-arrow">├── agent_xiaofang()</span> <span class="dep-arrow">──></span> <span class="dep-file">indicators.py (calc_unit_area_*, calc_baseline)</span>
+  <span class="dep-arrow">├── build_rd_from_project()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_generator.py (load_from_project)</span>
+  <span class="dep-arrow">├── analyze_with_diagnosis()</span> <span class="dep-arrow">──></span> <span class="dep-file">data_analysis.py</span> <span class="dep-arrow">──></span> <span class="dep-file">energy_kg.py</span> <span class="dep-arrow">──></span> <span class="dep-file">knowledge_schema.py</span>
+  <span class="dep-arrow">├── inject_diagnosis_to_chapter7()</span> <span class="dep-arrow">──></span> <span class="dep-file">data_analysis.py</span>
+  <span class="dep-arrow">├── agent_xiaotong_generate()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_generator.py (generate_word)</span>
+  <span class="dep-arrow">└── check_report()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_qa.py</span>
+
+<span class="dep-label"># === 领域层内部依赖 ===</span>
+<span class="dep-file">energy_kg.py</span> <span class="dep-arrow">──></span> <span class="dep-file">knowledge_schema.py</span> <span class="dep-arrow">(CausalChain, CauseNode, MeasureNode, DiagnosisResult)</span>
+<span class="dep-file">data_analysis.py</span> <span class="dep-arrow">──></span> <span class="dep-file">energy_kg.py</span> <span class="dep-arrow">(EnergyKnowledgeGraph.diagnose_all)</span>
+<span class="dep-file">report_generator.py</span> <span class="dep-arrow">──></span> <span class="dep-file">project_data.py</span> <span class="dep-arrow">(AuditProject)</span>
+<span class="dep-file">pg_collector.py</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">+</span> <span class="dep-file">project_data.py</span>
+<span class="dep-file">config_validator.py</span> <span class="dep-arrow">──></span> <span class="dep-file">config.yaml</span>
+
+<span class="dep-label"># === 数据基础设施 ===</span>
+<span class="dep-module">Hermes Core</span> <span class="dep-arrow">──></span> <span class="dep-file">SQLite (会话) </span> <span class="dep-arrow">+</span> <span class="dep-file"> PostgreSQL (业务) </span> <span class="dep-arrow">+</span> <span class="dep-file"> Qdrant (向量)</span>
+<span class="dep-module">LLM Adapter</span> <span class="dep-arrow">──></span> <span class="dep-file">Anthropic / OpenAI / Gemini / DeepSeek / OpenRouter</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- DATA MODEL -->
+<!-- ============================================================ -->
+<div class="section-title">🗂️ 核心数据模型</div>
+
+<table class="agent-table">
+  <tr>
+    <th>模型</th><th>定义位置</th><th>关键字段</th><th>持久化</th>
+  </tr>
+  <tr>
+    <td><strong>AuditProject</strong></td>
+    <td>project_data.py</td>
+    <td>base (ProjectBase), buildings (list[BuildingInfo]), energy_yearly (list[EnergyYearly]), equipment (list[Equipment]), metering (MeteringInfo), management (ManagementInfo)</td>
+    <td>~/.hermes/projects/{unit}/data.json</td>
+  </tr>
+  <tr>
+    <td><strong>ProjectBase</strong></td>
+    <td>project_data.py</td>
+    <td>unit_name, address, building_area, people_count, institution_category, beds_count, province</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td><strong>BuildingInfo</strong></td>
+    <td>project_data.py</td>
+    <td>name, area, floors, function, structure, insulation, cooling_source, heating_source, monitoring</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td><strong>EnergyYearly</strong></td>
+    <td>project_data.py</td>
+    <td>year, electricity_kwh, water_m3, natural_gas_m3, heating_energy_heat_gj, petrol_kg, diesel_kg + 月度明细</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td><strong>CausalChain</strong></td>
+    <td>knowledge_schema.py</td>
+    <td>anomaly_description, anomaly_keywords, energy_type (EnergyType), system (SystemType), causes (list[CauseNode]), measures (list[MeasureNode])</td>
+    <td>energy_kg.py (内置 50+ 链)</td>
+  </tr>
+  <tr>
+    <td><strong>CauseNode</strong></td>
+    <td>knowledge_schema.py</td>
+    <td>label, description, probability (0-1), check_method, energy_type, system</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td><strong>MeasureNode</strong></td>
+    <td>knowledge_schema.py</td>
+    <td>label, description, estimated_saving_rate, investment_level, payback_period</td>
+    <td>同上</td>
+  </tr>
+  <tr>
+    <td><strong>DiagnosisResult</strong></td>
+    <td>knowledge_schema.py</td>
+    <td>anomaly_description, matched_chains, primary_cause (CauseNode), recommended_measures, confidence</td>
+    <td>analysis_result.json</td>
+  </tr>
+  <tr>
+    <td><strong>AnalysisResult</strong></td>
+    <td>data_analysis.py</td>
+    <td>project_name, years, energy_types, anomalies (list[AnomalyItem]), diagnosis_stats</td>
+    <td>~/.hermes/projects/{unit}/analysis_result.json</td>
+  </tr>
+  <tr>
+    <td><strong>AnomalyItem</strong></td>
+    <td>data_analysis.py</td>
+    <td>category, energy_type, description, severity, confirmed, is_data_error, reason, system, diagnosis</td>
+    <td>同上</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<!-- DEPLOYMENT VIEW -->
+<!-- ============================================================ -->
+<div class="section-title">🚀 部署视图</div>
+
+<table class="agent-table">
+  <tr><th>组件</th><th>部署位置</th><th>通信协议</th><th>说明</th></tr>
+  <tr><td>Hermes CLI / TUI</td><td>用户本地机器 (Windows/macOS/Linux)</td><td>—</td><td>交互式终端</td></tr>
+  <tr><td>Hermes Gateway</td><td>服务器 (常驻进程)</td><td>HTTPS + Webhook</td><td>多平台消息接入</td></tr>
+  <tr><td>PostgreSQL</td><td>10.10.1.165:5432</td><td>TCP (psycopg2)</td><td>dc_energy_audit2 业务库</td></tr>
+  <tr><td>Qdrant</td><td>10.10.2.55:6333</td><td>HTTP/gRPC</td><td>向量检索引擎</td></tr>
+  <tr><td>LLM API</td><td>外部云服务</td><td>HTTPS (OpenAI 兼容)</td><td>Anthropic/OpenAI/Gemini/DeepSeek</td></tr>
+  <tr><td>SQLite</td><td>本地 ~/.hermes/</td><td>本地文件</td><td>会话&技能持久化</td></tr>
+  <tr><td>项目数据</td><td>本地 ~/.hermes/projects/</td><td>JSON 文件</td><td>审计项目数据</td></tr>
+</table>
+
+</div><!-- .container -->
+</body>
+</html>

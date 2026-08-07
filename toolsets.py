@@ -72,6 +72,12 @@ _HERMES_CORE_TOOLS = [
     "execute_code", "delegate_task",
     # Cronjob management
     "cronjob",
+    # 能源审计 PG 查询（service-gated：未配置 PG 时 check_fn 会过滤掉）
+    "energy_audit_search_projects", "energy_audit_get_project",
+    "energy_audit_get_equipment", "energy_audit_get_buildings",
+    "energy_audit_get_energy", "energy_audit_get_energy_meter",
+    # 能源审计 RAG / 知识图谱检索
+    "energy_audit_rag_search",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
     # Kanban multi-agent coordination — only in schema when the agent is
@@ -215,7 +221,17 @@ TOOLSETS = {
         "tools": ["cronjob"],
         "includes": []
     },
-    
+
+    "energy_audit": {
+        "description": "能源审计 PG 数据库查询与 RAG/知识图谱检索：项目、建筑、设备、能耗、表具计量、报告检索、异常诊断、节能措施等",
+        "tools": [
+            "energy_audit_search_projects", "energy_audit_get_project",
+            "energy_audit_get_equipment", "energy_audit_get_buildings",
+            "energy_audit_get_energy", "energy_audit_get_energy_meter",
+            "energy_audit_rag_search",
+        ],
+        "includes": []
+    },
 
     "file": {
         "description": "File manipulation tools: read, write, patch (with fuzzy matching), and search (content + files)",
@@ -579,6 +595,8 @@ TOOLSETS = {
             "feishu_drive_list_comment_replies",
             "feishu_drive_reply_comment",
             "feishu_drive_add_comment",
+            "feishu_office_open",
+            "feishu_office_export",
         ],
         "includes": []
     },

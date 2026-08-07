@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes 能源审计报告编制 - Agent 流程图</title>
+<style>
+  :root {
+    --header-bg: #1e3a4d;
+    --header-text: #e8ecef;
+    --blue-accent: #005ab4;
+    --blue-light: #e8f0fa;
+    --blue-border: #b8d4f0;
+    --gray-100: #f7f8f9;
+    --gray-200: #e9ecef;
+    --gray-300: #d5d9dd;
+    --gray-500: #8b939b;
+    --gray-700: #4a5056;
+    --gray-900: #1a1c1e;
+    --white: #ffffff;
+    --orange-accent: #e8833a;
+    --green-accent: #2d8a56;
+    --red-accent: #c0392b;
+    --purple-accent: #6c3b9e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    background: #f0f2f4;
+    color: var(--gray-900);
+    line-height: 1.6;
+  }
+
+  /* ====== Header Bar ====== */
+  .header {
+    background: linear-gradient(135deg, #1a3342 0%, #1e3a4d 30%, #254f64 70%, #1e3a4d 100%);
+    color: var(--header-text);
+    padding: 22px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .header .subtitle {
+    font-size: 13px;
+    opacity: 0.75;
+    margin-top: 2px;
+  }
+  .header .badge {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ====== Container ====== */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 20px 60px;
+  }
+
+  /* ====== Section Titles ====== */
+  .section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin: 40px 0 16px;
+    padding-left: 12px;
+    border-left: 4px solid var(--blue-accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title:first-child { margin-top: 0; }
+  .section-title .icon { font-size: 22px; }
+
+  /* ====== Flow Row ====== */
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 8px 0;
+    flex-wrap: wrap;
+  }
+
+  /* ====== Node Box ====== */
+  .node {
+    background: var(--white);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 10px;
+    padding: 16px 20px;
+    min-width: 140px;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    transition: box-shadow 0.15s;
+  }
+  .node:hover { box-shadow: 0 3px 12px rgba(0,0,0,0.10); }
+
+  .node.agent {
+    border-color: var(--blue-accent);
+    border-width: 2px;
+    background: linear-gradient(180deg, #fcfdff 0%, var(--blue-light) 100%);
+  }
+  .node.agent .node-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--blue-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 4px;
+  }
+  .node.agent .node-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+  .node.agent .node-desc {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-top: 2px;
+  }
+
+  .node.step {
+    background: var(--gray-100);
+    border-color: var(--gray-300);
+  }
+  .node.step .step-num {
+    display: inline-block;
+    background: var(--blue-accent);
+    color: #fff;
+    border-radius: 50%;
+    width: 24px; height: 24px;
+    line-height: 24px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .node.step .node-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--gray-900);
+  }
+  .node.step .node-sub {
+    font-size: 11px;
+    color: var(--gray-500);
+    margin-top: 2px;
+  }
+
+  .node.data-source {
+    border-style: dashed;
+    border-color: var(--orange-accent);
+    background: #fefaf6;
+  }
+  .node.data-source .node-title { font-size: 13px; font-weight: 600; color: #b85d1e; }
+  .node.data-source .node-sub { font-size: 11px; color: #8b6b4a; }
+
+  .node.decision {
+    border-radius: 6px;
+    border-color: var(--red-accent);
+    border-width: 2px;
+    background: #fefafa;
+  }
+  .node.decision .node-title { color: var(--red-accent); font-weight: 700; font-size: 14px; }
+
+  .node.output {
+    border-color: var(--green-accent);
+    border-width: 2px;
+    background: #f6fdf9;
+  }
+  .node.output .node-title { color: var(--green-accent); font-weight: 700; font-size: 14px; }
+
+  /* ====== Arrows ====== */
+  .arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    flex-shrink: 0;
+  }
+  .arrow svg { display: block; }
+  .arrow-label {
+    font-size: 10px;
+    color: var(--gray-500);
+    writing-mode: vertical-rl;
+    padding: 2px 4px;
+  }
+
+  .arrow-down {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  /* ====== Branch Container ====== */
+  .branch-container {
+    display: flex;
+    gap: 24px;
+    margin: 12px 0;
+    align-items: flex-start;
+  }
+  .branch-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .branch-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  /* ====== Phase Box ====== */
+  .phase-box {
+    border: 1.5px dashed var(--gray-300);
+    border-radius: 12px;
+    padding: 20px 16px 16px;
+    margin: 12px 0;
+    position: relative;
+    background: var(--gray-100);
+  }
+  .phase-box .phase-tag {
+    position: absolute;
+    top: -11px;
+    left: 20px;
+    background: var(--purple-accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+  }
+  .phase-box .phase-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  /* ====== Chapter Badge ====== */
+  .chapter-badge {
+    display: inline-block;
+    background: var(--white);
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--gray-700);
+    white-space: nowrap;
+  }
+
+  /* ====== Legend ====== */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 16px 0 24px;
+    padding: 14px 18px;
+    background: var(--white);
+    border-radius: 8px;
+    border: 1px solid var(--gray-200);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--gray-700);
+  }
+  .legend-dot {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  /* ====== Data flow table ====== */
+  .info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 13px;
+  }
+  .info-table th {
+    background: var(--gray-200);
+    color: var(--gray-700);
+    font-weight: 600;
+    padding: 8px 12px;
+    text-align: left;
+    border: 1px solid var(--gray-300);
+  }
+  .info-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--gray-200);
+    vertical-align: top;
+  }
+  .info-table tr:nth-child(even) td { background: var(--gray-100); }
+
+  /* ====== Responsive ====== */
+  @media (max-width: 800px) {
+    .flow-row { flex-direction: column; align-items: stretch; }
+    .arrow { transform: rotate(90deg); padding: 8px 0; }
+    .branch-container { flex-direction: column; }
+    .header { flex-direction: column; gap: 8px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <div>
+    <h1>⚡ Hermes Agent — 能源审计报告编制流程</h1>
+    <div class="subtitle">同方德诚 · 公共机构能源审计 · 多Agent协同流水线 v3.0</div>
+  </div>
+  <div class="badge">🏗️ 四Agent协同：小数 · 小诚 · 小方 · 小同</div>
+</div>
+
+<div class="container">
+
+<!-- ====== Legend ====== -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--blue-accent);border:2px solid var(--blue-accent)"></div> Agent 节点</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--gray-100);border:1.5px solid var(--gray-300)"></div> 处理步骤</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#fefaf6;border:1.5px dashed var(--orange-accent)"></div> 数据源</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#fefafa;border:2px solid var(--red-accent)"></div> 决策/确认节点</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f6fdf9;border:2px solid var(--green-accent)"></div> 产出物</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--gray-100);border:1.5px dashed var(--gray-300)"></div> 并行阶段</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PHASE 0: 数据准备 -->
+<!-- ============================================================ -->
+<div class="section-title"><span class="icon">📥</span> 阶段 0：数据准备 &amp; 配置校验</div>
+
+<div class="flow-row" style="justify-content:center;gap:12px;flex-wrap:wrap">
+  <!-- Data Sources -->
+  <div class="node data-source">
+    <div class="node-title">🗄️ PostgreSQL</div>
+    <div class="node-sub">dc_energy_audit2<br>ts_institution_energy_main/data<br>ts_limit_config</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node data-source">
+    <div class="node-title">📋 Config JSON</div>
+    <div class="node-sub">unit_name, buildings<br>equipment, metering<br>chapter_texts</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node data-source">
+    <div class="node-title">📚 Qdrant 向量库</div>
+    <div class="node-sub">knowledge_segment_qwen<br>历史审计报告<br>DB37/T 定额标准</div>
+  </div>
+</div>
+
+<div class="arrow-down">
+  <svg width="24" height="36"><line x1="12" y1="0" x2="12" y2="30" stroke="#8b939b" stroke-width="2"/><polygon points="12,36 7,30 17,30" fill="#8b939b"/></svg>
+</div>
+
+<div class="flow-row" style="justify-content:center">
+  <div class="node step">
+    <div class="step-num">0</div>
+    <div class="node-title">Config 校验</div>
+    <div class="node-sub">config_validator.py<br>必填字段 · 数据类型 · 值域检查</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PHASE 1: 四Agent流水线 -->
+<!-- ============================================================ -->
+<div class="section-title"><span class="icon">🤖</span> 阶段 1：四Agent串行流水线（核心）</div>
+
+<!-- Agent 1: 小数 -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node agent" style="min-width:200px">
+    <div class="node-label">🔵 Agent 1</div>
+    <div class="node-name">小数 (Xiaoshu)</div>
+    <div class="node-desc">项目数据初始化</div>
+  </div>
+</div>
+<div style="text-align:center;margin:4px 0">
+  <span class="chapter-badge">pg_collector.py</span>
+  <span style="color:var(--gray-500);margin:0 6px">→</span>
+  <span class="chapter-badge">build_from_pg_and_config()</span>
+  <span style="color:var(--gray-500);margin:0 6px">→</span>
+  <span class="chapter-badge">AuditProject 数据类</span>
+</div>
+<div style="text-align:center;font-size:12px;color:var(--gray-500);margin-top:2px">
+  三层回退策略: PostgreSQL → Config JSON → 内置默认值
+</div>
+
+<!-- Agent 2: 小诚 -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node agent" style="min-width:200px">
+    <div class="node-label">🔵 Agent 2</div>
+    <div class="node-name">小诚 (Xiaocheng)</div>
+    <div class="node-desc">知识检索 + 定额对标</div>
+  </div>
+</div>
+<div style="text-align:center;margin:4px 0">
+  <span class="chapter-badge">RAG检索: 第2/5/6/7章</span>
+  <span style="color:var(--gray-500);margin:0 6px">+</span>
+  <span class="chapter-badge">定额对标: DB37/T 2672-2674</span>
+  <span style="color:var(--gray-500);margin:0 6px">+</span>
+  <span class="chapter-badge">resolve_benchmark() 三层回退</span>
+</div>
+
+<!-- Agent 3: 小方 -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node agent" style="min-width:200px">
+    <div class="node-label">🔵 Agent 3</div>
+    <div class="node-name">小方 (Xiaofang)</div>
+    <div class="node-desc">能耗指标计算</div>
+  </div>
+</div>
+<div style="text-align:center;margin:4px 0">
+  <span class="chapter-badge">单位面积非供暖能耗 kgce/m²</span>
+  <span class="chapter-badge">单位面积电耗 kWh/m²</span>
+  <span class="chapter-badge">人均能耗 kgce/人</span>
+  <span class="chapter-badge">人均水耗 m³/人</span>
+  <span class="chapter-badge">基准值 calc_baseline()</span>
+</div>
+
+<!-- ============================================================ -->
+<!-- 构建 Report Data -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#8b939b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#8b939b"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node step">
+    <div class="step-num">4</div>
+    <div class="node-title">构建 Report Data (rd)</div>
+    <div class="node-sub">build_rd_from_project() → ReportGenerator.load_from_project()<br>合并 agent_xiaofang 计算指标到 chapter5.energy_data</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 异常检测 + KG诊断 -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#c0392b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#c0392b"/></svg>
+</div>
+
+<div class="section-title"><span class="icon">🔬</span> 阶段 2：异常检测 &amp; 知识图谱因果诊断（关键节点）</div>
+
+<div class="flow-row" style="justify-content:center;gap:14px;flex-wrap:wrap">
+  <div class="node step">
+    <div class="step-num">4.0</div>
+    <div class="node-title">能耗异常检测</div>
+    <div class="node-sub">analyze_with_diagnosis()<br>年度对比 · 逐月异常 · 数据缺失<br>自动推断用能系统类型</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node step">
+    <div class="step-num">4.0</div>
+    <div class="node-title">KG 因果诊断</div>
+    <div class="node-sub">EnergyKnowledgeGraph.diagnose_all()<br>50+ 因果链 × 12 用能系统<br>匹配原因 → 推荐措施 → 置信度</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node step">
+    <div class="step-num">4.0</div>
+    <div class="node-title">持久化分析结果</div>
+    <div class="node-sub">save_analysis_result()<br>~/.hermes/projects/{unit}/<br>analysis_result.json</div>
+  </div>
+</div>
+
+<!-- Decision Gate -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#c0392b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#c0392b"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node decision" style="min-width:280px">
+    <div class="node-title">⚠️ 用户确认闸门</div>
+    <div class="node-sub" style="margin-top:6px">
+      待确认异常: <strong>pending_count</strong> 项<br>
+      已确认: confirmed_count 项<br>
+      <span style="color:var(--red-accent)">必须逐项确认后才能继续!</span>
+    </div>
+  </div>
+</div>
+
+<!-- Branch: pending > 0 vs all confirmed -->
+<div class="branch-container">
+  <div class="branch-col">
+    <div class="branch-label" style="color:var(--red-accent)">❌ pending_count > 0</div>
+    <div class="node decision" style="min-width:200px">
+      <div class="node-title">流程中断</div>
+      <div class="node-sub">编辑 analysis_result.json<br>confirmed: true<br>is_data_error: false<br>填写 reason 字段<br><br>→ 重新运行流水线</div>
+    </div>
+  </div>
+  <div class="branch-col">
+    <div class="branch-label" style="color:var(--green-accent)">✅ 全部确认</div>
+    <div class="node output" style="min-width:200px">
+      <div class="node-title">继续生成报告</div>
+      <div class="node-sub">confirmed_count 项<br>全部通过确认闸门</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 注入诊断 + 反馈 -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
+</div>
+
+<div class="section-title"><span class="icon">💉</span> 阶段 3：诊断注入 &amp; 置信度反馈</div>
+
+<div class="flow-row" style="justify-content:center;gap:14px;flex-wrap:wrap">
+  <div class="node step">
+    <div class="step-num">4.0a</div>
+    <div class="node-title">KG诊断注入第7章</div>
+    <div class="node-sub">inject_diagnosis_to_chapter7()<br>problems[] · solutions[]<br>summary.rows[] 汇总表</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node step">
+    <div class="step-num">4.0a</div>
+    <div class="node-title">置信度反馈更新</div>
+    <div class="node-sub">kg_fb.record_feedback()<br>用户确认 → 正面反馈<br>kg_fb.save_feedback()<br>累计统计: accuracy / total</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node step">
+    <div class="step-num">4.1</div>
+    <div class="node-title">合并用户 LLM 文本</div>
+    <div class="node-sub">chapter_texts 注入 rd<br>section_X_Y → chapterX<br>数据完整性检查</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 照片检查 -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#8b939b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#8b939b"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node step">
+    <div class="step-num">4.5</div>
+    <div class="node-title">📸 照片检查清单（非阻断）</div>
+    <div class="node-sub">photo_manager.get_photo_checklist()<br>提示缺失照片，不阻止流程</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Agent 4: 小同 -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node agent" style="min-width:220px">
+    <div class="node-label">🔵 Agent 4</div>
+    <div class="node-name">小同 (Xiaotong)</div>
+    <div class="node-desc">主编组装 + Word报告生成</div>
+  </div>
+</div>
+<div style="text-align:center;margin:4px 0">
+  <span class="chapter-badge">ReportGenerator('公共机构')</span>
+  <span style="color:var(--gray-500);margin:0 6px">→</span>
+  <span class="chapter-badge">generate_word()</span>
+  <span style="color:var(--gray-500);margin:0 6px">→</span>
+  <span class="chapter-badge">{unit_name}_能源审计报告.docx</span>
+</div>
+
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#2d8a56" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#2d8a56"/></svg>
+</div>
+<div class="flow-row" style="justify-content:center">
+  <div class="node output" style="min-width:200px">
+    <div class="node-title">📄 Word 报告 (.docx)</div>
+    <div class="node-sub">8章节完整结构<br>符合山东省公共机构能源审计规范</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- Auto QA -->
+<!-- ============================================================ -->
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#8b939b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#8b939b"/></svg>
+</div>
+<div class="section-title"><span class="icon">✅</span> 阶段 4：自动质检 &amp; 输出</div>
+
+<div class="flow-row" style="justify-content:center;gap:14px;flex-wrap:wrap">
+  <div class="node step">
+    <div class="step-num">6</div>
+    <div class="node-title">自动质检 QA</div>
+    <div class="node-sub">report_qa.check_report()<br>warnings[] · issues[]<br>ok → ✅ 通过 / ⚠️ 发现问题</div>
+  </div>
+  <div class="arrow"><svg width="24" height="24"><line x1="0" y1="12" x2="18" y2="12" stroke="#8b939b" stroke-width="2"/><polygon points="18,12 12,7 12,17" fill="#8b939b"/></svg></div>
+
+  <div class="node output" style="min-width:160px">
+    <div class="node-title">🎉 流水线完成</div>
+    <div class="node-sub">返回 .docx 路径<br>输出统计信息</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- REPORT STRUCTURE -->
+<!-- ============================================================ -->
+<div class="section-title"><span class="icon">📑</span> 报告结构（8章 · 公共机构）</div>
+
+<div class="phase-box">
+  <div class="phase-tag">Phase 1 并行</div>
+  <div class="phase-items">
+    <div class="chapter-badge" style="font-weight:600">Ch1 能源审计执行概要</div>
+    <div class="chapter-badge" style="font-weight:600">Ch2 公共机构单位概况</div>
+    <div class="chapter-badge" style="font-weight:600">Ch3 能源资源管理状况</div>
+    <div class="chapter-badge" style="font-weight:600">Ch4 能源资源计量及统计状况</div>
+    <div class="chapter-badge" style="font-weight:600">Ch6 主要能源资源利用系统分析</div>
+    <div class="chapter-badge" style="font-weight:600">Ch7 节能效果与节能潜力分析</div>
+  </div>
+</div>
+
+<div class="arrow-down">
+  <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#8b939b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#8b939b"/></svg>
+</div>
+
+<div class="phase-box">
+  <div class="phase-tag">Phase 2 依赖</div>
+  <div class="phase-items">
+    <div class="chapter-badge" style="font-weight:600;background:#e8f0fa;border-color:var(--blue-accent)">Ch5 能源资源消费/消耗指标分析</div>
+    <div style="font-size:11px;color:var(--gray-500);display:flex;align-items:center">依赖: Ch2 (面积+人数)</div>
+    <div class="chapter-badge" style="font-weight:600;background:#e8f0fa;border-color:var(--blue-accent)">Ch8 审计结论</div>
+    <div style="font-size:11px;color:var(--gray-500);display:flex;align-items:center">依赖: Ch5 (指标) + Ch7 (问题)</div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- AGENT SUMMARY TABLE -->
+<!-- ============================================================ -->
+<div class="section-title"><span class="icon">📋</span> Agent 角色总览</div>
+<table class="info-table">
+  <tr>
+    <th>Agent</th><th>名称</th><th>职责</th><th>核心文件</th><th>数据源</th>
+  </tr>
+  <tr>
+    <td>🔵 小数</td><td>数据初始化 Agent</td><td>项目数据采集，三层回退</td><td>pg_collector.py</td><td>PostgreSQL → Config → 内置值</td>
+  </tr>
+  <tr>
+    <td>🔵 小诚</td><td>知识检索 Agent</td><td>RAG搜索历史报告 + 定额对标</td><td>rag_search.py</td><td>Qdrant 向量库</td>
+  </tr>
+  <tr>
+    <td>🔵 小方</td><td>计算 Agent</td><td>能耗指标计算 + 基准值</td><td>indicators.py</td><td>AuditProject 数据类</td>
+  </tr>
+  <tr>
+    <td>🔵 小同</td><td>主编 Agent</td><td>组装 + 生成 Word 报告</td><td>report_generator.py (154KB)</td><td>report_data 字典</td>
+  </tr>
+  <tr>
+    <td>🧠 KG</td><td>知识图谱引擎</td><td>因果诊断 + 措施推荐 + 置信度学习</td><td>energy_kg.py (75KB)</td><td>50+因果链 × 12用能系统</td>
+  </tr>
+</table>
+
+<!-- ============================================================ -->
+<!-- DATA FLOW -->
+<!-- ============================================================ -->
+<div class="section-title"><span class="icon">🔄</span> 数据流摘要</div>
+
+<div style="background:var(--white);border:1px solid var(--gray-200);border-radius:8px;padding:16px 20px;font-size:13px;line-height:2">
+<strong>Config JSON</strong>
+  → <span style="color:var(--blue-accent)">小数(pg_collector)</span>
+  → AuditProject
+  → <span style="color:var(--blue-accent)">build_rd_from_project()</span>
+  → report_data (rd)
+<br>
+<strong>rd</strong>
+  → <span style="color:var(--blue-accent)">小方(indicators)</span>
+  → chapter5.energy_data + baselines
+<br>
+<strong>rd + tags</strong>
+  → <span style="color:var(--blue-accent)">小诚(rag_search)</span>
+  → chapter_refs + _benchmarks
+<br>
+<strong>rd.chapter5.energy_data</strong>
+  → <span style="color:var(--red-accent)">analyze_with_diagnosis()</span>
+  → AnalysisResult
+  → <span style="color:var(--red-accent)">用户确认闸门</span>
+  → inject_diagnosis_to_chapter7()
+  → chapter7.problems + solutions
+<br>
+<strong>rd (完整)</strong>
+  → <span style="color:var(--blue-accent)">小同(ReportGenerator)</span>
+  → <span style="color:var(--green-accent)">{unit_name}_能源审计报告.docx</span>
+  → report_qa.check_report()
+  → 🎉 完成
+</div>
+
+</div><!-- .container -->
+</body>
+</html>

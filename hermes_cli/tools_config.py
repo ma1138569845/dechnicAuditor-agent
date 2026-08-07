@@ -115,6 +115,7 @@ CONFIGURABLE_TOOLSETS = [
     ("clarify",         "❓ Clarifying Questions",      "clarify"),
     ("delegation",      "👥 Task Delegation",           "delegate_task"),
     ("cronjob",         "⏰ Cron Jobs",                 "create/list/update/pause/resume/run, with optional attached skills"),
+    ("energy_audit",     "🏭 Energy Audit",             "query energy audit projects, buildings, equipment, energy data from PG and search RAG/knowledge graph"),
     ("homeassistant",    "🏠 Home Assistant",           "smart home device control"),
     ("spotify",          "🎵 Spotify",                  "playback, search, playlists, library"),
     ("discord",         "💬 Discord (read/participate)", "fetch messages, search members, create thread"),
@@ -1633,7 +1634,28 @@ def _run_post_setup(post_setup_key: str):
     import shutil
     from hermes_constants import find_node_executable
 
-    if post_setup_key in {"agent_browser", "browserbase"}:
+    if post_setup_key == "officecli":
+        from hermes_cli.officecli_setup import install_officecli
+
+        result = install_officecli()
+        if result.installed:
+            _print_success(
+                "    OfficeCLI already installed, nothing to do"
+                if not result.attempted
+                else "    OfficeCLI installed"
+            )
+        else:
+            _print_warning(
+                "    OfficeCLI is unavailable; continuing without enhanced Office preview"
+            )
+            if result.warning:
+                _print_info(f"      {result.warning}")
+            _print_info(
+                "    Install manually later: "
+                "https://d.officecli.ai/install.ps1 (Windows) or "
+                "https://d.officecli.ai/install.sh (macOS/Linux)"
+            )
+    elif post_setup_key in {"agent_browser", "browserbase"}:
         node_modules = PROJECT_ROOT / "node_modules" / "agent-browser"
         # Managed Node first — $HERMES_HOME/node is not on PATH, so a bare
         # which() reports "no npm" on installs whose only Node is the one
@@ -2017,6 +2039,7 @@ def valid_post_setup_keys() -> Set[str]:
     caller can't drive ``_run_post_setup`` with an arbitrary key.
     """
     keys: Set[str] = set()
+    keys.add("officecli")
     for cat in TOOL_CATEGORIES.values():
         for prov in cat.get("providers", []):
             ps = prov.get("post_setup")
@@ -3201,6 +3224,7 @@ _POST_SETUP_INSTALLED: dict = {
     # a no-key provider, and (b) an installed-state check is cheap and
     # doesn't trigger a heavy import.
     "cua_driver": lambda: _resolved_cua_driver_cmd() is not None,
+    "officecli": lambda: __import__("hermes_cli.officecli_setup", fromlist=["officecli_installed"]).officecli_installed(),
 }
 
 
@@ -3271,6 +3295,7 @@ _POST_SETUP_READY: dict = {
     "browserbase": lambda: _cloud_agent_browser_installed(),
     "camofox": lambda: _camofox_installed(),
     "cua_driver": lambda: _resolved_cua_driver_cmd() is not None,
+    "officecli": lambda: __import__("hermes_cli.officecli_setup", fromlist=["officecli_installed"]).officecli_installed(),
 }
 
 

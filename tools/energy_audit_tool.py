@@ -1,0 +1,551 @@
+"""
+能源审计 PG 查询工具（Hermes Agent 入口）
+
+把 tools/energy_audit/pg_collector.py 与 pg_query.py 的能力注册为 Hermes 模型工具，
+使 Agent 能够通过自然语言查询能源审计项目、设备、建筑、能耗等信息。
+
+注意： discover_builtin_tools() 只扫描 tools/*.py，因此本文件必须放在 tools/ 根目录，
+子目录 tools/energy_audit/*.py 中的 registry.register() 不会被自动发现。
+"""
+
+from tools.registry import registry, tool_error, tool_result
+
+# 能源审计 PG 查询依赖 psycopg2 / pandas 等可选依赖。
+# 若未安装，工具仍会注册，但 check_fn 会阻止其出现在模型 schema 中，
+# handler 也会返回友好错误提示。
+try:
+    from tools.energy_audit.pg_collector import collect_from_pg
+    from tools.energy_audit.pg_query import PgDataQuery
+    _PG_AVAILABLE = True
+    _PG_IMPORT_ERROR = ""
+except Exception as _pg_import_err:
+    _PG_AVAILABLE = False
+    _PG_IMPORT_ERROR = str(_pg_import_err)
+
+
+# ============================================================
+# 可用性检查（service-gated tool：未配置 PG 时不向模型暴露）
+# ============================================================
+
+def _check_energy_audit_available() -> bool:
+    """检查能源审计 PG 数据库是否可连接。"""
+    if not _PG_AVAILABLE:
+        return False
+    try:
+        with PgDataQuery() as db:
+            return db.ping()
+    except Exception:
+        return False
+
+
+def _pg_unavailable_result():
+    return tool_error(
+        f"能源审计数据库工具当前不可用。可能原因：{_PG_IMPORT_ERROR or 'PG 数据库未配置或无法连接'}。"
+        "请安装依赖（pip install psycopg2-binary pandas）并配置数据库。"
+    )
+
+
+# ============================================================
+# 格式化辅助
+# ============================================================
+
+def _yes_no(v, yes="是", no="否"):
+    if v is None:
+        return ""
+    try:
+        return yes if int(v) == 1 else no
+    except (TypeError, ValueError):
+        return ""
+
+
+def _format_project_summary(result: dict) -> str:
+    """把 collect_from_pg 的完整结果格式化为可读 Markdown。"""
+    found = result.get("found", {})
+    missing = result.get("missing", [])
+    lines = []
+
+    proj = found.get("project", {})
+    if proj:
+        lines.append("## 项目基本信息")
+        lines.append(f"- 单位名称：{proj.get('unit_name', '')}")
+        lines.append(f"- 联系人：{proj.get('contact_person', '')}")
+        lines.append(f"- 联系电话：{proj.get('contact_phone', '')}")
+        lines.append(f"- 审计部门：{proj.get('auditor', '')}")
+        if proj.get('audit_year'):
+            lines.append(f"- 审计年度：{proj.get('audit_year')}")
+        if proj.get('data_year'):
+            lines.append(f"- 数据年度：{proj.get('data_year')}")
+        lines.append("")
+
+    buildings = found.get("buildings", [])
+    if buildings:
+        lines.append(f"## 建筑信息（{len(buildings)} 栋）")
+        for b in buildings:
+            lines.append(
+                f"- **{b.get('name', '未命名')}**：建筑面积 {b.get('area', 0)} m²，"
+                f"地上 {b.get('up_floor', 0)} 层 / 地下 {b.get('down_floor', 0)} 层，"
+                f"功能：{b.get('function', '')}{' - ' + b.get('function_zoning', '') if b.get('function_zoning') else ''}"
+            )
+        lines.append("")
+
+    energy = found.get("energy_yearly", [])
+    if energy:
+        lines.append(f"## 能耗数据（{len(energy)} 个年度）")
+        for e in energy:
+            year = e.get('year', '')
+            parts = []
+            for k, label in [
+                ('electricity_kwh', '用电量'),
+                ('water_m3', '用水量'),
+                ('natural_gas_m3', '天然气'),
+                ('heating_energy_heat_gj', '热能'),
+                ('petrol_kg', '汽油'),
+                ('diesel_kg', '柴油'),
+            ]:
+                if e.get(k):
+                    parts.append(f"{label} {e[k]}")
+            lines.append(f"- **{year} 年**：{', '.join(parts) if parts else '仅有费用/原始数据'}")
+        lines.append("")
+
+    equipment = found.get("equipment", [])
+    if equipment:
+        lines.append(_format_equipment_section(equipment))
+
+    metering = found.get("metering", {})
+    if metering:
+        lines.append("## 计量与监测")
+        lines.append(f"- 能耗监测系统：{_yes_no(metering.get('has_monitoring_system'))}")
+        lines.append(f"- 分项计量：{_yes_no(metering.get('has_separate_metering'))}")
+        lines.append(f"- 分户计量：{_yes_no(metering.get('has_household_metering'))}")
+        lines.append("")
+
+    team = found.get("team_members", [])
+    if team:
+        lines.append(f"## 审计组成员（{len(team)} 人）")
+        for m in team[:10]:
+            lines.append(f"- {m.get('name', '')} / {m.get('position', '')} / {m.get('qualification', '')}")
+        if len(team) > 10:
+            lines.append(f"- ... 等共 {len(team)} 人")
+        lines.append("")
+
+    audited = found.get("audited_users", [])
+    if audited:
+        lines.append(f"## 被审计方配合人员（{len(audited)} 人）")
+        for m in audited[:10]:
+            lines.append(f"- {m.get('name', '')} / {m.get('position', '')} / {m.get('department', '')}")
+        if len(audited) > 10:
+            lines.append(f"- ... 等共 {len(audited)} 人")
+        lines.append("")
+
+    if missing:
+        lines.append("## 缺失数据")
+        for m in missing:
+            lines.append(f"- ⚠️ {m}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_equipment_section(equipment: list, category: str = None) -> str:
+    """格式化设备列表为 Markdown。"""
+    if category:
+        equipment = [e for e in equipment if e.get("category") == category]
+    if not equipment:
+        return "## 设备清单\n\n未找到设备记录。\n"
+
+    # 按类别分组
+    groups: dict = {}
+    for e in equipment:
+        cat = e.get("category", "其他")
+        groups.setdefault(cat, []).append(e)
+
+    lines = [f"## 设备清单（共 {len(equipment)} 条）\n"]
+    for cat in sorted(groups.keys()):
+        items = groups[cat]
+        lines.append(f"### {cat}（{len(items)} 条）")
+        for e in items:
+            name = e.get("name", "未命名")
+            spec = e.get("spec", "")
+            qty = e.get("quantity", 0)
+            spec_part = f" | {spec}" if spec else ""
+            lines.append(f"- **{name}** × {qty}{spec_part}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _format_buildings(buildings: list) -> str:
+    if not buildings:
+        return "未找到建筑信息。"
+    lines = [f"共 {len(buildings)} 栋建筑：\n"]
+    for b in buildings:
+        lines.append(
+            f"- **{b.get('name', '未命名')}**：{b.get('area', 0)} m²，"
+            f"{b.get('floors', '')}，功能 {b.get('function', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _format_energy(energy: list) -> str:
+    if not energy:
+        return "未找到能耗数据。"
+    lines = []
+    for e in energy:
+        lines.append(f"- **{e.get('year', '')} 年** {e.get('energy_name', '')}："
+                     f"本单位 {e.get('unit_total_value', '')} {e.get('energy_unit', '')}")
+    return "\n".join(lines)
+
+
+def _format_energy_meter(meters: list) -> str:
+    if not meters:
+        return "未找到表具计量信息。"
+    type_map = {1: "电表", 2: "水表"}
+    lines = [f"共 {len(meters)} 条表具计量记录：\n"]
+    for m in meters:
+        year = m.get('statistical_year') or '-'
+        dtype = type_map.get(m.get('data_type'), '未知')
+        parts = [f"类型:{dtype}"]
+        if m.get('has_other_meter') == 1:
+            parts.append(f"有其他计量表（{m.get('meter_count') or 0} 只）")
+        else:
+            parts.append("无其他计量表")
+        if m.get('sub_metering'):
+            parts.append(f"分项计量:{m['sub_metering']}")
+        if m.get('measured_depth'):
+            parts.append(f"计量深度:{m['measured_depth']}")
+        if m.get('month_measured') == 1:
+            parts.append("逐月计量:有")
+        if m.get('year_measured') == 1:
+            parts.append("年度计量:有")
+        if m.get('kitchen_water') == 1:
+            parts.append("厨房用水单独计量:是")
+        if m.get('year_water') == 1 and m.get('year_water_value'):
+            parts.append(f"年度用水量:{m['year_water_value']}")
+        if m.get('other_metering_scenario'):
+            parts.append(f"其他场景:{m['other_metering_scenario']}")
+        if m.get('other_situation'):
+            parts.append(f"其他情况:{m['other_situation']}")
+        lines.append(f"- **{year} 年**：{', '.join(parts)}")
+    return "\n".join(lines)
+
+
+# ============================================================
+# Handlers
+# ============================================================
+
+def _handle_search_projects(args: dict):
+    """按名称模糊搜索能源审计项目。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    keyword = args.get("keyword", "").strip()
+    if not keyword:
+        return tool_error("keyword 不能为空")
+    try:
+        with PgDataQuery() as db:
+            rows = db.get_institution_project(audited_name=keyword)
+        if not rows:
+            return tool_result({"count": 0, "projects": [], "message": f"未找到匹配 '{keyword}' 的项目"})
+        projects = [
+            {
+                "id": r["id"],
+                "audited_name": r["audited_name"],
+                "audit_year": r["audit_year"],
+                "reference_year": r["reference_year"],
+                "customer_id": r["customer_id"],
+            }
+            for r in rows[:20]
+        ]
+        lines = [f"找到 {len(projects)} 个匹配项目：\n"]
+        for p in projects:
+            lines.append(f"- {p['audited_name']}（ID: {p['id']}，审计年度：{p['audit_year'] or '-'}）")
+        return "\n".join(lines)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+def _handle_get_project(args: dict):
+    """获取单个项目完整信息。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    project_name = args.get("project_name", "").strip()
+    if not project_name:
+        return tool_error("project_name 不能为空")
+    try:
+        result = collect_from_pg(project_name)
+        if not result.get("project_id"):
+            return tool_error(f"未找到项目：{project_name}")
+        return _format_project_summary(result)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+def _handle_get_equipment(args: dict):
+    """获取项目设备清单。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    project_name = args.get("project_name", "").strip()
+    category = args.get("category", "").strip() or None
+    if not project_name:
+        return tool_error("project_name 不能为空")
+    try:
+        with PgDataQuery() as db:
+            proj = db.find_project_by_name(project_name)
+            if not proj:
+                return tool_error(f"未找到项目：{project_name}")
+            equipment = db.get_formatted_equipment(
+                customer_id=proj["customer_id"], category=category
+            )
+        if not equipment:
+            return f"项目 **{project_name}** 暂未录入设备数据。"
+        return _format_equipment_section(equipment, category=category)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+def _handle_get_buildings(args: dict):
+    """获取项目建筑信息。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    project_name = args.get("project_name", "").strip()
+    if not project_name:
+        return tool_error("project_name 不能为空")
+    try:
+        with PgDataQuery() as db:
+            proj = db.find_project_by_name(project_name)
+            if not proj:
+                return tool_error(f"未找到项目：{project_name}")
+            buildings = db.get_institution_build(customer_id=proj["customer_id"])
+        return _format_buildings(buildings)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+def _handle_get_energy(args: dict):
+    """获取项目能耗数据。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    project_name = args.get("project_name", "").strip()
+    year = args.get("year") or None
+    if not project_name:
+        return tool_error("project_name 不能为空")
+    try:
+        with PgDataQuery() as db:
+            proj = db.find_project_by_name(project_name)
+            if not proj:
+                return tool_error(f"未找到项目：{project_name}")
+            energy = db.get_institution_energy(customer_id=proj["customer_id"], year=year)
+        return _format_energy(energy)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+def _handle_get_energy_meter(args: dict):
+    """获取项目用电/用水表具计量信息。"""
+    if not _PG_AVAILABLE:
+        return _pg_unavailable_result()
+    project_name = args.get("project_name", "").strip()
+    data_type = args.get("data_type")
+    year = args.get("year") or None
+    if not project_name:
+        return tool_error("project_name 不能为空")
+    try:
+        with PgDataQuery() as db:
+            proj = db.find_project_by_name(project_name)
+            if not proj:
+                return tool_error(f"未找到项目：{project_name}")
+            if data_type is not None:
+                data_type = int(data_type)
+            if year is not None:
+                year = int(year)
+            meters = db.get_energy_meter(
+                customer_id=proj["customer_id"],
+                data_type=data_type,
+                year=year,
+            )
+        return _format_energy_meter(meters)
+    except Exception as e:
+        return tool_error(f"查询失败：{e}")
+
+
+# ============================================================
+# Schemas
+# ============================================================
+
+ENERGY_AUDIT_SEARCH_PROJECTS_SCHEMA = {
+    "name": "energy_audit_search_projects",
+    "description": (
+        "按名称模糊搜索能源审计项目。当用户提到的项目名称不确定、"
+        "或需要确认系统中是否存在该项目时使用。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "项目关键词，例如'省立医院'。支持模糊匹配。",
+            },
+        },
+        "required": ["keyword"],
+    },
+}
+
+ENERGY_AUDIT_GET_PROJECT_SCHEMA = {
+    "name": "energy_audit_get_project",
+    "description": (
+        "查询能源审计项目的完整信息，包括项目基本信息、建筑、能耗、设备、人员、计量等。"
+        "当用户询问某个单位/项目的能源审计整体情况时使用。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_name": {
+                "type": "string",
+                "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+        },
+        "required": ["project_name"],
+    },
+}
+
+ENERGY_AUDIT_GET_EQUIPMENT_SCHEMA = {
+    "name": "energy_audit_get_equipment",
+    "description": (
+        "查询指定能源审计项目的设备清单，包括空调、照明、办公、动力、卫生器具、"
+        "生活热水、蒸汽、特殊设备等。当用户问'有哪些设备'时使用。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_name": {
+                "type": "string",
+                "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+            "category": {
+                "type": "string",
+                "description": (
+                    "可选，按设备类别过滤。可选值：空调、照明、办公、动力、卫生器具、"
+                    "生活热水、其他设备、特殊设备、蒸汽。不填则返回全部。"
+                ),
+            },
+        },
+        "required": ["project_name"],
+    },
+}
+
+ENERGY_AUDIT_GET_BUILDINGS_SCHEMA = {
+    "name": "energy_audit_get_buildings",
+    "description": "查询指定能源审计项目的建筑信息。",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_name": {
+                "type": "string",
+                "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+        },
+        "required": ["project_name"],
+    },
+}
+
+ENERGY_AUDIT_GET_ENERGY_SCHEMA = {
+    "name": "energy_audit_get_energy",
+    "description": "查询指定能源审计项目的能耗数据。",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_name": {
+                "type": "string",
+                "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+            "year": {
+                "type": "string",
+                "description": "可选，指定年份，例如'2023'。不填则返回所有年度。",
+            },
+        },
+        "required": ["project_name"],
+    },
+}
+
+ENERGY_AUDIT_GET_ENERGY_METER_SCHEMA = {
+    "name": "energy_audit_get_energy_meter",
+    "description": (
+        "查询指定能源审计项目的用电/用水计量表具信息，包括计量电表数量、分项计量、"
+        "计量深度、逐月/年度计量、厨房用水单独计量等。当用户询问'计量表具'、'电表'、'水表'时使用。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_name": {
+                "type": "string",
+                "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+            "data_type": {
+                "type": "integer",
+                "description": "可选，1=电表，2=水表。不填则返回全部。",
+            },
+            "year": {
+                "type": "string",
+                "description": "可选，指定统计年份，例如'2024'。不填则返回所有年度。",
+            },
+        },
+        "required": ["project_name"],
+    },
+}
+
+
+# ============================================================
+# Registration
+# ============================================================
+
+registry.register(
+    name="energy_audit_search_projects",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_SEARCH_PROJECTS_SCHEMA,
+    handler=_handle_search_projects,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
+
+registry.register(
+    name="energy_audit_get_project",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_GET_PROJECT_SCHEMA,
+    handler=_handle_get_project,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
+
+registry.register(
+    name="energy_audit_get_equipment",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_GET_EQUIPMENT_SCHEMA,
+    handler=_handle_get_equipment,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
+
+registry.register(
+    name="energy_audit_get_buildings",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_GET_BUILDINGS_SCHEMA,
+    handler=_handle_get_buildings,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
+
+registry.register(
+    name="energy_audit_get_energy",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_GET_ENERGY_SCHEMA,
+    handler=_handle_get_energy,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
+
+registry.register(
+    name="energy_audit_get_energy_meter",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_GET_ENERGY_METER_SCHEMA,
+    handler=_handle_get_energy_meter,
+    check_fn=_check_energy_audit_available,
+    emoji="🏭",
+)
