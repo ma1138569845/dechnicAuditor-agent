@@ -11,6 +11,8 @@ act/
 .venv/
 .venv
 .vscode/
+.idea/
+.omc/
 .env
 .op.env
 .env.local
