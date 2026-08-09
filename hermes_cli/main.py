@@ -476,6 +476,9 @@ from hermes_cli.subcommands.prompt_size import build_prompt_size_parser
 from hermes_cli.subcommands.memory import build_memory_parser
 from hermes_cli.subcommands.acp import build_acp_parser
 from hermes_cli.subcommands.tools import build_tools_parser
+from hermes_cli.subcommands.rag import build_rag_parser
+from hermes_cli.subcommands.postinstall import build_postinstall_parser
+from hermes_cli.subcommands.rag_impl import cmd_rag
 from hermes_cli.subcommands.insights import build_insights_parser
 from hermes_cli.subcommands.monitoring import build_monitoring_parser
 from hermes_cli.subcommands.skills import build_skills_parser
@@ -3065,6 +3068,37 @@ def cmd_setup(args):
     from hermes_cli.setup import run_setup_wizard
 
     run_setup_wizard(args)
+
+
+def cmd_postinstall(args):
+    """One-shot bootstrap for pip users: install non-Python deps + run setup."""
+    from hermes_cli.config import stamp_install_method
+    from hermes_cli.dep_ensure import ensure_dependency
+
+    stamp_install_method("pip")
+
+    print("⚕ Hermes post-install bootstrap")
+    print()
+
+    for dep in ("node", "browser", "ripgrep", "ffmpeg"):
+        ensure_dependency(dep)
+
+    # OfficeCLI is an optional enhancement for Office previews. Its installer
+    # is deliberately best-effort so a network or platform failure never
+    # prevents the core post-install bootstrap from completing.
+    try:
+        from hermes_cli.tools_config import _run_post_setup
+
+        _run_post_setup("officecli")
+    except Exception as exc:
+        print(f"⚠ OfficeCLI setup skipped: {exc}")
+
+    if not _has_any_provider_configured():
+        print()
+        cmd_setup(args)
+    else:
+        print()
+        print("✓ Post-install complete.")
 
 
 def cmd_model(args):
@@ -11932,6 +11966,16 @@ def main():
     # tools command  (parser built in hermes_cli/subcommands/tools.py)
     # =========================================================================
     build_tools_parser(subparsers, cmd_tools=cmd_tools)
+
+    # =========================================================================
+    # rag command  (RAG knowledge-base configuration wizard)
+    # =========================================================================
+    build_rag_parser(subparsers, cmd_rag=cmd_rag)
+
+    # =========================================================================
+    # postinstall command  (pip non-Python dep bootstrap + OfficeCLI)
+    # =========================================================================
+    build_postinstall_parser(subparsers, cmd_postinstall=cmd_postinstall)
 
     # =========================================================================
     # computer-use command — manage Computer Use (cua-driver) on macOS
