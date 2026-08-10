@@ -36,6 +36,21 @@ scripts are argparse CLIs that print JSON and use explicit UTF-8 I/O.
 - Not for the legacy .xls binary format (use LibreOffice to convert
   first: `soffice --headless --convert-to xlsx old.xls`).
 
+### Google Sheets-targeted output
+
+For a net-new Google Sheets request, create and verify a local `.xlsx` first, then follow the guidance in `routing/google_sheets.md` for the native Google Sheets handoff. Do not construct blank Google Sheets via API unless the user explicitly asks for that alternate workflow.
+
+### Domain Guidance
+
+When the request clearly relates to a specific domain, read the corresponding guidance before building:
+- Finance and investment banking: `domain_guidance/financial_models.md`
+- Corporate finance and FP&A: `domain_guidance/corporate_finance_fpa.md`
+- Healthcare: `domain_guidance/healthcare.md`
+- Marketing and advertising: `domain_guidance/marketing_advertising.md`
+- Scientific research: `domain_guidance/scientific_research.md`
+
+Do not load domain guidance for unrelated tasks. User request > reference/template > domain defaults.
+
 ## Prerequisites
 
 - Python 3.10+ with `openpyxl` (`pip install openpyxl`). No other
@@ -192,5 +207,42 @@ LibreOffice or hand the file to the user unconverted.
 - After `xlsx_restructure.py`: read its JSON report, then re-run
   `--formulas` and `--sheets` to confirm references and ranges landed
   where expected.
-- For a full visual check, open in LibreOffice:
-  `soffice --headless --convert-to pdf out.xlsx` and inspect the PDF.
+- For visually-rich spreadsheets (charts, conditional formatting,
+  complex layouts), render each sheet to an image and inspect it:
+
+  ```bash
+  soffice --headless --convert-to pdf out.xlsx
+  pdftoppm -jpeg -r 150 out.pdf sheet
+  ls sheet-*.jpg   # inspect each with vision_analyze
+  ```
+
+  Check for clipped cell content, broken charts, alignment issues,
+  and formatting regressions.
+
+## Quick start
+
+```bash
+# Create from scratch
+python -c "
+from openpyxl import Workbook
+wb = Workbook()
+ws = wb.active
+ws['A1'] = 'Hello'
+ws['B1'] = '=UPPER(A1)'
+wb.save('output.xlsx')
+"
+
+# Recalculate formulas
+python scripts/xlsx_recalc.py output.xlsx
+
+# Quick inspection
+markitdown output.xlsx
+
+# Render for visual QA (charts, formatting)
+soffice --headless --convert-to pdf output.xlsx
+pdftoppm -jpeg -r 150 output.pdf sheet
+```
+
+## Related skills
+
+`docx` (Word documents), `pdf` (PDF work), `powerpoint` (decks), optional `excel-author` (finance-grade modeling standards).

@@ -142,7 +142,58 @@ libreoffice`). If neither exists, tell the user PDF conversion is
 unavailable in this environment rather than improvising — python-docx
 cannot render PDFs, and layout fidelity requires a real renderer.
 
-## Pitfalls
+## Editing existing documents (OOXML surgery)
+
+Legacy `.doc` files must be converted first: `python scripts/office/soffice.py --headless --convert-to docx file.doc`.
+
+```bash
+unzip -q doc.docx -d unpacked/
+find unpacked -type l -delete   # strip symlink entries — docx from external parties is untrusted
+python scripts/merge_runs.py unpacked/   # coalesce fragmented runs so text is findable
+# edit unpacked/word/document.xml in place — do NOT reformat or pretty-print
+(cd unpacked && rm -f ../out.docx && zip -Xr ../out.docx .)
+python scripts/office/validate.py out.docx --original doc.docx   # XSD checks
+```
+
+Word splits text across many `<w:r>` runs (revision ids, spell-check markers), so a phrase often doesn't exist as a contiguous string in the XML. `merge_runs.py` merges adjacent identically-formatted runs.
+
+### Tracked changes (redlining)
+
+When redlining, wrap runs in `<w:ins>`/`<w:del>` with `w:id`, `w:author`, `w:date` attributes. Inside `<w:del>`, the text element is `<w:delText>`, not `<w:t>`.
+
+To produce a clean copy with all tracked changes accepted:
+```bash
+python scripts/accept_tracked_changes.py input.docx --mode accept --out accepted.docx
+python scripts/accept_changes.py in.docx out.docx   # legacy LibreOffice-based fallback
+```
+
+To add tracked-change replacements programmatically:
+```bash
+python scripts/add_tracked_replacements.py input.docx output.docx
+```
+
+Accepting a deleted paragraph mark joins that paragraph to the one below it. Check paragraph deletions in the XML — empty bullets in either view are artifacts, not defects.
+
+### Comments
+
+Comments require six cross-linked files. Use the helper:
+```bash
+# Against an already-unpacked directory (preferred when also placing markers)
+python scripts/comment.py unpacked/ "Fees & expenses cap is too low"
+python scripts/comment.py unpacked/ "Agreed" --parent 0
+
+# Against a .docx directly
+python scripts/comment.py contract.docx "This cap is too low" -o annotated.docx
+```
+
+For advanced comment workflows:
+```bash
+python scripts/comments_extract.py input.docx    # extract comments to JSON
+python scripts/comments_apply_patch.py input.docx patch.json --out updated.docx   # apply comment modifications
+python scripts/comments_strip.py input.docx --out no_comments.docx   # remove all comments
+```
+
+### Pitfalls
 
 - **Tokens split across runs.** Word often fragments text into several
   runs. The replace helpers collapse matched runs (replacement inherits
@@ -180,8 +231,10 @@ cannot render PDFs, and layout fidelity requires a real renderer.
   python-docx); raw text substitution in `document.xml` corrupts files
   easily. Use `patch`/`write_file` only for the JSON inputs, never on the
   `.docx` itself.
+- Don't round-trip OOXML through `xml.etree.ElementTree` — it rewrites namespace prefixes and corrupts the file. Use `defusedxml.minidom`.
+- Zip from INSIDE the unpacked directory (`cd unpacked && zip -Xr ../out.docx .`) and `rm` the target first, or deleted parts survive in the archive.
 
-## Verification
+---
 
 - After create/edit/template, run `docx_read.py out.docx --text` and
   check the expected strings appear (and old strings are gone).
@@ -194,3 +247,121 @@ cannot render PDFs, and layout fidelity requires a real renderer.
 - For templates run with `--strict`, or check `unfilled_tokens == []`.
 - Structure checks: `--structure` should show the expected heading
   outline and table shapes; `--styles` confirms custom styles applied.
+## Rendering (visual QA)
+
+Use the packaged renderer for full-featured rendering:
+```bash
+python render_docx.py input.docx --output_dir out/
+# Optional: also write PDF
+python render_docx.py input.docx --output_dir out/ --emit_pdf
+# Debugging:
+python render_docx.py input.docx --output_dir out/ --verbose
+```
+
+Fallback for basic rendering:
+```bash
+python scripts/office/soffice.py --headless --convert-to pdf output.docx
+pdftoppm -jpeg -r 100 output.pdf page
+ls page-*.jpg
+```
+
+**Success criteria:** PNGs exist for each page. Page count matches expectations. Inspect every page at 100% zoom — no clipping/overlap, no broken tables, no missing glyphs, no header/footer misplacement.
+
+LibreOffice may print scary stderr (`error : Unknown IO error`) even when output is correct. Treat as successful if PNGs/PDFs exist and look right.
+
+---
+
+## Quick start (common one-liners)
+
+```bash
+# Render any DOCX to PNGs (visual QA)
+python render_docx.py input.docx --output_dir out/
+
+# Remove reviewer comments (finalization)
+python scripts/comments_strip.py input.docx --out no_comments.docx
+
+# Accept tracked changes (finalization)
+python scripts/accept_tracked_changes.py input.docx --mode accept --out accepted.docx
+
+# Accessibility audit (+ optional safe fixes)
+python scripts/a11y_audit.py input.docx
+python scripts/a11y_audit.py input.docx --fix_image_alt from_filename --out a11y_fixed.docx
+
+# Redact sensitive text (layout-preserving by default)
+python scripts/redact_docx.py input.docx redacted.docx --emails --phones
+
+# Privacy scrub (remove author metadata + rsid)
+python scripts/privacy_scrub.py input.docx --out clean.docx
+
+# Insert Table of Contents
+python scripts/insert_toc.py input.docx --out with_toc.docx
+
+# Style lint
+python scripts/style_lint.py input.docx
+python scripts/style_normalize.py input.docx --out normalized.docx
+```
+
+---
+
+## Scripts to Task Map
+
+| Script | Task Guide |
+|---|---|
+| `style_lint.py`, `style_normalize.py` | `tasks/style_lint_normalize.md` |
+| `apply_template_styles.py` | `tasks/templates_style_packs.md` |
+| `heading_audit.py`, `section_audit.py` | `tasks/headings_numbering.md`, `tasks/sections_layout.md` |
+| `images_audit.py`, `a11y_audit.py` | `tasks/images_figures.md`, `tasks/accessibility_a11y.md` |
+| `captions_and_crossrefs.py` | `tasks/captions_crossrefs.md` |
+| `table_geometry.py`, `xlsx_to_docx_table.py` | `tasks/tables_spreadsheets.md` |
+| `fields_report.py`, `insert_ref_fields.py` | `tasks/fields_update.md` |
+| `insert_toc.py` | `tasks/toc_workflow.md` |
+| `internal_nav.py` | `tasks/navigation_internal_links.md` |
+| `accept_tracked_changes.py`, `add_tracked_replacements.py` | `tasks/clean_tracked_changes.md` |
+| `comments_*.py`, `comment.py` | `tasks/comments_manage.md` |
+| `privacy_scrub.py` | `tasks/privacy_scrub_metadata.md` |
+| `redact_docx.py` | `tasks/redaction_anonymization.md` |
+| `watermark_*.py` | `tasks/watermarks_background.md` |
+| `content_controls.py`, `set_protection.py` | `tasks/forms_content_controls.md`, `tasks/protection_restrict_editing.md` |
+| `merge_docx_append.py` | `tasks/multi_doc_merge.md` |
+| `render_docx.py`, `render_and_diff.py` | `tasks/verify_render.md`, `tasks/compare_diff.md` |
+| `docx_ooxml_patch.py` | `ooxml/tracked_changes.md`, `ooxml/comments.md` |
+
+---
+
+## Where to go next
+
+- **Creating/editing from scratch:** `tasks/create_edit.md`
+- **Reading/reviewing:** `tasks/read_review.md`
+- **Design presets:** `references/design_presets.md`
+- **Header/cover patterns:** `references/header_templates.md`
+- **Verification/raster review:** `tasks/verify_render.md`
+- **Accessibility audit:** `tasks/accessibility_a11y.md`
+- **Comments management:** `tasks/comments_manage.md`
+- **Tracked changes (redlines):** `tasks/clean_tracked_changes.md`, `ooxml/tracked_changes.md`
+- **Style cleanup/normalization:** `tasks/style_lint_normalize.md`
+- **Templates/style packs:** `tasks/templates_style_packs.md`
+- **Table of Contents:** `tasks/toc_workflow.md`
+- **Headings/numbering:** `tasks/headings_numbering.md`
+- **Sections/layout:** `tasks/sections_layout.md`
+- **Images/figures:** `tasks/images_figures.md`
+- **Tables/spreadsheets:** `tasks/tables_spreadsheets.md`
+- **Fields/updates:** `tasks/fields_update.md`
+- **Captions/cross-references:** `tasks/captions_crossrefs.md`
+- **Footnotes/endnotes:** `tasks/footnotes_endnotes.md`
+- **Privacy/metadata scrub:** `tasks/privacy_scrub_metadata.md`
+- **Redaction/anonymization:** `tasks/redaction_anonymization.md`
+- **Watermarks:** `tasks/watermarks_background.md`
+- **Forms/content controls:** `tasks/forms_content_controls.md`
+- **Protection/restrict editing:** `tasks/protection_restrict_editing.md`
+- **Multi-doc merge:** `tasks/multi_doc_merge.md`
+- **Navigation/internal links:** `tasks/navigation_internal_links.md`
+- **Compare/diff two DOCXs:** `tasks/compare_diff.md`
+- **OOXML-level comments:** `ooxml/comments.md`
+- **OOXML hyperlinks/fields:** `ooxml/hyperlinks_and_fields.md`
+- **LibreOffice troubleshooting:** `troubleshooting/libreoffice_headless.md`
+
+---
+
+## Related skills
+
+`pdf` (PDF work), `xlsx` (spreadsheets), `powerpoint` (decks), `ocr-and-documents` (scanned input extraction).
