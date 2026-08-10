@@ -65,7 +65,7 @@ describe('GatewaySettings', () => {
     render(<GatewaySettings />)
     expect(await screen.findByText('Local gateway')).toBeTruthy()
     expect(
-      screen.getByText('Start a private Hermes backend on localhost. This is the default and works offline.')
+      screen.getByText('Start a private DechnicAuditor backend on localhost. This is the default and works offline.')
     ).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'work' }))
@@ -74,7 +74,7 @@ describe('GatewaySettings', () => {
     expect(await screen.findByText('Use default gateway')).toBeTruthy()
     expect(screen.getByText("Remove this profile's override and use the default connection.")).toBeTruthy()
     expect(
-      screen.queryByText('Start a private Hermes backend on localhost. This is the default and works offline.')
+      screen.queryByText('Start a private DechnicAuditor backend on localhost. This is the default and works offline.')
     ).toBeNull()
   })
 

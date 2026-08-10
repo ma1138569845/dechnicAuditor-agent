@@ -10,7 +10,7 @@
  * ---------------
  * electron-builder's final packaging step copies the stock `electron`
  * binary into `release/<platform>-unpacked/` and then renames it to the
- * product name (`Hermes`). If a PREVIOUS `npm run pack` was interrupted
+ * product name (`DechnicAuditor`). If a PREVIOUS `npm run pack` was interrupted
  * (Ctrl-C, OOM kill, crash, full disk) the unpacked directory is left in a
  * corrupted partial state: it keeps the already-renamed `LICENSE.electron.txt`
  * and the Chromium payload (.pak/.so/icudtl.dat/chrome-sandbox) but is MISSING
@@ -21,7 +21,7 @@
  * rename a `electron` file that no longer exists. The build dies with:
  *
  *   ENOENT: no such file or directory, rename
- *   '.../release/linux-unpacked/electron' -> '.../release/linux-unpacked/Hermes'
+ *   '.../release/linux-unpacked/electron' -> '.../release/linux-unpacked/DechnicAuditor'
  *
  * This is a hard failure with no obvious cause for the user — `hermes desktop`
  * just prints "Desktop GUI build failed" and the only fix is to manually
@@ -34,7 +34,7 @@
  * on every pack; nothing else depends on its prior contents.
  *
  * Cross-platform: the same partial-state trap exists on macOS
- * (the mac-unpacked Hermes.app bundle) and Windows (win-unpacked), so we
+ * (the mac-unpacked DechnicAuditor.app bundle) and Windows (win-unpacked), so we
  * clean whatever `appOutDir` electron-builder hands us regardless of platform.
  *
  * Best-effort: a cleanup failure must never mask the real build. We log and
@@ -81,7 +81,7 @@ export function cleanStaleAppOutDir(appOutDir) {
  * tree, preserve it as `<appOutDir>.bak` — but ONLY when it holds the product
  * exe (i.e. it is a previously-working build, not the corrupted partial state
  * cleanStaleAppOutDir exists to remove). If the fresh pack then produces a
- * Hermes.exe that Windows can't load (truncated PE from a corrupt cached
+ * DechnicAuditor.exe that Windows can't load (truncated PE from a corrupt cached
  * Electron zip, wrong arch), the updater's integrity gate in
  * `hermes desktop --build-only` (hermes_cli/main.py
  * `_ensure_desktop_exe_launchable`) restores this .bak instead of leaving the
@@ -92,7 +92,7 @@ export function cleanStaleAppOutDir(appOutDir) {
  * A rename failure (AV holding a handle) also returns false — the wipe is the
  * safe fallback and matches pre-#69179 behavior exactly.
  */
-export function preserveRollbackBackup(appOutDir, productExeName = 'Hermes.exe') {
+export function preserveRollbackBackup(appOutDir, productExeName = 'DechnicAuditor.exe') {
   if (!appOutDir || typeof appOutDir !== 'string' || !existsSync(appOutDir)) {
     return false
   }

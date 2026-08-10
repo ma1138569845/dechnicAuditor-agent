@@ -1,9 +1,9 @@
 {
-  "name": "hermes",
-  "productName": "Hermes",
+  "name": "dechnicauditor",
+  "productName": "智能审",
   "private": true,
   "version": "0.17.0",
-  "description": "Native desktop shell for Hermes Agent.",
+  "description": "Native desktop shell for 智能审 Agent.",
   "author": "Nous Research",
   "type": "module",
   "main": "dist/electron-main.mjs",
@@ -172,18 +172,18 @@
   },
   "build": {
     "electronVersion": "40.10.2",
-    "appId": "com.nousresearch.hermes",
-    "productName": "Hermes",
-    "executableName": "Hermes",
+    "appId": "com.dechnic.dechnicauditor",
+    "productName": "智能审",
+    "executableName": "DechnicAuditor",
     "protocols": [
       {
-        "name": "Hermes Protocol",
+        "name": "智能审 Protocol",
         "schemes": [
-          "hermes"
+          "dechnicauditor"
         ]
       }
     ],
-    "artifactName": "Hermes-${version}-${os}-${arch}.${ext}",
+    "artifactName": "DechnicAuditor-${version}-${os}-${arch}.${ext}",
     "icon": "assets/icon",
     "directories": {
       "output": "release"
@@ -218,23 +218,21 @@
       "category": "public.app-category.developer-tools",
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
-      "extendInfo": {
-        "CFBundleDisplayName": "Hermes",
-        "CFBundleExecutable": "Hermes",
-        "CFBundleName": "Hermes",
-        "NSAudioCaptureUsageDescription": "Hermes uses audio capture for voice conversations.",
-        "NSCameraUsageDescription": "Hermes uses the camera when a plugin or feature you enable requests it.",
-        "NSMicrophoneUsageDescription": "Hermes uses the microphone for voice input and voice conversations."
-      },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "CFBundleDisplayName": "智能审",
+      "CFBundleExecutable": "DechnicAuditor",
+      "CFBundleName": "智能审",
+      "NSAudioCaptureUsageDescription": "智能审 uses audio capture for voice conversations.",
+      "NSCameraUsageDescription": "智能审 uses the camera when a plugin or feature you enable requests it.",
+      "NSMicrophoneUsageDescription": "智能审 uses the microphone for voice input and voice conversations."
     },
     "dmg": {
-      "title": "Install Hermes",
+      "title": "Install 智能审",
       "backgroundColor": "#f5f5f7",
       "iconSize": 96,
       "window": {
@@ -256,7 +254,7 @@
       ]
     },
     "win": {
-      "legalTrademarks": "Hermes",
+      "legalTrademarks": "智能审",
       "target": [
         "nsis",
         "msi"
@@ -266,19 +264,21 @@
     "linux": {
       "category": "Development",
       "maintainer": "Nous Research <support@nousresearch.com>",
-      "synopsis": "Native desktop shell for Hermes Agent.",
+      "synopsis": "Native desktop shell for 智能审 Agent.",
       "target": [
         "AppImage",
         "deb",
         "rpm"
-      ]
+      ],
+      "shortcutName": "智能审",
+      "uninstallDisplayName": "智能审"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "shortcutName": "Hermes",
-      "uninstallDisplayName": "Hermes",
+      "shortcutName": "智能审",
+      "uninstallDisplayName": "智能审",
       "warningsAsErrors": false
     }
   }
