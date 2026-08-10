@@ -10,15 +10,16 @@ import type {
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 
-import { requestComposerFocus, requestComposerInsertRefs } from '@/app/chat/composer/focus'
+import { requestComposerFocus, requestComposerInsert, requestComposerInsertRefs } from '@/app/chat/composer/focus'
 import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { HERMES_PATHS_MIME } from '@/app/chat/hooks/use-composer-actions'
 import { isAddSelectionShortcut } from '@/app/right-sidebar/terminal/selection'
 import { RichCodeBlock } from '@/components/assistant-ui/embeds'
-import { CodeEditor } from '@/components/chat/code-editor'
+import { CodeEditor, type CodeEditorSelection } from '@/components/chat/code-editor'
 import { FileDiffPanel } from '@/components/chat/diff-lines'
 import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-window'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
+import { OfficePreview } from '@/components/chat/office-preview'
 import { PageLoader } from '@/components/page-loader'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
@@ -37,6 +38,8 @@ import type { PreviewTarget } from '@/store/preview'
 import { setPreviewDirty } from '@/store/preview-edit'
 import { $connection, $currentCwd } from '@/store/session'
 import { notifyWorkspaceChanged } from '@/store/workspace-events'
+
+import { AiEditToolbar } from './ai-edit-toolbar'
 
 const SHIKI_THEME = { dark: 'github-dark-default', light: 'github-light-default' } as const
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -483,7 +486,24 @@ function startLineDrag(event: ReactDragEvent<HTMLElement>, filePath: string, { e
 /** Windowed, Shiki-highlighted source. The gutter's line selection produces a
  *  `path:line` composer ref, so it is inert without a `filePath` (artifact
  *  content has no path to reference lines against). */
-export function SourceView({ filePath, language, text }: { filePath?: string; language: string; text: string }) {
+export interface SourceLineSelection {
+  anchorX: number
+  anchorY: number
+  startLine: number
+  endLine: number
+}
+
+export function SourceView({
+  filePath,
+  language,
+  onSelection,
+  text
+}: {
+  filePath?: string
+  language: string
+  text: string
+  onSelection?: (selection: SourceLineSelection | null) => void
+}) {
   const { t } = useI18n()
   const chunks = useMemo(() => chunkTextLines(text, SOURCE_CHUNK_LINES), [text])
   const lastChunk = chunks.at(-1)
@@ -499,25 +519,43 @@ export function SourceView({ filePath, language, text }: { filePath?: string; la
   const visibleChunks = chunks.slice(startChunk, endChunk + 1)
   const [selection, setSelection] = useState<LineSelection | null>(null)
   const inSelection = (line: number) => selection != null && line >= selection.start && line <= selection.end
+  const onSelectionRef = useRef(onSelection)
+
+  onSelectionRef.current = onSelection
 
   const handleLineClick = (event: ReactMouseEvent, line: number) => {
     if (!filePath) {
+      onSelectionRef.current?.(null)
+
       return
     }
+
+    let next: LineSelection | null
 
     if (event.shiftKey && selection) {
-      setSelection({ end: Math.max(selection.end, line), start: Math.min(selection.start, line) })
-
-      return
+      next = { end: Math.max(selection.end, line), start: Math.min(selection.start, line) }
+    } else if (selection?.start === line && selection.end === line) {
+      next = null
+    } else {
+      next = { end: line, start: line }
     }
 
-    if (selection?.start === line && selection.end === line) {
-      setSelection(null)
+    setSelection(next)
 
-      return
+    // Surface the line range to the parent so the AI-edit toolbar can anchor
+    // itself to the clicked gutter row.
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+
+    if (!next) {
+      onSelectionRef.current?.(null)
+    } else {
+      onSelectionRef.current?.({
+        anchorX: rect.left,
+        anchorY: rect.bottom,
+        endLine: next.end,
+        startLine: next.start
+      })
     }
-
-    setSelection({ end: line, start: line })
   }
 
   const handleDragStart = (event: ReactDragEvent<HTMLElement>, line: number) => {
@@ -639,6 +677,10 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   const [saveError, setSaveError] = useState<null | string>(null)
   const [conflict, setConflict] = useState(false)
   const [selfReload, setSelfReload] = useState(0)
+  // AI-edit: floating toolbar over a selected line range or document excerpt.
+  const [aiSelection, setAiSelection] = useState<{
+    anchorX: number; anchorY: number; startLine?: number; endLine?: number; selectedText?: string
+  } | null>(null)
   // For the bare-`e` shortcut: the read-view root (to detect focus-within) and a
   // hover flag (no state — only the keydown handler reads it).
   const readViewRef = useRef<HTMLDivElement>(null)
@@ -648,6 +690,8 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   const filePath = filePathForTarget(target)
   const isImage = target.previewKind === 'image'
   const isPdf = target.previewKind === 'pdf'
+  const isOffice = target.previewKind === 'office'
+  const officeKind = target.officeKind ?? 'docx'
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -666,7 +710,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   // when the file is forcibly previewed past the binary refusal screen.
   const isText = target.previewKind === 'text' || target.previewKind === 'binary' || target.previewKind === 'html'
 
-  const blockedByTarget = !isImage && !isPdf && !forcePreview && (target.binary || target.large)
+  const blockedByTarget = !isImage && !isPdf && !isOffice && !forcePreview && (target.binary || target.large)
 
   useEffect(() => {
     let active = true
@@ -678,7 +722,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
         return
       }
 
-      if (!isImage && !isPdf && !isText) {
+      if (!isImage && !isPdf && !isText && !isOffice) {
         setState({ loading: false })
 
         return
@@ -694,6 +738,15 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
 
           if (active) {
             setState({ dataUrl, loading: false })
+          }
+
+          return
+        }
+
+        // Office files handle their own loading via OfficePreview component.
+        if (isOffice) {
+          if (active) {
+            setState({ loading: false })
           }
 
           return
@@ -915,6 +968,135 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
     }
   }
 
+  // ── AI-edit handoff ──────────────────────────────────────────────
+  // Defined before the `editing` return below — that block references
+  // submitAiEdit / handleEditorSelection, and const callbacks are not hoisted.
+  const submitAiEdit = useCallback(
+    (prompt: string) => {
+      if (!aiSelection || !filePath) {
+        return
+      }
+
+      let ref: string | null
+      let instruction = prompt
+
+      if (aiSelection.selectedText !== undefined) {
+        // Office-document selection: reference the file and include the excerpt.
+        ref = droppedFileInlineRef({ path: filePath }, $currentCwd.get())
+        instruction = `Selected text:\n"""\n${aiSelection.selectedText}\n"""\n\n${prompt}`
+      } else if (aiSelection.startLine !== undefined) {
+        const lineEnd =
+          aiSelection.endLine !== undefined && aiSelection.endLine > aiSelection.startLine
+            ? aiSelection.endLine
+            : undefined
+        ref = droppedFileInlineRef(
+          { line: aiSelection.startLine, lineEnd, path: filePath },
+          $currentCwd.get()
+        )
+      } else {
+        return
+      }
+
+      if (!ref) {
+        return
+      }
+
+      requestComposerInsertRefs([ref])
+      requestComposerInsert(instruction)
+      requestComposerFocus('active')
+      setAiSelection(null)
+    },
+    [aiSelection, filePath]
+  )
+
+  const handleOfficeAiSelection = useCallback(
+    (selection: { anchorX: number; anchorY: number; selectedText: string } | null) => {
+      if (!selection) {
+        setAiSelection(null)
+        return
+      }
+      setAiSelection({
+        anchorX: selection.anchorX,
+        anchorY: selection.anchorY,
+        selectedText: selection.selectedText
+      })
+    },
+    []
+  )
+
+  const handleEditorSelection = useCallback((selection: CodeEditorSelection | null) => {
+    if (!selection) {
+      setAiSelection(null)
+      return
+    }
+    setAiSelection({
+      anchorX: selection.anchorX,
+      anchorY: selection.anchorY,
+      startLine: selection.startLine,
+      endLine: selection.endLine
+    })
+  }, [])
+
+  // SourceView gutter line picks anchor the AI-edit toolbar at the clicked row.
+  const handleSourceLineSelection = useCallback((selection: SourceLineSelection | null) => {
+    if (!selection) {
+      setAiSelection(null)
+      return
+    }
+    setAiSelection({
+      anchorX: selection.anchorX,
+      anchorY: selection.anchorY,
+      startLine: selection.startLine,
+      endLine: selection.endLine
+    })
+  }, [])
+
+  // Read-view (source/rendered) text swipes surface a selected excerpt to the
+  // AI-edit toolbar, mirroring the Office webview/HTML selection plumbing.
+  const handleReadSelectionMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement
+
+      if (target.closest('button') || target.closest('a')) {
+        setAiSelection(null)
+      }
+    },
+    []
+  )
+
+  const handleReadSelectionMouseUp = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement
+
+      if (target.closest('button') || target.closest('a')) {
+        return
+      }
+
+      const selection = window.getSelection()
+
+      if (!selection || selection.isCollapsed) {
+        setAiSelection(null)
+        return
+      }
+
+      const selectedText = selection.toString().trim()
+
+      if (!selectedText) {
+        setAiSelection(null)
+        return
+      }
+
+      const rect = selection.getRangeAt(0).getBoundingClientRect()
+
+      setAiSelection({
+        anchorX: rect.left,
+        anchorY: rect.top,
+        selectedText
+      })
+    },
+    []
+  )
+
   // Rendered before the loading/error branches so a background re-read (file
   // watcher, workspace tick) can't unmount the editor and drop the draft. Uses
   // the SAME container + fixed-height header as the read view so entering edit
@@ -963,8 +1145,16 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
             onCancel={cancelEdit}
             onChange={handleEditorChange}
             onSave={() => void saveEdit()}
+            onSelection={handleEditorSelection}
           />
         </div>
+        {aiSelection && (
+          <AiEditToolbar
+            anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
+            onDismiss={() => setAiSelection(null)}
+            onSubmit={submitAiEdit}
+          />
+        )}
       </div>
     )
   }
@@ -984,6 +1174,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   if (
     !isImage &&
     !isPdf &&
+    !isOffice &&
     !forcePreview &&
     (target.binary || target.large || state.binary || (state.byteSize ?? 0) > TEXT_PREVIEW_MAX_BYTES)
   ) {
@@ -1030,6 +1221,33 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
     return <PageLoader label={t.preview.loading} />
   }
 
+  // ── Office document preview ──────────────────────────────────────
+  if (isOffice) {
+    return (
+      <div
+        className="flex h-full flex-col overflow-hidden bg-transparent"
+        onMouseEnter={() => {
+          hoverRef.current = true
+        }}
+        onMouseLeave={() => {
+          hoverRef.current = false
+        }}
+        ref={readViewRef}
+      >
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <OfficePreview filePath={filePath} officeKind={officeKind} onAiEditSelection={handleOfficeAiSelection} />
+        </div>
+        {aiSelection && (
+          <AiEditToolbar
+            anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
+            onDismiss={() => setAiSelection(null)}
+            onSubmit={submitAiEdit}
+          />
+        )}
+      </div>
+    )
+  }
+
   if (isText && state.text !== undefined) {
     const isMarkdown = (state.language || target.language) === 'markdown'
     const hasDiff = Boolean(state.diff && state.diff.trim())
@@ -1074,6 +1292,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
               <Tip label={`${t.preview.edit} (e)`}>
                 <button
                   className="flex items-center gap-1 text-[0.625rem] font-bold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground"
+                  data-slot="preview-edit-button"
                   onClick={beginEdit}
                   type="button"
                 >
@@ -1084,7 +1303,11 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
             ) : null
           }
         />
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div
+          className="min-h-0 flex-1 overflow-auto"
+          onMouseDown={handleReadSelectionMouseDown}
+          onMouseUp={handleReadSelectionMouseUp}
+        >
           {mode === 'rendered' ? (
             <MarkdownPreview text={state.text} />
           ) : mode === 'diff' ? (
@@ -1099,10 +1322,18 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
             <SourceView
               filePath={filePath}
               language={shikiLanguageForFilename(filePath) || state.language || 'text'}
+              onSelection={handleSourceLineSelection}
               text={state.text}
             />
           )}
         </div>
+        {aiSelection && (
+          <AiEditToolbar
+            anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
+            onDismiss={() => setAiSelection(null)}
+            onSubmit={submitAiEdit}
+          />
+        )}
       </div>
     )
   }

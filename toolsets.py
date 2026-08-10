@@ -298,7 +298,16 @@ TOOLSETS = {
         ],
         "includes": []
     },
-    
+
+    "office_editor": {
+        "description": "Office editing via the local editor_sdk (Tencent Docs AI Engine) — create/open/edit/save .docx/.xlsx/.pptx, live preview in the desktop pane (office_editor tools)",
+        "tools": [
+            "office_create", "office_open", "office_edit", "office_save",
+            "office_preview", "office_status", "office_list_tools",
+        ],
+        "includes": []
+    },
+
     "clarify": {
         "description": "Ask the user clarifying questions (multiple-choice or open-ended)",
         "tools": ["clarify"],
@@ -605,8 +614,6 @@ TOOLSETS = {
             "feishu_drive_list_comment_replies",
             "feishu_drive_reply_comment",
             "feishu_drive_add_comment",
-            "feishu_office_open",
-            "feishu_office_export",
         ],
         "includes": []
     },

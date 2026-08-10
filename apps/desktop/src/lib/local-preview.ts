@@ -6,6 +6,14 @@ import type { PreviewTarget } from '@/store/preview'
 const HTML_EXTENSIONS = new Set(['.htm', '.html'])
 const IMAGE_EXTENSIONS = new Set(['.bmp', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp'])
 const PDF_EXTENSIONS = new Set(['.pdf'])
+const OFFICE_EXTENSIONS: Record<string, 'docx' | 'pptx' | 'xlsx'> = {
+  '.doc': 'docx',
+  '.docx': 'docx',
+  '.ppt': 'pptx',
+  '.pptx': 'pptx',
+  '.xls': 'xlsx',
+  '.xlsx': 'xlsx'
+}
 // Mirrors `_FS_DATA_URL_MAX_BYTES` in the backend filesystem endpoint.
 const REMOTE_HTML_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 const REMOTE_HTML_PREVIEW_MAX_BASE64_BYTES = Math.ceil(REMOTE_HTML_PREVIEW_MAX_BYTES / 3) * 4
@@ -205,6 +213,8 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
   const isHtml = HTML_EXTENSIONS.has(ext)
   const isImage = IMAGE_EXTENSIONS.has(ext)
   const isPdf = PDF_EXTENSIONS.has(ext)
+  const officeKind = OFFICE_EXTENSIONS[ext]
+  const isOffice = Boolean(officeKind)
 
   return {
     kind: 'file',
@@ -212,9 +222,10 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
     language: LANGUAGE_BY_EXT[ext] || 'text',
     path,
     // Renderer fallback can't stat/sniff without reading; assume text unless
-    // image/html/pdf extension says otherwise. LocalFilePreview still guards
-    // binary/large files when readFileText/readFileDataUrl returns metadata.
-    previewKind: isHtml ? 'html' : isImage ? 'image' : isPdf ? 'pdf' : 'text',
+    // image/html/pdf/office extension says otherwise. LocalFilePreview still
+    // guards binary/large files when readFileText/readFileDataUrl returns metadata.
+    previewKind: isHtml ? 'html' : isImage ? 'image' : isPdf ? 'pdf' : isOffice ? 'office' : 'text',
+    officeKind: isOffice ? officeKind : undefined,
     source: raw,
     url: pathToFileUrl(path)
   }
@@ -226,6 +237,7 @@ async function enrichPreviewTarget(target: PreviewTarget | null): Promise<Previe
     !target ||
     target.kind !== 'file' ||
     target.previewKind === 'image' ||
+    target.previewKind === 'office' ||
     target.previewKind === 'pdf'
   ) {
     return target

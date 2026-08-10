@@ -37,6 +37,14 @@ export interface CodeEditorApi {
   setCursor: (pos: number) => void
 }
 
+/** Viewport-space anchor + line range of a text selection for the AI edit toolbar. */
+export interface CodeEditorSelection {
+  anchorX: number
+  anchorY: number
+  startLine: number
+  endLine: number
+}
+
 interface CodeEditorProps {
   apiRef?: RefObject<CodeEditorApi | null>
   className?: string
@@ -61,6 +69,9 @@ interface CodeEditorProps {
   onFormatJsonError?: (error: string) => void
   /** Fires with the primary cursor offset whenever the selection moves. */
   onCursorChange?: (pos: number) => void
+  /** Fires with pixel coords + line range when the user selects text. Pass null
+   *  to clear a previous selection (e.g. click that collapses to a cursor). */
+  onSelection?: (selection: CodeEditorSelection | null) => void
   onSave?: () => void
 }
 
@@ -187,7 +198,8 @@ export function CodeEditor({
   onChange,
   onCursorChange,
   onFormatJsonError,
-  onSave
+  onSave,
+  onSelection
 }: CodeEditorProps) {
   const { resolvedMode } = useTheme()
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -202,12 +214,14 @@ export function CodeEditor({
   const onFormatJsonErrorRef = useRef(onFormatJsonError)
   const onSaveRef = useRef(onSave)
   const formatJsonRef = useRef(formatJson)
+  const onSelectionRef = useRef(onSelection)
   onCancelRef.current = onCancel
   onChangeRef.current = onChange
   onCursorChangeRef.current = onCursorChange
   onFormatJsonErrorRef.current = onFormatJsonError
   onSaveRef.current = onSave
   formatJsonRef.current = formatJson
+  onSelectionRef.current = onSelection
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
@@ -274,7 +288,31 @@ export function CodeEditor({
           }
 
           if (update.selectionSet || update.docChanged) {
-            onCursorChangeRef.current?.(update.state.selection.main.head)
+            const sel = update.state.selection.main
+            onCursorChangeRef.current?.(sel.head)
+
+            // Report non-empty selections for the AI-edit toolbar.
+            const cb = onSelectionRef.current
+            if (cb) {
+              if (sel.empty) {
+                cb(null)
+              } else {
+                const doc = update.state.doc
+                const startLine = doc.lineAt(sel.from).number
+                const endLine = doc.lineAt(sel.to).number
+                const coords = update.view.coordsAtPos(sel.head)
+
+                if (coords) {
+                  const rect = update.view.dom.getBoundingClientRect()
+                  cb({
+                    anchorX: rect.left + coords.left,
+                    anchorY: rect.top + coords.bottom,
+                    startLine,
+                    endLine
+                  })
+                }
+              }
+            }
           }
         }),
         LAYOUT_THEME,

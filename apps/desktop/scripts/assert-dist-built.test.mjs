@@ -22,14 +22,33 @@ function writeRouterAsset(distDir, name) {
   )
 }
 
-test('checkDistBuilt passes when index.html + an assets JS bundle exist', () => {
+test('checkDistBuilt passes when renderer + all electron artifacts exist', () => {
   const { tempRoot, distDir } = makeDist(d => {
     fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><div id=root></div>', 'utf8')
     fs.mkdirSync(path.join(d, 'assets'))
     fs.writeFileSync(path.join(d, 'assets', 'index-abc123.js'), 'console.log(1)', 'utf8')
+    fs.writeFileSync(path.join(d, 'electron-main.mjs'), 'console.log(1)', 'utf8')
+    fs.writeFileSync(path.join(d, 'electron-preload.js'), 'console.log(1)', 'utf8')
   })
   try {
     assert.deepEqual(checkDistBuilt(distDir), { ok: true })
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test('checkDistBuilt fails when an electron artifact is missing', () => {
+  const { tempRoot, distDir } = makeDist(d => {
+    fs.writeFileSync(path.join(d, 'index.html'), '<!doctype html><div id=root></div>', 'utf8')
+    fs.mkdirSync(path.join(d, 'assets'))
+    fs.writeFileSync(path.join(d, 'assets', 'index-abc123.js'), 'console.log(1)', 'utf8')
+    fs.writeFileSync(path.join(d, 'electron-main.mjs'), 'console.log(1)', 'utf8')
+    // electron-preload.js omitted — must be caught.
+  })
+  try {
+    const result = checkDistBuilt(distDir)
+    assert.equal(result.ok, false)
+    assert.match(result.error, /electron-preload\.js is missing/)
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true })
   }
@@ -97,6 +116,8 @@ test('checkDistBuilt passes when the Router context invariant is in one JS asset
     fs.mkdirSync(path.join(d, 'assets'))
     writeRouterAsset(d, 'vendor-react-abc123.js')
     fs.writeFileSync(path.join(d, 'assets', 'command-def456.js'), 'console.log(1)', 'utf8')
+    fs.writeFileSync(path.join(d, 'electron-main.mjs'), 'console.log(1)', 'utf8')
+    fs.writeFileSync(path.join(d, 'electron-preload.js'), 'console.log(1)', 'utf8')
   })
   try {
     assert.deepEqual(checkDistBuilt(distDir), { ok: true })

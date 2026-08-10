@@ -116,6 +116,7 @@
     "hast-util-to-text": "4.0.2",
     "ignore": "7.0.6",
     "katex": "0.16.47",
+    "mammoth": "^1.9.0",
     "mermaid": "11.16.1",
     "motion": "12.42.2",
     "nanostores": "1.4.0",
@@ -140,7 +141,8 @@
     "unist-util-visit-parents": "6.0.2",
     "use-stick-to-bottom": "1.1.6",
     "vfile": "6.0.3",
-    "web-haptics": "0.0.6"
+    "web-haptics": "0.0.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@electron/rebuild": "4.2.0",

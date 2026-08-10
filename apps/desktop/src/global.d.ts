@@ -190,6 +190,13 @@ declare global {
         getDefaultProjectDir: () => Promise<{ defaultLabel: string; dir: null | string; resolvedCwd: string }>
         pickDefaultProjectDir: () => Promise<{ canceled: boolean; dir: null | string }>
         setDefaultProjectDir: (dir: null | string) => Promise<{ dir: null | string }>
+        // OnlyOffice DocumentServer connection config — see electron/onlyoffice-config.ts.
+        onlyoffice: {
+          get: () => Promise<OnlyOfficeSettingsState>
+          set: (config: OnlyOfficeConfigInput) => Promise<OnlyOfficeSettingsState>
+          clear: () => Promise<OnlyOfficeSettingsState>
+          apply: (config: OnlyOfficeConfigInput) => Promise<OnlyOfficeSettingsState>
+        }
       }
       zoom?: {
         get: () => Promise<{ level: number; percent: number }>
@@ -346,6 +353,32 @@ declare global {
       findInPage: (query: string, options?: { forward?: boolean; findNext?: boolean }) => Promise<{ count: number }>
       stopFindInPage: () => Promise<void>
       onFoundInPage: (callback: (result: { activeMatchOrdinal: number; count: number }) => void) => () => void
+    }
+  }
+
+  /** Panel input for the OnlyOffice connection config (empty jwtSecret keeps the stored one). */
+  interface OnlyOfficeConfigInput {
+    dsUrl?: string
+    jwtSecret?: string
+    callbackHost?: string
+    previewPort?: string
+  }
+
+  /** What the OnlyOffice settings panel renders: saved values + what the backend sees. */
+  interface OnlyOfficeSettingsState {
+    saved: {
+      dsUrl?: string
+      callbackHost?: string
+      previewPort?: string
+      jwtSecretConfigured: boolean
+    }
+    effective: {
+      enabled: boolean
+      source: 'config' | 'env' | 'none'
+      dsUrl?: string
+      callbackHost?: string
+      previewPort?: string
+      jwtSecretConfigured: boolean
     }
   }
 }
@@ -830,8 +863,9 @@ export interface HermesPreviewTarget {
   large?: boolean
   language?: string
   mimeType?: string
+  officeKind?: 'docx' | 'pptx' | 'xlsx'
   path?: string
-  previewKind?: 'binary' | 'html' | 'image' | 'pdf' | 'text'
+  previewKind?: 'binary' | 'html' | 'image' | 'office' | 'pdf' | 'text'
   renderMode?: 'preview' | 'source'
   source: string
   url: string

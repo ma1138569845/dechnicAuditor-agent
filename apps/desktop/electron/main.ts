@@ -159,6 +159,15 @@ import {
 import { runNativeLogin } from './native-oauth-login'
 import { loadNativeTokenSet, type NativeTokenStoreIo, persistNativeTokenSet } from './native-token-store'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
+import {
+  onlyOfficeStatus,
+  publicOnlyOfficeConfig,
+  readOnlyofficeConfig,
+  resolveOnlyOfficeEnv,
+  validateOnlyOfficeConfig,
+  writeOnlyofficeConfig,
+  type OnlyOfficeConfig
+} from './onlyoffice-config'
 import { createKeepAwake } from './power-save'
 import { FirstRunSetupResetError, runPrimaryBackendStartup } from './primary-backend-startup'
 import { rehomePrimaryConnection } from './primary-connection-rehome'
@@ -254,7 +263,6 @@ import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath } from './wsl-path-bridge'
-
 const USER_DATA_OVERRIDE = process.env.HERMES_DESKTOP_USER_DATA_DIR
 
 if (USER_DATA_OVERRIDE) {
@@ -621,6 +629,9 @@ const DESKTOP_WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-sta
 // ~/.hermes/active_profile file. Unset (null) preserves the legacy behavior:
 // no --profile flag, so the backend honors active_profile / default.
 const DESKTOP_PROFILE_CONFIG_PATH = path.join(app.getPath('userData'), 'active-profile.json')
+// OnlyOffice DocumentServer connection config (see electron/onlyoffice-config.ts).
+// Persisted from Settings so the backend spawn picks it up without shell env.
+const DESKTOP_ONLYOFFICE_CONFIG_PATH = path.join(app.getPath('userData'), 'onlyoffice.json')
 // Mirrors hermes_cli.profiles._PROFILE_ID_RE so we never hand the backend a
 // value its profile resolver would reject and exit on.
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
@@ -879,6 +890,17 @@ const MEDIA_MIME_TYPES = {
 
 const PREVIEW_HTML_EXTENSIONS = new Set(['.html', '.htm'])
 const PREVIEW_PDF_EXTENSIONS = new Set(['.pdf'])
+// Office document preview kinds. Kept in sync with OFFICE_EXTENSIONS in
+// src/lib/local-preview.ts — the main process classifies local files here and
+// the renderer only mounts OfficePreview when previewKind === 'office'.
+const PREVIEW_OFFICE_KIND: Record<string, 'docx' | 'pptx' | 'xlsx'> = {
+  '.doc': 'docx',
+  '.docx': 'docx',
+  '.ppt': 'pptx',
+  '.pptx': 'pptx',
+  '.xls': 'xlsx',
+  '.xlsx': 'xlsx'
+}
 const PREVIEW_WATCH_DEBOUNCE_MS = 120
 const LOCAL_PREVIEW_HOSTS = new Set(['0.0.0.0', '127.0.0.1', '::1', '[::1]', 'localhost'])
 const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
@@ -4755,7 +4777,18 @@ async function previewFileTarget(rawTarget, baseDir) {
   const isHtml = PREVIEW_HTML_EXTENSIONS.has(ext)
   const isImage = mimeType.startsWith('image/')
   const isPdf = PREVIEW_PDF_EXTENSIONS.has(ext) || mimeType === 'application/pdf'
-  const previewKind = isHtml ? 'html' : isImage ? 'image' : isPdf ? 'pdf' : metadata.binary ? 'binary' : 'text'
+  const officeKind = PREVIEW_OFFICE_KIND[ext]
+  const previewKind = isHtml
+    ? 'html'
+    : isImage
+      ? 'image'
+      : isPdf
+        ? 'pdf'
+        : officeKind
+          ? 'office'
+          : metadata.binary
+            ? 'binary'
+            : 'text'
 
   return {
     binary: metadata.binary,
@@ -4765,6 +4798,7 @@ async function previewFileTarget(rawTarget, baseDir) {
     label: path.basename(resolved),
     language: PREVIEW_LANGUAGE_BY_EXT[ext] || 'text',
     mimeType,
+    officeKind,
     path: resolved,
     previewKind,
     source: raw,
@@ -8087,6 +8121,11 @@ async function spawnPoolBackend(profile, entry) {
         // _start_parent_death_watchdog.
         HERMES_PARENT_PID: String(process.pid),
         HERMES_WEB_DIST: webDist,
+        // ONLYOFFICE DocumentServer integration (see tools/office_onlyoffice.py).
+        // Saved config (Settings → Office 预览) wins over the inherited shell
+        // env; when neither is set the backend keeps using the local editor_sdk
+        // preview path.
+        ...resolveOnlyOfficeEnv(readOnlyofficeConfig(DESKTOP_ONLYOFFICE_CONFIG_PATH), process.env),
         ...(readyFile ? { HERMES_DESKTOP_READY_FILE: readyFile } : {})
       },
       shell: backend.shell,
@@ -8385,6 +8424,11 @@ async function startHermes() {
           // _start_parent_death_watchdog.
           HERMES_PARENT_PID: String(process.pid),
           HERMES_WEB_DIST: webDist,
+          // ONLYOFFICE DocumentServer integration (see tools/office_onlyoffice.py).
+          // Saved config (Settings → Office 预览) wins over the inherited shell
+          // env; when neither is set the backend keeps using the local editor_sdk
+          // preview path.
+          ...resolveOnlyOfficeEnv(readOnlyofficeConfig(DESKTOP_ONLYOFFICE_CONFIG_PATH), process.env),
           ...(readyFile ? { HERMES_DESKTOP_READY_FILE: readyFile } : {})
         },
         shell: backend.shell,
@@ -11330,6 +11374,60 @@ ipcMain.handle('hermes:setting:defaultProjectDir:pick', async () => {
   }
 
   return { canceled: false, dir: result.filePaths[0] }
+})
+
+// OnlyOffice DocumentServer connection config (see electron/onlyoffice-config.ts
+// and the Settings → Office 预览 panel). The renderer edits a persisted JSON;
+// the backend spawn merges it into the child env (config wins, shell env falls
+// back). The JWT secret is never echoed back to the renderer — it only learns
+// whether one is configured and re-types it to change it.
+function onlyOfficeSettingsState() {
+  const config = readOnlyofficeConfig(DESKTOP_ONLYOFFICE_CONFIG_PATH)
+
+  return { saved: publicOnlyOfficeConfig(config), effective: onlyOfficeStatus(config, process.env) }
+}
+
+function saveOnlyOfficeConfig(payload: unknown) {
+  const incoming = (payload && typeof payload === 'object' ? payload : {}) as Partial<OnlyOfficeConfig>
+  const existing = readOnlyofficeConfig(DESKTOP_ONLYOFFICE_CONFIG_PATH)
+  // An empty / omitted jwtSecret preserves the stored secret (the panel never
+  // sees the plaintext, so it cannot resend it); "清除配置" clears everything.
+  const merged: OnlyOfficeConfig = {
+    dsUrl: typeof incoming.dsUrl === 'string' ? incoming.dsUrl.trim() : existing?.dsUrl,
+    jwtSecret:
+      typeof incoming.jwtSecret === 'string' && incoming.jwtSecret.trim()
+        ? incoming.jwtSecret.trim()
+        : existing?.jwtSecret,
+    callbackHost: typeof incoming.callbackHost === 'string' ? incoming.callbackHost.trim() : existing?.callbackHost,
+    previewPort: typeof incoming.previewPort === 'string' ? incoming.previewPort.trim() : existing?.previewPort
+  }
+  const error = validateOnlyOfficeConfig(merged)
+
+  if (error) {
+    throw new Error(error)
+  }
+
+  writeOnlyofficeConfig(merged, DESKTOP_ONLYOFFICE_CONFIG_PATH)
+
+  return onlyOfficeSettingsState()
+}
+
+ipcMain.handle('hermes:setting:onlyoffice:get', async () => onlyOfficeSettingsState())
+ipcMain.handle('hermes:setting:onlyoffice:set', async (_event, payload) => saveOnlyOfficeConfig(payload))
+ipcMain.handle('hermes:setting:onlyoffice:clear', async () => {
+  writeOnlyofficeConfig({}, DESKTOP_ONLYOFFICE_CONFIG_PATH)
+
+  return onlyOfficeSettingsState()
+})
+ipcMain.handle('hermes:setting:onlyoffice:apply', async (_event, payload) => {
+  const state = saveOnlyOfficeConfig(payload)
+  // Re-spawn the backend so the new env takes effect immediately — mirrors the
+  // profile:set flow (teardown the primary backend, reload the window so the
+  // renderer re-dials it under the new env).
+  await teardownPrimaryBackendAndWait({ soft: true })
+  mainWindow?.reload()
+
+  return state
 })
 
 ipcMain.handle('hermes:fetchLinkTitle', (_event, url) => fetchLinkTitle(url))

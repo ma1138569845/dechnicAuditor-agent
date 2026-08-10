@@ -54,6 +54,24 @@ export function checkDistBuilt(distDir) {
     }
   }
 
+  // Electron runtime artifacts: main + preload bundles are produced by
+  // scripts/bundle-electron-main.mjs during `build`. If one is missing the
+  // app launches to a blank window. Check them explicitly so a new preload
+  // added to the bundle script cannot silently regress the packaged app.
+  const electronArtifacts = [
+    "electron-main.mjs",
+    "electron-preload.js",
+  ]
+  for (const name of electronArtifacts) {
+    const artifact = join(distDir, name)
+    if (!existsSync(artifact) || !statSync(artifact).isFile()) {
+      return { ok: false, error: `dist/${name} is missing at ${artifact} (re-run scripts/bundle-electron-main.mjs)` }
+    }
+    if (statSync(artifact).size === 0) {
+      return { ok: false, error: `dist/${name} is empty at ${artifact}` }
+    }
+  }
+
   return { ok: true }
 }
 

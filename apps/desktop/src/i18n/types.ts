@@ -294,6 +294,7 @@ export interface Translations {
       providerApiKeys: string
       providerCustomEndpoints: string
       gateway: string
+      onlyoffice: string
       apiKeys: string
       keybinds: string
       keysTools: string
@@ -639,6 +640,45 @@ export interface Translations {
       sshErrTimeout: string
       sshErrUpdateRequired: string
       sshErrUnknown: string
+    }
+    onlyoffice: {
+      loading: string
+      failedLoad: string
+      unavailableTitle: string
+      unavailableDesc: string
+      title: string
+      intro: string
+      enabled: string
+      disabled: string
+      sourceConfig: string
+      sourceEnv: string
+      envNotice: string
+      secretKeepHint: string
+      dsUrlTitle: string
+      dsUrlDesc: string
+      secretTitle: string
+      secretDesc: string
+      secretPlaceholder: string
+      secretSetPlaceholder: string
+      callbackHostTitle: string
+      callbackHostDesc: string
+      callbackHostPlaceholder: string
+      previewPortTitle: string
+      previewPortDesc: string
+      previewPortPlaceholder: string
+      save: string
+      saveAndRestart: string
+      clear: string
+      restartHint: string
+      savedTitle: string
+      savedMessage: string
+      restartingTitle: string
+      restartingMessage: string
+      clearedTitle: string
+      clearedMessage: string
+      saveFailed: string
+      applyFailed: string
+      clearFailed: string
     }
     keys: {
       loading: string
@@ -2247,6 +2287,25 @@ export interface Translations {
       promptHeader: string
       sentTitle: string
       sentMessage: (count: number) => string
+    }
+    aiEdit: string
+    aiEditHint: string
+    aiEditConfirm: string
+    aiEditSelected: (count: number) => string
+    office: {
+      loading: string
+      cannotPreview: (error: string) => string
+      slidePage: (slideNumber: number) => string
+      noTextContent: string
+      openWithSystemApp: string
+      editWithEditorSdk: string
+      switchToHtml: string
+      openWithLocalApp: string
+      installNotFound: string
+      installTimeout: string
+      installStartFailed: string
+      installPathOutsideSandbox: string
+      installUnavailable: string
     }
     web: {
       appFailedToBoot: string

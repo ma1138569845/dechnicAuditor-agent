@@ -11,6 +11,7 @@ import {
   BarChart3,
   Bell,
   Download,
+  FileText,
   Globe,
   Info,
   Keyboard,
@@ -39,6 +40,7 @@ import { GatewaySettings } from './gateway-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { NotificationsSettings } from './notifications-settings'
+import { OnlyOfficeSettings } from './onlyoffice-settings'
 import { PluginsSettings } from './plugins-settings'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
@@ -51,6 +53,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'keybinds',
   'keys',
   'notifications',
+  'onlyoffice',
   'billing',
   'plugins',
   'sessions',
@@ -207,6 +210,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         onSelect: () => setActiveView('gateway')
       },
       {
+        active: activeView === 'onlyoffice',
+        icon: FileText,
+        id: 'onlyoffice',
+        label: t.settings.nav.onlyoffice,
+        onSelect: () => setActiveView('onlyoffice')
+      },
+      {
         active: activeView === 'keybinds',
         icon: Keyboard,
         id: 'keybinds',
@@ -305,6 +315,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             <AboutSettings />
           ) : activeView === 'gateway' ? (
             <GatewaySettings />
+          ) : activeView === 'onlyoffice' ? (
+            <OnlyOfficeSettings />
           ) : activeView === 'keybinds' ? (
             <KeybindSettings />
           ) : activeView.startsWith('config:') ? (
