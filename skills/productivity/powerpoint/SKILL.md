@@ -1,8 +1,8 @@
 ---
 name: powerpoint
-description: "Create, read, edit .pptx decks, slides, notes, templates."
-version: 2.0.0
-author: Anthropic (adapted by Nous Research)
+description: "Create, read, edit, render, and verify .pptx decks, slides, notes, and templates."
+version: 3.0.0
+author: Anthropic (adapted by Nous Research, enhanced with Codex workflow patterns)
 license: Proprietary. LICENSE.txt has complete terms
 platforms: [linux, macos, windows]
 metadata:
@@ -238,6 +238,16 @@ Convert the slides to images (see [Converting to Images](#converting-to-images))
 
 ## Converting to Images
 
+## Non-negotiable: render → inspect slide images → iterate
+
+**You do not "know" a PPTX is satisfactory until you've rendered it and visually inspected every slide.**
+Text extraction (or reading XML) will miss visual defects: overlapping shapes, clipped text, broken charts, missing icons, spacing drift, and template fidelity issues.
+
+**Shipping gate:** before delivering any PPTX, you must:
+- Render every slide to images (see below)
+- Open the images and confirm every slide is visually correct
+- If anything looks off, fix and **re-render** (repeat until flawless)
+
 Convert presentations to individual slide images for visual inspection:
 
 ```bash
@@ -250,6 +260,46 @@ ls -1 "$PWD"/slide-*.jpg
 **Pass the absolute paths printed above directly to `vision_analyze`.** The `rm` clears stale images from prior runs. `pdftoppm` zero-pads based on page count: `slide-1.jpg` for decks under 10 pages, `slide-01.jpg` for 10-99, `slide-001.jpg` for 100+.
 
 **After fixes, rerun all four commands above** — the PDF must be regenerated from the edited `.pptx` before `pdftoppm` can reflect your changes.
+
+**Deliverable discipline:** Rendered slide images are for internal QA only. Unless the user explicitly asks for intermediates, return only the requested final deliverable.
+
+## Built-in Template Library
+
+A library of 26 professionally-designed slide layouts is available at `assets/builtin_templates/codex-grid-layout-library/`:
+- `template-registry.json` — catalog of all available templates
+- `content.json` — template content and placeholder descriptions
+- `design_tokens.json` — color palette and typography tokens
+- `assets/previews/` — thumbnail previews of each slide layout
+
+When building a deck, use this library as inspiration for slide structure, layout patterns, and visual hierarchy. The templates demonstrate proven combinations of: title placement, content grids, image positioning, chart integration, comparison layouts, and closing slides.
+
+To use a template as a starting point, inspect the corresponding `.mjs` file in `artifact-tool-compose/` (if available) to understand the layout structure, then recreate the equivalent design using `pptxgenjs` with the design tokens from `design_tokens.json`.
+
+## Template Following
+
+When an attached `.pptx` or `.potx` is meant to control a new deck:
+1. Run `python scripts/thumbnail.py template.pptx template-thumbs` to generate a labeled grid of every slide
+2. Use `markitdown template.pptx` to map content sections onto template slides
+3. Match each content section to the closest template slide layout — vary the layouts, don't put everything on the same title-and-bullets slide
+4. Extract the template's design tokens (colors, fonts, spacing) and apply them consistently
+5. The template is the design authority — do not introduce new styles unless the user explicitly asks
+
+## Quick start
+
+```bash
+# Render for visual QA
+python scripts/office/soffice.py --headless --convert-to pdf output.pptx
+pdftoppm -jpeg -r 150 output.pdf slide
+
+# Validate schema and structure
+python scripts/office/validate.py output.pptx --original template.pptx
+
+# Generate thumbnail grid for template analysis
+python scripts/thumbnail.py template.pptx template-thumbs
+
+# Clean unreferenced slides/media after editing
+python scripts/clean.py unpacked/
+```
 
 ## Related skills
 

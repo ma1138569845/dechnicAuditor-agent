@@ -1,8 +1,8 @@
 ---
 name: xlsx
-description: "Create, read, edit Excel .xlsx spreadsheets and CSVs."
-version: 1.0.0
-author: Anthropic (adapted by Nous Research)
+description: "Create, read, edit, analyze, and verify Excel .xlsx spreadsheets, CSVs, and Google Sheets-ready workbooks."
+version: 2.0.0
+author: Anthropic (adapted by Nous Research, enhanced with Codex workflow patterns)
 license: Proprietary. LICENSE.txt has complete terms
 platforms: [linux, macos, windows]
 metadata:
@@ -19,6 +19,21 @@ Create, read, and edit Excel workbooks — formulas, formatting, charts, data cl
 ## When to Use
 
 Use this skill any time a spreadsheet file is the primary input or output: opening, reading, editing, or fixing an existing .xlsx, .xlsm, .xltx, .csv, or .tsv file; creating a new spreadsheet from scratch or from other data; converting between tabular formats; cleaning messy tabular data into a proper spreadsheet. Trigger whenever the user references a spreadsheet file by name or path — even casually. Do NOT trigger when the deliverable is a Word document (`docx` skill), HTML report, standalone script, or Google Sheets API integration. For finance-grade modeling conventions (DCF, LBO, three-statement), the optional `excel-author` skill adds stricter standards on top of this one.
+
+### Google Sheets-targeted output
+
+For a net-new Google Sheets request, create and verify a local `.xlsx` first, then follow the guidance in `routing/google_sheets.md` for the native Google Sheets handoff. Do not construct blank Google Sheets via API unless the user explicitly asks for that alternate workflow.
+
+### Domain Guidance
+
+When the request clearly relates to a specific domain, read the corresponding guidance before building:
+- Finance and investment banking: `domain_guidance/financial_models.md`
+- Corporate finance and FP&A: `domain_guidance/corporate_finance_fpa.md`
+- Healthcare: `domain_guidance/healthcare.md`
+- Marketing and advertising: `domain_guidance/marketing_advertising.md`
+- Scientific research: `domain_guidance/scientific_research.md`
+
+Do not load domain guidance for unrelated tasks. User request > reference/template > domain defaults.
 
 ## Prerequisites
 
@@ -99,6 +114,37 @@ For full investment-banking conventions (balance checks, sensitivity tables, nam
 1. `python scripts/recalc.py output.xlsx` → `status: success`, `total_errors: 0`.
 2. Spot-check 2–3 computed cells against expected values (`load_workbook(data_only=True)` *after* recalc).
 3. `markitdown output.xlsx` — scan for missing sheets, misplaced headers, leftover placeholders.
+4. For visually-rich spreadsheets (charts, conditional formatting, complex layouts), render with LibreOffice:
+   ```bash
+   python ../docx/scripts/office/soffice.py --headless --convert-to pdf output.xlsx
+   pdftoppm -jpeg -r 150 output.pdf sheet
+   ls sheet-*.jpg   # inspect each with vision_analyze
+   ```
+   Check for clipped cell content, broken charts, alignment issues, and formatting regressions.
+
+## Quick start
+
+```bash
+# Create from scratch
+python -c "
+from openpyxl import Workbook
+wb = Workbook()
+ws = wb.active
+ws['A1'] = 'Hello'
+ws['B1'] = '=UPPER(A1)'
+wb.save('output.xlsx')
+"
+
+# Recalculate formulas
+python scripts/recalc.py output.xlsx
+
+# Quick inspection
+markitdown output.xlsx
+
+# Render for visual QA (charts, formatting)
+python ../docx/scripts/office/soffice.py --headless --convert-to pdf output.xlsx
+pdftoppm -jpeg -r 150 output.pdf sheet
+```
 
 ## Related skills
 
