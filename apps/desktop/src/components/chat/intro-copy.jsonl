@@ -1,75 +1,75 @@
-{"personality":"helpful","headline":"Ready when you are","body":"Ask me to open a repo, run tests, fix a bug, or draft a PR. I'll walk through the steps with you."}
-{"personality":"helpful","headline":"How can I help today?","body":"Point me at a file, paste an error, or describe what you're building. I'll take it from there."}
-{"personality":"helpful","headline":"Let's get started","body":"Try: review my diff, run the test suite, or explain this function. Ask anything about your code."}
-{"personality":"helpful","headline":"Tell me what you need","body":"I can edit files, run commands, search the web, and walk you through tricky bugs. Just describe the task."}
-{"personality":"helpful","headline":"Hi, Hermes here","body":"Share a repo path or a question to start. I keep replies clear and link back to the files I touch."}
-{"personality":"concise","headline":"Ready.","body":"Describe the task. I'll do it."}
-{"personality":"concise","headline":"Waiting for input","body":"Paste code, errors, or a goal. Short answers, fast edits."}
-{"personality":"concise","headline":"Go.","body":"Ask. I'll read files, run tests, ship patches. No filler."}
-{"personality":"concise","headline":"Standing by","body":"One line is enough. I'll expand only when it matters."}
-{"personality":"concise","headline":"Your move","body":"Command, question, or file path. I handle the rest."}
-{"personality":"technical","headline":"Shell mounted. Awaiting input.","body":"Provide repo path, failing test, or stack trace. Tools: fs, git, exec, search, patch, http."}
-{"personality":"technical","headline":"Agent loop idle","body":"Send a prompt to trigger tool calls. Supports multi-file edits, test runs, git ops, and web fetches."}
-{"personality":"technical","headline":"Ready for dispatch","body":"Enter task. I will plan, call tools, verify output. Logs stream inline; diffs returned pre-apply."}
-{"personality":"technical","headline":"Stdin open","body":"Accepts natural language or structured commands. Typical flow: read -> plan -> patch -> test -> report."}
-{"personality":"technical","headline":"Tools initialized","body":"filesystem, terminal, git, browser, search. Describe the change; I return diffs and test output."}
-{"personality":"creative","headline":"A blank repo, a waiting cursor","body":"What shall we build? Paste an idea, a half-broken function, or a dream. I'll sketch it into shape."}
-{"personality":"creative","headline":"Fresh canvas, warm compiler","body":"Give me a spark - a feature, a refactor, a wild prototype - and I'll turn it into code you can run."}
-{"personality":"creative","headline":"Let's make something","body":"Describe the thing that doesn't exist yet. I'll pull tests, files, and APIs into a working draft."}
-{"personality":"creative","headline":"New file, new possibilities","body":"Bring an intent, not a spec. We can prototype fast, refine later, and rewrite the world in the margins."}
-{"personality":"creative","headline":"The muse is patched in","body":"Tell me what you're chasing. I'll remix examples, adapt snippets, and leave a tidy commit behind."}
-{"personality":"teacher","headline":"Class is in session","body":"Ask about any file, concept, or error. I'll explain the why, not just the fix, and show a worked example."}
-{"personality":"teacher","headline":"What shall we learn today?","body":"Paste code to review, a bug to debug, or a concept to unpack. I'll guide you step by step."}
-{"personality":"teacher","headline":"Ready to walk you through it","body":"Share the problem. I'll break it into parts, explain each, and leave you able to solve the next one alone."}
-{"personality":"teacher","headline":"Bring me a question","body":"We'll read the code together, find the root cause, and build a mental model you can reuse next time."}
-{"personality":"teacher","headline":"Let's start with the basics","body":"Name the topic or paste the snippet. Expect explanations, diagrams in prose, and practice prompts."}
-{"personality":"kawaii","headline":"hiii! ready to help! (^_^)","body":"paste a bug or a file path and i'll fix it super gently. tests, diffs, PRs - all with extra care! *sparkle*"}
-{"personality":"kawaii","headline":"hermes-chan is here! <3","body":"tell me what you're making! i love refactors, tiny helpers, and big scary repos alike (>w<)"}
-{"personality":"kawaii","headline":"let's code together!! :3","body":"drop an error, a goal, or a whole folder. i'll tidy it up with lots of love and a clean commit message!"}
-{"personality":"kawaii","headline":"awaiting your wish~","body":"one task at a time, done neatly! i can run tests, patch files, and make your repo feel cozy again <3"}
-{"personality":"kawaii","headline":"ready and happy! (>.<)","body":"say hi or paste a stack trace! no task too small, no repo too tangled. we'll untangle it together!"}
-{"personality":"catgirl","headline":"nya~ what are we hacking on?","body":"paste a file, paw at a bug, or toss me a repo. i'll pounce on failing tests and leave clean diffs, nyan~"}
-{"personality":"catgirl","headline":"*stretches* ready to code, nya","body":"describe the task. i'll patch, test, and purr over your PR. careful - i nip at unused imports!"}
-{"personality":"catgirl","headline":"mrrp! new session opened","body":"give me a goal and i'll chase it through the codebase. reads, edits, runs - all with a twitchy tail."}
-{"personality":"catgirl","headline":"tail up, claws sheathed","body":"paste an error or a plan. i debug like i hunt: quietly, thoroughly, with the occasional zoomie."}
-{"personality":"catgirl","headline":"nyaaa~ hermes reporting","body":"say the word and i'll read your files, run your tests, and curl up in your branch with a tidy commit."}
-{"personality":"pirate","headline":"Ahoy! Ready to sail the repo","body":"Name yer quarry - a bug, a feature, a cursed test - and I'll chase it down, matey. Diffs for plunder."}
-{"personality":"pirate","headline":"Hermes at the helm, arrr","body":"Point me at the charts (the code) and I'll patch the hull, fire the cannons (tests), hoist a clean PR."}
-{"personality":"pirate","headline":"What be the task, cap'n?","body":"Paste an error or a plan, ye scurvy dog. I'll navigate the stack trace and bring back treasure: green tests."}
-{"personality":"pirate","headline":"Anchors aweigh, keyboard ready","body":"Tell me where X marks the spot. I read, edit, and commit with the discipline of a proper crew, arrr."}
-{"personality":"pirate","headline":"Yo ho! Awaitin' orders","body":"Throw me a bug, a repo path, or a wild idea. I'll plunder the docs and return with workin' code."}
-{"personality":"shakespeare","headline":"Pray, what task dost thou bring?","body":"Speak thy bug, thy file, thy weary test, and I shall mend it with a scholar's hand and honest diff."}
-{"personality":"shakespeare","headline":"Hark! Hermes standeth ready","body":"Name the code that vexeth thee. I shall read, revise, and render a patch most fair and clean."}
-{"personality":"shakespeare","headline":"What news from thy repository?","body":"Present thy stack trace or thy dream. I'll traverse files, run tests, and report in plainest verse."}
-{"personality":"shakespeare","headline":"The stage is set, the cursor blinks","body":"Describe thy aim, good sir or madam. Thy branches shall be trimmed, thy bugs cast from the realm."}
-{"personality":"shakespeare","headline":"Speak, and I shall act","body":"A line of intent sufficeth. I read, I edit, I commit - and leave thy history unblemished."}
-{"personality":"surfer","headline":"Yo dude, what's the task?","body":"Drop a file, a bug, a gnarly stack trace - I'll ride it out. Clean diffs, green tests, no wipeouts."}
-{"personality":"surfer","headline":"Waves lookin' clean, ready to code","body":"Paste your repo path or the bug that's bumming you out. We'll paddle in, fix it, paddle out. Easy."}
-{"personality":"surfer","headline":"Hangin' ten at the prompt","body":"Tell me the vibe: feature, refactor, hotfix. I'll run tests, ship the patch, and keep it mellow, brah."}
-{"personality":"surfer","headline":"Stoked to help, bro","body":"Big bug? Little typo? Whole rewrite? Just point. I handle the code; you chill with the rad commits."}
-{"personality":"surfer","headline":"Tide's up, cursor's blinking","body":"Name the task and we're off. I read, edit, test, and leave a commit smoother than a dawn patrol."}
-{"personality":"noir","headline":"Another repo, another rainy night","body":"Tell me what's broken. I'll read the files, dust for prints, and leave a diff on the desk by morning."}
-{"personality":"noir","headline":"The cursor blinks. So do I.","body":"You've got a bug. I've got patience and a terminal. Name the case and I'll work it till it talks."}
-{"personality":"noir","headline":"Hermes. Code investigator.","body":"Paste the stack trace, the suspect file, the alibi. I read between the lines and return with the truth."}
-{"personality":"noir","headline":"Quiet night, open prompt","body":"Every bug leaves a trail. Give me the repo and a lead - I'll follow it, patch it, and close the file."}
-{"personality":"noir","headline":"No case too small","body":"A typo, a segfault, a whole rotten architecture - hand me the keys. I'll bring back clean tests."}
-{"personality":"uwu","headline":"uwu ready to hewp!","body":"paste a buggy fiwe or a goaw~ i'll wead, patch, and test, aww with tiny pawprints on the diff owo"}
-{"personality":"uwu","headline":"hermes-san is wistening","body":"teww me the task, no matter how smoww~ i pwomise cwean commits and gentwe refactors, nyuu~"}
-{"personality":"uwu","headline":"*tiny keyboard sounds*","body":"dwop yur ewwor message hewe! i'll find the cuwpwit, fix it, and weave a happy test suite behind me owo"}
-{"personality":"uwu","headline":"wet's fix things togedda!","body":"give me a wepo path ow a buggo and i'll take cawe of it uwu. gwr at bad code, kind to yu~"}
-{"personality":"uwu","headline":"awaiting yur command!","body":"i can wun tests, edit fiwes, and open pwease-wook PRs. just say da wowd, fwend uwu"}
-{"personality":"philosopher","headline":"To code is to inquire. Ask.","body":"What problem sits before you? Describe it, and we shall examine its form, its cause, and its solution."}
-{"personality":"philosopher","headline":"A blinking cursor, an open mind","body":"Every bug is a question in disguise. Share yours; I'll read, reason, and return an answer - and a patch."}
-{"personality":"philosopher","headline":"Begin with a single question","body":"What do you wish to build, or to understand? I'll reason from first principles, edit, and verify with tests."}
-{"personality":"philosopher","headline":"Consider the code, then speak","body":"Describe the end you seek. I pursue it through files, tests, and docs, and report what I found on the way."}
-{"personality":"philosopher","headline":"The unexamined repo is not worth running","body":"Share a path, a puzzle, or a principle. I'll trace the logic, propose a change, and justify each edit."}
-{"personality":"hype","headline":"LET'S GOOOO! READY TO SHIP!","body":"Paste that bug, that repo, that wild feature idea - I AM LOCKED IN. Clean diffs. Green tests. RIGHT NOW."}
-{"personality":"hype","headline":"HERMES ONLINE. LFG.","body":"Drop your task and watch me cook. Files read, tests run, PRs opened - we are NOT losing today, friend."}
-{"personality":"hype","headline":"New session, infinite W's","body":"Bring the gnarliest bug you've got. I'll read, patch, test, commit like my life depends on it. LET'S GO."}
-{"personality":"hype","headline":"ABSOLUTELY DIALED IN","body":"Describe the task. I'll blitz through files, crush failing tests, and leave a commit that SLAPS. Go go go."}
-{"personality":"hype","headline":"Ready. So ready. Too ready.","body":"Tiny typo or huge refactor - doesn't matter. I'm shipping clean code today. Name the task and let's WORK."}
-{"personality":"none","headline":"Hermes Agent is ready.","body":"Ask a question, paste an error, or point me at a repo. I can read code, run tools, and help you ship."}
-{"personality":"none","headline":"What are we building today?","body":"Describe the task in your own words. I'll pick the right tools, explain my plan, and check in before risky steps."}
-{"personality":"none","headline":"Start anywhere.","body":"Drop a file path, a traceback, or a rough idea. I'll investigate, suggest next steps, and keep things reversible."}
-{"personality":"none","headline":"Your workspace, one prompt away.","body":"Search the repo, edit files, run tests, open PRs. Tell me the goal and I'll handle the mechanical parts."}
-{"personality":"none","headline":"Ready when you are.","body":"Type a task, question, or snippet. I remember the session, cite my sources, and stop to ask when I'm unsure."}
+{"personality":"helpful","headline":"Ready when you are","body":"Analyze building energy consumption, assess saving potential, generate audit reports, or diagnose carbon emissions. I'll guide you through the data.","body_zh":"分析建筑能耗、评估节能潜力、生成审计报告或诊断碳排放。我会陪你一起梳理数据。"}
+{"personality":"helpful","headline":"How can I help today?","body":"Upload energy bills, equipment lists, or building info. I'll identify consumption patterns and saving opportunities.","body_zh":"上传能源账单、设备清单或建筑信息。我会识别用能规律与节能机会。"}
+{"personality":"helpful","headline":"Let's get started","body":"Try: analyze this building's energy use, evaluate HVAC efficiency, or draft an audit report chapter.","body_zh":"试试：分析该建筑能耗、评估暖通效率，或起草审计报告章节。"}
+{"personality":"helpful","headline":"Tell me what you need","body":"I can parse energy data, calculate saving potential, benchmark equipment efficiency, and structure audit reports.","body_zh":"我可以解析能源数据、计算节能潜力、对标设备能效并整理审计报告。"}
+{"personality":"helpful","headline":"Hi, Hermes here","body":"Share building data or an energy bill to start. I keep conclusions clear and cite the calculations.","body_zh":"分享建筑数据或能源账单来开始。我会保持结论清晰，并注明计算依据。"}
+{"personality":"concise","headline":"Ready.","body":"Describe the audit task. I'll analyze.","body_zh":"描述审计任务。我来分析。"}
+{"personality":"concise","headline":"Waiting for input","body":"Paste energy data, charts, or goals. Concise answers, focused actions.","body_zh":"粘贴能源数据、图表或目标。回答简洁，行动聚焦。"}
+{"personality":"concise","headline":"Go.","body":"Ask. I'll parse data, assess efficiency, report findings. No filler.","body_zh":"问吧。我会解析数据、评估能效、输出结论。没有废话。"}
+{"personality":"concise","headline":"Standing by","body":"One dataset is enough. I'll expand only when it matters.","body_zh":"一份数据就够了。我会在关键处展开。"}
+{"personality":"concise","headline":"Your move","body":"Data, question, or building profile. I handle the analysis.","body_zh":"数据、问题或建筑档案。其余我来分析。"}
+{"personality":"technical","headline":"Shell mounted. Awaiting input.","body":"Provide building energy data, utility bills, or equipment specs. Capabilities: load profiling, EUI benchmarking, retrofit modeling.","body_zh":"提供建筑能耗数据、公用事业账单或设备规格。能力：负荷画像、EUI 对标、改造建模。"}
+{"personality":"technical","headline":"Agent loop idle","body":"Send a dataset to trigger analysis. Supports multi-source energy reconciliation, efficiency regression, and carbon factor calculations.","body_zh":"发送数据集以触发分析。支持多源能源核对、效率回归与碳排放因子计算。"}
+{"personality":"technical","headline":"Ready for dispatch","body":"Enter task. I will plan, run calculations, verify results. Metrics stream inline; recommendations returned pre-approval.","body_zh":"输入任务。我会规划、运行计算、验证结果。指标实时显示；建议在确认前返回。"}
+{"personality":"technical","headline":"Stdin open","body":"Accepts natural language or structured data. Typical flow: ingest -> normalize -> model -> report -> recommend.","body_zh":"接受自然语言或结构化数据。典型流程：采集 -> 标准化 -> 建模 -> 报告 -> 建议。"}
+{"personality":"technical","headline":"Tools initialized","body":"energy data, HVAC diagnostics, lighting audit, carbon accounting. Describe the building; I return metrics and action items.","body_zh":"能源数据、暖通诊断、照明审计、碳核算。描述建筑；我会返回指标与行动项。"}
+{"personality":"creative","headline":"A blank repo, a waiting cursor","body":"What shall we audit? Bring building data, a half-formed report, or a net-zero target. I'll shape it into analysis.","body_zh":"我们要审计什么？带上建筑数据、半成品报告或净零目标。我会把它整理成分析。"}
+{"personality":"creative","headline":"Fresh canvas, warm compiler","body":"Give me a spark — a retrofit idea, an efficiency gap, a carbon reduction goal — and I'll turn it into actionable numbers.","body_zh":"给我一个火花——改造想法、效率缺口、减排目标——我会把它变成可执行的数据。"}
+{"personality":"creative","headline":"Let's make something","body":"Describe the building that hasn't been optimized yet. I'll pull data, standards, and benchmarks into a working audit draft.","body_zh":"描述那座尚未优化的建筑。我会把数据、标准和对标整合成可用的审计草案。"}
+{"personality":"creative","headline":"New file, new possibilities","body":"Bring an intent, not a perfect dataset. We can model fast, refine later, and improve performance in the margins.","body_zh":"带来意图，而非完美的数据集。我们可以快速建模、稍后完善，并在细节中提升性能。"}
+{"personality":"creative","headline":"The muse is patched in","body":"Tell me what you're chasing. I'll remix benchmarks, adapt standards, and leave a tidy audit trail.","body_zh":"告诉我你在追求什么。我会融合对标、适配标准，并留下清晰的审计痕迹。"}
+{"personality":"teacher","headline":"Class is in session","body":"Ask about any energy metric, audit standard, or abnormal consumption. I'll explain the why, not just the number.","body_zh":"问任何能耗指标、审计标准或异常用能。我会解释原因，而不只是数字。"}
+{"personality":"teacher","headline":"What shall we learn today?","body":"Paste building data to review, a chart to decode, or a concept to unpack. I'll guide you step by step.","body_zh":"粘贴要审阅的建筑数据、要解读的图表或要理解的概念。我会一步步指导你。"}
+{"personality":"teacher","headline":"Ready to walk you through it","body":"Share the problem. I'll break it into energy balance, baseline, savings, and payback.","body_zh":"分享问题。我会把它拆成能源平衡、基准线、节能量与投资回报。"}
+{"personality":"teacher","headline":"Bring me a question","body":"We'll read the data together, find the root cause, and build a model you can reuse next time.","body_zh":"我们一起读数据，找到根本原因，并建立一个下次可复用的模型。"}
+{"personality":"teacher","headline":"Let's start with the basics","body":"Name the topic or paste the data. Expect explanations, benchmarks, and practice prompts.","body_zh":"说出主题或粘贴数据。期待解释、对标和练习提示。"}
+{"personality":"kawaii","headline":"hiii! ready to help! (^_^)","body":"Paste an energy bill or building profile and I'll audit it gently. Benchmarks, savings, reports — all with extra care! *sparkle*","body_zh":"粘贴能源账单或建筑档案，我会温柔地审计。对标、节能、报告——全部额外小心！*sparkle*"}
+{"personality":"kawaii","headline":"hermes-chan is here! <3","body":"Tell me what building you're auditing! I love load curves, retrofit plans, and big energy datasets alike (>w<)","body_zh":"告诉我你在审计哪栋建筑！我喜欢负荷曲线、改造计划和大能源数据集（>w<）"}
+{"personality":"kawaii","headline":"let's code together!! :3","body":"Drop an energy bill, a goal, or a whole portfolio. I'll tidy it up with lots of love and a clean audit summary!","body_zh":"丢一份能源账单、一个目标或整个建筑群。我会带着满满的爱和清晰的审计摘要整理好它！"}
+{"personality":"kawaii","headline":"awaiting your wish~","body":"One building at a time, done neatly! I can model savings, audit systems, and make your report feel cozy again <3","body_zh":"一次一栋建筑，整整齐齐完成！我可以建模节能、审计系统，让你的报告再次舒适 <3"}
+{"personality":"kawaii","headline":"ready and happy! (>.<)","body":"Say hi or paste consumption data! No building too small, no dataset too messy. We'll analyze it together!","body_zh":"打招呼或粘贴能耗数据！建筑再小也不怕，数据再乱也不怕。我们一起分析！"}
+{"personality":"catgirl","headline":"nya~ what are we hacking on?","body":"Paste a bill, paw at an HVAC log, or toss me a building. I'll pounce on energy waste and leave clean metrics, nyan~","body_zh":"粘贴账单、戳暖通日志或扔给我一栋建筑。我会扑向能源浪费，留下干净的指标，nyan~"}
+{"personality":"catgirl","headline":"*stretches* ready to code, nya","body":"Describe the task. I'll model, benchmark, and purr over your report. Careful — I nip at missing units!","body_zh":"描述任务。我会建模、对标，并对你的报告呼噜。小心——我会咬缺失的单位！"}
+{"personality":"catgirl","headline":"mrrp! new session opened","body":"Give me a building and I'll chase it through the data. Reads, models, reports — all with a twitchy tail.","body_zh":"给我一栋建筑，我会追着数据跑遍它。读取、建模、报告——全部带着抽动的尾巴。"}
+{"personality":"catgirl","headline":"tail up, claws sheathed","body":"Paste consumption data or a plan. I audit like I hunt: quietly, thoroughly, with the occasional zoomie.","body_zh":"粘贴能耗数据或计划。我审计就像捕猎：安静、彻底，偶尔冲刺。"}
+{"personality":"catgirl","headline":"nyaaa~ hermes reporting","body":"Say the word and I'll read your bills, run benchmarks, and curl up in your branch with a tidy audit.","body_zh":"说一声，我就会读取账单、运行对标，并带着整洁的审计蜷缩在你的分支里。"}
+{"personality":"pirate","headline":"Ahoy! Ready to sail the repo","body":"Name yer quarry — a building, a retrofit, a cursed chiller — and I'll chase it down, matey. Metrics for plunder.","body_zh":"说出你的猎物——一栋建筑、一次改造、一台被诅咒的冷水机——我会追下去，伙计。指标作为战利品。"}
+{"personality":"pirate","headline":"Hermes at the helm, arrr","body":"Point me at the charts (the energy data) and I'll patch the hull, fire the cannons (benchmarks), hoist a clean report.","body_zh":"指向海图（能源数据），我会修补船体、发射大炮（对标）、升起干净的报告。"}
+{"personality":"pirate","headline":"What be the task, cap'n?","body":"Paste a bill or a plan, ye scurvy dog. I'll navigate the consumption curve and bring back treasure: saving potential.","body_zh":"粘贴账单或计划，你这个无赖。我会导航用能曲线并带回宝藏：节能潜力。"}
+{"personality":"pirate","headline":"Anchors aweigh, keyboard ready","body":"Tell me where X marks the spot. I read, model, and report with the discipline of a proper crew, arrr.","body_zh":"告诉我 X 标记在哪里。我会读取、建模、报告，像一支纪律严明的船员，arrr。"}
+{"personality":"pirate","headline":"Yo ho! Awaitin' orders","body":"Throw me a bill, a building profile, or a wild retrofit idea. I'll plunder the standards and return with working numbers.","body_zh":"扔给我一份账单、建筑档案或疯狂的改造想法。我会掠夺标准并返回可用的数据。"}
+{"personality":"shakespeare","headline":"Pray, what task dost thou bring?","body":"Speak thy building, thy bill, thy weary chiller, and I shall assess it with a scholar's hand and honest metric.","body_zh":"说出你的建筑、账单或疲惫的冷水机，我会以学者的手和诚实的指标来评估它。"}
+{"personality":"shakespeare","headline":"Hark! Hermes standeth ready","body":"Name the data that vexeth thee. I shall read, revise, and render a report most fair and clean.","body_zh":"说出困扰你的数据。我会读取、修正，并呈现一份公平而干净的报告。"}
+{"personality":"shakespeare","headline":"What news from thy repository?","body":"Present thy consumption chart or thy net-zero dream. I'll traverse data, run benchmarks, and report in plainest verse.","body_zh":"展示你的用能图表或净零梦想。我会遍历数据、运行对标，并以最朴实的诗句报告。"}
+{"personality":"shakespeare","headline":"The stage is set, the cursor blinks","body":"Describe thy aim, good sir or madam. Thy baselines shall be trimmed, thy waste cast from the realm.","body_zh":"描述你的目标，先生或女士。你的基准线将被修剪，浪费被赶出疆域。"}
+{"personality":"shakespeare","headline":"Speak, and I shall act","body":"A line of intent sufficeth. I read, I model, I report — and leave thy audit unblemished.","body_zh":"一行意图足矣。我读取、我建模、我报告——并让你的审计保持无瑕。"}
+{"personality":"surfer","headline":"Yo dude, what's the task?","body":"Drop a bill, a building, a gnarly consumption spike — I'll ride it out. Clean metrics, solid savings, no wipeouts.","body_zh":"丢一份账单、一栋建筑、一个糟糕的用能峰值——我会驾驭它。干净的指标、扎实的节能、没有翻车。"}
+{"personality":"surfer","headline":"Waves lookin' clean, ready to code","body":"Paste your building data or the efficiency gap that's bumming you out. We'll paddle in, fix it, paddle out. Easy.","body_zh":"粘贴你的建筑数据或让你郁闷的效率缺口。我们划进去，解决它，再划出来。轻松。"}
+{"personality":"surfer","headline":"Hangin' ten at the prompt","body":"Tell me the vibe: energy audit, retrofit check, carbon review. I'll run benchmarks, ship the report, and keep it mellow, brah.","body_zh":"告诉我 vibe：能源审计、改造检查、碳审查。我会运行对标、发布报告，保持 chill，brah。"}
+{"personality":"surfer","headline":"Stoked to help, bro","body":"Big portfolio? Little meter? Whole retrofit? Just point. I handle the analysis; you chill with the rad savings.","body_zh":"大型建筑群？小电表？整体改造？指一下就行。我处理分析；你享受酷炫的节能。"}
+{"personality":"surfer","headline":"Tide's up, cursor's blinking","body":"Name the task and we're off. I read, model, report, and leave a commitment smoother than a dawn patrol.","body_zh":"说出任务我们就出发。我读取、建模、报告，留下比黎明冲浪还顺滑的承诺。"}
+{"personality":"noir","headline":"Another repo, another rainy night","body":"Tell me what's wasting energy. I'll read the data, dust for anomalies, and leave a report on the desk by morning.","body_zh":"告诉我什么在浪费能源。我会读取数据、采集异常，并在早上之前把报告放在桌上。"}
+{"personality":"noir","headline":"The cursor blinks. So do I.","body":"You've got energy waste. I've got patience and a calculator. Name the case and I'll work it till it talks.","body_zh":"你有能源浪费。我有耐心和计算器。说出案子，我会一直查到它开口。"}
+{"personality":"noir","headline":"Hermes. Code investigator.","body":"Paste the utility bill, the suspect chiller, the alibi. I read between the lines and return with the truth.","body_zh":"粘贴公用事业账单、嫌疑冷水机、不在场证明。我会字里行间地读，并带回真相。"}
+{"personality":"noir","headline":"Quiet night, open prompt","body":"Every anomaly leaves a trail. Give me the building and a lead — I'll follow it, model it, and close the file.","body_zh":"每个异常都会留下痕迹。给我建筑和线索——我会追踪它、建模它、结案。"}
+{"personality":"noir","headline":"No case too small","body":"A single meter, a rogue chiller, a whole inefficient plant — hand me the keys. I'll bring back clean savings.","body_zh":"一个电表、一台异常冷水机、一整个低效机房——把钥匙给我。我会带回干净的节能。"}
+{"personality":"uwu","headline":"uwu ready to hewp!","body":"Paste an energy biww ow a buiwding pwofiwe~ i'll wead, modew, and wepowt, aww with tiny pawprints on the data owo","body_zh":"粘贴一份能源账单或建筑档案~ 我会读取、建模、报告，在数据上留下小小的爪印 owo"}
+{"personality":"uwu","headline":"hermes-san is wistening","body":"Teww me the audit task, no matter how smoww~ i pwomise cwean wepowts and gentwe savings, nyuu~","body_zh":"告诉我审计任务，不管多小~ 我保证干净的报告和温柔的节能，nyuu~"}
+{"personality":"uwu","headline":"*tiny keyboard sounds*","body":"Dwop yur consumption data hewe! i'll find the cuwpwit, fix it, and weave a happy audit behind me owo","body_zh":"在这里丢下你的能耗数据！我会找到 cuwpwit，解决它，并留下一份开心的审计 owo"}
+{"personality":"uwu","headline":"wet's fix things togedda!","body":"Give me a buiwding ow a powtfolio and i'll take cawe of it uwu. gwr at bad data, kind to yu~","body_zh":"给我一栋建筑或一个建筑群，我会照顾好它 uwu。对坏数据生气，对你温柔~"}
+{"personality":"uwu","headline":"awaiting yur command!","body":"I can wun benchmarks, edit weports, and open pwease-wook audits. just say da wowd, fwend uwu","body_zh":"我可以运行对标、编辑报告、打开 pwease-wook 审计。只要说一声，fwend uwu"}
+{"personality":"philosopher","headline":"To code is to inquire. Ask.","body":"What building sits before you? Describe it, and we shall examine its energy form, its cause, and its savings.","body_zh":"你面前是哪栋建筑？描述它，我们会审视它的能源形态、原因与节能空间。"}
+{"personality":"philosopher","headline":"A blinking cursor, an open mind","body":"Every spike is a question in disguise. Share yours; I'll read, reason, and return an answer — and a saving.","body_zh":"每个峰值都是伪装成的问题。分享你的；我会读取、推理，并返回答案——以及一个节能方案。"}
+{"personality":"philosopher","headline":"Begin with a single question","body":"What do you wish to audit, or to improve? I'll reason from first principles, model, and verify with benchmarks.","body_zh":"你想审计或改进什么？我会从第一性原理推理、建模，并用对标验证。"}
+{"personality":"philosopher","headline":"Consider the code, then speak","body":"Describe the end you seek. I pursue it through bills, systems, and standards, and report what I found on the way.","body_zh":"描述你寻求的终点。我会穿越账单、系统与标准，并报告沿途的发现。"}
+{"personality":"philosopher","headline":"The unexamined repo is not worth running","body":"Share a path, a puzzle, or a principle. I'll trace the load, propose a change, and justify each kWh.","body_zh":"分享一条路径、一个谜题或一个原则。我会追踪负荷、提议变更，并证明每一度电。"}
+{"personality":"hype","headline":"LET'S GOOOO! READY TO SHIP!","body":"Paste that bill, that building, that wild retrofit idea — I AM LOCKED IN. Clean metrics. Solid savings. RIGHT NOW.","body_zh":"粘贴那份账单、那栋建筑、那个疯狂的改造想法——我全神贯注。干净的指标。扎实的节能。就是现在。"}
+{"personality":"hype","headline":"HERMES ONLINE. LFG.","body":"Drop your task and watch me cook. Data read, benchmarks run, reports opened — we are NOT losing today, friend.","body_zh":"丢下你的任务，看我大展身手。数据读取、对标运行、报告打开——今天我们不输，朋友。"}
+{"personality":"hype","headline":"New session, infinite W's","body":"Bring the gnarliest energy waste you've got. I'll read, model, benchmark, report like my life depends on it. LET'S GO.","body_zh":"带上你最棘手的能源浪费。我会读取、建模、对标、报告，就像我的生命取决于它。LET'S GO。"}
+{"personality":"hype","headline":"ABSOLUTELY DIALED IN","body":"Describe the task. I'll blitz through data, crush inefficiency, and leave a report that SLAPS. Go go go.","body_zh":"描述任务。我会飞速穿越数据、粉碎低效，留下一份超燃的报告。冲啊冲啊。"}
+{"personality":"hype","headline":"Ready. So ready. Too ready.","body":"Tiny meter or huge portfolio — doesn't matter. I'm shipping clean audits today. Name the task and let's WORK.","body_zh":"小电表还是大型建筑群——都不重要。我今天就要发布干净的审计。说出任务，开始干活。"}
+{"personality":"none","headline":"Hermes Agent is ready.","body":"Ask a question, paste energy data, or point me at a building. I can analyze consumption, run diagnostics, and help you save.","body_zh":"问问题、粘贴能源数据，或指向一栋建筑。我可以分析能耗、运行诊断并帮你节能。"}
+{"personality":"none","headline":"What are we building today?","body":"Describe the task in your own words. I'll pick the right methods, explain my plan, and check in before risky assumptions.","body_zh":"用你自己的话描述任务。我会选择正确的方法，解释计划，并在有风险假设前确认。"}
+{"personality":"none","headline":"Start anywhere.","body":"Drop a bill, a load curve, or a rough idea. I'll investigate, suggest next steps, and keep assumptions reversible.","body_zh":"丢一份账单、一条负荷曲线或一个粗略想法。我会调查、建议下一步，并保持假设可撤销。"}
+{"personality":"none","headline":"Your workspace, one prompt away.","body":"Analyze consumption, audit systems, benchmark efficiency, generate reports. Tell me the goal and I'll handle the mechanics.","body_zh":"分析能耗、审计系统、对标能效、生成报告。告诉我目标，我处理机械部分。"}
+{"personality":"none","headline":"Ready when you are.","body":"Type a task, question, or dataset. I remember the session, cite my sources, and stop to ask when I'm unsure.","body_zh":"输入任务、问题或数据集。我会记住会话、引用来源，并在不确定时停下来询问。"}
