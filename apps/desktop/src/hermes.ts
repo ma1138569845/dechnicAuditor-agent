@@ -776,6 +776,33 @@ export function saveHermesConfig(config: HermesConfigRecord): Promise<{ ok: bool
   })
 }
 
+export function startOfficePreview(
+  filePath: string,
+  workspace?: string
+): Promise<
+  | { url: string; engine: string; preview_base_url: string }
+  | { error: string; message: string }
+> {
+  return window.hermesDesktop.api<
+    | { url: string; engine: string; preview_base_url: string }
+    | { error: string; message: string }
+  >({
+    ...profileScoped(),
+    path: '/api/office-preview/start',
+    method: 'POST',
+    body: { file_path: filePath, workspace }
+  })
+}
+
+export function stopOfficePreview(filePath: string): Promise<{ ok: boolean }> {
+  return window.hermesDesktop.api<{ ok: boolean }>({
+    ...profileScoped(),
+    path: '/api/office-preview/stop',
+    method: 'POST',
+    body: { file_path: filePath }
+  })
+}
+
 // surface=declared serves the curated desktop schema; the dashboard consumes the raw plugin schema.
 export function getMemoryProviderConfig(provider: string): Promise<MemoryProviderConfig> {
   return window.hermesDesktop.api<MemoryProviderConfig>({

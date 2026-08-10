@@ -145,7 +145,14 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
   settings: {
     getDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:get'),
     setDefaultProjectDir: dir => ipcRenderer.invoke('hermes:setting:defaultProjectDir:set', dir),
-    pickDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:pick')
+    pickDefaultProjectDir: () => ipcRenderer.invoke('hermes:setting:defaultProjectDir:pick'),
+    // OnlyOffice DocumentServer connection config (see onlyoffice-config.ts).
+    onlyoffice: {
+      get: () => ipcRenderer.invoke('hermes:setting:onlyoffice:get'),
+      set: config => ipcRenderer.invoke('hermes:setting:onlyoffice:set', config),
+      clear: () => ipcRenderer.invoke('hermes:setting:onlyoffice:clear'),
+      apply: config => ipcRenderer.invoke('hermes:setting:onlyoffice:apply', config)
+    }
   },
   zoom: {
     // Current zoom of this window, as { level, percent }.

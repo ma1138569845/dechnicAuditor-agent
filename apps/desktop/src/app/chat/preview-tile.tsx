@@ -10,16 +10,41 @@
  * one bar instead of two.
  */
 
-import { findGroup } from '@/components/pane-shell/tree/model'
+import { allPaneIds, findGroup } from '@/components/pane-shell/tree/model'
 import { $activeTreeGroup, $layoutTree, revealTreePane } from '@/components/pane-shell/tree/store'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from '@/store/layout'
-import { $previewTabs, closeRightRailTab, type PreviewTarget } from '@/store/preview'
+import { $previewTabs, closeRightRailTab, type PreviewTab, type PreviewTarget } from '@/store/preview'
 
 import { paneMirror } from './pane-mirror'
 import { PreviewTilePane } from './right-rail/preview'
 import { forgetPreviewStripTools, previewStripTools } from './right-rail/preview-strip-tools'
+
+function previewPaneId(tab: PreviewTab): string {
+  return `${PREVIEW_TILE_PREFIX}:${tab.id}`
+}
+
+/** Anchor a new preview to an existing preview zone so multiple files stack as
+ *  tabs in the same right-side pane. The first preview has no anchor and docks
+ *  to the right of the workspace, creating the zone. */
+function existingPreviewAnchor(newTab: PreviewTab): string | undefined {
+  const tree = $layoutTree.get()
+
+  if (!tree) {
+    return undefined
+  }
+
+  const newPaneId = previewPaneId(newTab)
+  const treePanes = new Set(allPaneIds(tree))
+  const existing = $previewTabs
+    .get()
+    .filter(tab => previewPaneId(tab) !== newPaneId)
+    .map(tab => previewPaneId(tab))
+    .find(id => treePanes.has(id))
+
+  return existing
+}
 
 /** The target behind a tile id, or null once its tab is gone. */
 function targetFor(tabId: string): PreviewTarget | null {
@@ -120,15 +145,15 @@ export function watchPreviewTiles(): void {
   $activeTreeGroup.listen(follow)
 }
 
-const watchPreviewTileMirror = paneMirror<{ id: string }>({
+const watchPreviewTileMirror = paneMirror<PreviewTab>({
   source: $previewTabs,
   key: tab => tab.id,
   prefix: PREVIEW_TILE_PREFIX,
-  // Identical to route (page) tiles: its own zone docked beside main, sized by
-  // the split weights. NOT anchored to the file tree — the old rail was a
-  // files-adjacent strip, and carrying that over welded preview into the file
-  // browser's zone, so ⌘J (toggle file browser) took the preview with it.
-  dir: () => 'right',
+  // First preview: dock to the right of the workspace, creating its own zone.
+  // Subsequent previews: stack as tabs in that existing preview zone so opening
+  // multiple files doesn't split the layout into a new pane per file.
+  anchor: tab => existingPreviewAnchor(tab),
+  dir: tab => (existingPreviewAnchor(tab) ? 'center' : 'right'),
   minWidth: '22rem',
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,

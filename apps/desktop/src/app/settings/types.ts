@@ -11,6 +11,7 @@ export type SettingsView =
   | 'keybinds'
   | 'keys'
   | 'notifications'
+  | 'onlyoffice'
   | 'plugins'
   | 'providers'
   | 'sessions'

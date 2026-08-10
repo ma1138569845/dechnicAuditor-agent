@@ -59,8 +59,13 @@ class TestSurfaceResolution:
         """THE regression: a desktop client on a remote/cloud backend."""
         assert "desktop_ui" in server._gui_surface_toolsets("desktop")
 
+    def test_desktop_session_gets_office_editor_toolset(self, no_desktop_env):
+        """The office_editor tools (editor_sdk) ride the desktop GUI surface."""
+        assert "office_editor" in server._gui_surface_toolsets("desktop")
+
     def test_tui_session_does_not(self, no_desktop_env):
         assert "desktop_ui" not in server._gui_surface_toolsets("tui")
+        assert "office_editor" not in server._gui_surface_toolsets("tui")
 
     def test_desktop_env_alone_does_not_grant_them(self, no_desktop_env):
         """A desktop-spawned backend serving a TUI session stays clean.
@@ -86,6 +91,7 @@ class TestResolverPlumbing:
         assert server._load_enabled_toolsets("desktop") == [
             "coding",
             "desktop_ui",
+            "office_editor",
             "project",
         ]
         assert server._load_enabled_toolsets("tui") == ["coding", "project"]

@@ -11552,46 +11552,7 @@ async def get_logs(
 
 
 # ---------------------------------------------------------------------------
-# Feishu Office import/export endpoints (used by the desktop preview pane)
-# ---------------------------------------------------------------------------
-
-
-@app.post("/api/feishu/office-open")
-async def feishu_office_open(local_path: str):
-    """Upload a local .docx/.xlsx to Feishu and return the online edit URL."""
-    try:
-        from tools.feishu_office_tool import upload_and_import_office_file
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Feishu office tool unavailable: {exc}") from exc
-
-    try:
-        result = upload_and_import_office_file(local_path)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    return {"ok": True, "token": result["token"], "type": result["type"], "url": result["url"]}
-
-
-@app.post("/api/feishu/office-export")
-async def feishu_office_export(local_path: str):
-    """Export the Feishu cloud document linked to ``local_path`` and overwrite it."""
-    try:
-        from tools.feishu_office_tool import export_and_overwrite_office_file
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Feishu office tool unavailable: {exc}") from exc
-
-    try:
-        result = export_and_overwrite_office_file(local_path)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    return {"bytes_written": result["bytes_written"], "ok": True, "url": result["url"]}
-
-
-# ---------------------------------------------------------------------------
-# Local OfficeCLI preview endpoints (used by the desktop preview pane)
+# Local editor_sdk preview endpoints (used by the desktop preview pane)
 # ---------------------------------------------------------------------------
 
 
@@ -11604,81 +11565,38 @@ class OfficePreviewStopRequest(BaseModel):
     file_path: str
 
 
-class OfficeCliCommandRequest(BaseModel):
-    command: str
-    file_path: Optional[str] = None
-    workspace: Optional[str] = None
-    timeout: Optional[float] = None
-
-
 @app.post("/api/office-preview/start")
 async def office_preview_start(body: OfficePreviewStartRequest):
-    """Start a local officecli watch server for an Office file.
+    """Open an Office file in editor_sdk and return an iframe preview URL.
 
-    Returns {"url": "http://127.0.0.1:<port>/"} on success or an error envelope
-    on failure. The error envelope is returned with HTTP 200 intentionally so
-    the tab can keep showing the previous rendered document while surfacing the
-    error status, matching AionUi's behavior.
+    Returns {"url": "http://127.0.0.1:<port>/static/<type>/pc.html?file_id=xxx"}
+    on success or an error envelope on failure. The error envelope is returned
+    with HTTP 200 intentionally so the tab can keep showing the previous
+    rendered document while surfacing the error status, matching AionUi's
+    behavior.
     """
     try:
-        from tools.office_cli_tool import OfficePreviewError, start_office_preview
+        from tools.office_preview_api import open_office_preview
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"Office preview tool unavailable: {exc}") from exc
 
-    result = await run_in_threadpool(start_office_preview, body.file_path, body.workspace)
+    result = await run_in_threadpool(open_office_preview, body.file_path, body.workspace)
 
-    if "error" in result:
-        # Surface structured error codes without breaking the tab. The renderer
-        # checks `error` and falls back to the HTML preview when officecli is
-        # unavailable.
-        error_code = result.get("error")
-        if error_code == OfficePreviewError.NOT_FOUND:
-            status_code = 503
-        elif error_code == OfficePreviewError.PORT_TIMEOUT:
-            status_code = 504
-        elif error_code == OfficePreviewError.PATH_OUTSIDE_SANDBOX:
-            status_code = 403
-        else:
-            status_code = 502
-        raise HTTPException(status_code=status_code, detail=result)
-
+    # Surface structured error codes without breaking the tab: the renderer's
+    # `api()` resolves the body and checks `error` (it rejects on non-2xx
+    # without parsing the envelope, which would bypass the friendly fallback).
     return result
 
 
 @app.post("/api/office-preview/stop")
 async def office_preview_stop(body: OfficePreviewStopRequest):
-    """Stop the officecli watch server for an Office file."""
+    """Release the editor_sdk editor for an Office file."""
     try:
-        from tools.office_cli_tool import stop_office_preview
+        from tools.office_preview_api import close_office_preview
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=f"Office preview tool unavailable: {exc}") from exc
 
-    return await run_in_threadpool(stop_office_preview, body.file_path)
-
-
-@app.post("/api/office-cli/command")
-async def office_cli_command_endpoint(body: OfficeCliCommandRequest):
-    """Run a single officecli command for document creation, inspection, or editing.
-
-    This endpoint is the server-side counterpart of the ``office_cli_command``
-    agent tool. It returns a structured envelope with stdout, stderr, exit code,
-    and parsed JSON output when available. Errors are returned as HTTP 200 with
-    ``success: False`` so callers can surface them without losing conversational
-    context, similar to the preview endpoints.
-    """
-    try:
-        from tools.office_cli_tool import run_office_cli_command
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Office CLI tool unavailable: {exc}") from exc
-
-    result = await run_in_threadpool(
-        run_office_cli_command,
-        body.command,
-        body.file_path,
-        body.workspace,
-        body.timeout,
-    )
-    return result
+    return await run_in_threadpool(close_office_preview, body.file_path)
 
 
 # ---------------------------------------------------------------------------

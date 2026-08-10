@@ -4104,6 +4104,10 @@ def _gui_surface_toolsets(platform: str) -> set[str]:
     surfaces = {"project"}
     if platform == "desktop":
         surfaces.add("desktop_ui")
+        # Office editing via editor_sdk is a desktop-GUI affordance (the
+        # preview pane mounts the SDK's iframe editor). CLI/TUI sessions get
+        # it only by explicit config opt-in.
+        surfaces.add("office_editor")
     return surfaces
 
 

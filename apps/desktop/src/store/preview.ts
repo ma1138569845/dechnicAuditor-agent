@@ -34,8 +34,9 @@ export interface PreviewTarget {
   large?: boolean
   language?: string
   mimeType?: string
+  officeKind?: 'docx' | 'pptx' | 'xlsx'
   path?: string
-  previewKind?: 'binary' | 'html' | 'image' | 'pdf' | 'text'
+  previewKind?: 'binary' | 'html' | 'image' | 'office' | 'pdf' | 'text'
   renderMode?: 'preview' | 'source'
   source: string
   /** Runtime-only target that cannot be restored from persisted state. */
