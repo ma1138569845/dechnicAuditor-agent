@@ -216,12 +216,12 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         # backbone. Pin the patched floor here too so the lazy Discord path
         # can't keep an already-installed vulnerable aiohttp satisfying that
         # range — mirrors the messaging extra and platform.slack.
-        "aiohttp==3.14.1",  # CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
+        "aiohttp==3.14.3",  # prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
     ),
     "platform.slack": (
         "slack-bolt==1.29.0",
         "slack-sdk==3.43.0",
-        "aiohttp==3.14.1",  # CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
+        "aiohttp==3.14.3",  # prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
     ),
     "platform.matrix": (
         "mautrix[encryption]==0.21.0",
@@ -231,7 +231,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         # mautrix (aiohttp>=3,<4) and aiohttp-socks (aiohttp>=3.10.0) only cap
         # aiohttp transitively, so a vulnerable already-installed aiohttp still
         # satisfies both — pin the patched floor here too, like platform.discord.
-        "aiohttp==3.14.1",  # CVE-2026-34513/34518/34519/34520/34525 + 34993(RCE)/47265
+        "aiohttp==3.14.3",  # prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
     ),
     "platform.dingtalk": (
         "dingtalk-stream==0.24.3",
@@ -250,7 +250,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
     # (microsoft-teams-api/cards/common, dependency-injector, msal). Lazy-
     # installed on demand like every other messaging platform; also exposed
     # as the `teams` extra in pyproject for packagers / explicit installs.
-    "platform.teams": ("microsoft-teams-apps==2.0.13.4", "aiohttp==3.14.1"),  # aiohttp 3.14.1: CVE-2026-34993(RCE)/47265 + 34513/34518/34519/34520/34525
+    "platform.teams": ("microsoft-teams-apps==2.0.13.4", "aiohttp==3.14.3"),  # aiohttp 3.14.3: prior CVEs + GHSA-cq5v-8q36-5273/GHSA-mfx4-hv73-q22v/GHSA-mq44-7p77-q5h7
 
     # ─── Terminal backends ─────────────────────────────────────────────────
     "terminal.modal": ("modal==1.3.4",),
@@ -766,7 +766,17 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _Install
                         _activate_target_on_syspath(target)
                     return _InstallResult(True, r.stdout or "", r.stderr or "")
                 logger.debug("uv pip install failed: %s", r.stderr)
-            except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+                # A resolver failure is authoritative. Falling through to pip
+                # here would silently discard uv policy such as exclude-newer
+                # and could install a release that the project quarantined.
+                return _InstallResult(False, r.stdout or "", r.stderr or "")
+            except subprocess.TimeoutExpired as e:
+                logger.debug("uv invocation failed: %s", e)
+                return _InstallResult(False, "", f"uv pip install timed out: {e}")
+            except FileNotFoundError as e:
+                # The resolved uv path disappeared between lookup and spawn.
+                # In that narrow availability failure, the pip tier remains a
+                # valid fallback because uv never evaluated the requirements.
                 logger.debug("uv invocation failed: %s", e)
 
         # Tier 2: python -m pip (with ensurepip bootstrap if needed)
@@ -971,12 +981,23 @@ def is_available(feature: str) -> bool:
     return not feature_missing(feature)
 
 
-def feature_install_command(feature: str) -> Optional[str]:
-    """Return the ``pip install`` command a user could run manually, or None."""
+def feature_install_command(feature: str, *, venv_pip: bool = False) -> Optional[str]:
+    """Return the ``pip install`` command a user could run manually, or None.
+
+    ``venv_pip=True`` targets the running interpreter's pip
+    (``{sys.executable} -m pip install …``) — correct in every layout
+    (default install, ``HERMES_HOME`` overrides, profile installs) and
+    immune to Ubuntu 24.04's PEP 668 ``externally-managed-environment``
+    failure that a bare/system ``pip install`` hint invites.  The default
+    ``uv pip install`` form is kept for contexts that document uv usage.
+    """
     if feature not in LAZY_DEPS:
         return None
     specs = LAZY_DEPS[feature]
-    return "uv pip install " + " ".join(repr(s) for s in specs)
+    joined = " ".join(repr(s) for s in specs)
+    if venv_pip:
+        return f"{sys.executable} -m pip install {joined}"
+    return "uv pip install " + joined
 
 
 @dataclass

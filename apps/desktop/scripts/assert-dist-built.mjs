@@ -11,9 +11,11 @@
 // inherits it. It fails loud and early instead of shipping a broken bundle.
 // See issues #39484 (renderer blank page) and #41327 / #39472 (dashboard 404).
 
-import { existsSync, statSync, readdirSync } from "fs"
+import { existsSync, readFileSync, statSync, readdirSync } from "fs"
 import { join, resolve } from "path"
 import { isMain } from "./utils.mjs"
+
+const ROUTER_CONTEXT_ERROR = "may be used only in the context of a"
 
 // Pure check — returns { ok: true } or { ok: false, error: "..." }.
 // Kept side-effect-free so it can be unit tested without spawning a process.
@@ -56,6 +58,20 @@ export function checkDistBuilt(distDir) {
     }
     if (statSync(artifact).size === 0) {
       return { ok: false, error: `dist/${name} is empty at ${artifact}` }
+    }
+  }
+
+  // Detect a react-router bundling issue where the router context error
+  // string ends up duplicated across multiple chunks, which breaks runtime
+  // routing.
+  const routerContextAssets = readdirSync(assetsDir)
+    .filter(name => name.endsWith(".js"))
+    .filter(name => readFileSync(join(assetsDir, name), "utf8").includes(ROUTER_CONTEXT_ERROR))
+
+  if (routerContextAssets.length > 1) {
+    return {
+      ok: false,
+      error: `react-router context invariant found in multiple JS assets: ${routerContextAssets.join(", ")}`
     }
   }
 
