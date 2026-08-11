@@ -18,7 +18,7 @@ Create, read, and edit Excel workbooks — formulas, formatting, charts, data cl
 
 ## When to Use
 
-Use this skill any time a spreadsheet file is the primary input or output: opening, reading, editing, or fixing an existing .xlsx, .xlsm, .xltx, .csv, or .tsv file; creating a new spreadsheet from scratch or from other data; converting between tabular formats; cleaning messy tabular data into a proper spreadsheet. Trigger whenever the user references a spreadsheet file by name or path — even casually. Do NOT trigger when the deliverable is a Word document (`docx` skill), HTML report, standalone script, or Google Sheets API integration. For finance-grade modeling conventions (DCF, LBO, three-statement), the optional `excel-author` skill adds stricter standards on top of this one.
+Use this skill any time a spreadsheet file is the primary input or output: opening, reading, editing, or fixing an existing .xlsx, .xlsm, .xltx, .csv, or .tsv file; creating a new spreadsheet from scratch or from other data; converting between tabular formats; cleaning messy tabular data into a proper spreadsheet. Trigger whenever the user references a spreadsheet file by name or path — even casually. Do NOT trigger when the deliverable is a Word document (`docx` skill), HTML report, standalone script, or Google Sheets API integration.
 
 ### Google Sheets-targeted output
 
@@ -27,10 +27,7 @@ For a net-new Google Sheets request, create and verify a local `.xlsx` first, th
 ### Domain Guidance
 
 When the request clearly relates to a specific domain, read the corresponding guidance before building:
-- Finance and investment banking: `domain_guidance/financial_models.md`
-- Corporate finance and FP&A: `domain_guidance/corporate_finance_fpa.md`
-- Healthcare: `domain_guidance/healthcare.md`
-- Marketing and advertising: `domain_guidance/marketing_advertising.md`
+- Energy audit: `domain_guidance/energy_audit.md`
 - Scientific research: `domain_guidance/scientific_research.md`
 
 Do not load domain guidance for unrelated tasks. User request > reference/template > domain defaults.
@@ -97,18 +94,6 @@ LibreOffice implements fewer functions than Excel, and one it cannot evaluate be
 - **`.xlsm` loses its macros unless you pass `keep_vba=True`** to `load_workbook`.
 - **A sheet name containing a space must be quoted** in a cross-sheet reference: `='Assumptions Inputs'!$B$5`. Unquoted, it evaluates to `#VALUE!`.
 
-## Financial models
-
-Unless the user says otherwise, or the existing file already does something else.
-
-**Color:** blue text (`0,0,255`) for hardcoded inputs and scenario levers · black for formulas · green (`0,128,0`) for links to another sheet · red (`255,0,0`) for links to another file · yellow fill (`255,255,0`) for key assumptions and cells the user should fill in.
-
-**Numbers:** currency `$#,##0`, with the unit named in the header (`Revenue ($mm)`) · zeros render as `-`, including in percentages (`$#,##0;($#,##0);-`) · negatives in parentheses · percentages `0.0%`, **stored as fractions** (`0.15` renders `15.0%`; storing `15` renders `1500.0%`) · valuation multiples `0.0x` · years as text (`"2024"`, never `2,024`).
-
-**Structure:** every assumption in its own labeled cell, referenced by the formulas that use it (`=B5*(1+$B$6)`, never `=B5*1.05`) · formulas consistent across every projection period, since a lone edited cell mid-row is the commonest silent error · guard denominators that can be zero.
-
-For full investment-banking conventions (balance checks, sensitivity tables, named ranges), install the optional skill: `hermes skills install official/finance/excel-author`.
-
 ## Verification
 
 1. `python scripts/recalc.py output.xlsx` → `status: success`, `total_errors: 0`.
@@ -148,4 +133,4 @@ pdftoppm -jpeg -r 150 output.pdf sheet
 
 ## Related skills
 
-`docx` (Word documents), `pdf` (PDF work), `powerpoint` (decks), optional `excel-author` (finance-grade modeling standards).
+`docx` (Word documents), `pdf` (PDF work), `powerpoint` (decks).
