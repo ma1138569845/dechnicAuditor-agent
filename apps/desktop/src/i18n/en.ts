@@ -2705,7 +2705,7 @@ export const en: Translations = {
       slidePage: slideNumber => `Slide ${slideNumber}`,
       noTextContent: '(no text content)',
       openWithSystemApp: 'Open with system default app',
-      editWithEditorSdk: 'Edit with editor_sdk',
+      editWithEditorSdk: 'Edit with OnlyOffice',
       switchToHtml: 'Switch to HTML preview',
       openWithLocalApp: 'Open with local app',
       installNotFound: 'No Office preview engine found (editor_sdk or officecli). Install either one to enable preview/edit.',
