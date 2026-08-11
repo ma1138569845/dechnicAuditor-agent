@@ -2881,7 +2881,7 @@ export const zh: Translations = {
       slidePage: slideNumber => `第 ${slideNumber} 页`,
       noTextContent: '（无文本内容）',
       openWithSystemApp: '用系统默认程序打开',
-      editWithEditorSdk: '用 editor_sdk 编辑',
+      editWithEditorSdk: '用 OnlyOffice 编辑',
       switchToHtml: '切换为 HTML 预览',
       openWithLocalApp: '本地应用打开',
       installNotFound: '未检测到可用的 Office 预览引擎（editor_sdk 或 officecli）。安装其一即可启用预览/编辑。',
