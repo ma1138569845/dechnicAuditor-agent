@@ -1,6 +1,6 @@
 {
   "name": "dechnicauditor",
-  "productName": "智能审",
+  "productName": "DechnicAuditor",
   "private": true,
   "version": "0.17.0",
   "description": "Native desktop shell for 智能审 Agent.",
@@ -173,7 +173,7 @@
   "build": {
     "electronVersion": "40.10.2",
     "appId": "com.dechnic.dechnicauditor",
-    "productName": "智能审",
+    "productName": "DechnicAuditor",
     "executableName": "DechnicAuditor",
     "protocols": [
       {
