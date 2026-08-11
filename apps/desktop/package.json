@@ -177,7 +177,7 @@
     "executableName": "DechnicAuditor",
     "protocols": [
       {
-        "name": "智能审 Protocol",
+        "name": "DechnicAuditor Protocol",
         "schemes": [
           "dechnicauditor"
         ]
