@@ -11746,6 +11746,56 @@ async def office_preview_stop(body: OfficePreviewStopRequest):
 
 
 # ---------------------------------------------------------------------------
+# Energy audit report generation endpoints
+# ---------------------------------------------------------------------------
+
+class EnergyAuditProjectsRequest(BaseModel):
+    keyword: str
+
+
+class EnergyAuditGenerateRequest(BaseModel):
+    project_name: str
+    audit_type: str = "公共机构"
+    output_dir: Optional[str] = None
+
+
+@app.post("/api/energy-audit/projects")
+async def energy_audit_projects(body: EnergyAuditProjectsRequest):
+    """Search energy-audit projects by name (for the composer form autocomplete).
+
+    Returns {"ok": true, "projects": [...]} or an {error, message} envelope.
+    The error envelope uses HTTP 200 so the form can surface the friendly
+    message without a hard rejection, mirroring the office-preview endpoints.
+    """
+    try:
+        from tools.energy_audit_tool import rest_search_energy_audit_projects
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Energy audit tool unavailable: {exc}") from exc
+
+    return await run_in_threadpool(rest_search_energy_audit_projects, body.keyword)
+
+
+@app.post("/api/energy-audit/generate")
+async def energy_audit_generate(body: EnergyAuditGenerateRequest):
+    """Generate an energy-audit report .docx from PG data for a project name.
+
+    Returns {"ok": true, "file_path": "..."} on success or an {error, message}
+    envelope on failure (HTTP 200, matching the office-preview convention).
+    """
+    try:
+        from tools.energy_audit_tool import rest_generate_energy_audit_report
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Energy audit tool unavailable: {exc}") from exc
+
+    return await run_in_threadpool(
+        rest_generate_energy_audit_report,
+        body.project_name,
+        body.audit_type,
+        body.output_dir,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Cron job management endpoints
 # ---------------------------------------------------------------------------
 

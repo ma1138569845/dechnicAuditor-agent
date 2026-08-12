@@ -127,6 +127,9 @@ models-dev-upstream/
 .cursor/
 .gemini/
 .zed/
+.ccg/
+.claude/
+.freebuff/
 .mcp.json
 opencode.json
 config/mcporter.json
@@ -199,3 +202,16 @@ native/fts5_cjk/*.so
 # interrupted; consumed by launch-time recovery. Never commit it (was tracked
 # by accident via 3a69e34702, removed in the #72002 salvage).
 .lazy-refresh-incomplete
+
+# Binary editor engine — 185MB, never commit (was tracked by accident twice:
+# f1618be7d and 55f8fdba7). Downloaded/installed by the desktop bootstrap.
+*.exe
+
+# Desktop dev scratch: ad-hoc Electron-restart helper + its stdout/stderr logs.
+# Local only — the script hard-codes an absolute path, and the logs churn on
+# every restart. Never part of the app.
+/apps/desktop/_dev_electron.cmd
+/apps/desktop/_electron_restart.log
+/apps/desktop/electron-dev.log
+/apps/desktop/renderer-dev.log
+/electron-restart.log
