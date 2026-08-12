@@ -20,6 +20,10 @@ interface AiEditToolbarProps {
   anchor: AiEditToolbarAnchor
   /** Close the toolbar (outside click / ESC). */
   onDismiss: () => void
+  /** Called with the prompt-box state whenever it opens/closes (and with
+   *  `false` on unmount). The parent uses it so an empty selection report does
+   *  not dismiss the toolbar while the user is composing a prompt. */
+  onPromptingChange?: (open: boolean) => void
   /** User hit the send button with a non-empty prompt. */
   onSubmit: (prompt: string) => void
 }
@@ -35,17 +39,23 @@ interface AiEditToolbarProps {
  *    on the right (the composer's `PRIMARY_ICON_BTN`). The ✓ hands the typed
  *    prompt to the caller to inject into the composer.
  *
- * A full-viewport click-catcher sits behind the pill in BOTH states so an
- * outside click dismisses it while the prompt box is still clickable (it is
- * stacked above the catcher). ESC dismisses as well.
+ * ESC or an outside mousedown dismisses in either state. The pill reports its
+ * prompt-box state to the parent via onPromptingChange so an empty selection
+ * report from the editor only dismisses while the pill is collapsed.
  */
-export function AiEditToolbar({ anchor, onDismiss, onSubmit }: AiEditToolbarProps) {
+export function AiEditToolbar({ anchor, onDismiss, onPromptingChange, onSubmit }: AiEditToolbarProps) {
   const { t } = useI18n()
   const [prompting, setPrompting] = useState(false)
   const [prompt, setPrompt] = useState('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
-  // ESC closes in either state.
+  // ESC closes in either state. Outside clicks dismiss via a document-level
+  // mousedown listener instead of a full-viewport click-catcher: a catcher
+  // would sit above the OnlyOffice editor iframe and swallow right-clicks,
+  // hiding the editor's own context menu. Clicks inside a cross-origin editor
+  // iframe never bubble to this document, so those dismiss through the
+  // selection-report flow (empty selection → onAiEditSelection(null)) instead.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -53,10 +63,29 @@ export function AiEditToolbar({ anchor, onDismiss, onSubmit }: AiEditToolbarProp
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (rootRef.current && !rootRef.current.contains(target)) {
+        onDismiss()
+      }
+    }
 
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('mousedown', onMouseDown)
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('mousedown', onMouseDown)
+    }
   }, [onDismiss])
+
+  // Tell the parent whether the prompt box is open so it can keep the toolbar
+  // alive against empty selection reports while the user is composing. Reset to
+  // false on unmount (dismissal) so the parent never keeps a stale latch.
+  useEffect(() => {
+    onPromptingChange?.(prompting)
+    return () => onPromptingChange?.(false)
+  }, [onPromptingChange, prompting])
 
   // Focus the textarea when the prompt box opens.
   useEffect(() => {
@@ -83,62 +112,56 @@ export function AiEditToolbar({ anchor, onDismiss, onSubmit }: AiEditToolbarProp
   const boxY = Math.min(anchor.y, Math.max(0, window.innerHeight - 64))
 
   return (
-    <>
-      {/* Click-catcher: outside click dismisses (and the toolbar above it stays
-          clickable because it stacks on a higher z-index). */}
-      <div
-        aria-hidden
-        className="fixed inset-0 z-40"
-        data-slot="ai-edit-toolbar-catcher"
-        onClick={onDismiss}
-      />
-      <div
-        className="fixed z-50"
-        data-slot="ai-edit-toolbar"
-        onClick={event => event.stopPropagation()}
-        style={{ left: prompting ? boxX : anchor.x, top: prompting ? boxY : anchor.y }}
-      >
-        {prompting ? (
-          <form
-            className="flex w-80 items-end gap-1.5 rounded-full border border-border/60 bg-background p-2 shadow-lg"
-            data-slot="ai-edit-prompt-form"
-            onSubmit={handleSubmit}
-          >
-            <textarea
-              autoFocus
-              className="max-h-44 min-h-10 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60"
-              data-slot="ai-edit-prompt-input"
-              onChange={event => setPrompt(event.target.value)}
-              placeholder={t.preview.aiEditHint}
-              ref={inputRef}
-              value={prompt}
-            />
-            <button
-              aria-label={t.preview.aiEditConfirm}
-              className={cn(PRIMARY_ICON_BTN, 'flex shrink-0 items-center justify-center')}
-              data-slot="ai-edit-confirm"
-              disabled={!prompt.trim()}
-              title={t.preview.aiEditConfirm}
-              type="submit"
-            >
-              <Codicon name="arrow-up" size="0.875rem" />
-            </button>
-          </form>
-        ) : (
+    <div
+      ref={rootRef}
+      className="fixed z-50"
+      data-slot="ai-edit-toolbar"
+      onContextMenu={event => event.preventDefault()}
+      style={{ left: prompting ? boxX : anchor.x, top: prompting ? boxY : anchor.y }}
+    >
+      {prompting ? (
+        <form
+          className="flex w-80 items-end gap-1.5 rounded-full border border-primary/60 bg-background p-2 pl-3 shadow-lg"
+          data-slot="ai-edit-prompt-form"
+          onSubmit={handleSubmit}
+        >
+          <textarea
+            autoFocus
+            className="max-h-44 min-h-10 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60"
+            data-slot="ai-edit-prompt-input"
+            onChange={event => setPrompt(event.target.value)}
+            placeholder={t.preview.aiEditHint}
+            ref={inputRef}
+            value={prompt}
+          />
           <button
-            className={cn(
-              'flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[0.625rem] font-bold shadow-lg transition-colors',
-              'text-foreground hover:bg-accent'
-            )}
-            data-slot="ai-edit-open"
-            onClick={() => setPrompting(true)}
-            type="button"
+            aria-label={t.preview.aiEditConfirm}
+            className={cn(PRIMARY_ICON_BTN, 'flex shrink-0 items-center justify-center')}
+            data-slot="ai-edit-confirm"
+            disabled={!prompt.trim()}
+            title={t.preview.aiEditConfirm}
+            type="submit"
           >
-            <Pencil className="size-3" />
-            {t.preview.aiEdit}
+            <Codicon name="arrow-up" size="0.875rem" />
           </button>
-        )}
-      </div>
-    </>
+        </form>
+      ) : (
+        <button
+          className={cn(
+            'flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-xs font-semibold',
+            'border border-primary bg-primary text-primary-foreground shadow-lg',
+            'transition-all hover:brightness-95 active:scale-[0.98]'
+          )}
+          data-slot="ai-edit-open"
+          onClick={() => setPrompting(true)}
+          type="button"
+        >
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-foreground text-primary shadow-sm">
+            <Pencil className="size-3" />
+          </span>
+          {t.preview.aiEdit}
+        </button>
+      )}
+    </div>
   )
 }

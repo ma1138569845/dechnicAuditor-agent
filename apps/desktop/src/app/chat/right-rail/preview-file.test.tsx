@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { startOfficePreview } from '@/hermes'
 import { I18nProvider } from '@/i18n'
 import { readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
 
@@ -31,6 +32,27 @@ vi.mock('mammoth', () => ({
     convertToHtml: vi.fn()
   }
 }))
+
+// Keep the real hermes module (I18nProvider and the preview component tree use
+// many of its exports) and only stub the OnlyOffice preview lifecycle so the
+// office tests below can drive a ready iframe instead of a real backend.
+//
+// The default must THROW synchronously — exactly like the real call does in
+// jsdom (window.hermesDesktop is undefined), where the preview server bridge
+// rejects before the await. A microtask-rejected promise lands the error a
+// tick later and flips the HTML-fallback mouse-up timing, breaking the
+// existing HTML-selection tests. Tests that need a live editor override this
+// with a resolved URL.
+vi.mock('@/hermes', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/hermes')>()
+  return {
+    ...actual,
+    startOfficePreview: vi.fn(() => {
+      throw new Error('unavailable')
+    }),
+    stopOfficePreview: vi.fn()
+  }
+})
 
 const slot = (container: HTMLElement, name: string) => container.querySelector(`[data-slot="${name}"]`)
 
@@ -301,5 +323,152 @@ describe('LocalFilePreview AI-edit flow', () => {
     expect(insertDetail.text).toContain('Selected text:')
     expect(insertDetail.text).toContain('Edit this paragraph')
     expect(insertDetail.text).toContain('make it formal')
+  })
+
+  const OFFICE_ORIGIN = 'http://127.0.0.1:39099'
+
+  function mountOfficeIframe() {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: `${OFFICE_ORIGIN}/onlyoffice?file_id=oo_1`,
+      engine: 'onlyoffice',
+      preview_base_url: OFFICE_ORIGIN
+    })
+    return renderPreview({ path: 'C:/report.docx', previewKind: 'office', officeKind: 'docx' })
+  }
+
+  function sendOfficeSelection(text: string | null, mouseUp = false) {
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text, mouseUp },
+        origin: OFFICE_ORIGIN
+      })
+    )
+  }
+
+  it('dismisses the collapsed AI pill when OnlyOffice reports an empty selection', async () => {
+    const { container } = mountOfficeIframe()
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    sendOfficeSelection('report text')
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    })
+
+    // Clicking empty space clears the selection; the report must dismiss the pill.
+    sendOfficeSelection(null)
+
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeNull()
+    })
+  })
+
+  it('keeps the prompt box when an empty selection is reported while composing', async () => {
+    const { container } = mountOfficeIframe()
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    sendOfficeSelection('report text')
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    })
+
+    await act(async () => {
+      fireEvent.click(slot(container, 'ai-edit-open')!)
+    })
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-prompt-input')).toBeTruthy()
+    })
+
+    // While composing, a cleared selection must not throw away the prompt.
+    sendOfficeSelection(null)
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    expect(slot(container, 'ai-edit-prompt-input')).toBeTruthy()
+  })
+
+  it('dismisses the prompt box when an empty mouse-up report arrives while composing', async () => {
+    const { container } = mountOfficeIframe()
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    sendOfficeSelection('report text')
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    })
+
+    await act(async () => {
+      fireEvent.click(slot(container, 'ai-edit-open')!)
+    })
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-prompt-input')).toBeTruthy()
+    })
+
+    // A mouseUp-driven empty (a real click on empty space / the ribbon in the
+    // editor) dismisses the dialog even while composing — unlike a
+    // non-interaction poll empty, which the previous test keeps.
+    sendOfficeSelection(null, true)
+
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeNull()
+    })
+  })
+
+  it('dismisses the AI pill when the user clicks the unchanged selection (DS ribbon)', async () => {
+    const { container } = mountOfficeIframe()
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    sendOfficeSelection('same text')
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    })
+
+    // The plugin force-reports the unchanged selection on mouse-up; the parent
+    // must recognise it as "clicked without changing" and dismiss.
+    sendOfficeSelection('same text', true)
+
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeNull()
+    })
+  })
+
+  it('dismisses the prompt box when the unchanged selection is clicked while composing', async () => {
+    const { container } = mountOfficeIframe()
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    sendOfficeSelection('same text')
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeTruthy()
+    })
+
+    await act(async () => {
+      fireEvent.click(slot(container, 'ai-edit-open')!)
+    })
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-prompt-input')).toBeTruthy()
+    })
+
+    // Clicking the unchanged selection in the editor is a real mouse-up: while
+    // the prompt box is open it means the user clicked elsewhere, so the dialog
+    // must dismiss. (A non-interaction empty report while composing is still
+    // kept — see the previous test.)
+    sendOfficeSelection('same text', true)
+
+    await waitFor(() => {
+      expect(slot(container, 'ai-edit-toolbar')).toBeNull()
+    })
   })
 })

@@ -111,7 +111,10 @@ class TestEditorConfig:
             cfg = oo.make_editor_config("fid")
             # The token must verify against the shared secret — check it while
             # the env still carries the secret (verify reads env fresh).
-            assert oo.verify_jwt(cfg["token"]) is not None
+            decoded = oo.verify_jwt(cfg["token"])
+            assert decoded is not None
+            # Config tokens are tagged so they cannot be reused for callbacks.
+            assert decoded.get("purpose") == "config"
 
         assert cfg["documentType"] == "cell"
         assert cfg["document"]["fileType"] == "xlsx"
@@ -119,6 +122,10 @@ class TestEditorConfig:
         assert cfg["document"]["key"]
         assert cfg["editorConfig"]["lang"] == "zh-CN"
         assert cfg["editorConfig"]["mode"] == "edit"
+        # Strict co-editing keeps onDocumentStateChange dirty=true until the
+        # user saves, which the preview's conflict banner relies on; fast mode
+        # would flush dirty=false almost immediately after typing.
+        assert cfg["editorConfig"]["coediting"] == "strict"
         assert cfg["editorConfig"]["callbackUrl"] == "http://192.168.0.238:39250/api/onlyoffice/save"
         # forcesave makes the DS send a save callback on the Save button/Ctrl+S
         # instead of deferring it to the autosave interval or editor close.
@@ -148,6 +155,22 @@ class TestDownloadToken:
             assert oo.check_callback_auth(f"Bearer {token}") is not None
             assert oo.check_callback_auth("") is None
             assert oo.check_callback_auth("Basic abc") is None
+
+    def test_callback_auth_rejects_config_token(self):
+        with patch.dict(os.environ, _ENV, clear=True):
+            oo.registry.register("fid", r"C:\docs\a.docx", "doc")
+            cfg = oo.make_editor_config("fid")
+            assert oo.check_callback_auth(f"Bearer {cfg['token']}") is None
+
+    def test_callback_auth_accepts_nested_payload(self):
+        with patch.dict(os.environ, _ENV, clear=True):
+            token = oo.sign_jwt({"payload": {"status": 2, "key": "k"}})
+            assert oo.check_callback_auth(f"Bearer {token}") == {"status": 2, "key": "k"}
+
+    def test_callback_auth_rejects_token_without_status(self):
+        with patch.dict(os.environ, _ENV, clear=True):
+            token = oo.sign_jwt({"key": "k"})
+            assert oo.check_callback_auth(f"Bearer {token}") is None
 
 
 class TestForceSave:

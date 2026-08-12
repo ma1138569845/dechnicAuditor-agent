@@ -263,11 +263,113 @@ class TestOnlyOfficeRoutes:
         assert "web-apps/apps/api/documents/api.js" in html
         assert "10.10.2.55:8090" in html
         assert "/api/onlyoffice/config" in html
+        # The shell exposes postAiSelection on window so the same-origin plugin
+        # iframe (Community Edition fallback) can report selection directly.
+        assert "window.postAiSelection = postAiSelection" in html
+        # The shell reports selection to the desktop renderer itself (same
+        # origin as preview_base_url), so it posts office-ai-selection via
+        # window.parent.postMessage and reads text via GetSelectedText.
+        assert "office-ai-selection" in html
+        assert "window.parent.postMessage" in html
+        assert "onSelectionChanged" in html
+        assert "GetSelectedText" in html
+        # The manual AI-edit fallback button was removed (the plugin's auto
+        # selection reporting makes it redundant). Guard that it does not come
+        # back — the shell must not re-add a chrome button for it.
+        assert 'id="ai-edit"' not in html
+        # Structural guards: these catch a broken/regressed inline script (a
+        # missing helper or renamed symbol previously slipped past the substring
+        # assertions and broke the selection reporting at runtime).
+        assert "function postAiSelection" in html
+        # The shell measures its editor iframe and sends a document-area anchor
+        # with every selection report, so the desktop AI-edit pill floats inside
+        # the document (below the DS ribbon) instead of stacked on the DS chrome.
+        assert "function editorDocumentAnchor" in html
+        assert "msg.anchorX = anchor.anchorX" in html
+        assert "msg.anchorY = anchor.anchorY" in html
+        assert "function readAiSelection" in html
+        assert "executeMethod('GetSelectedText'" in html
+        # The shell forwards the plugin's mouse-up flag so the renderer can
+        # dismiss the AI pill when the user clicks without changing the
+        # selection (e.g. the DS ribbon keeps the selection text unchanged).
+        assert "msg.mouseUp = true" in html
+        assert "postAiSelection(data.text, data.mouseUp)" in html
+        # The Automation API (executeMethod / attachEvent) is exposed through a
+        # connector created with editor.createConnector(), not directly on the
+        # DocEditor instance. These guards detect the wrong-object regression.
+        assert "var connector" in html
+        assert "editor.createConnector" in html
+        assert "connector.attachEvent('onSelectionChanged'" in html
+        assert "exec.executeMethod('GetSelectedText'" in html
+        # The shell also reports whether the editor holds unsaved edits, so the
+        # desktop renderer can decide whether an external (agent) change may
+        # reload the editor or must ask first.
+        assert "office-editor-state" in html
+        assert "function postEditorState" in html
+        assert "onDocumentStateChange" in html
+        # The shell latches "edited since the last real save". DS 9.x fires
+        # onDocumentStateChange(false) as soon as its co-authoring service
+        # acknowledges the changes — not when the file is saved — so the raw
+        # flag must not clear the latch; only a status-6 save does.
+        assert "var editedSinceSave = false" in html
+        assert "editedSinceSave = true" in html
+        assert "/api/onlyoffice/state?file_id=" in html
+        assert "body: JSON.stringify({ dirty: dirty })" in html
+        # A real save (status poll sees 'saved') clears the latch.
+        assert html.count("editedSinceSave = false") >= 2
+        # forceSave is not a hard failure on non-zero errors: DS 9.x answers
+        # error 1 even when it delivers the status-6 callback (and error 4 for
+        # no changes), so the save outcome is decided by the callback — the
+        # bar flips to 已保存 via the status poll, or concludeSave() reports
+        # 无更改 after the wait window instead of a bogus failure banner.
+        assert "function concludeSave" in html
+        assert "无更改" in html
+        assert "setTimeout(concludeSave, 6000)" in html
+        assert "保存失败: 文档未在编辑器中打开" in html
 
     def test_shell_404_when_disabled(self, server_base):
         with patch.dict(os.environ, {}, clear=True):
             status, body, _ = _get(server_base, "/onlyoffice")
         assert status == 404
+        with patch.dict(os.environ, {}, clear=True):
+            for path in ("/onlyoffice-plugin/config.json",
+                         "/onlyoffice-plugin/index.html",
+                         "/onlyoffice-plugin/plugin.js"):
+                status, _, _ = _get(server_base, path)
+                assert status == 404, path
+
+    def test_plugin_routes_served_when_enabled(self, server_base):
+        # Community Edition lacks the Automation API connector, so the preview
+        # server provides a same-origin plugin that uses the Plugin API to read
+        # the selection and hand it to the shell page.
+        status, body, _ = _get(server_base, "/onlyoffice-plugin/config.json")
+        assert status == 200
+        cfg = json.loads(body.decode("utf-8"))
+        assert cfg["name"] == "Hermes AI Bridge"
+        assert "index.html" in cfg["variations"][0]["url"]
+
+        status, body, _ = _get(server_base, "/onlyoffice-plugin/index.html")
+        assert status == 200
+        html = body.decode("utf-8")
+        assert "Hermes AI Bridge" in html
+        assert "plugin.js" in html
+        assert "10.10.2.55:8090" in html
+
+        status, body, _ = _get(server_base, "/onlyoffice-plugin/plugin.js")
+        assert status == 200
+        js = body.decode("utf-8")
+        assert "window.Asc.plugin" in js
+        assert "executeMethod('GetSelectedText'" in js
+        assert "postAiSelection" in js
+        # Every editor mouse-up force-reports the selection (bypassing the
+        # lastText dedup) so the renderer hears about clicks that keep the same
+        # selection and can dismiss the pill — the polling timer still dedups.
+        assert "readSelection(null, true)" in js
+        assert "if (!force && value === lastText)" in js
+        assert "mouseUp: mouseUp" in js
+
+        status, _, _ = _get(server_base, "/onlyoffice-plugin/icon.png")
+        assert status == 200
 
     def test_config_returns_signed_editor_config(self, server_base, tmp_path):
         from tools.office_onlyoffice import verify_jwt
@@ -284,6 +386,16 @@ class TestOnlyOfficeRoutes:
             f"http://192.168.0.238:{pvs.preview_server.port}"
             f"/api/onlyoffice/download?file_id={file_id}&token=")
         assert cfg["editorConfig"]["callbackUrl"].endswith("/api/onlyoffice/save")
+        # The Community Edition fallback plugin is registered in the editor
+        # config so it loads inside the DS editor iframe.
+        assert "plugins" in cfg["editorConfig"]
+        plugins = cfg["editorConfig"]["plugins"]
+        plugins_data = plugins["pluginsData"]
+        assert any("/onlyoffice-plugin/config.json" in url for url in plugins_data)
+        # The plugin GUID must be in autostart: without it the DS registers the
+        # plugin but never runs it, so window.Asc.plugin stays undefined and the
+        # AI-edit selection bridge silently never fires.
+        assert "asc.{hermes-ai-bridge}" in plugins["autostart"]
         assert verify_jwt(cfg["token"]) is not None
 
     def test_config_unknown_file_returns_error_envelope(self, server_base):
@@ -312,26 +424,128 @@ class TestOnlyOfficeRoutes:
             server_base, f"/api/onlyoffice/download?file_id={file_id}&token=bad")
         assert status == 401
 
-    def test_save_writes_edited_bytes_and_rotates_key(self, server_base, tmp_path):
+    def test_save_writes_edited_bytes(self, server_base, tmp_path, monkeypatch):
         from tools.office_onlyoffice import registry, sign_jwt
         f = tmp_path / "a.docx"
         f.write_bytes(b"ORIGINAL")
         file_id = self._register(f, "doc")
         rec = registry.lookup(file_id)
         old_key = rec.key
-        edited = tmp_path / "edited.docx"
-        edited.write_bytes(b"EDITEDBYDS")
-        body = {"status": 2, "key": old_key, "url": edited.as_uri(),
-                "users": ["hermes"]}
+
+        def fake_urlopen(req, timeout=60):
+            return _FakeResp(b"EDITEDBYDS")
+
+        monkeypatch.setattr(pvs, "_urlopen", fake_urlopen)
+        body = {
+            "status": 2,
+            "key": old_key,
+            "url": "http://10.10.2.55:8090/cache/edited.docx",
+            "users": ["hermes"],
+        }
         token = sign_jwt(body)
         status, resp, _ = _post(server_base, "/api/onlyoffice/save", body,
                                 headers={"Authorization": f"Bearer {token}"})
         assert status == 200
         assert json.loads(resp.decode("utf-8")) == {"error": 0}
         assert f.read_bytes() == b"EDITEDBYDS"
-        # key rotated so the next open bypasses the DS cache
-        assert registry.lookup(file_id).key != old_key
+        # Key is kept for the current editing session; rotation happens on close.
+        assert registry.lookup(file_id).key == old_key
         assert registry.lookup(file_id).status == "saved"
+
+    def test_save_rejects_config_token(self, server_base, tmp_path):
+        from tools.office_onlyoffice import registry
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+        rec = registry.lookup(file_id)
+        # Obtain the config token a client would see in /api/onlyoffice/config.
+        cfg_status, cfg_body, _ = _get(
+            server_base, f"/api/onlyoffice/config?file_id={file_id}")
+        assert cfg_status == 200
+        config_token = json.loads(cfg_body.decode("utf-8"))["token"]
+        body = {
+            "status": 2,
+            "key": rec.key,
+            "url": "http://10.10.2.55:8090/cache/edited.docx",
+            "users": ["hermes"],
+        }
+        status, resp, _ = _post(server_base, "/api/onlyoffice/save", body,
+                                headers={"Authorization": f"Bearer {config_token}"})
+        assert status == 401
+
+    def test_save_rejects_untrusted_url(self, server_base, tmp_path):
+        from tools.office_onlyoffice import registry, sign_jwt
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+        rec = registry.lookup(file_id)
+        body = {
+            "status": 2,
+            "key": rec.key,
+            "url": "file:///etc/passwd",
+            "users": ["hermes"],
+        }
+        token = sign_jwt(body)
+        status, resp, _ = _post(server_base, "/api/onlyoffice/save", body,
+                                headers={"Authorization": f"Bearer {token}"})
+        assert status == 200
+        assert json.loads(resp.decode("utf-8")) == {"error": 1}
+        assert f.read_bytes() == b"ORIGINAL"
+        assert registry.lookup(file_id).status == "error"
+
+    def test_second_save_with_same_key_writes(self, server_base, tmp_path, monkeypatch):
+        from tools.office_onlyoffice import registry, sign_jwt
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+        old_key = registry.lookup(file_id).key
+
+        calls = []
+
+        def fake_urlopen(req, timeout=60):
+            calls.append(req.full_url if hasattr(req, "full_url") else req)
+            return _FakeResp(b"EDITED" + str(len(calls)).encode())
+
+        monkeypatch.setattr(pvs, "_urlopen", fake_urlopen)
+        url = "http://10.10.2.55:8090/cache/edited.docx"
+        for _ in range(2):
+            body = {"status": 2, "key": old_key, "url": url,
+                    "users": ["hermes"]}
+            token = sign_jwt(body)
+            status, resp, _ = _post(server_base, "/api/onlyoffice/save", body,
+                                    headers={"Authorization": f"Bearer {token}"})
+            assert status == 200
+            assert json.loads(resp.decode("utf-8")) == {"error": 0}
+        assert f.read_bytes() == b"EDITED2"
+
+    def test_save_rotates_key_on_editor_close(self, server_base, tmp_path, monkeypatch):
+        from tools.office_onlyoffice import registry, sign_jwt
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+        old_key = registry.lookup(file_id).key
+
+        monkeypatch.setattr(pvs, "_urlopen",
+                            lambda req, timeout: _FakeResp(b"EDITED"))
+        body = {
+            "status": 2,
+            "key": old_key,
+            "url": "http://10.10.2.55:8090/cache/edited.docx",
+            "users": ["hermes"],
+        }
+        token = sign_jwt(body)
+        _post(server_base, "/api/onlyoffice/save", body,
+              headers={"Authorization": f"Bearer {token}"})
+        assert registry.lookup(file_id).key == old_key
+
+        close_body = {"status": 1, "key": old_key}
+        close_token = sign_jwt(close_body)
+        status, resp, _ = _post(server_base, "/api/onlyoffice/save",
+                                close_body,
+                                headers={"Authorization": f"Bearer {close_token}"})
+        assert status == 200
+        assert json.loads(resp.decode("utf-8")) == {"error": 0}
+        assert registry.lookup(file_id).key != old_key
 
     def test_save_requires_jwt(self, server_base, tmp_path):
         from tools.office_onlyoffice import registry
@@ -354,6 +568,109 @@ class TestOnlyOfficeRoutes:
         assert status == 200
         s = json.loads(body.decode("utf-8"))
         assert s["status"] == "saved" and s["saved_at"] == "09:30:00"
+        # No DS save yet -> the baseline is the mtime at open. The file is
+        # unchanged since then, so nothing counts as external.
+        assert s["changed_externally"] is False
+        # The shell latch starts clean.
+        assert s["dirty"] is False
+
+    def test_state_endpoint_sets_dirty_and_status_echoes_it(
+            self, server_base, tmp_path):
+        """The shell mirrors its unsaved-edits latch; /status hands it back."""
+        from tools.office_onlyoffice import registry
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"PK")
+        file_id = self._register(f, "doc")
+
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert json.loads(body.decode("utf-8"))["dirty"] is False
+
+        status, body, _ = _post(
+            server_base, f"/api/onlyoffice/state?file_id={file_id}",
+            {"dirty": True})
+        assert status == 200
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert json.loads(body.decode("utf-8"))["dirty"] is True
+
+        # The latch can clear again after a real save.
+        status, body, _ = _post(
+            server_base, f"/api/onlyoffice/state?file_id={file_id}",
+            {"dirty": False})
+        assert status == 200
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert json.loads(body.decode("utf-8"))["dirty"] is False
+
+    def test_state_endpoint_unknown_file_id(self, server_base):
+        status, _, _ = _post(
+            server_base,
+            "/api/onlyoffice/state?file_id=does-not-exist",
+            {"dirty": True})
+        assert status == 404
+
+    def test_status_reports_external_write_before_any_ds_save(
+            self, server_base, tmp_path):
+        """An agent write right after open is external even before the DS saves."""
+        from tools.office_onlyoffice import registry
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert status == 200
+        assert json.loads(body.decode("utf-8"))["changed_externally"] is False
+
+        # The agent edits the file directly (no DS involved) -> external.
+        f.write_bytes(b"EDITEDBYAGENT")
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert status == 200
+        assert json.loads(body.decode("utf-8"))["changed_externally"] is True
+
+    def test_status_distinguishes_ds_save_from_external_write(
+            self, server_base, tmp_path, monkeypatch):
+        """changed_externally flips only when someone other than the DS wrote.
+
+        Before any DS save the baseline is the mtime at open, so a direct
+        rewrite of the file counts as external even though the DS never saved.
+        """
+        from tools.office_onlyoffice import registry, sign_jwt
+        f = tmp_path / "a.docx"
+        f.write_bytes(b"ORIGINAL")
+        file_id = self._register(f, "doc")
+        rec = registry.lookup(file_id)
+
+        monkeypatch.setattr(pvs, "_urlopen",
+                            lambda req, timeout: _FakeResp(b"EDITEDBYDS"))
+        body = {
+            "status": 2,
+            "key": rec.key,
+            "url": "http://10.10.2.55:8090/cache/edited.docx",
+            "users": ["hermes"],
+        }
+        token = sign_jwt(body)
+        status, resp, _ = _post(server_base, "/api/onlyoffice/save", body,
+                                headers={"Authorization": f"Bearer {token}"})
+        assert status == 200
+        assert json.loads(resp.decode("utf-8")) == {"error": 0}
+
+        # Right after the DS save, the on-disk bytes match the editor's view.
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert status == 200
+        assert json.loads(body.decode("utf-8"))["changed_externally"] is False
+
+        # An external write (an agent edit landing on disk) flips the flag.
+        f.write_bytes(b"EDITEDBYAGENT")
+        status, body, _ = _get(server_base,
+                               f"/api/onlyoffice/status?file_id={file_id}")
+        assert status == 200
+        s = json.loads(body.decode("utf-8"))
+        assert s["changed_externally"] is True
+        assert s["status"] == "saved"
 
     def test_force_save_forwards_command_service_and_returns_result(
             self, server_base, tmp_path):
@@ -460,7 +777,6 @@ class TestOfficeSelection:
         status, body, _ = _get(server_base, "/api/office-selection")
         assert status == 400
         assert b"missing file_path" in body
-    """ensure_started binds 0.0.0.0 when OnlyOffice is on, loopback otherwise."""
 
     def test_binds_loopback_when_disabled(self):
         server = pvs.PreviewServer()

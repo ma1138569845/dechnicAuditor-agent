@@ -2346,6 +2346,20 @@ export const zh: Translations = {
     snippetsDesc: '选择一个起始提示词放入输入框。',
     dropFiles: '拖放文件以附加',
     dropSession: '拖放以链接此对话',
+    templateSuggestions: '模板',
+    energyAuditDialog: {
+      title: '生成能源审计报告',
+      desc: '从数据库按项目名取数，生成符合格式规范的 Word 报告并预览。',
+      unitName: '单位/项目名称',
+      unitPlaceholder: '输入单位名称，例如"省立医院东院"',
+      projectSuggestions: '匹配的项目',
+      searching: '搜索中…',
+      unitRequired: '请输入单位/项目名称',
+      auditType: '审计类型',
+      generate: '生成报告',
+      generating: '生成中…',
+      generateFailed: '生成报告失败'
+    },
     snippets: {
       codeReview: {
         label: '代码审查',
@@ -2888,7 +2902,10 @@ export const zh: Translations = {
       installTimeout: 'editor_sdk 启动超时，请重试。',
       installStartFailed: 'editor_sdk 启动失败，请检查该文件是否能被其打开。',
       installPathOutsideSandbox: '文件路径超出允许范围。',
-      installUnavailable: 'editor_sdk 暂不可用，已切换为 HTML 预览。'
+      installUnavailable: 'editor_sdk 暂不可用，已切换为 HTML 预览。',
+      externalChanged: '此文件已在磁盘上被修改。重新加载可显示最新内容，但会丢弃编辑器中的未保存改动。',
+      reloadDiscard: '重新加载（丢弃改动）',
+      keepCurrent: '保持当前'
     },
     web: {
       appFailedToBoot: '预览应用启动失败',

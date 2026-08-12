@@ -1815,6 +1815,20 @@ export interface Translations {
     snippets: Record<string, { label: string; description: string; text: string }>
     dropFiles: string
     dropSession: string
+    templateSuggestions: string
+    energyAuditDialog: {
+      title: string
+      desc: string
+      unitName: string
+      unitPlaceholder: string
+      projectSuggestions: string
+      searching: string
+      unitRequired: string
+      auditType: string
+      generate: string
+      generating: string
+      generateFailed: string
+    }
   }
 
   statusStack: {
@@ -2306,11 +2320,16 @@ export interface Translations {
       installStartFailed: string
       installPathOutsideSandbox: string
       installUnavailable: string
+      externalChanged: string
+      reloadDiscard: string
+      keepCurrent: string
     }
     web: {
       appFailedToBoot: string
       serverNotFound: string
       failedToLoad: string
+
+
       tryAgain: string
       restarting: string
       askRestart: string

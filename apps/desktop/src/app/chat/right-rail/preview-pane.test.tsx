@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
+import { notifyWorkspaceChanged, resetWorkspaceChangeThrottle } from '@/store/workspace-events'
 
 import { PreviewPane } from './preview-pane'
 import { forgetPreviewStripTools, previewConsoleState } from './preview-strip-tools'
@@ -29,12 +30,106 @@ describe('PreviewPane console state', () => {
       window.setTimeout(() => callback(Date.now()), 0)
     )
     vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
+    resetWorkspaceChangeThrottle()
   })
 
   afterEach(() => {
     cleanup()
     $connection.set(null)
     vi.unstubAllGlobals()
+  })
+
+  it('reloads an office preview when the agent touches the previewed file', async () => {
+    const targetUrl = 'file:///tmp/report.docx'
+    forgetPreviewStripTools(targetUrl)
+
+    await act(async () => {
+      render(
+        <PreviewPane
+          target={{
+            kind: 'file',
+            label: 'report.docx',
+            officeKind: 'docx',
+            path: '/tmp/report.docx',
+            previewKind: 'office',
+            source: '/tmp/report.docx',
+            url: targetUrl
+          }}
+        />
+      )
+    })
+
+    await act(async () => {
+      notifyWorkspaceChanged('/tmp/report.docx')
+    })
+
+    const logs = previewConsoleState(targetUrl).$logs.get()
+
+    expect(logs.some(log => log.message.includes('report.docx'))).toBe(true)
+    forgetPreviewStripTools(targetUrl)
+  })
+
+  it('ignores a workspace tick that touched a different file', async () => {
+    const targetUrl = 'file:///tmp/report.docx'
+    forgetPreviewStripTools(targetUrl)
+
+    await act(async () => {
+      render(
+        <PreviewPane
+          target={{
+            kind: 'file',
+            label: 'report.docx',
+            officeKind: 'docx',
+            path: '/tmp/report.docx',
+            previewKind: 'office',
+            source: '/tmp/report.docx',
+            url: targetUrl
+          }}
+        />
+      )
+    })
+
+    await act(async () => {
+      notifyWorkspaceChanged('/tmp/unrelated.txt')
+    })
+
+    const logs = previewConsoleState(targetUrl).$logs.get()
+
+    expect(logs.some(log => log.message.includes('report.docx'))).toBe(false)
+    forgetPreviewStripTools(targetUrl)
+  })
+
+  it('reloads an office preview on an opaque (pathless) tick', async () => {
+    const targetUrl = 'file:///tmp/report.docx'
+    forgetPreviewStripTools(targetUrl)
+
+    await act(async () => {
+      render(
+        <PreviewPane
+          target={{
+            kind: 'file',
+            label: 'report.docx',
+            officeKind: 'docx',
+            path: '/tmp/report.docx',
+            previewKind: 'office',
+            source: '/tmp/report.docx',
+            url: targetUrl
+          }}
+        />
+      )
+    })
+
+    // A terminal command (or office_save without save_path) carries no path —
+    // it may have edited the previewed file, so the preview gets a reload
+    // chance and OfficePreview mtime-verifies before doing anything.
+    await act(async () => {
+      notifyWorkspaceChanged()
+    })
+
+    const logs = previewConsoleState(targetUrl).$logs.get()
+
+    expect(logs.some(log => log.message.includes('report.docx'))).toBe(true)
+    forgetPreviewStripTools(targetUrl)
   })
 
   it('does not watch backend-only remote filesystem previews locally', async () => {

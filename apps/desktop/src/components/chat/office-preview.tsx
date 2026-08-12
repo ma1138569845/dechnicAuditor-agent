@@ -27,7 +27,7 @@ import DOMPurify from 'dompurify'
 import { strFromU8, unzip } from 'fflate'
 import mammoth from 'mammoth'
 import type { MouseEvent as ReactMouseEvent } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 
 import { openExternal } from '@/app/settings/billing/open-external'
@@ -45,14 +45,31 @@ export interface OfficeAiEditSelection {
   anchorX: number
   anchorY: number
   selectedText: string
+  /** True when the report was driven by a mouse-up in the editor. The parent
+   *  uses it to dismiss a collapsed pill when the user clicks without changing
+   *  the selection (e.g. on the DS ribbon) — the text is unchanged, so it would
+   *  otherwise be swallowed by the plugin's dedup. */
+  mouseUp?: boolean
 }
 
 interface OfficePreviewProps {
+  /** When true (the AI-edit prompt box is open), non-interaction empty
+   *  selection reports (a no-selection poll) are suppressed so the toolbar and
+   *  the typed prompt stay anchored while the user composes. A mouseUp-driven
+   *  empty (a real click on empty space / the ribbon) is still forwarded so the
+   *  renderer can dismiss the prompt box. When the pill is merely collapsed
+   *  this is false and any empty report dismisses it. */
+  aiPrompting?: boolean
   filePath: string
   officeKind: OfficeKind
   /** Called when the user selects text in the HTML fallback preview. Pass
    *  `null` to clear a previous selection. */
   onAiEditSelection?: (selection: OfficeAiEditSelection | null) => void
+  /** Bumped by the parent whenever the file changed on disk (the Electron fs
+   *  watch fires after any write — including an agent's office_save). The
+   *  preview refreshes from disk: HTML re-renders, the OnlyOffice editor
+   *  reloads when clean (banner on conflict), editor_sdk remounts. */
+  reloadKey?: number
 }
 
 type HtmlState =
@@ -63,9 +80,17 @@ type HtmlState =
 type IframeState =
   | { error: string; errorCode?: string; kind: 'error' }
   | { kind: 'loading' }
-  | { kind: 'ready'; url: string; engine: string; previewBaseUrl: string }
+  | { kind: 'ready'; engine: string; fileId?: string; previewBaseUrl: string; url: string }
 
 type PreviewMode = 'html' | 'iframe'
+
+function fileIdFromUrl(url: string): string {
+  try {
+    return new URL(url).searchParams.get('file_id') ?? ''
+  } catch {
+    return ''
+  }
+}
 
 function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   const match = dataUrl.match(/^data:([^,]*),(.*)$/)
@@ -213,12 +238,26 @@ function installMessageForError(office: Translations['preview']['office'], code?
   }
 }
 
-export function OfficePreview({ filePath, officeKind, onAiEditSelection }: OfficePreviewProps) {
+export const OfficePreview = memo(function OfficePreview({
+  aiPrompting = false,
+  filePath,
+  officeKind,
+  onAiEditSelection,
+  reloadKey = 0
+}: OfficePreviewProps) {
   const { t } = useI18n()
   const [mode, setMode] = useState<PreviewMode>('iframe')
   const [htmlState, setHtmlState] = useState<HtmlState>({ kind: 'loading' })
   const [iframeState, setIframeState] = useState<IframeState>({ kind: 'loading' })
+  // Bumping this remounts the <iframe> element (editor_sdk/officecli refresh).
+  const [iframeKey, setIframeKey] = useState(0)
+  // OnlyOffice banner: the file changed externally while the DS editor holds
+  // unsaved edits. Reloading would discard them, so the user chooses.
+  const [reloadConflict, setReloadConflict] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  // Unsaved-edit flag reported by the OnlyOffice shell (postMessage).
+  const dirtyRef = useRef(false)
+  const prevReloadKeyRef = useRef(reloadKey)
 
   // HTML fallback: always render in the background so it is ready if editor_sdk
   // fails or the user explicitly switches to HTML mode.
@@ -263,7 +302,9 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
     return () => {
       active = false
     }
-  }, [filePath, officeKind, t])
+    // reloadKey: re-render from the updated bytes after an external (agent)
+    // write. The HTML view is read-only, so re-rendering is always safe.
+  }, [filePath, officeKind, reloadKey, t])
 
   // editor_sdk iframe: primary preview/edit mode. The backend opens the file
   // in editor_sdk and returns the live WYSIWYG editor's iframe URL.
@@ -304,6 +345,7 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
           kind: 'ready',
           url: result.url,
           engine: result.engine,
+          fileId: result.file_id,
           previewBaseUrl: result.preview_base_url
         })
       } catch (error) {
@@ -339,12 +381,24 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
     }
   }, [iframeState.kind, mode])
 
+  // Leaving iframe mode (manual "切换为 HTML 预览" switch or the SDK-error
+  // fallback above) must clear a stale selection, or the AI-edit toolbar would
+  // keep floating over the HTML view with an anchor from the previous engine.
+  const prevModeRef = useRef<PreviewMode>(mode)
+  useEffect(() => {
+    if (prevModeRef.current === 'iframe' && mode === 'html' && onAiEditSelection) {
+      onAiEditSelection(null)
+    }
+
+    prevModeRef.current = mode
+  }, [mode, onAiEditSelection])
+
   // Bridge text selections from iframe preview engines to the AI-edit toolbar.
   // OnlyOffice posts selections via window.postMessage; editor_sdk xlsx is
   // polled through the preview server's /api/office-selection endpoint because
   // the cross-origin iframe cannot be read directly.
   useEffect(() => {
-    if (!onAiEditSelection || mode !== 'iframe' || iframeState.kind !== 'ready') {
+    if (mode !== 'iframe' || iframeState.kind !== 'ready') {
       return
     }
 
@@ -356,22 +410,73 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
     const defaultAnchor = () => {
       const rect = container.getBoundingClientRect()
 
+      // Best-effort anchor inside the OnlyOffice editor's document area. The DS
+      // reserves roughly the top 15% of the iframe for its ribbon, so pin the
+      // pill just below it, horizontally centred — inside the document rather
+      // than on the DS chrome. The shell normally measures and sends a precise
+      // anchorX/anchorY; this is the fallback for the editor_sdk poll path and
+      // for shells that could not measure their iframe.
       return {
         anchorX: rect.left + rect.width / 2,
-        anchorY: rect.top + 40
+        anchorY: rect.top + rect.height * 0.15 + 8
       }
     }
 
     const handleMessage = (event: MessageEvent) => {
       const data = event.data
 
-      if (!data || data.type !== 'office-ai-selection') {
+      if (!data || typeof data !== 'object' || !data.type) {
+        return
+      }
+
+      // Only trust messages from the preview server that hosts the OnlyOffice
+      // shell — the shell posts office-ai-selection / office-editor-state
+      // itself, so its origin matches previewBaseUrl (http://127.0.0.1:<port>).
+      if (event.origin !== iframeState.previewBaseUrl) {
+        return
+      }
+
+      if (data.type === 'office-editor-state') {
+        dirtyRef.current = Boolean(data.dirty)
+
+        return
+      }
+
+      if (data.type !== 'office-ai-selection') {
+        return
+      }
+
+      if (!onAiEditSelection) {
         return
       }
 
       if (typeof data.text === 'string' && data.text) {
-        onAiEditSelection({ ...defaultAnchor(), selectedText: data.text })
-      } else {
+        // Prefer the anchor reported by the OnlyOffice shell: shell-viewport
+        // coordinates of the editor's document-area top-centre (the DS exposes
+        // no selection coordinates to plugins in Community Edition, so the shell
+        // measures its editor iframe and sends this best-effort position).
+        // Translate it into desktop viewport space by adding this iframe's own
+        // offset. When the shell couldn't measure it omits anchorX/anchorY and
+        // we fall back to the same default below.
+        const rect = container.getBoundingClientRect()
+
+        if (typeof data.anchorX === 'number' && typeof data.anchorY === 'number') {
+          onAiEditSelection({
+            anchorX: rect.left + data.anchorX,
+            anchorY: rect.top + data.anchorY,
+            mouseUp: data.mouseUp,
+            selectedText: data.text
+          })
+        } else {
+          onAiEditSelection({ ...defaultAnchor(), mouseUp: data.mouseUp, selectedText: data.text })
+        }
+      } else if (!aiPrompting || data.mouseUp) {
+        // An empty report dismisses the collapsed pill. While the prompt box is
+        // open, only a mouseUp-driven empty (a real click on empty space / the
+        // ribbon) dismisses — a no-selection poll is suppressed so the typed
+        // prompt isn't thrown away. The editor_sdk poll below keeps its own
+        // stricter !aiPrompting gate because it fires every 2s regardless of
+        // user interaction.
         onAiEditSelection(null)
       }
     }
@@ -380,7 +485,7 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
 
     let pollTimer: number | null = null
 
-    if (iframeState.engine === 'editor_sdk' && officeKind === 'xlsx') {
+    if (onAiEditSelection && iframeState.engine === 'editor_sdk' && officeKind === 'xlsx') {
       const pollSelection = async () => {
         try {
           const res = await fetch(
@@ -395,7 +500,7 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
 
           if (data.text) {
             onAiEditSelection({ ...defaultAnchor(), selectedText: data.text })
-          } else {
+          } else if (!aiPrompting) {
             onAiEditSelection(null)
           }
         } catch {
@@ -414,7 +519,121 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
         window.clearInterval(pollTimer)
       }
     }
-  }, [iframeState, mode, officeKind, filePath, onAiEditSelection])
+  }, [iframeState, mode, officeKind, filePath, onAiEditSelection, aiPrompting])
+
+  // ── External-change refresh ────────────────────────────────────────────
+  // The parent bumps reloadKey when the Electron fs watch reports a write to
+  // the file. That write can be the OnlyOffice DocumentServer's own save
+  // callback (already visible in the editor) or an external one — an agent
+  // edit via editor_sdk, a terminal command — that the open editor must
+  // reload to show.
+  const reloadIframeFromDisk = useCallback(async () => {
+    if (iframeState.kind !== 'ready') {
+      return
+    }
+
+    if (iframeState.engine === 'onlyoffice') {
+      // Close + reopen: the backend drops the registry entry, so the next
+      // open registers a fresh file_id/key and the DS re-downloads the
+      // current on-disk bytes instead of resuming its cached session.
+      setReloadConflict(false)
+      setIframeState({ kind: 'loading' })
+
+      try {
+        await stopOfficePreview(filePath)
+        const result = await startOfficePreview(filePath)
+
+        if ('error' in result) {
+          setIframeState({
+            error: installMessageForError(t.preview.office, result.error),
+            errorCode: result.error,
+            kind: 'error'
+          })
+
+          return
+        }
+
+        setIframeState({
+          kind: 'ready',
+          url: result.url,
+          engine: result.engine,
+          fileId: result.file_id,
+          previewBaseUrl: result.preview_base_url
+        })
+        dirtyRef.current = false
+        setIframeKey(key => key + 1)
+      } catch (error) {
+        setIframeState({
+          error: error instanceof Error ? error.message : String(error),
+          kind: 'error'
+        })
+      }
+
+      return
+    }
+
+    // editor_sdk / officecli share one SDK session with the agent's edits, so
+    // remounting the SPA re-renders the current session state.
+    setIframeKey(key => key + 1)
+  }, [filePath, iframeState, t])
+
+  const handleExternalChange = useCallback(async () => {
+    if (iframeState.kind !== 'ready' || iframeState.engine !== 'onlyoffice') {
+      return
+    }
+
+    // Skip writes the DS itself produced (its save callbacks land on disk
+    // too) — the editor already shows that content.
+    try {
+      const fileId = iframeState.fileId ?? fileIdFromUrl(iframeState.url)
+      const res = await fetch(
+        `${iframeState.previewBaseUrl}/api/onlyoffice/status?file_id=${encodeURIComponent(fileId)}`
+      )
+
+      if (!res.ok) {
+        return
+      }
+
+      const data = (await res.json()) as { changed_externally?: boolean; dirty?: boolean }
+
+      if (data.changed_externally === false) {
+        return
+      }
+
+      // The shell mirrors its unsaved-edits latch into /status; the message
+      // stream is asynchronous and can lag the file-change signal, so trust
+      // the latch read straight from the response here, falling back to the
+      // live message only if the backend is an older build without it.
+      if (dirtyRef.current || data.dirty) {
+        setReloadConflict(true)
+
+        return
+      }
+    } catch {
+      return
+    }
+
+    void reloadIframeFromDisk()
+  }, [iframeState, reloadIframeFromDisk])
+
+  useEffect(() => {
+    if (reloadKey === prevReloadKeyRef.current) {
+      return
+    }
+
+    prevReloadKeyRef.current = reloadKey
+
+    if (mode !== 'iframe' || iframeState.kind !== 'ready') {
+      // HTML mode re-renders via its own effect on reloadKey.
+      return
+    }
+
+    if (iframeState.engine === 'onlyoffice') {
+      void handleExternalChange()
+    } else {
+      setIframeKey(key => key + 1)
+    }
+  }, [handleExternalChange, iframeState, mode, reloadKey])
 
   const showHtmlFallback = mode === 'html' || iframeState.kind === 'error'
 
@@ -447,7 +666,28 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
           {t.preview.office.openWithLocalApp}
         </button>
       </div>
-      <div ref={wrapperRef} className="min-h-0 flex-1 overflow-hidden">
+      <div ref={wrapperRef} className="relative min-h-0 flex-1 overflow-hidden">
+        {reloadConflict && (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 border-b border-border/60 bg-amber-500/10 px-3 py-1.5">
+            <span className="text-[0.6875rem] text-foreground">{t.preview.office.externalChanged}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                className="text-[0.625rem] font-bold text-foreground underline-offset-4 transition-colors hover:text-foreground/80"
+                onClick={() => void reloadIframeFromDisk()}
+                type="button"
+              >
+                {t.preview.office.reloadDiscard}
+              </button>
+              <button
+                className="text-[0.625rem] font-bold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground"
+                onClick={() => setReloadConflict(false)}
+                type="button"
+              >
+                {t.preview.office.keepCurrent}
+              </button>
+            </span>
+          </div>
+        )}
         {showHtmlFallback ? (
           <HtmlPreview
             filePath={filePath}
@@ -458,6 +698,7 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
         ) : iframeState.kind === 'ready' ? (
           <iframe
             className="h-full w-full border-0 bg-white"
+            key={iframeKey}
             src={iframeState.url}
             title={t.preview.office.editWithEditorSdk}
           />
@@ -469,7 +710,7 @@ export function OfficePreview({ filePath, officeKind, onAiEditSelection }: Offic
       </div>
     </div>
   )
-}
+})
 
 interface HtmlPreviewProps {
   filePath: string
@@ -570,6 +811,7 @@ function HtmlPreview({ filePath, htmlState, officeKind, onAiEditSelection }: Htm
           officeKind === 'xlsx' && 'office-preview-spreadsheet'
         )}
         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(htmlState.html) }}
+        data-selectable-text="true"
         ref={containerRef}
       />
     </div>

@@ -7,14 +7,19 @@ import { AiEditToolbar } from './ai-edit-toolbar'
 
 const slot = (container: HTMLElement, name: string) => container.querySelector(`[data-slot="${name}"]`)
 
-function renderToolbar({ onSubmit = vi.fn(), onDismiss = vi.fn() } = {}) {
+function renderToolbar({ onSubmit = vi.fn(), onDismiss = vi.fn(), onPromptingChange = vi.fn() } = {}) {
   const rendered = render(
     <I18nProvider configClient={null}>
-      <AiEditToolbar anchor={{ x: 10, y: 20 }} onDismiss={onDismiss} onSubmit={onSubmit} />
+      <AiEditToolbar
+        anchor={{ x: 10, y: 20 }}
+        onDismiss={onDismiss}
+        onPromptingChange={onPromptingChange}
+        onSubmit={onSubmit}
+      />
     </I18nProvider>
   )
 
-  return { ...rendered, onDismiss, onSubmit }
+  return { ...rendered, onDismiss, onPromptingChange, onSubmit }
 }
 
 describe('AiEditToolbar', () => {
@@ -67,11 +72,38 @@ describe('AiEditToolbar', () => {
     expect(onDismiss).toHaveBeenCalled()
   })
 
-  it('dismisses via the outside click catcher', () => {
-    const { container, onDismiss } = renderToolbar()
+  it('dismisses on an outside mousedown', () => {
+    const { onDismiss } = renderToolbar()
 
-    fireEvent.click(slot(container, 'ai-edit-toolbar-catcher')!)
+    fireEvent.mouseDown(document.body)
 
     expect(onDismiss).toHaveBeenCalled()
+  })
+
+  it('does not dismiss when clicking the toolbar itself', () => {
+    const { container, onDismiss } = renderToolbar()
+
+    fireEvent.mouseDown(slot(container, 'ai-edit-toolbar')!)
+
+    expect(onDismiss).not.toHaveBeenCalled()
+  })
+
+  it('reports the prompt-box state to the parent when it opens', () => {
+    const { container, onPromptingChange } = renderToolbar()
+
+    expect(onPromptingChange).toHaveBeenCalledWith(false)
+
+    fireEvent.click(slot(container, 'ai-edit-open')!)
+
+    expect(onPromptingChange).toHaveBeenCalledWith(true)
+  })
+
+  it('resets the prompt-box latch to false on unmount', () => {
+    const { container, onPromptingChange, unmount } = renderToolbar()
+
+    fireEvent.click(slot(container, 'ai-edit-open')!)
+    unmount()
+
+    expect(onPromptingChange).toHaveBeenLastCalledWith(false)
   })
 })

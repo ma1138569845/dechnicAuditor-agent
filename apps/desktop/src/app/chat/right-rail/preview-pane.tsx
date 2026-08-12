@@ -7,10 +7,12 @@ import { type Translations, useI18n } from '@/i18n'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { openPreviewTargetInBrowser, remoteHtmlPreviewDocument } from '@/lib/local-preview'
+import { cleanPath, comparisonPath } from '@/lib/path-compare'
 import { rafCoalesce } from '@/lib/raf-coalesce'
 import { cn } from '@/lib/utils'
 import { notify, notifyError } from '@/store/notifications'
 import { $previewServerRestart, failPreviewServerRestart, type PreviewTarget } from '@/store/preview'
+import { $workspaceChangeTick, $workspaceLastChangedPath } from '@/store/workspace-events'
 
 import { ArtifactPreview } from './preview-artifact'
 import {
@@ -21,7 +23,7 @@ import {
   PreviewConsolePanel
 } from './preview-console'
 import { type ConsoleEntry } from './preview-console-state'
-import { LocalFilePreview, PreviewEmptyState } from './preview-file'
+import { LocalFilePreview, PreviewEmptyState, filePathForTarget } from './preview-file'
 import { registerPreviewPageReader } from './preview-reader'
 import { previewConsoleState, registerPreviewDevTools } from './preview-strip-tools'
 
@@ -146,6 +148,10 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<PreviewLoadErrorState | null>(null)
   const [localReloadKey, setLocalReloadKey] = useState(0)
+  // Agent tool.complete ticks (workspace-events) while an office file is shown.
+  const workspaceTick = useStore($workspaceChangeTick)
+  // Start at the current tick so a fresh mount never replays a stale tick.
+  const workspaceTickRef = useRef(workspaceTick)
 
   // Artifacts have no URL to load — they render from the registry, never in a
   // webview.
@@ -531,6 +537,45 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
       }
     }
   }, [appendConsoleEntry, copy, reloadPreview, target.kind, target.url])
+
+  // Agent tool.complete -> workspace tick: the reliable office-preview refresh
+  // signal when the fs watch can't see the file (remote-fs mode gates the watch
+  // above, but gateway tool events flow wherever the agent runs), and a
+  // supplement to it locally. Only office previews participate — text previews
+  // keep their fs-watch reload. A tick whose path matches the previewed file —
+  // or carries no path at all (a terminal command, an office_save without
+  // save_path) — bumps the reload; OfficePreview then mtime-verifies via
+  // /api/onlyoffice/status before actually remounting, so unrelated ticks are
+  // no-ops.
+  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
+  useEffect(() => {
+    if (target.kind !== 'file' || target.previewKind !== 'office') {
+      return
+    }
+
+    if (workspaceTick === workspaceTickRef.current) {
+      return
+    }
+
+    workspaceTickRef.current = workspaceTick
+
+    const changedPath = $workspaceLastChangedPath.get()
+
+    if (changedPath) {
+      const previewPath = comparisonPath(cleanPath(filePathForTarget(target)))
+      const changed = comparisonPath(cleanPath(changedPath))
+
+      if (changed !== previewPath) {
+        return
+      }
+    }
+
+    appendConsoleEntry({
+      level: 1,
+      message: copy.fileChanged(compactUrl(target.url))
+    })
+    reloadPreview()
+  }, [appendConsoleEntry, copy, reloadPreview, target, workspaceTick])
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {

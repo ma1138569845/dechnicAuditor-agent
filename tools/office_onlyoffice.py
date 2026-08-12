@@ -51,6 +51,10 @@ _ENV_PREVIEW_PORT = "HERMES_OFFICE_PREVIEW_PORT"
 _LANG = "zh-CN"
 _USER_NAME = "Hermes"
 
+# GUID of the Hermes AI Bridge plugin (see office_preview_server._ONLYOFFICE_PLUGIN_CONFIG).
+# Listed in editorConfig.plugins.autostart so the DS runs it on document ready.
+_ONLYOFFICE_PLUGIN_GUID = "asc.{hermes-ai-bridge}"
+
 # SDK doc_type (doc/sheet/slide) -> (OnlyOffice documentType, fileType).
 _DOC_TYPES = {
     "doc": ("word", "docx"),
@@ -161,6 +165,22 @@ class DocRecord:
     status: str = field(default="pending")  # pending / saving / saved / error
     message: str = field(default="")
     saved_at: Optional[str] = field(default=None)
+    # File mtime when the editor was opened. Together with
+    # ``ds_saved_mtime_ns`` it forms the "what the editor currently shows"
+    # baseline the renderer compares the on-disk mtime against.
+    open_mtime_ns: Optional[int] = field(default=None)
+    # File mtime right after the last DocumentServer save callback wrote the
+    # bytes. Lets the desktop renderer tell "the DS itself just saved" apart
+    # from an external write (an agent edit landing on disk) so it only
+    # refreshes the editor for the latter.
+    ds_saved_mtime_ns: Optional[int] = field(default=None)
+    # The embed shell's latch: True once the user edited after the last real
+    # save (status-6 callback). DS 9.x onDocumentStateChange(false) fires as
+    # soon as its co-authoring service acknowledges changes — long before
+    # anything hits disk — so the raw flag alone cannot protect unsaved edits
+    # from an external refresh. The shell mirrors this latch here so the
+    # renderer can read it straight from /status at refresh-decision time.
+    editor_dirty: bool = field(default=False)
 
 
 class _Registry:
@@ -176,6 +196,10 @@ class _Registry:
                  key: Optional[str] = None) -> DocRecord:
         rec = DocRecord(file_id=file_id, file_path=file_path,
                         doc_type=doc_type, key=key or str(uuid.uuid4()))
+        try:
+            rec.open_mtime_ns = os.stat(file_path).st_mtime_ns
+        except OSError:  # pragma: no cover - file vanished between open calls
+            rec.open_mtime_ns = None
         with self._lock:
             self._by_id[file_id] = rec
             self._by_key[rec.key] = file_id
@@ -221,13 +245,16 @@ class _Registry:
                 self._by_key[rec.key] = file_id
 
     def mark(self, file_id: str, status: str, message: str = "",
-             saved_at: Optional[str] = None) -> None:
+             saved_at: Optional[str] = None,
+             ds_saved_mtime_ns: Optional[int] = None) -> None:
         with self._lock:
             rec = self._by_id.get(file_id)
             if rec:
                 rec.status = status
                 rec.message = message
                 rec.saved_at = saved_at
+                if ds_saved_mtime_ns is not None:
+                    rec.ds_saved_mtime_ns = ds_saved_mtime_ns
 
 
 registry = _Registry()
@@ -282,6 +309,14 @@ def make_editor_config(file_id: str) -> dict:
             "callbackUrl": f"{base}/api/onlyoffice/save",
             "lang": _LANG,
             "mode": "edit",
+            # Strict co-editing: edits are sent to the document editing
+            # service only when the user saves. In the default fast mode DS
+            # streams changes out almost immediately, so onDocumentStateChange
+            # flips dirty=false right after typing and the preview's
+            # "external change while dirty" conflict banner can never fire.
+            # With strict mode dirty=true persists until the user saves, which
+            # is exactly the state the banner must protect against.
+            "coediting": "strict",
             "user": _user(),
             "customization": {
                 # With forcesave the DS sends a status-6 save callback the
@@ -295,8 +330,50 @@ def make_editor_config(file_id: str) -> dict:
         "height": "100%",
         "width": "100%",
     }
-    config["token"] = sign_jwt(config)
+    # Load the Hermes AI bridge plugin so the Community Edition (which lacks the
+    # Automation API connector) can still report text selections to the shell.
+    # ``autostart`` lists plugin GUIDs the DS runs automatically on document
+    # ready (asc_pluginRun(guid, 0, '')); without it the plugin is registered
+    # but never started, so window.Asc.plugin stays undefined.
+    config["editorConfig"]["plugins"] = {
+        "pluginsData": [f"{base}/onlyoffice-plugin/config.json"],
+        "autostart": [_ONLYOFFICE_PLUGIN_GUID],
+    }
+    # Tag config tokens so they cannot be reused as save-callback auth.
+    config["token"] = sign_jwt({**config, "purpose": "config"})
     return config
+
+
+def _callback_token_payload(token: str) -> Optional[dict]:
+    """Return the callback payload from a DS JWT, or None if invalid.
+
+    Rejects config tokens (purpose == config) and tokens without a status.
+    Handles both flat and DS 7.2+ nested ``{"payload": {...}}`` shapes.
+    """
+    payload = verify_jwt(token or "")
+    if not payload:
+        return None
+    if payload.get("purpose") == "config":
+        return None
+    inner = payload.get("payload")
+    if isinstance(inner, dict):
+        if inner.get("purpose") == "config":
+            return None
+        if "status" in inner:
+            return inner
+    if "status" in payload:
+        return payload
+    return None
+
+
+def check_callback_auth(authorization: str) -> Optional[dict]:
+    """Verify the DS callback's ``Authorization: Bearer <jwt>`` header."""
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return _callback_token_payload(token.strip())
 
 
 def _download_token(file_id: str) -> str:
@@ -310,16 +387,6 @@ def check_download_token(file_id: str, token: str) -> bool:
     if not payload:
         return False
     return payload.get("purpose") == "download" and payload.get("file_id") == file_id
-
-
-def check_callback_auth(authorization: str) -> Optional[dict]:
-    """Verify the DS callback's ``Authorization: Bearer <jwt>`` header."""
-    if not authorization:
-        return None
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        return None
-    return verify_jwt(token.strip())
 
 
 # ---------------------------------------------------------------------------

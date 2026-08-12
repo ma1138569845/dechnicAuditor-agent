@@ -19,7 +19,7 @@ import { CodeEditor, type CodeEditorSelection } from '@/components/chat/code-edi
 import { FileDiffPanel } from '@/components/chat/diff-lines'
 import { chunkTextLines, useFixedRowWindow } from '@/components/chat/fixed-row-window'
 import { LazyShiki as ShikiHighlighter } from '@/components/chat/shiki-highlighter'
-import { OfficePreview } from '@/components/chat/office-preview'
+import { OfficePreview, type OfficeAiEditSelection } from '@/components/chat/office-preview'
 import { PageLoader } from '@/components/page-loader'
 import { Tip } from '@/components/ui/tooltip'
 import { translateNow, useI18n } from '@/i18n'
@@ -171,7 +171,7 @@ function isTypableElement(el: Element | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el as HTMLElement).isContentEditable
 }
 
-function filePathForTarget(target: PreviewTarget) {
+export function filePathForTarget(target: PreviewTarget) {
   if (target.path) {
     return target.path
   }
@@ -681,6 +681,9 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   const [aiSelection, setAiSelection] = useState<{
     anchorX: number; anchorY: number; startLine?: number; endLine?: number; selectedText?: string
   } | null>(null)
+  // Whether the AI-edit prompt box is open. While composing, an empty selection
+  // report must not dismiss the toolbar (that would lose the typed prompt).
+  const [aiPrompting, setAiPrompting] = useState(false)
   // For the bare-`e` shortcut: the read-view root (to detect focus-within) and a
   // hover flag (no state — only the keydown handler reads it).
   const readViewRef = useRef<HTMLDivElement>(null)
@@ -1010,8 +1013,25 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
   )
 
   const handleOfficeAiSelection = useCallback(
-    (selection: { anchorX: number; anchorY: number; selectedText: string } | null) => {
+    (selection: OfficeAiEditSelection | null) => {
       if (!selection) {
+        // Any empty report means the selection is gone. While the prompt box is
+        // open, OfficePreview already suppresses non-interaction empties (a
+        // no-selection poll), so a null that reaches here is a real dismissal —
+        // a click on empty space / the ribbon / outside — and must close the
+        // prompt box too. The HTML fallback reports clear selections directly
+        // and is likewise a user click on empty space.
+        setAiSelection(null)
+        return
+      }
+      // A mouse-up in the editor is a real interaction. Collapsed: only a click
+      // on the unchanged selection (the DS ribbon / the selected text) dismisses
+      // — a drag selecting NEW text keeps the pill. While the prompt box is open
+      // ANY mouse-up means the user clicked elsewhere in the editor, so dismiss
+      // the dialog.
+      const sameSelection =
+        aiSelection !== null && aiSelection.selectedText !== undefined && aiSelection.selectedText === selection.selectedText
+      if (selection.mouseUp && (sameSelection || aiPrompting)) {
         setAiSelection(null)
         return
       }
@@ -1021,7 +1041,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
         selectedText: selection.selectedText
       })
     },
-    []
+    [aiPrompting, aiSelection]
   )
 
   const handleEditorSelection = useCallback((selection: CodeEditorSelection | null) => {
@@ -1152,6 +1172,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
           <AiEditToolbar
             anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
             onDismiss={() => setAiSelection(null)}
+            onPromptingChange={setAiPrompting}
             onSubmit={submitAiEdit}
           />
         )}
@@ -1235,12 +1256,19 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
         ref={readViewRef}
       >
         <div className="min-h-0 flex-1 overflow-hidden">
-          <OfficePreview filePath={filePath} officeKind={officeKind} onAiEditSelection={handleOfficeAiSelection} />
+          <OfficePreview
+            aiPrompting={aiPrompting}
+            filePath={filePath}
+            officeKind={officeKind}
+            onAiEditSelection={handleOfficeAiSelection}
+            reloadKey={reloadKey}
+          />
         </div>
         {aiSelection && (
           <AiEditToolbar
             anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
             onDismiss={() => setAiSelection(null)}
+            onPromptingChange={setAiPrompting}
             onSubmit={submitAiEdit}
           />
         )}
@@ -1331,6 +1359,7 @@ export function LocalFilePreview({ reloadKey, target }: { reloadKey: number; tar
           <AiEditToolbar
             anchor={{ x: aiSelection.anchorX, y: aiSelection.anchorY }}
             onDismiss={() => setAiSelection(null)}
+            onPromptingChange={setAiPrompting}
             onSubmit={submitAiEdit}
           />
         )}
