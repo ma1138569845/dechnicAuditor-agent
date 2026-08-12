@@ -1,6 +1,6 @@
-import { ComposerPrimitive } from '@assistant-ui/react'
+import { ComposerPrimitive, useAuiState } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
-import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef } from 'react'
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useHudComposerDrag } from '@/app/hud/composer-drag'
 import { composerFill, composerFloatingStrip, composerSurfaceGlass } from '@/components/chat/composer-dock'
@@ -11,6 +11,11 @@ import { chatMessageText } from '@/lib/chat-messages'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
 import { triggerHaptic } from '@/lib/haptics'
+import {
+  type EnergyAuditTemplate,
+  ENERGY_AUDIT_TEMPLATES,
+  shouldShowEnergyAuditTemplates
+} from '@/lib/templates/energy-audit'
 import { cn } from '@/lib/utils'
 import { interceptsTypedVoiceStop } from '@/lib/voice-stop-word'
 import { sessionCompacting } from '@/store/compaction'
@@ -32,6 +37,7 @@ import {
   slashArgStage
 } from './composer-utils'
 import { ContextMenu } from './context-menu'
+import { EnergyAuditDialog } from './energy-audit-dialog'
 import { COMPOSER_AREAS, runComposerMiddleware } from './contrib'
 import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
@@ -71,6 +77,7 @@ import {
 import { useComposerScope } from './scope'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
+import { TemplateChips } from './template-chips'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
@@ -300,6 +307,25 @@ export function ChatBar({
 
   const hasComposerPayload = hasText || attachments.length > 0
   const canSubmit = busy || hasComposerPayload
+
+  // Coarse edge: energy-audit template chips surface only while the draft
+  // matches an audit keyword. Like `isSteerableText`, this is a boolean
+  // selector over composer state, so it re-renders only on visibility flips
+  // (keyword starts/stop matching), never on every keystroke.
+  const showEnergyAuditTemplates = useAuiState(s => shouldShowEnergyAuditTemplates(s.composer.text))
+
+  // Pending energy-audit template → the parameter dialog opens with its
+  // audit type preselected. Clicking a chip drives the real generation
+  // workflow (backend REST → .docx → right-rail preview) instead of
+  // dropping a prompt into the composer.
+  const [selectedAuditTemplate, setSelectedAuditTemplate] = useState<EnergyAuditTemplate | null>(null)
+
+  const openEnergyAuditDialog = useCallback((template: EnergyAuditTemplate) => {
+    triggerHaptic('selection')
+    setSelectedAuditTemplate(template)
+  }, [])
+
+  const closeEnergyAuditDialog = useCallback(() => setSelectedAuditTemplate(null), [])
 
   // Steer only makes sense mid-turn, text-only (the gateway can't carry images
   // into a tool result) and never for a slash command (those execute inline).
@@ -1267,6 +1293,18 @@ export function ChatBar({
                     </div>
                   </div>
                   <ContribSlot area={COMPOSER_AREAS.bottom} />
+                  {showEnergyAuditTemplates && (
+                    <TemplateChips
+                      onSelect={template => {
+                        const full = ENERGY_AUDIT_TEMPLATES.find(t => t.id === template.id)
+
+                        if (full) {
+                          openEnergyAuditDialog(full)
+                        }
+                      }}
+                      templates={ENERGY_AUDIT_TEMPLATES}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -1288,6 +1326,15 @@ export function ChatBar({
         onSubmit={submitUrl}
         open={urlOpen}
         value={urlValue}
+      />
+      <EnergyAuditDialog
+        defaultAuditType={selectedAuditTemplate?.auditType ?? '公共机构'}
+        onOpenChange={open => {
+          if (!open) {
+            closeEnergyAuditDialog()
+          }
+        }}
+        open={selectedAuditTemplate !== null}
       />
     </>
   )

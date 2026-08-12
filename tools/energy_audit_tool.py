@@ -8,6 +8,8 @@
 子目录 tools/energy_audit/*.py 中的 registry.register() 不会被自动发现。
 """
 
+import os
+
 from tools.registry import registry, tool_error, tool_result
 
 # 能源审计 PG 查询依赖 psycopg2 / pandas 等可选依赖。
@@ -549,3 +551,89 @@ registry.register(
     check_fn=_check_energy_audit_available,
     emoji="🏭",
 )
+
+
+# ============================================================
+# REST API handlers (web_server.py /api/energy-audit/*)
+# ============================================================
+# These are separate from the tool handlers above on purpose: tools return JSON
+# *strings* for the LLM, while REST endpoints return plain dicts for FastAPI.
+# The generation pipeline is CPU-heavy, so web_server wraps these in
+# run_in_threadpool.
+
+def rest_search_energy_audit_projects(keyword: str) -> dict:
+    """按名称模糊搜索能源审计项目（REST 版本，返回 dict）。"""
+    if not _PG_AVAILABLE:
+        return {"error": "能源审计数据库工具当前不可用", "message": _PG_IMPORT_ERROR or "PG 数据库未配置或无法连接"}
+
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return {"error": "keyword 不能为空", "message": "请提供项目关键词"}
+
+    try:
+        with PgDataQuery() as db:
+            rows = db.get_institution_project(audited_name=keyword)
+    except Exception as e:
+        return {"error": "查询失败", "message": str(e)}
+
+    projects = [
+        {
+            "id": r["id"],
+            "audited_name": r["audited_name"],
+            "audit_year": r["audit_year"],
+            "reference_year": r["reference_year"],
+            "customer_id": r["customer_id"],
+        }
+        for r in rows[:20]
+    ]
+    return {"ok": True, "projects": projects}
+
+
+def rest_generate_energy_audit_report(
+    project_name: str,
+    audit_type: str = "公共机构",
+    output_dir: str = None,
+) -> dict:
+    """从 PG 取数生成能源审计报告 .docx（REST 版本，返回 dict）。
+
+    管线：build_from_pg_and_config（PG 取数 → AuditProject）
+          → ReportGenerator.load_from_project → generate_word → .docx
+    """
+    if not _PG_AVAILABLE:
+        return {"error": "能源审计数据库工具当前不可用", "message": _PG_IMPORT_ERROR or "PG 数据库未配置或无法连接"}
+
+    project_name = (project_name or "").strip()
+    if not project_name:
+        return {"error": "project_name 不能为空", "message": "请提供单位/项目名称"}
+
+    try:
+        from tools.energy_audit.pg_collector import build_from_pg_and_config
+        from tools.energy_audit.report_generator import ReportGenerator
+    except ImportError as e:
+        return {"error": "能源审计报告工具加载失败", "message": str(e)}
+
+    # 报告输出目录：优先调用方指定，其次 config.yaml 的 output.directory，最后回退 ./reports。
+    default_dir = output_dir or "./reports"
+    try:
+        os.makedirs(default_dir, exist_ok=True)
+    except OSError as e:
+        return {"error": "无法创建输出目录", "message": str(e)}
+
+    try:
+        project = build_from_pg_and_config(project_name)
+    except Exception as e:
+        return {"error": "从数据库取数失败", "message": f"{project_name}: {e}"}
+
+    # build_from_pg_and_config 内部会 save_project；项目未找到时返回空 AuditProject。
+    if not project.base.unit_name:
+        return {"error": "未找到项目", "message": f"数据库中不存在单位/项目：{project_name}"}
+
+    output_path = os.path.join(default_dir, f"{project_name}能源审计报告.docx")
+    try:
+        gen = ReportGenerator(audit_type)
+        gen.load_from_project(project)
+        result_path = gen.generate_word(output_path)
+    except Exception as e:
+        return {"error": "报告生成失败", "message": str(e)}
+
+    return {"ok": True, "file_path": result_path}
