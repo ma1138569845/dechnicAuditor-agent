@@ -111,12 +111,15 @@ _ONLYOFFICE_SHELL = """<!DOCTYPE html>
   .bar-status { color: #666; }
   .bar-status[data-kind="error"] { color: #d93025; }
   .bar-status[data-kind="saved"] { color: #188038; }
-  .bar-save {
-    margin-left: auto; padding: 4px 16px; border: 1px solid #ccc; border-radius: 4px;
+  .bar-btn {
+    padding: 4px 16px; border: 1px solid #ccc; border-radius: 4px;
     background: #fff; cursor: pointer; font: inherit;
   }
-  .bar-save:hover:not(:disabled) { background: #f0f0f0; }
-  .bar-save:disabled { opacity: .5; cursor: default; }
+  .bar-btn:hover:not(:disabled) { background: #f0f0f0; }
+  .bar-btn:disabled { opacity: .5; cursor: default; }
+  .bar-btn-primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  .bar-btn-primary:hover:not(:disabled) { background: #1557b0; }
+  .bar-save { margin-left: auto; }
   #placeholder { flex: 1 1 auto; min-height: 0; }
 </style>
 </head>
@@ -124,7 +127,7 @@ _ONLYOFFICE_SHELL = """<!DOCTYPE html>
 <div id="oo-bar">
   <span id="title" class="bar-title">文档</span>
   <span id="status" class="bar-status" data-kind="loading">加载中…</span>
-  <button id="save" class="bar-save" disabled>保存</button>
+  <button id="save" class="bar-btn bar-save" disabled>保存</button>
 </div>
 <div id="placeholder"></div>
 <script src="{DS_API_JS}"></script>
@@ -136,10 +139,147 @@ _ONLYOFFICE_SHELL = """<!DOCTYPE html>
   var statusEl = document.getElementById('status');
   var saveBtn = document.getElementById('save');
   var editor = null;
+  var connector = null;
+  var selectionTimer = null;
+  // Latch: the user edited since the last real save. Unlike DS's raw
+  // onDocumentStateChange flag it survives the co-authoring "changes sent"
+  // events, so the parent can trust it to mean "unsaved edits" when deciding
+  // whether an external file change may be refreshed away.
+  var editedSinceSave = false;
+
+  // Best-effort anchor for the AI-edit pill: the top-centre of the editor's
+  // document area. The DS Community Edition exposes no selection coordinates to
+  // plugins (GetSelectionBounds / AddContextMenuItem are not in the whitelist),
+  // so the least-wrong fixed spot is just below the DS ribbon — which occupies
+  // roughly the top 15% of the editor iframe — horizontally centred. That puts
+  // the pill inside the document instead of stacked on the DS chrome. The
+  // renderer still prefers a real anchor when one is available (e.g. the
+  // HTML-fallback native selection) and only falls back to this value when the
+  // message carries no anchorX/anchorY.
+  function editorDocumentAnchor() {
+    var frame = document.querySelector('iframe');
+    if (!frame) { return null; }
+    var r = frame.getBoundingClientRect();
+    if (!r || r.width === 0 || r.height === 0) { return null; }
+    return {
+      anchorX: r.left + r.width / 2,
+      anchorY: r.top + r.height * 0.15 + 8
+    };
+  }
+
+  // Report the current selection to the desktop renderer (the parent frame) so
+  // the AI-edit toolbar can anchor on it. The shell runs on the preview-server
+  // origin (http://127.0.0.1:<port>) and posts to window.parent — the renderer
+  // accepts the message because event.origin matches its preview_base_url.
+  function postAiSelection(text, mouseUp) {
+    window.__lastAiSelection = (typeof text === 'string' && text) ? text : null;
+    var msg = { type: 'office-ai-selection', text: window.__lastAiSelection };
+    // The plugin marks mouse-up-driven reports so the renderer can dismiss the
+    // AI pill when the user clicks without changing the selection.
+    if (mouseUp) { msg.mouseUp = true; }
+    var anchor = editorDocumentAnchor();
+    if (anchor) { msg.anchorX = anchor.anchorX; msg.anchorY = anchor.anchorY; }
+    try {
+      window.parent.postMessage(msg, '*');
+    } catch (err) {
+      // Cross-origin parent postMessage can throw in rare sandbox configs.
+    }
+  }
+
+  // Expose to the fallback plugin bridge: the plugin iframe is served from the
+  // same preview-server origin, so it can call window.top.postAiSelection directly.
+  window.postAiSelection = postAiSelection;
+
+  // Listen for selection reports from the plugin iframe. The plugin may be
+  // sandboxed with a unique origin, so direct function calls may fail; it falls
+  // back to postMessage with the hermes-plugin-selection type.
+  window.addEventListener('message', function (event) {
+    var data = event.data;
+    if (data && typeof data === 'object' && data.type === 'hermes-plugin-selection') {
+      postAiSelection(data.text, data.mouseUp);
+    }
+    if (data && typeof data === 'object' && data.type === 'hermes-plugin-status') {
+      setStatus('ready', '插件: ' + (data.detail || data.kind));
+    }
+  });
+
+  // Report whether the editor holds unsaved edits. The parent uses this before
+  // refreshing the editor after an external (agent) file change: reloading
+  // while dirty would silently discard the user's edits. The state is also
+  // mirrored to the preview server so /status can hand it to the renderer at
+  // refresh-decision time — postMessage delivery is asynchronous and can lag
+  // the file-change signal, while the status fetch happens right then.
+  function postEditorState() {
+    var dirty = !!editedSinceSave;
+    try {
+      window.parent.postMessage({
+        type: 'office-editor-state',
+        dirty: dirty
+      }, '*');
+    } catch (err) {
+      // Cross-origin parent postMessage can throw in rare sandbox configs.
+    }
+    try {
+      fetch('/api/onlyoffice/state?file_id=' + encodeURIComponent(fileId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dirty: dirty })
+      }).catch(function () {});
+    } catch (err) {}
+  }
+
+  // Debounced read of the current selection text. OnlyOffice's Automation API
+  // lives on a connector created with editor.createConnector(); methods such as
+  // executeMethod and attachEvent are not available directly on the DocEditor
+  // instance. The 150ms debounce covers BOTH text and range selections so a
+  // drag re-reports the selection at most every 150ms instead of on every
+  // onSelectionChanged frame.
+  function readAiSelection(after) {
+    if (selectionTimer) { clearTimeout(selectionTimer); }
+    selectionTimer = setTimeout(function () {
+      var done = function () { if (typeof after === 'function') { after(); } };
+      var exec = connector || editor;
+      if (!exec || typeof exec.executeMethod !== 'function') {
+        postAiSelection(null);
+        done();
+        return;
+      }
+      try {
+        exec.executeMethod('GetSelectedText', [], function (text) {
+          postAiSelection(text);
+          done();
+        });
+      } catch (err) {
+        postAiSelection(null);
+        done();
+      }
+    }, 150);
+  }
 
   function setStatus(kind, msg) {
     statusEl.dataset.kind = kind;
     statusEl.textContent = msg;
+  }
+
+  // forceSave answered but no status-6 callback landed within the wait window.
+  // DS 9.x answers error 1 for an unmodified document and never fires the
+  // callback (older versions answer error 4), so the save didn't fail — there
+  // was simply nothing to write. A late callback shows up as 'saved'/'saving'
+  // here, in which case the polling loop is already displaying the truth.
+  function concludeSave() {
+    fetch('/api/onlyoffice/status?file_id=' + encodeURIComponent(fileId))
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (!s) { setStatus('saved', '无更改'); return; }
+        if (s.status === 'saved') {
+          if (editedSinceSave) { editedSinceSave = false; postEditorState(); }
+          setStatus('saved', '已保存 ' + (s.saved_at || '')); return;
+        }
+        if (s.status === 'saving') { setStatus('saving', '保存中…'); return; }
+        if (s.status === 'error') { setStatus('error', s.message || '保存失败'); return; }
+        setStatus('saved', '无更改');
+      })
+      .catch(function () { setStatus('saved', '无更改'); });
   }
 
   if (!fileId) { setStatus('error', '缺少 file_id 参数'); return; }
@@ -151,47 +291,79 @@ _ONLYOFFICE_SHELL = """<!DOCTYPE html>
       titleEl.textContent = cfg.document.title;
       editor = new DocsAPI.DocEditor('placeholder', Object.assign({}, cfg, {
         events: {
-          onDocumentReady: function () { setStatus('ready', '已就绪'); saveBtn.disabled = false; },
+          onDocumentReady: function () {
+            setStatus('ready', '已就绪');
+            saveBtn.disabled = false;
+            editedSinceSave = false;
+            postEditorState();
+            // Automation-API events/methods require a connector; attach
+            // onSelectionChanged there instead of in the config events object.
+            try {
+              connector = (editor && typeof editor.createConnector === 'function') ? editor.createConnector() : null;
+              if (connector && typeof connector.attachEvent === 'function') {
+                connector.attachEvent('onSelectionChanged', function () {
+                  readAiSelection(function () {});
+                });
+              }
+            } catch (err) { connector = null; }
+          },
+          onDocumentStateChange: function (e) {
+            // data is true while the user is editing. data false only means the
+            // DS co-authoring service acknowledged the changes — it is NOT a
+            // save to disk, so it must not clear the latch.
+            if (e && e.data) { editedSinceSave = true; postEditorState(); }
+          },
           onError: function (e) { setStatus('error', '编辑器错误: ' + (e && e.message ? e.message : '未知')); },
-          onRequestClose: function () { try { editor.destroyEditor(); } catch (err) {} },
-          onSelectionChanged: function (event) {
-            // Report the current selection to the desktop renderer (the parent
-            // frame) so the AI-edit toolbar can anchor on it. selectionType is
-            // 'none' | 'range' | 'text'; only 'text' carries actual text.
-            var d = event && event.data;
-            window.parent.postMessage({
-              type: 'office-ai-selection',
-              text: d && d.selectionType === 'text' ? d.text : null,
-              selectionType: d ? d.selectionType : 'none'
-            }, '*');
-          }
+          onRequestClose: function () { try { editor.destroyEditor(); } catch (err) {} }
         }
       }));
-      window.__onlyofficeEditor = editor;
       saveBtn.addEventListener('click', function () {
         // The client-side serviceCommand('mc:forceSave') fires no callback in
         // DS 9.4, so ask the preview server to forward a forcesave command to
         // the DS command service instead. The status-6 callback lands within
         // ~1s and the polling loop flips the bar to 已保存.
         setStatus('saving', '保存中…');
+        var saveTimer = setTimeout(concludeSave, 6000);
         fetch('/api/onlyoffice/force-save?file_id=' + encodeURIComponent(fileId),
               { method: 'POST' })
           .then(function (r) { return r.json(); })
           .then(function (data) {
-            if (data && data.error && data.error !== 4) {
-              // error 4 = no changes to save; harmless.
-              setStatus('error', '保存失败: ' + data.error);
+            if (!data || !data.error) { return; }
+            if (data.error === 3) {
+              // The document is not open in the DS — conclusive, nothing
+              // will follow.
+              clearTimeout(saveTimer);
+              setStatus('error', '保存失败: 文档未在编辑器中打开');
+              return;
             }
+            if (data.error === 4) {
+              // No changes to save — the file is already current.
+              clearTimeout(saveTimer);
+              setStatus('saved', '无更改');
+              return;
+            }
+            // error 0 (scheduled) and error 1 (DS answers 1 even when it
+            // delivers the status-6 callback — ONLYOFFICE/DocumentServer
+            // #2822) are NOT failures: the polling loop flips the bar to
+            // 已保存 when the callback lands, and concludeSave() resolves the
+            // no-callback case instead of a bogus failure banner.
           })
-          .catch(function (err) { setStatus('error', '保存失败: ' + err); });
+          .catch(function (err) {
+            clearTimeout(saveTimer);
+            setStatus('error', '保存失败: ' + err);
+          });
       });
       setInterval(function () {
         fetch('/api/onlyoffice/status?file_id=' + encodeURIComponent(fileId))
           .then(function (r) { return r.json(); })
           .then(function (s) {
             if (!s) return;
-            if (s.status === 'saved') setStatus('saved', '已保存 ' + (s.saved_at || ''));
-            else if (s.status === 'saving') setStatus('saving', '保存中…');
+            if (s.status === 'saved') {
+              // A real save (status-6 callback landed) clears the latch: the
+              // editor and the disk now agree again.
+              if (editedSinceSave) { editedSinceSave = false; postEditorState(); }
+              setStatus('saved', '已保存 ' + (s.saved_at || ''));
+            } else if (s.status === 'saving') setStatus('saving', '保存中…');
             else if (s.status === 'error') setStatus('error', s.message || '保存失败');
           }).catch(function () {});
       }, 3000);
@@ -205,12 +377,216 @@ _ONLYOFFICE_SHELL = """<!DOCTYPE html>
 </html>
 """
 
-
 def _onlyoffice_shell() -> str:
     """Fill the DS API script URL into the ONLYOFFICE shell template."""
     from tools.office_onlyoffice import ds_url
     return _ONLYOFFICE_SHELL.replace(
         "{DS_API_JS}", html.escape(ds_url() + "/web-apps/apps/api/documents/api.js"))
+
+
+# OnlyOffice plugin bridge (Community Edition fallback). The DS Community Edition
+# does not expose the Automation API (editor.createConnector()), so the shell
+# cannot read the text selection directly. The plugin below runs *inside* the DS
+# editor iframe, where the Plugin API (available in all editions) can call
+# executeMethod('GetSelectedText'). The plugin iframe is served from the same
+# preview-server origin as the shell page, so it can reach the shell via
+# window.parent.parent and call the globally exposed postAiSelection helper.
+_ONLYOFFICE_PLUGIN_CONFIG = """{
+  "name": "Hermes AI Bridge",
+  "guid": "asc.{hermes-ai-bridge}",
+  "version": "1.0",
+  "baseUrl": "",
+  "isSystem": true,
+  "variations": [
+    {
+      "description": "Bridge text selection to Hermes desktop",
+      "url": "index.html",
+      "icons": ["icon.png"],
+      "isViewer": false,
+      "EditorsSupport": ["word", "cell", "slide"],
+      "isVisual": false,
+      "initDataType": "none",
+      "initData": "",
+      "buttons": []
+    }
+  ]
+}"""
+
+_ONLYOFFICE_PLUGIN_HTML = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Hermes AI Bridge</title>
+<script src="{DS_PLUGIN_SDK_JS}"></script>
+<script src="plugin.js"></script>
+</head>
+<body>
+</body>
+</html>
+"""
+
+_ONLYOFFICE_PLUGIN_JS = """(function (window) {
+  var POLL_MS = 400;
+  var pollTimer = null;
+  var lastText = null;
+  var ascPlugin = null;
+
+  // The plugin iframe is loaded inside the DS editor iframe. The editor iframe
+  // is cross-origin, but its parent (the shell page) is the same preview-server
+  // origin as the plugin, so parent.parent is the shell window.
+  function shellWindow() {
+    try {
+      var p = window.parent;
+      if (p && p.parent) {
+        return p.parent;
+      }
+    } catch (err) {}
+    try { return window.top; } catch (err) {}
+    return null;
+  }
+
+  // `force` bypasses the lastText dedup: the polling timer must not re-report an
+  // unchanged selection every 400ms, but a mouse-up in the editor is a real user
+  // interaction — clicking the DS ribbon (or the selected text) keeps the same
+  // selection, so without force the shell would never hear about it and the
+  // desktop AI pill would linger. Mouse-up reports carry the mouseUp flag so the
+  // renderer can distinguish "clicked without changing the selection" from a
+  // fresh selection.
+  function report(text, force) {
+    var value = (typeof text === 'string' && text) ? text : null;
+    if (!force && value === lastText) { return; }
+    lastText = value;
+    var mouseUp = !!force;
+    var shell = shellWindow();
+    if (shell) {
+      // Direct call when same-origin. The typeof guard itself throws a
+      // SecurityError when the shell is cross-origin (the plugin loads from
+      // the LAN callback host while the shell runs on 127.0.0.1), so it must
+      // live inside a try/catch too — otherwise report() aborts before ever
+      // reaching the postMessage fallback below and the selection never
+      // reaches the shell.
+      try {
+        if (typeof shell.postAiSelection === 'function') {
+          shell.postAiSelection(value, mouseUp);
+          return;
+        }
+      } catch (err) {}
+      // Fallback: postMessage to the shell page. Works even if the plugin
+      // iframe is sandboxed with a unique origin, because targetOrigin '*'
+      // is allowed and the shell page trusts the hermes-plugin-selection
+      // message type.
+      try {
+        shell.postMessage({ type: 'hermes-plugin-selection', text: value, mouseUp: mouseUp }, '*');
+        return;
+      } catch (err) {}
+    }
+    // Last resort: post to top (renderer). The renderer only accepts messages
+    // whose origin matches previewBaseUrl, so this usually only works when the
+    // plugin iframe is not sandboxed and shares the preview-server origin.
+    try {
+      window.top.postMessage({ type: 'office-ai-selection', text: value, mouseUp: mouseUp }, '*');
+    } catch (err) {}
+  }
+
+  function reportStatus(kind, detail) {
+    var shell = shellWindow();
+    if (shell) {
+      // Same cross-origin guard as report(): the typeof check on a
+      // cross-origin window throws SecurityError, so it must be inside the
+      // try/catch to fall through to the postMessage path.
+      try {
+        if (typeof shell.__hermesPluginStatus === 'function') {
+          shell.__hermesPluginStatus(kind, detail);
+          return;
+        }
+      } catch (err) {}
+      try {
+        shell.postMessage({ type: 'hermes-plugin-status', kind: kind, detail: detail }, '*');
+      } catch (err) {}
+    }
+  }
+
+  function readSelection(after, force) {
+    if (!ascPlugin) {
+      report(null, force);
+      if (typeof after === 'function') { after(); }
+      return;
+    }
+    try {
+      // For word/cell/slide editors GetSelectedText expects a parameters object;
+      // PDF accepts no arguments. Pass the minimal config to cover all editors.
+      var params = ascPlugin.info ? (ascPlugin.info.editorType === 'pdf' ? [] : [{ Numbering: false, Math: false }]) : [{ Numbering: false, Math: false }];
+      ascPlugin.executeMethod('GetSelectedText', params, function (text) {
+        report(text, force);
+        if (typeof after === 'function') { after(); }
+      });
+    } catch (err) {
+      report(null, force);
+      if (typeof after === 'function') { after(); }
+    }
+  }
+
+  function startPolling() {
+    if (pollTimer) { clearInterval(pollTimer); }
+    readSelection();
+    pollTimer = setInterval(readSelection, POLL_MS);
+  }
+
+  function attach() {
+    var ap = window.Asc && window.Asc.plugin;
+    if (!ap) { return false; }
+    ascPlugin = ap;
+    ap.init = function () {
+      reportStatus('init', 'plugin initialized');
+      startPolling();
+    };
+    // Every mouse-up in the editor is a user interaction, so force-report even
+    // when the selection is unchanged (see report's `force` param): the desktop
+    // pill dismisses when the user clicks the same selection / the DS ribbon.
+    ap.onExternalMouseUp = function () {
+      readSelection(null, true);
+    };
+    return true;
+  }
+
+  if (attach()) {
+    reportStatus('attached', 'immediate');
+  } else {
+    // The plugin manager injects window.Asc.plugin after the iframe loads.
+    // Wait for it so we can register our init/onExternalMouseUp handlers.
+    var attachTimer = setInterval(function () {
+      if (attach()) {
+        clearInterval(attachTimer);
+        reportStatus('attached', 'after wait');
+      }
+    }, 50);
+    setTimeout(function () { clearInterval(attachTimer); }, 5000);
+  }
+
+  // Some DS builds don't fire init for non-visual plugins; start polling anyway.
+  setTimeout(function () {
+    if (!pollTimer) {
+      reportStatus('timeout', 'init did not fire, starting poll fallback');
+      startPolling();
+    }
+  }, 1200);
+
+  reportStatus('load', 'plugin script loaded');
+})(window);
+"""
+
+
+def _onlyoffice_plugin_html() -> str:
+    """Return the plugin iframe HTML with the DS plugin SDK injected.
+
+    The plugin SDK (sdkjs-plugins/v1/plugins.js) defines window.Asc.plugin,
+    which plugin.js attaches handlers to. Unlike the embedding api.js, this
+    script is required - the plugin manager does not inject it for you.
+    """
+    from tools.office_onlyoffice import ds_url
+    base = ds_url() or ""
+    sdk = f"{base}/sdkjs-plugins/v1/plugins.js"
+    return _ONLYOFFICE_PLUGIN_HTML.replace("{DS_PLUGIN_SDK_JS}", html.escape(sdk))
 
 
 def _atomic_write(path: str, data: bytes) -> None:
@@ -256,6 +632,18 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/onlyoffice":
             self._onlyoffice_page()
             return
+        if path == "/onlyoffice-plugin/config.json":
+            self._onlyoffice_plugin_config()
+            return
+        if path == "/onlyoffice-plugin/index.html":
+            self._onlyoffice_plugin_html()
+            return
+        if path == "/onlyoffice-plugin/plugin.js":
+            self._onlyoffice_plugin_js()
+            return
+        if path == "/onlyoffice-plugin/icon.png":
+            self._send_bytes(b"", "image/png")
+            return
         if path == "/api/onlyoffice/config":
             self._api_onlyoffice_config()
             return
@@ -298,6 +686,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/onlyoffice/force-save":
             self._api_onlyoffice_force_save()
+            return
+        if path == "/api/onlyoffice/state":
+            self._api_onlyoffice_state()
             return
         if path.startswith("/localapi/") or path in ("/mcp", "/api/health"):
             # SDK local file API + raw MCP endpoint, same origin.
@@ -443,6 +834,33 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_bytes(_onlyoffice_shell().encode("utf-8"),
                          "text/html; charset=utf-8")
 
+    def _onlyoffice_plugin_config(self):
+        """GET /onlyoffice-plugin/config.json — plugin manifest."""
+        from tools.office_onlyoffice import is_enabled
+        if not is_enabled():
+            self._send_not_found()
+            return
+        self._send_bytes(_ONLYOFFICE_PLUGIN_CONFIG.encode("utf-8"),
+                         "application/json")
+
+    def _onlyoffice_plugin_html(self):
+        """GET /onlyoffice-plugin/index.html — plugin iframe entry."""
+        from tools.office_onlyoffice import is_enabled
+        if not is_enabled():
+            self._send_not_found()
+            return
+        self._send_bytes(_onlyoffice_plugin_html().encode("utf-8"),
+                         "text/html; charset=utf-8")
+
+    def _onlyoffice_plugin_js(self):
+        """GET /onlyoffice-plugin/plugin.js — plugin logic."""
+        from tools.office_onlyoffice import is_enabled
+        if not is_enabled():
+            self._send_not_found()
+            return
+        self._send_bytes(_ONLYOFFICE_PLUGIN_JS.encode("utf-8"),
+                         "application/javascript")
+
     def _api_office_selection(self):
         """GET /api/office-selection?file_path= — current sheet cell selection.
 
@@ -568,17 +986,37 @@ class _Handler(BaseHTTPRequestHandler):
         rec = registry.lookup_by_key(payload.get("key", ""))
         if rec and payload.get("status") in (2, 6) and payload.get("url"):
             try:
+                from tools.office_onlyoffice import ds_url
+                url = payload["url"]
+                parsed = urlparse(url)
+                ds_parsed = urlparse(ds_url() or "")
+                if (parsed.scheme not in ("http", "https")
+                        or parsed.hostname != ds_parsed.hostname):
+                    logger.warning("rejecting save callback url %s", url)
+                    registry.mark(rec.file_id, "error",
+                                  f"untrusted save url: {url}")
+                    self._send_bytes(
+                        json.dumps({"error": 1}).encode("utf-8"),
+                        "application/json")
+                    return
                 registry.mark(rec.file_id, "saving")
-                with _urlopen(payload["url"], timeout=60) as resp:
+                with _urlopen(url, timeout=60) as resp:
                     data = resp.read()
                 _atomic_write(rec.file_path, data)
-                registry.rotate_key(rec.file_id)
+                # Remember the file mtime this write produced so the renderer
+                # can tell a DS-originated save apart from an external write
+                # (an agent edit) and only refresh the editor for the latter.
                 registry.mark(rec.file_id, "saved",
-                              saved_at=time.strftime("%H:%M:%S"))
+                              saved_at=time.strftime("%H:%M:%S"),
+                              ds_saved_mtime_ns=os.stat(rec.file_path).st_mtime_ns)
             except Exception as exc:  # pragma: no cover - DS/disk error
                 logger.warning("onlyoffice save failed for %s: %s",
                                rec.file_path, exc)
                 registry.mark(rec.file_id, "error", f"保存失败: {exc}")
+        elif rec and payload.get("status") == 1:
+            # Editor closed after editing; rotate the key so the next open
+            # bypasses the DS cache without dropping in-flight autosaves.
+            registry.rotate_key(rec.file_id)
         elif rec and payload.get("status") in (3, 7):
             registry.mark(rec.file_id, "error",
                           f"DocumentServer 保存出错 (status {payload.get('status')})")
@@ -616,8 +1054,16 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_bytes(json.dumps(result).encode("utf-8"),
                          "application/json")
 
-    def _api_onlyoffice_status(self):
-        """GET /api/onlyoffice/status?file_id= — last save state for the shell."""
+    def _api_onlyoffice_state(self):
+        """POST /api/onlyoffice/state — the embed shell's unsaved-edits latch.
+
+        Body: ``{"dirty": true/false}``. The shell latches its state on
+        onDocumentStateChange(true) and clears it only after a real save
+        (status-6 callback), because DS 9.x reports false as soon as its
+        co-authoring service acknowledges the changes — long before anything
+        hits disk. The renderer reads this latch straight from /status at
+        refresh-decision time instead of racing the async postMessage.
+        """
         from tools.office_onlyoffice import is_enabled, registry
         if not is_enabled():
             self._send_not_found()
@@ -628,10 +1074,52 @@ class _Handler(BaseHTTPRequestHandler):
         if not rec:
             self._json_error(404, "file_id not found")
             return
+        try:
+            body = json.loads(self._read_body() or b"{}")
+        except ValueError:  # pragma: no cover - malformed body
+            body = {}
+        rec.editor_dirty = bool(body.get("dirty"))
+        self._send_bytes(json.dumps({"ok": True}).encode("utf-8"),
+                         "application/json")
+
+    def _api_onlyoffice_status(self):
+        """GET /api/onlyoffice/status?file_id= — last save state for the shell.
+
+        ``changed_externally`` is True when the on-disk file was modified by
+        something other than the DocumentServer's own last save callback (an
+        agent edit via editor_sdk, a terminal command, ...). The renderer uses
+        it to decide whether the open editor needs a refresh. ``dirty`` is the
+        shell's unsaved-edits latch, mirrored here so the renderer can read it
+        without waiting for the async postMessage stream.
+        """
+        from tools.office_onlyoffice import is_enabled, registry
+        if not is_enabled():
+            self._send_not_found()
+            return
+        qs = parse_qs(urlparse(self.path).query)
+        file_id = (qs.get("file_id") or [""])[0]
+        rec = registry.lookup(file_id)
+        if not rec:
+            self._json_error(404, "file_id not found")
+            return
+        changed_externally = False
+        try:
+            mtime_ns = os.stat(rec.file_path).st_mtime_ns
+            # Baseline = what the editor currently shows: the DS's last save,
+            # or (before any save) the file state when the editor opened. Any
+            # on-disk write that differs from it came from outside the DS.
+            baseline = rec.ds_saved_mtime_ns
+            if baseline is None:
+                baseline = rec.open_mtime_ns
+            changed_externally = baseline is None or mtime_ns != baseline
+        except OSError:  # pragma: no cover - file vanished mid-poll
+            changed_externally = True
         self._send_bytes(json.dumps({
             "status": rec.status,
             "message": rec.message,
             "saved_at": rec.saved_at,
+            "changed_externally": changed_externally,
+            "dirty": bool(rec.editor_dirty),
         }).encode("utf-8"), "application/json")
 
 

@@ -1759,6 +1759,20 @@ export const ar = defineLocale({
     snippetsDesc: 'اختر موجّهًا أوليًا لإدراجه في المحرّر.',
     dropFiles: 'أفلت الملفات للإرفاق',
     dropSession: 'أفلت الجلسة للفتح',
+    templateSuggestions: 'القوالب',
+    energyAuditDialog: {
+      title: 'إنشاء تقرير تدقيق الطاقة',
+      desc: 'سحب بيانات المشروع من قاعدة البيانات بالاسم، وإنشاء تقرير Word متوافق مع المواصفات ومعاينته.',
+      unitName: 'اسم الوحدة/المشروع',
+      unitPlaceholder: 'أدخل اسم الوحدة، مثل «المستشفى الإقليمي - الجناح الشرقي»',
+      projectSuggestions: 'المشاريع المطابقة',
+      searching: 'جارٍ البحث…',
+      unitRequired: 'يرجى إدخال اسم الوحدة/المشروع',
+      auditType: 'نوع التدقيق',
+      generate: 'إنشاء التقرير',
+      generating: 'جارٍ الإنشاء…',
+      generateFailed: 'فشل إنشاء التقرير'
+    },
     snippets: {
       codeReview: {
         label: 'مراجعة الكود',
@@ -2198,6 +2212,11 @@ export const ar = defineLocale({
       promptHeader: 'كونسول المعاينة:',
       sentTitle: 'تم الإرسال إلى المحادثة',
       sentMessage: count => `أُضيف ${count} ${count === 1 ? 'إدخال سجل' : 'إدخالات سجل'} إلى المُنشئ`
+    },
+    office: {
+      externalChanged: 'تم تعديل هذا الملف على القرص. أعد التحميل لعرض أحدث المحتوى (سيتم تجاهل التغييرات غير المحفوظة في المحرر).',
+      reloadDiscard: 'إعادة التحميل وتجاهل التغييرات',
+      keepCurrent: 'الإبقاء على الحالة الحالية'
     },
     web: {
       appFailedToBoot: 'فشل إقلاع تطبيق المعاينة',

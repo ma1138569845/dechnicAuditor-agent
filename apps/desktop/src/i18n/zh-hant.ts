@@ -1872,6 +1872,20 @@ export const zhHant = defineLocale({
     snippetsDesc: '選擇一個起始提示詞放入輸入框。',
     dropFiles: '拖曳檔案以附加',
     dropSession: '拖曳以連結此聊天',
+    templateSuggestions: '範本',
+    energyAuditDialog: {
+      title: '產生能源審計報告',
+      desc: '從資料庫依專案名稱取數，產生符合格式規範的 Word 報告並預覽。',
+      unitName: '單位/專案名稱',
+      unitPlaceholder: '輸入單位名稱，例如「省立醫院東院」',
+      projectSuggestions: '符合的專案',
+      searching: '搜尋中…',
+      unitRequired: '請輸入單位/專案名稱',
+      auditType: '審計類型',
+      generate: '產生報告',
+      generating: '產生中…',
+      generateFailed: '產生報告失敗'
+    },
     snippets: {
       codeReview: {
         label: '程式碼審查',
@@ -2382,6 +2396,11 @@ export const zhHant = defineLocale({
       promptHeader: '預覽主控台：',
       sentTitle: '已傳送至聊天',
       sentMessage: count => `已將 ${count} 條記錄新增至輸入框`
+    },
+    office: {
+      externalChanged: '此檔案已在磁碟上被修改。重新載入可顯示最新內容，但會捨棄編輯器中的未儲存變更。',
+      reloadDiscard: '重新載入（捨棄變更）',
+      keepCurrent: '保持目前'
     },
     web: {
       appFailedToBoot: '預覽應用程式啟動失敗',

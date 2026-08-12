@@ -1931,6 +1931,20 @@ export const ja = defineLocale({
     snippetsDesc: 'スターターのプロンプトをコンポーザーに挿入します。',
     dropFiles: 'ファイルをドロップして添付',
     dropSession: 'ドロップしてこのチャットをリンク',
+    templateSuggestions: 'テンプレート',
+    energyAuditDialog: {
+      title: 'エネルギー監査報告書の生成',
+      desc: 'データベースからプロジェクト名でデータを取得し、仕様に準拠した Word 報告書を生成してプレビューします。',
+      unitName: '単位/プロジェクト名',
+      unitPlaceholder: '単位名を入力（例：省立医院東院）',
+      projectSuggestions: '一致するプロジェクト',
+      searching: '検索中…',
+      unitRequired: '単位/プロジェクト名を入力してください',
+      auditType: '監査タイプ',
+      generate: '報告書を生成',
+      generating: '生成中…',
+      generateFailed: '報告書の生成に失敗しました'
+    },
     snippets: {
       codeReview: {
         label: 'コードレビュー',
@@ -2460,6 +2474,11 @@ export const ja = defineLocale({
       promptHeader: 'プレビューコンソール:',
       sentTitle: 'チャットに送信しました',
       sentMessage: count => `${count} 件のログエントリーがコンポーザーに追加されました`
+    },
+    office: {
+      externalChanged: 'このファイルはディスク上で変更されました。最新の内容を表示するには再読み込みしてください（エディターの未保存の編集は破棄されます）。',
+      reloadDiscard: '再読み込み（破棄）',
+      keepCurrent: '現状を維持'
     },
     web: {
       appFailedToBoot: 'プレビューアプリの起動に失敗しました',

@@ -2157,6 +2157,20 @@ export const en: Translations = {
     snippetsDesc: 'Pick a starter prompt to drop into the composer.',
     dropFiles: 'Drop files to attach',
     dropSession: 'Drop to link this chat',
+    templateSuggestions: 'Templates',
+    energyAuditDialog: {
+      title: 'Generate energy audit report',
+      desc: 'Pull project data from the database by name, generate a spec-compliant Word report, and preview it.',
+      unitName: 'Unit / project name',
+      unitPlaceholder: 'e.g. "Provincial Hospital East Campus"',
+      projectSuggestions: 'Matching projects',
+      searching: 'Searching…',
+      unitRequired: 'Enter a unit / project name',
+      auditType: 'Audit type',
+      generate: 'Generate report',
+      generating: 'Generating…',
+      generateFailed: 'Failed to generate report'
+    },
     snippets: {
       codeReview: {
         label: 'Code review',
@@ -2712,7 +2726,10 @@ export const en: Translations = {
       installTimeout: 'editor_sdk startup timed out. Please retry.',
       installStartFailed: 'editor_sdk failed to start. Check that it can open this file.',
       installPathOutsideSandbox: 'File path is outside the allowed range.',
-      installUnavailable: 'editor_sdk unavailable — switched to HTML preview.'
+      installUnavailable: 'editor_sdk unavailable — switched to HTML preview.',
+      externalChanged: 'This file was changed on disk. Reload to show the latest content (discards unsaved editor changes).',
+      reloadDiscard: 'Reload & discard',
+      keepCurrent: 'Keep current'
     },
     web: {
       appFailedToBoot: 'Preview app failed to boot',

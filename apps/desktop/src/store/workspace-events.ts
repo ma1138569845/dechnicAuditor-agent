@@ -9,6 +9,12 @@ import { atom } from 'nanostores'
 
 export const $workspaceChangeTick = atom(0)
 
+// The path of the most recent file-mutating tool (undefined when the mutation
+// was opaque — a terminal command, or a tool whose args carry no path). The
+// office preview uses it to decide whether a tick touched the file it shows,
+// without draining `consumeWorkspaceChange` (which the file tree owns).
+export const $workspaceLastChangedPath = atom<string | undefined>(undefined)
+
 // What changed since the last consume. The file tree targets `dirs` (surgical
 // subtree re-reads) and only falls back to a whole-tree rescan when `full` is
 // set — an opaque mutation (a terminal command, or a path we can't resolve to
@@ -48,6 +54,18 @@ function fire(): void {
   $workspaceChangeTick.set($workspaceChangeTick.get() + 1)
 }
 
+/** Test hook: drop the throttle window so a fresh test can fire ticks
+ *  immediately (the leading-edge guard would otherwise swallow ticks fired
+ *  within 500ms of a previous test's notify). */
+export function resetWorkspaceChangeThrottle(): void {
+  lastFired = 0
+
+  if (trailing) {
+    clearTimeout(trailing)
+    trailing = null
+  }
+}
+
 /** @param changedPath absolute path a tool touched; omit (or pass a relative /
  *  unknowable path) to force a full-tree rescan. */
 export function notifyWorkspaceChanged(changedPath?: string): void {
@@ -58,6 +76,8 @@ export function notifyWorkspaceChanged(changedPath?: string): void {
   } else {
     pendingFull = true
   }
+
+  $workspaceLastChangedPath.set(changedPath || undefined)
 
   const since = Date.now() - lastFired
 
@@ -82,7 +102,7 @@ export function notifyWorkspaceChanged(changedPath?: string): void {
 // `list_files`, firing a git probe on the single most common tool. Real file
 // writers carry a verb (`write_file`, `apply_patch`, …) or an inline_diff.
 const MUTATING_TOOL_RE =
-  /terminal|shell|exec|bash|command|write|edit|patch|replace|apply|create|delete|remove|move|rename|mkdir|format/i
+  /terminal|shell|exec|bash|command|write|edit|patch|replace|apply|create|delete|remove|move|rename|mkdir|format|save/i
 
 /** True when a finished tool may have changed files (carries a diff, or its
  *  name implies a filesystem/terminal mutation). */
@@ -98,7 +118,19 @@ export function toolMayMutateFiles(payload: { name?: unknown; tool?: unknown; in
 
 // Common arg keys a single-file writer/mover uses for its target. A hit lets the
 // tree target that dir; a miss (terminal, multi-path, odd schema) → full rescan.
-const PATH_ARG_KEYS = ['path', 'file_path', 'filename', 'file', 'target_file', 'new_path', 'dest', 'destination']
+const PATH_ARG_KEYS = [
+  'path',
+  'file_path',
+  'filename',
+  'file',
+  'target_file',
+  'new_path',
+  'dest',
+  'destination',
+  // office_save's destination (office_edit's args are {file_id, operation} —
+  // no path; its session writes only become visible via a save anyway).
+  'save_path'
+]
 
 /** Best-effort absolute path a finished tool touched, from its args — or
  *  undefined (→ full rescan) for terminal/opaque/multi-path mutations. */

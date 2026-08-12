@@ -64,14 +64,24 @@ async function makePptxDataUrl(text = 'Slide title'): Promise<string> {
 
 function renderOffice(
   officeKind: 'docx' | 'xlsx' | 'pptx',
-  { onAiEditSelection }: { onAiEditSelection?: (selection: OfficeAiEditSelection | null) => void } = {}
+  {
+    aiPrompting = false,
+    onAiEditSelection,
+    reloadKey = 0
+  }: {
+    aiPrompting?: boolean
+    onAiEditSelection?: (selection: OfficeAiEditSelection | null) => void
+    reloadKey?: number
+  } = {}
 ) {
   return render(
     <I18nProvider configClient={null}>
       <OfficePreview
+        aiPrompting={aiPrompting}
         filePath="C:/report.docx"
         officeKind={officeKind}
         onAiEditSelection={onAiEditSelection}
+        reloadKey={reloadKey}
       />
     </I18nProvider>
   )
@@ -103,6 +113,7 @@ describe('OfficePreview', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('renders docx HTML from mammoth', async () => {
@@ -328,7 +339,12 @@ describe('OfficePreview', () => {
       expect(container.querySelector('iframe')).toBeTruthy()
     })
 
-    window.postMessage({ type: 'office-ai-selection', text: 'highlighted text' }, '*')
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: 'highlighted text' },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
 
     await waitFor(() => {
       expect(onAiEditSelection).toHaveBeenCalledTimes(1)
@@ -339,6 +355,74 @@ describe('OfficePreview', () => {
     expect(selection.selectedText).toBe('highlighted text')
     expect(typeof selection.anchorX).toBe('number')
     expect(typeof selection.anchorY).toBe('number')
+  })
+
+  it('uses the shell-reported anchor when the OnlyOffice message carries one', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const onAiEditSelection = vi.fn()
+    const { container } = renderOffice('docx', { onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    // The shell measures its editor iframe and sends the document-area anchor;
+    // the renderer translates it into desktop viewport space by adding this
+    // iframe's own offset (zero in jsdom, so the values pass through).
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: 'selected', anchorX: 427.4, anchorY: 182.2 },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    await waitFor(() => {
+      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+    })
+
+    const selection = onAiEditSelection.mock.calls[0][0] as OfficeAiEditSelection
+
+    expect(selection.selectedText).toBe('selected')
+    expect(selection.anchorX).toBe(427.4)
+    expect(selection.anchorY).toBe(182.2)
+  })
+
+  it('forwards the mouseUp flag on a shell selection report', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const onAiEditSelection = vi.fn()
+    const { container } = renderOffice('docx', { onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: 'same text', mouseUp: true },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    await waitFor(() => {
+      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+    })
+
+    const selection = onAiEditSelection.mock.calls[0][0] as OfficeAiEditSelection
+
+    expect(selection.selectedText).toBe('same text')
+    expect(selection.mouseUp).toBe(true)
   })
 
   it('clears AI selection when postMessage reports no selection', async () => {
@@ -356,13 +440,101 @@ describe('OfficePreview', () => {
       expect(container.querySelector('iframe')).toBeTruthy()
     })
 
-    window.postMessage({ type: 'office-ai-selection', text: null }, '*')
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: null },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
 
     await waitFor(() => {
       expect(onAiEditSelection).toHaveBeenCalledTimes(1)
     })
 
     expect(onAiEditSelection).toHaveBeenLastCalledWith(null)
+  })
+
+  it('keeps AI selection alive while the prompt box is open and OnlyOffice reports empty selection', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const onAiEditSelection = vi.fn()
+    const { container } = renderOffice('docx', { aiPrompting: true, onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: null },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(onAiEditSelection).not.toHaveBeenCalled()
+  })
+
+  it('forwards an empty selection to dismiss the prompt box when it is mouse-up driven', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const onAiEditSelection = vi.fn()
+    const { container } = renderOffice('docx', { aiPrompting: true, onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: null, mouseUp: true },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    await waitFor(() => {
+      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+    })
+
+    expect(onAiEditSelection).toHaveBeenLastCalledWith(null)
+  })
+
+  it('ignores OnlyOffice selection events from an unexpected origin', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const onAiEditSelection = vi.fn()
+    const { container } = renderOffice('docx', { onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-ai-selection', text: 'highlighted text' },
+        origin: 'https://untrusted.example.com'
+      })
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(onAiEditSelection).not.toHaveBeenCalled()
   })
 
   it('does not stop the preview when a cancelled start resolves after unmount', async () => {
@@ -401,5 +573,309 @@ describe('OfficePreview', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
 
     expect(stopOfficePreview).not.toHaveBeenCalled()
+  })
+
+  it('preserves the DOM selection when the parent re-renders the toolbar', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({ error: 'OFFICE_SDK_NOT_FOUND', message: 'sdk missing' })
+    const mammoth = await import('mammoth')
+    vi.mocked(mammoth.default.convertToHtml).mockResolvedValue({
+      messages: [],
+      value: '<p>Keep this highlighted</p>'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+
+    const originalGetRect = (Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect
+
+    ;(Range.prototype as unknown as { getBoundingClientRect: () => DOMRect }).getBoundingClientRect = () =>
+      ({ bottom: 120, height: 20, left: 40, right: 200, top: 100, width: 160, x: 40, y: 100 }) as DOMRect
+
+    const onAiEditSelection = vi.fn()
+    const { container, rerender } = renderOffice('docx', { onAiEditSelection })
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Keep this highlighted')
+    })
+
+    selectTextNode(container, 'Keep this highlighted')
+
+    fireEvent.mouseUp(container.querySelector('.office-preview') ?? container)
+
+    await waitFor(() => {
+      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+    })
+
+    const selectionBefore = window.getSelection()
+
+    expect(selectionBefore).not.toBeNull()
+    expect(selectionBefore!.rangeCount).toBeGreaterThan(0)
+    expect(selectionBefore!.toString()).toBe('Keep this highlighted')
+
+    // Re-render the parent with identical props. Without memo this rebuilds the
+    // HTML preview DOM and clears the browser selection.
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview
+          filePath="C:/report.docx"
+          officeKind="docx"
+          onAiEditSelection={onAiEditSelection}
+        />
+      </I18nProvider>
+    )
+
+    const selectionAfter = window.getSelection()
+
+    expect(selectionAfter).not.toBeNull()
+    expect(selectionAfter!.rangeCount).toBeGreaterThan(0)
+    expect(selectionAfter!.toString()).toBe('Keep this highlighted')
+
+    ;(Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect = originalGetRect
+  })
+
+  // ── External-change refresh (reloadKey) ───────────────────────────────
+
+  it('re-renders the HTML fallback when reloadKey bumps', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({ error: 'OFFICE_SDK_NOT_FOUND', message: 'sdk missing' })
+    const mammoth = await import('mammoth')
+    vi.mocked(mammoth.default.convertToHtml).mockResolvedValue({ messages: [], value: '<p>v1</p>' })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+    // vi.mock factory mocks keep call history across tests; clear before counting.
+    vi.mocked(readDesktopFileDataUrl).mockClear()
+
+    const { container, rerender } = renderOffice('docx')
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('v1')
+    })
+
+    expect(readDesktopFileDataUrl).toHaveBeenCalledTimes(1)
+
+    // An agent save lands on disk -> the parent bumps reloadKey -> the HTML
+    // view re-reads the file and re-renders.
+    vi.mocked(mammoth.default.convertToHtml).mockResolvedValue({ messages: [], value: '<p>v2</p>' })
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview filePath="C:/report.docx" officeKind="docx" reloadKey={1} />
+      </I18nProvider>
+    )
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('v2')
+    })
+
+    expect(readDesktopFileDataUrl).toHaveBeenCalledTimes(2)
+  })
+
+  it('auto-reloads the OnlyOffice editor after an external change when clean', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      file_id: 'oo_1',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'saved', changed_externally: true })
+      })
+    )
+
+    const { container, rerender } = renderOffice('docx', { onAiEditSelection: vi.fn() })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    // The shell reports the editor has no unsaved edits.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-editor-state', dirty: false },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    vi.mocked(stopOfficePreview).mockClear()
+    vi.mocked(startOfficePreview).mockClear()
+
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview
+          filePath="C:/report.docx"
+          officeKind="docx"
+          onAiEditSelection={vi.fn()}
+          reloadKey={1}
+        />
+      </I18nProvider>
+    )
+
+    // Close + reopen: the backend drops the registry entry so the DS
+    // re-downloads the (AI-edited) on-disk bytes.
+    await waitFor(() => {
+      expect(stopOfficePreview).toHaveBeenCalledWith('C:/report.docx')
+    })
+
+    await waitFor(() => {
+      expect(startOfficePreview).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('asks before reloading the OnlyOffice editor when it holds unsaved edits', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      file_id: 'oo_1',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'saved', changed_externally: true })
+      })
+    )
+
+    const { container, rerender } = renderOffice('docx', { onAiEditSelection: vi.fn() })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    // The user has typed — the DS editor is dirty, reloading would discard it.
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'office-editor-state', dirty: true },
+        origin: 'http://127.0.0.1:39099'
+      })
+    )
+
+    vi.mocked(stopOfficePreview).mockClear()
+    vi.mocked(startOfficePreview).mockClear()
+
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview
+          filePath="C:/report.docx"
+          officeKind="docx"
+          onAiEditSelection={vi.fn()}
+          reloadKey={1}
+        />
+      </I18nProvider>
+    )
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Reload & discard')
+    })
+
+    expect(stopOfficePreview).not.toHaveBeenCalled()
+    expect(startOfficePreview).not.toHaveBeenCalled()
+
+    // The user consents to discarding their unsaved edits.
+    const reloadButton = Array.from(container.querySelectorAll('button')).find(
+      button => button.textContent === 'Reload & discard'
+    )
+
+    expect(reloadButton).toBeTruthy()
+    fireEvent.click(reloadButton as HTMLElement)
+
+    await waitFor(() => {
+      expect(stopOfficePreview).toHaveBeenCalledWith('C:/report.docx')
+    })
+
+    await waitFor(() => {
+      expect(startOfficePreview).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('asks before reloading when the status latch reports unsaved edits', async () => {
+    // The shell mirrors its edited-since-save latch into /status, so the
+    // refresh decision reads it from the status response — the async
+    // postMessage stream may lag the file-change signal.
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      file_id: 'oo_1',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'saved', changed_externally: true, dirty: true })
+      })
+    )
+
+    const { container, rerender } = renderOffice('docx', { onAiEditSelection: vi.fn() })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    // NOTE: no office-editor-state message is dispatched — the latch arrives
+    // via the status fetch alone.
+    vi.mocked(stopOfficePreview).mockClear()
+    vi.mocked(startOfficePreview).mockClear()
+
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview
+          filePath="C:/report.docx"
+          officeKind="docx"
+          onAiEditSelection={vi.fn()}
+          reloadKey={1}
+        />
+      </I18nProvider>
+    )
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Reload & discard')
+    })
+
+    expect(stopOfficePreview).not.toHaveBeenCalled()
+    expect(startOfficePreview).not.toHaveBeenCalled()
+  })
+
+  it('ignores a write the DocumentServer itself produced', async () => {
+    vi.mocked(startOfficePreview).mockResolvedValue({
+      url: 'http://127.0.0.1:39099/onlyoffice?file_id=oo_1',
+      engine: 'onlyoffice',
+      file_id: 'oo_1',
+      preview_base_url: 'http://127.0.0.1:39099'
+    })
+    vi.mocked(readDesktopFileDataUrl).mockResolvedValue(FAKE_DATA_URL)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'saved', changed_externally: false })
+      })
+    )
+
+    const { container, rerender } = renderOffice('docx', { onAiEditSelection: vi.fn() })
+
+    await waitFor(() => {
+      expect(container.querySelector('iframe')).toBeTruthy()
+    })
+
+    vi.mocked(stopOfficePreview).mockClear()
+    vi.mocked(startOfficePreview).mockClear()
+
+    rerender(
+      <I18nProvider configClient={null}>
+        <OfficePreview
+          filePath="C:/report.docx"
+          officeKind="docx"
+          onAiEditSelection={vi.fn()}
+          reloadKey={1}
+        />
+      </I18nProvider>
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    expect(stopOfficePreview).not.toHaveBeenCalled()
+    expect(startOfficePreview).not.toHaveBeenCalled()
   })
 })
