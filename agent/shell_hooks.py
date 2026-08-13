@@ -145,7 +145,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
-from hermes_cli._subprocess_compat import IS_WINDOWS, windows_hide_flags
+from hermes_cli._subprocess_compat import IS_WINDOWS, kill_process_tree, windows_hide_flags
 
 try:
     import fcntl  # POSIX only; Windows falls back to best-effort without flock.
@@ -330,6 +330,27 @@ def iter_configured_hooks(cfg: Optional[Dict[str, Any]]) -> List[ShellHookSpec]:
     if not isinstance(cfg, dict):
         return []
     return _parse_hooks_block(cfg.get("hooks"))
+
+
+def re_register_config_hooks() -> None:
+    """Re-register shell hooks from config after a plugin force-reload.
+
+    ``PluginManager.discover_and_load(force=True)`` unloads via the ownership
+    ledger and clears the manager's ``_hooks`` dict, which silently drops
+    shell hooks that were registered from ``config.yaml`` at startup (they
+    are config-owned, not plugin-owned, so the ledger cannot restore them).
+    Clear the idempotence set and re-run ``register_from_config()`` so hooks
+    are wired again (#60036 / PR #60267; tracking #64178 — salvaged from
+    PR #64188).
+
+    Commands already allowlisted stay allowlisted, so this never re-prompts
+    at a TTY for hooks the user previously approved.
+    """
+    with _registered_lock:
+        _registered.clear()
+    from hermes_cli.config import load_config
+
+    register_from_config(load_config())
 
 
 def reset_for_tests() -> None:
@@ -523,21 +544,26 @@ def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
         return result
 
     t0 = time.monotonic()
-    _popen_kwargs = {"creationflags": windows_hide_flags()} if IS_WINDOWS else {}
+    # Spawn the hook in its own process group on POSIX (``process_group=0``,
+    # Python ≥3.11) so a timed-out hook's descendants can be reaped with the
+    # hook itself. Windows keeps the hidden-window flags; tree cleanup there
+    # goes through ``taskkill /T`` in ``kill_process_tree``. Hooks that
+    # complete in time keep their descendants — an intentionally detached
+    # helper (``some-daemon &``) survives a successful run. Ported from
+    # openai/codex#37527 ("Terminate timed-out hook process trees").
+    _popen_kwargs: Dict[str, Any] = (
+        {"creationflags": windows_hide_flags()} if IS_WINDOWS else {"process_group": 0}
+    )
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             argv,
-            input=stdin_json,
-            capture_output=True,
-            timeout=spec.timeout,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True, encoding='utf-8', errors='replace',
             shell=False,
             **_popen_kwargs,
         )
-    except subprocess.TimeoutExpired:
-        result["timed_out"] = True
-        result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
-        return result
     except FileNotFoundError:
         result["error"] = "command not found"
         return result
@@ -548,9 +574,32 @@ def _spawn(spec: ShellHookSpec, stdin_json: str) -> Dict[str, Any]:
         result["error"] = str(exc)
         return result
 
+    try:
+        stdout, stderr = proc.communicate(input=stdin_json, timeout=spec.timeout)
+    except subprocess.TimeoutExpired:
+        # Take down the whole process tree, not just the direct child —
+        # otherwise a hook that forked helpers leaves them running (and,
+        # holding the pipe write ends, they'd stall the drain below).
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=1)
+        except Exception:
+            pass
+        result["timed_out"] = True
+        result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
+        return result
+    except Exception as exc:  # pragma: no cover — defensive
+        kill_process_tree(proc)
+        try:
+            proc.communicate(timeout=1)
+        except Exception:
+            pass
+        result["error"] = str(exc)
+        return result
+
     result["returncode"] = proc.returncode
-    result["stdout"] = proc.stdout or ""
-    result["stderr"] = proc.stderr or ""
+    result["stdout"] = stdout or ""
+    result["stderr"] = stderr or ""
     result["elapsed_seconds"] = round(time.monotonic() - t0, 3)
     return result
 

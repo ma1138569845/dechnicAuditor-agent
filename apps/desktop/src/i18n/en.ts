@@ -694,6 +694,13 @@ export const en: Translations = {
       existingToken: value => `Existing token ${value}`,
       savedToken: 'saved',
       pasteSessionToken: 'Paste session token',
+      plainTextConfirmTitle: 'Store the gateway token in plain text?',
+      plainTextConfirmDesc:
+        'No OS keyring service was found on this machine, so the token would be saved unencrypted in the app’s connection settings file, readable by any process running as this user. Install or enable GNOME Keyring or KWallet for encrypted storage.',
+      plainTextConfirmAction: 'Save as plain text',
+      plainTextStoredTitle: 'Token stored in plain text',
+      plainTextStoredDesc:
+        'Secure storage is unavailable, so the saved token is stored unencrypted in the app’s connection settings file on this machine. Install or enable GNOME Keyring or KWallet to encrypt it.',
       testRemote: 'Test remote',
       saveForRestart: 'Save for next restart',
       saveAndReconnect: 'Save and reconnect',
@@ -2020,6 +2027,8 @@ export const en: Translations = {
       renameDesc: 'Leave empty to clear.',
       untitledPlaceholder: 'Untitled session',
       untitledChat: id => `Chat ${id}`,
+      messageCount: count => `${count} ${count === 1 ? 'message' : 'messages'}`,
+      todoProgress: 'Tasks completed',
       ageNow: 'now',
       ageDay: 'd',
       ageHour: 'h',
@@ -2126,6 +2135,7 @@ export const en: Translations = {
     editingQueuedInComposer: 'Editing queued turn in composer',
     queueEdit: 'Edit',
     queueSendNext: 'Next',
+    queueSteer: 'Steer — redirect the live turn now',
     queueSend: 'Send',
     queueDelete: 'Delete',
     queueResume: 'Resume',
@@ -2170,6 +2180,15 @@ export const en: Translations = {
       generate: 'Generate report',
       generating: 'Generating…',
       generateFailed: 'Failed to generate report'
+    },
+    mcpSuggestions: {
+      label: server => `Add ${server}`,
+      tip: keyword => `Suggested because you mentioned “${keyword}” — click to connect`,
+      connecting: server => `Connecting ${server}…`,
+      cancelTip: 'Click to cancel',
+      added: server => `Added ${server}`,
+      addedTip: 'Connected — its tools are ready in this chat',
+      connectFailed: server => `Could not connect ${server}`
     },
     snippets: {
       codeReview: {
@@ -2883,6 +2902,28 @@ export const en: Translations = {
       lateAnswer: (question, choice) => `Re: "${question}" — my answer: ${choice}`,
       lateAnswerTip: 'Draft this answer as a follow-up message',
       lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
+    },
+    mcpSetup: {
+      installTitle: server => `Add the ${server} MCP server?`,
+      enableTitle: server => `Enable the ${server} MCP server?`,
+      authorizeTitle: server => `Authorize the ${server} MCP server?`,
+      installAction: 'Install',
+      enableAction: 'Enable',
+      authorizeAction: 'Authorize',
+      decline: 'Not now',
+      declined: 'Declined',
+      installed: server => `Installed ${server}`,
+      enabled: server => `Enabled ${server}`,
+      authorized: server => `Authorized ${server}`,
+      failed: server => `Setup failed for ${server}`,
+      unanswered: 'No response',
+      toolCount: count => (count === 1 ? '1 tool' : `${count} tools`),
+      notInCatalog: server => `“${server}” is not in the MCP catalog`,
+      catalogSource: 'From the Nous-approved catalog',
+      envRequired: 'Fill in the required credentials first',
+      sendFailed: 'Could not send MCP setup response',
+      reloadFailed: 'Server saved, but reloading MCP tools failed — they load next session',
+      gatewayDisconnected: 'Hermes gateway is not connected'
     },
     tool: {
       copyCode: 'Copy code',

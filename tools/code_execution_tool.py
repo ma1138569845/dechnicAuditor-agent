@@ -29,7 +29,6 @@ Remote execution additionally requires Python 3 in the terminal backend.
 """
 
 import base64
-import functools
 import json
 import logging
 import os
@@ -1455,16 +1454,6 @@ def execute_code(
         # with a C/POSIX locale (containers, minimal base images).
         child_env["PYTHONIOENCODING"] = "utf-8"
         child_env["PYTHONUTF8"] = "1"
-        # Ensure the hermes-agent root is importable in the sandbox so
-        # repo-root modules are available to child scripts.  We also prepend
-        # the staging tmpdir so ``from hermes_tools import ...`` resolves even
-        # when the subprocess CWD is not tmpdir (project mode).
-        _hermes_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _existing_pp = child_env.get("PYTHONPATH", "")
-        _pp_parts = [tmpdir, _hermes_root]
-        if _existing_pp:
-            _pp_parts.append(_existing_pp)
-        child_env["PYTHONPATH"] = os.pathsep.join(_pp_parts)
         # Inject user's configured timezone so datetime.now() in sandboxed
         # code reflects the correct wall-clock time.  Only TZ is set —
         # HERMES_TIMEZONE is an internal Hermes setting and must not leak
@@ -1486,6 +1475,32 @@ def execute_code(
         _child_python = _resolve_child_python(_mode)
         _child_cwd = _resolve_child_cwd(_mode, tmpdir, task_id=task_id or "")
         _script_path = os.path.join(tmpdir, "script.py")
+
+        # ``hermes_tools.py`` always lives in the staging directory, so that
+        # directory must be importable even when project mode changes CWD.
+        # Hermes's own package root is useful too, but only when the child
+        # uses the same Python environment. Project mode can select an
+        # external venv; exposing Hermes's site-packages to that interpreter
+        # can mix incompatible compiled extensions (for example, Python 3.12
+        # NumPy with a Python 3.9 project interpreter).
+        _hermes_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _existing_pp = child_env.get("PYTHONPATH", "")
+        _pp_parts = [tmpdir]
+        if _uses_hermes_python_environment(_child_python):
+            _pp_parts.append(_hermes_root)
+        elif _child_python not in _external_env_logged:
+            # Import behavior changes silently otherwise — surface it (once
+            # per interpreter path) so "import hermes_constants suddenly
+            # fails" reports are diagnosable without log spam.
+            _external_env_logged.add(_child_python)
+            logger.info(
+                "execute_code: child interpreter %s is outside the Hermes "
+                "environment; hermes root omitted from PYTHONPATH",
+                _child_python,
+            )
+        if _existing_pp:
+            _pp_parts.append(_existing_pp)
+        child_env["PYTHONPATH"] = os.pathsep.join(_pp_parts)
 
         proc = subprocess.Popen(
             [_child_python, _script_path],
@@ -1826,28 +1841,104 @@ def _get_execution_mode() -> str:
     return DEFAULT_EXECUTION_MODE
 
 
-@functools.lru_cache(maxsize=32)
+# Shared budget for the two interpreter-probe caches below. Success-only
+# dict caches (FIFO-evicted at the cap) rather than lru_cache: a transient
+# probe failure (fork pressure, 5s timeout on a loaded host) must not stick
+# for the process lifetime.
+_PROBE_CACHE_MAX = 32
+_usable_python_cache: dict = {}
+_python_prefix_cache: dict = {}
+
+# Interpreter paths already reported as outside the Hermes environment —
+# dedupes the exclusion log to once per path per process.
+_external_env_logged: set = set()
+
+
+def _cache_probe_result(cache: dict, key: str, value):
+    """Insert into a bounded probe cache, FIFO-evicting at the cap."""
+    if len(cache) >= _PROBE_CACHE_MAX:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
 def _is_usable_python(python_path: str) -> bool:
     """Check whether a candidate Python interpreter is usable for execute_code.
 
     Requires Python 3.8+ (f-strings and stdlib modules the RPC stubs need).
-    Cached so we don't fork a subprocess on every execute_code call.
+    Successful probes are cached per interpreter path; failures are retried
+    (a sticky False would silently pin project mode to sys.executable).
+    """
+    cached = _usable_python_cache.get(python_path)
+    if cached is not None:
+        return cached
+    result = _probe_python(
+        python_path,
+        "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)",
+    )
+    if result is None:
+        return False
+    usable = result.returncode == 0
+    _cache_probe_result(_usable_python_cache, python_path, usable)
+    return usable
+
+
+def _probe_python(python_path: str, code: str, *, text: bool = False):
+    """Run ``python_path -c code`` with the standard interpreter-probe guards.
+
+    Returns the ``CompletedProcess``, or ``None`` when the interpreter is
+    missing, can't be spawned, or hangs past the 5s timeout.
     """
     try:
         from agent.delegation_context import delegated_child_subprocess_env
 
-        result = subprocess.run(
-            [python_path, "-c",
-             "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)"],
+        return subprocess.run(
+            [python_path, "-c", code],
             timeout=5,
             capture_output=True,
+            text=text,
             creationflags=subprocess.CREATE_NO_WINDOW if _IS_WINDOWS else 0,
             stdin=subprocess.DEVNULL,
             env=delegated_child_subprocess_env(),
         )
-        return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
-        return False
+        return None
+
+
+def _python_environment_prefix(python_path: str) -> str:
+    """Return the resolved ``sys.prefix`` reported by *python_path*, if any.
+
+    Successful probes are cached per interpreter path (bounded, FIFO-evicted).
+    Failures are NOT cached: a transient probe failure (fork pressure, 5s
+    timeout on a loaded host) must not stick for the process lifetime — a
+    sticky empty result would silently drop the hermes root from every
+    subsequent execute_code call's PYTHONPATH.
+    """
+    cached = _python_prefix_cache.get(python_path)
+    if cached is not None:
+        return cached
+    result = _probe_python(python_path, "import sys; print(sys.prefix)", text=True)
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        prefix = os.path.realpath(result.stdout.strip())
+        _cache_probe_result(_python_prefix_cache, python_path, prefix)
+        return prefix
+    return ""
+
+
+def _uses_hermes_python_environment(python_path: str) -> bool:
+    """Whether *python_path* belongs to Hermes's active Python environment.
+
+    Short-circuits when *python_path* IS the running interpreter (by path or
+    realpath) — no subprocess probe on the default strict-mode path, and no
+    way for a flaky probe of ``sys.executable`` itself to break the invariant
+    that repo-root modules are importable in strict mode.  The realpath leg
+    also covers venvs whose bin/python resolves to the same binary (e.g.
+    ``uv run`` setting VIRTUAL_ENV without changing sys.prefix).
+    """
+    if python_path == sys.executable or (
+        os.path.realpath(python_path) == os.path.realpath(sys.executable)
+    ):
+        return True
+    return _python_environment_prefix(python_path) == os.path.realpath(sys.prefix)
 
 
 def _resolve_child_python(mode: str) -> str:
