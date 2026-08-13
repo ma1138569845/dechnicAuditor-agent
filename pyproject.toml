@@ -423,10 +423,7 @@ py-modules = [
   "mcp_serve",
   # dechnic custom: deprecated root-level shims forwarded to rag.*
   "energy_audit_importer",
-  "knowledge_graph",
   "memory_storage",
-  "pdf_to_knowledge_graph",
-  "rag_energy_qa",
 ]
 
 [tool.setuptools.packages.find]
