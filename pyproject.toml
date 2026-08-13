@@ -421,9 +421,6 @@ py-modules = [
   "hermes_logging",
   "utils",
   "mcp_serve",
-  # dechnic custom: deprecated root-level shims forwarded to rag.*
-  "energy_audit_importer",
-  "memory_storage",
 ]
 
 [tool.setuptools.packages.find]
