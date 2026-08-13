@@ -332,6 +332,11 @@ from hermes_cli.memory_oauth import router as _memory_oauth_router  # noqa: E402
 
 app.include_router(_memory_oauth_router)
 
+# Knowledge-base routes live in the RAG layer, not here.
+from hermes_cli.knowledge_http import router as _knowledge_router  # noqa: E402
+
+app.include_router(_knowledge_router)
+
 # ---------------------------------------------------------------------------
 # Session token for protecting sensitive endpoints (reveal).
 # The desktop shell mints the token and injects it via

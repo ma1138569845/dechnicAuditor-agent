@@ -1,0 +1,234 @@
+"""HTTP routes for the RAG knowledge base, mounted by ``web_server``.
+
+Kept out of ``web_server.py`` so the knowledge-base surface stays in the RAG
+layer.  Each handler lazily imports ``rag.api.knowledge_base`` (matching the
+vendored webui's ``routes.py`` convention) so the heavy Qdrant/embedding
+dependencies are only loaded on first use, not at web-server startup.
+
+These endpoints are consumed by the hermes-studio-vue BFF via a transparent
+proxy; response envelopes (``bases`` / ``folders`` / ``documents`` / ``pages`` /
+``entities`` / ``relationships`` / ``results``) match that frontend's contract.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, Query, Request
+
+router = APIRouter(prefix="/api/knowledge")
+
+
+def _kb():
+    from rag.api import knowledge_base as kb
+
+    return kb
+
+
+def _http_error(exc: Exception) -> HTTPException:
+    """Map a rag ValueError to a 404 (unknown id) or 400 (bad input)."""
+    message = str(exc)
+    status = 404 if "not found" in message.lower() else 400
+    return HTTPException(status_code=status, detail=message)
+
+
+# ── Knowledge Base CRUD ────────────────────────────────────────────────
+
+
+@router.get("/bases")
+def list_bases():
+    return {"bases": _kb().list_knowledge_bases()}
+
+
+@router.post("/bases", status_code=201)
+async def create_base(request: Request):
+    kb = _kb()
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        created = kb.create_knowledge_base(
+            name=name,
+            description=(body.get("description") or "").strip(),
+            kb_type=body.get("kb_type") or "energy_audit",
+            root_path=body.get("root_path"),
+            qdrant_collection=body.get("qdrant_collection"),
+            embedding_model=body.get("embedding_model") or "dashscope/text-embedding-v3",
+            chunking_config=body.get("chunking_config"),
+            indexing_strategy=body.get("indexing_strategy"),
+        )
+        # Return the full row (is_system / updated_at / stats) so the frontend
+        # receives the same shape it gets from the list endpoint.
+        return kb.get_knowledge_base(created["id"])
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/bases/{kb_id}")
+def get_base(kb_id: str):
+    try:
+        return _kb().get_knowledge_base(kb_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.delete("/bases/{kb_id}")
+def delete_base(kb_id: str):
+    try:
+        return _kb().delete_knowledge_base(kb_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Folders ────────────────────────────────────────────────────────────
+
+
+@router.get("/bases/{kb_id}/folders")
+def list_folders(kb_id: str, parent_id: str | None = Query(default=None)):
+    return {"folders": _kb().list_knowledge_folders(kb_id, parent_id)}
+
+
+@router.post("/bases/{kb_id}/folders", status_code=201)
+async def create_folder(kb_id: str, request: Request):
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        return _kb().create_knowledge_folder_v2(kb_id, name, body.get("parent_id"))
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.delete("/bases/{kb_id}/folders/{folder_id}")
+def delete_folder(kb_id: str, folder_id: str):
+    try:
+        return _kb().delete_knowledge_folder_v2(kb_id, folder_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Documents ──────────────────────────────────────────────────────────
+
+
+@router.get("/bases/{kb_id}/docs")
+def list_docs(
+    kb_id: str,
+    page: int = Query(default=1),
+    page_size: int = Query(default=20),
+    keyword: str | None = Query(default=None),
+    file_type: str | None = Query(default=None),
+    parse_status: str | None = Query(default=None),
+    folder_id: str | None = Query(default=None),
+):
+    result = _kb().list_knowledge_documents(
+        kb_id,
+        {
+            "page": page,
+            "page_size": page_size,
+            "keyword": keyword,
+            "file_type": file_type,
+            "parse_status": parse_status,
+            "folder_id": folder_id,
+        },
+    )
+    return {
+        "documents": result.get("data", []),
+        "total": result.get("total", 0),
+        "page": result.get("page", page),
+        "page_size": result.get("page_size", page_size),
+    }
+
+
+@router.get("/docs/{doc_id}")
+def get_doc(doc_id: str):
+    try:
+        return _kb().get_knowledge_document(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/bases/{kb_id}/docs/upload", status_code=201)
+async def upload_doc(kb_id: str, request: Request, folder_id: str | None = Query(default=None)):
+    content_type = request.headers.get("content-type", "")
+    raw_body = await request.body()
+    try:
+        return _kb().upload_knowledge_file_v2(kb_id, folder_id, raw_body, content_type)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.delete("/bases/{kb_id}/docs/{doc_id}")
+def delete_doc(kb_id: str, doc_id: str):
+    try:
+        return _kb().delete_knowledge_document(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/docs/{doc_id}/chunks")
+def get_doc_chunks(doc_id: str):
+    try:
+        return _kb().list_document_chunks(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Search ─────────────────────────────────────────────────────────────
+
+
+@router.post("/bases/{kb_id}/search")
+async def search(kb_id: str, request: Request):
+    body = await request.json()
+    query = (body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    return _kb().search_knowledge_v2(
+        kb_id,
+        query,
+        top_k=body.get("limit") or body.get("top_k") or 10,
+        mode=body.get("mode") or "vector",
+        folder_id=body.get("folder_id"),
+        file_type=body.get("file_type"),
+        doc_id=body.get("doc_id"),
+        score_threshold=body.get("score_threshold"),
+    )
+
+
+# ── Wiki ───────────────────────────────────────────────────────────────
+
+
+@router.get("/bases/{kb_id}/wiki")
+def list_wiki(kb_id: str, top_k: int = Query(default=100)):
+    return {"pages": _kb().list_kb_wiki_pages(kb_id, top_k).get("pages", [])}
+
+
+@router.get("/wiki/{wiki_id}")
+def get_wiki(wiki_id: str):
+    try:
+        return _kb().get_wiki_page(wiki_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Knowledge Graph ────────────────────────────────────────────────────
+
+
+@router.get("/bases/{kb_id}/entities")
+def list_entities(kb_id: str, top_k: int = Query(default=100)):
+    return {"entities": _kb().list_kb_entities(kb_id, top_k).get("entities", [])}
+
+
+@router.get("/bases/{kb_id}/relationships")
+def list_relationships(kb_id: str, top_k: int = Query(default=200)):
+    return {"relationships": _kb().list_kb_relationships(kb_id, top_k).get("relationships", [])}
+
+
+# ── Stats ──────────────────────────────────────────────────────────────
+
+
+@router.get("/bases/{kb_id}/stats")
+def get_stats(kb_id: str):
+    try:
+        return _kb()._get_kb_stats(kb_id)
+    except ValueError as exc:
+        raise _http_error(exc)
