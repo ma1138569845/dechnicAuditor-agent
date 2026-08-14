@@ -1708,6 +1708,14 @@ export const en: Translations = {
     close: 'Close cron',
     title: 'Scheduled jobs',
     count: count => `${count} ${count === 1 ? 'job' : 'jobs'}`,
+    modelImpact: {
+      title: 'Scheduled jobs need review',
+      message: count =>
+        `${count} scheduled ${count === 1 ? 'job' : 'jobs'} will be skipped until you review their model settings.`,
+      detailMore: (names, remaining) => `${names} and ${remaining} more`,
+      review: 'Review scheduled jobs',
+      saveFailed: 'Hermes did not save that model change.'
+    },
     search: 'Search cron jobs...',
     loading: 'Loading cron jobs...',
     states: {
@@ -1899,7 +1907,8 @@ export const en: Translations = {
       'new-session': 'New session',
       skills: 'Capabilities',
       messaging: 'Messaging',
-      artifacts: 'Artifacts'
+      artifacts: 'Artifacts',
+      cron: 'Scheduled jobs'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',
@@ -2189,6 +2198,28 @@ export const en: Translations = {
       added: server => `Added ${server}`,
       addedTip: 'Connected — its tools are ready in this chat',
       connectFailed: server => `Could not connect ${server}`
+    },
+    skillSuggestions: {
+      label: skill => `Use skill: ${skill}`,
+      tip: skill => `You mentioned “${skill}” — click to lead with that skill`,
+      done: skill => `Added /${skill}`,
+      doneTip: 'The skill loads when you send'
+    },
+    repairSuggestions: {
+      label: server => `Reconnect ${server}`,
+      tip: server => `A ${server} call just failed with a connection error`,
+      working: server => `Reconnecting ${server}…`,
+      workingTip: 'Click to cancel',
+      done: server => `Reconnected ${server}`,
+      doneTip: 'Fresh credentials are live in this chat',
+      failed: server => `Could not reconnect ${server}`
+    },
+    cronSuggestions: {
+      label: 'Schedule this',
+      tip: phrase => `“${phrase}” sounds recurring — run it on a schedule instead`,
+      prefix: 'Set this up as a scheduled job:',
+      done: 'Marked for scheduling',
+      doneTip: 'Send it and the agent creates the job'
     },
     snippets: {
       codeReview: {
@@ -2586,6 +2617,7 @@ export const en: Translations = {
       gatewayTitle: 'Gateway',
       customizeTitle: 'Show in status bar',
       hideStatusbar: 'Hide status bar',
+      resetStatusbar: 'Reset to defaults',
       toggleApprovalMode: 'Approvals',
       toggleBackendVersion: 'Backend version',
       toggleCommandCenter: 'Command Center',

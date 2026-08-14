@@ -2541,7 +2541,15 @@ def cmd_chat(args):
     # recorded cwd (so the restore step below is skipped).
     in_dir = getattr(args, "in_dir", None)
     if in_dir:
-        _target_dir = os.path.abspath(os.path.expanduser(in_dir))
+        # Git Bash / MSYS hands the CLI POSIX-style paths (`--in ~` expands to
+        # `/c/Users/x` before Python ever sees it; MSYS2's path conversion is
+        # disabled for native executables). Translate the MSYS/Cygwin/WSL
+        # drive-root spellings to native Windows form first — no-op elsewhere.
+        from tools.environments.local import _msys_to_windows_path
+
+        _target_dir = os.path.abspath(
+            os.path.expanduser(_msys_to_windows_path(in_dir))
+        )
         if not os.path.isdir(_target_dir):
             print(f"Error: --in directory not found: {in_dir}")
             sys.exit(1)
@@ -5801,7 +5809,25 @@ def _do_build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     # would pull in desktop on every web build. See #38772.
     # When web/ has its own package-lock.json, _workspace_root() returns
     # web_dir itself and --workspace would fail.  See #42973.
-    npm_workspace_args: tuple[str, ...] = () if npm_cwd == web_dir else ("--workspace", "web")
+    #
+    # When running from the workspace root, this must name the SAME closure
+    # as `hermes update`'s _update_node_dependencies() (ui-tui + web +
+    # --include-workspace-root): the helper prefers `npm ci`, which deletes
+    # node_modules before reifying the requested tree, so a narrower closure
+    # here silently prunes everything the update step just installed (root
+    # devDependencies and the ui-tui workspace) while still exiting 0 —
+    # and since the manifests digest was already recorded, later no-op
+    # updates skip the repair. See #43564/#64354.
+    npm_workspace_args: tuple[str, ...]
+    if npm_cwd == web_dir:
+        npm_workspace_args = ()
+    else:
+        npm_workspace_args = ("--workspace", "web", "--include-workspace-root")
+        # Prebuilt/partial checkouts can lack the ui-tui workspace; naming a
+        # missing workspace makes npm fail hard, so only include it when
+        # present (same guard as _update_node_dependencies()).
+        if (npm_cwd / "ui-tui" / "package.json").exists():
+            npm_workspace_args = ("--workspace", "ui-tui", *npm_workspace_args)
     if _is_termux_startup_environment():
         npm_cwd, npm_workspace_args = _termux_workspace_install_context(web_dir)
 

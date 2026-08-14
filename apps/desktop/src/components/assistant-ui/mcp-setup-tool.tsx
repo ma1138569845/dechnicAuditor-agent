@@ -32,8 +32,8 @@ import { prettyName } from '@/lib/text'
 import { cn } from '@/lib/utils'
 import { $gateway } from '@/store/gateway'
 import { clearMcpSetupRequest, type McpSetupOutcome, sessionMcpSetupRequest } from '@/store/mcp-setup'
-import { invalidateMcpSuggestionIndex } from '@/store/mcp-suggestions'
 import { notifyError } from '@/store/notifications'
+import { invalidateMcpSuggestionIndex } from '@/store/suggestion-providers/mcp'
 
 import { selectMessageRunning } from './tool/fallback-model'
 import { parseMaybeObject } from './tool/fallback-model/format'
@@ -154,9 +154,7 @@ function McpSetupSettled({ args, result }: ToolCallMessagePartProps) {
         }
       >
         <span className={cn('font-medium', neutral && 'italic text-(--ui-text-tertiary)')}>{line}</span>
-        {ok && toolCount > 0 && (
-          <span className="ml-2 text-(--ui-text-tertiary)">{copy.toolCount(toolCount)}</span>
-        )}
+        {ok && toolCount > 0 && <span className="ml-2 text-(--ui-text-tertiary)">{copy.toolCount(toolCount)}</span>}
         {!ok && !neutral && fromResult.detail ? (
           <p className="mt-0.5 text-(--ui-text-secondary)">{fromResult.detail}</p>
         ) : null}
