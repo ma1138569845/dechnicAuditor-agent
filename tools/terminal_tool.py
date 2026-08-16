@@ -1078,6 +1078,7 @@ import sys
 TERMINAL_TOOL_DESCRIPTION = """Execute shell commands on a Linux environment. Filesystem, current working directory, and exported environment variables persist between calls.
 
 Do NOT use cat/head/tail (use read_file), grep/rg/find/ls (use search_files), sed/awk (use patch), or echo/heredoc file creation (use write_file). Reserve terminal for: builds, installs, git, processes, scripts, network, package managers, and anything that needs a shell.
+NEVER pipe a build/test command through tail/head/cat to shorten output (e.g. `cargo build | tail -20`): output is auto-truncated with the full text saved to a file, and the pipe makes exit_code report the LAST pipeline command's status (tail's 0), masking real failures. Run the command bare; the same applies to `cmd || echo failed`, which also masks the exit code.
 Environment state persists: activate a virtualenv or export variables once per session, not before every command.
 
 Foreground (default): returns INSTANTLY when the command finishes, even with a high timeout — set timeout generously for long builds.
@@ -3179,6 +3180,15 @@ def terminal_tool(
                             proc_session.watcher_user_name = _gw_user_name
                             proc_session.watcher_thread_id = _gw_thread_id
                             proc_session.watcher_message_id = _gw_message_id
+                            # Stamp the spawning conversation's session-db id
+                            # so the gateway's completion pre-flight
+                            # (_classify_completion_target) can drop the
+                            # notification when the user closes this session
+                            # (/new) before the process finishes, instead of
+                            # injecting it into the chat's NEW session.
+                            proc_session.parent_session_id = _gse(
+                                "HERMES_SESSION_ID", ""
+                            )
 
                 # Mutual exclusion: if both notify_on_complete and watch_patterns
                 # are set, drop watch_patterns. The combination produces duplicate
@@ -3217,6 +3227,7 @@ def terminal_tool(
                             "thread_id": proc_session.watcher_thread_id,
                             "message_id": proc_session.watcher_message_id,
                             "notify_on_complete": True,
+                            "parent_session_id": proc_session.parent_session_id,
                         })
 
                 # Set watch patterns for output monitoring
@@ -3411,6 +3422,19 @@ def terminal_tool(
                 try:
                     from tools.terminal_hints import annotate_failure
                     failure_hint = annotate_failure(command, returncode, output)
+                except Exception:
+                    failure_hint = None
+            elif returncode == 0:
+                # Masked-success backstop: `cargo build | tail -20` returns
+                # tail's exit 0 even when the build failed (bash reports the
+                # last pipeline command's status; same for `cmd || echo ...`).
+                # When the command shape can mask an upstream failure AND the
+                # output carries strong failure indicators, warn the model so
+                # exit_code 0 isn't read as a success signal. Advisory only —
+                # the exit code itself is never modified.
+                try:
+                    from tools.terminal_hints import annotate_masked_success
+                    failure_hint = annotate_masked_success(command, output)
                 except Exception:
                     failure_hint = None
 
