@@ -59,15 +59,31 @@ async function stampExeIdentity(exe, desktopRoot = resolve(import.meta.dirname, 
   console.log(`[set-exe-identity] stamping ${exe}`)
   console.log(`[set-exe-identity] icon: ${icon}`)
 
-  await rcedit(exe, {
-    icon,
-    'version-string': {
-      ProductName: '智能审',
-      FileDescription: '智能审',
-      CompanyName: 'Nous Research',
-      LegalCopyright: 'Copyright (c) 2026 Nous Research'
+  // rcedit can transiently fail on Windows right after electron-builder copies
+  // the freshly-extracted exe: the antivirus is still scanning the ~200MB
+  // binary and refuses the resource write ("Unable to commit changes"). A
+  // standalone re-stamp seconds later succeeds, so the failure is a timing
+  // window, not a hard problem. Retry with a short delay until the scan
+  // finishes instead of shipping a stock-Electron-icon exe.
+  const MAX_ATTEMPTS = 5
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await rcedit(exe, {
+        icon,
+        'version-string': {
+          ProductName: '智能审',
+          FileDescription: '智能审',
+          CompanyName: 'Nous Research',
+          LegalCopyright: 'Copyright (c) 2026 Nous Research'
+        }
+      })
+      break
+    } catch (err) {
+      if (attempt >= MAX_ATTEMPTS) throw err
+      console.log(`[set-exe-identity] rcedit attempt ${attempt} failed (${err.message}); retrying after antivirus scan...`)
+      await new Promise(r => setTimeout(r, 4000))
     }
-  })
+  }
 
   console.log('[set-exe-identity] done — 智能审 icon + identity stamped')
 }

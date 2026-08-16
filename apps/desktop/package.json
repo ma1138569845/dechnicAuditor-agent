@@ -24,7 +24,7 @@
     "profile:main:cpu": "tsc --build tsconfig.electron.json && wait-on http://127.0.0.1:5174 && node scripts/bundle-electron-main.mjs --dev && cross-env XCURSOR_SIZE=24 NODE_OPTIONS=--cpu-prof HERMES_DESKTOP_DEV_SERVER=http://127.0.0.1:5174 electron .",
     "start": "npm run build && electron .",
     "prebuild": "npm run clean",
-    "build": "node scripts/fetch-editor-sdk.mjs && node scripts/assert-root-install.mjs && node scripts/write-build-stamp.mjs && vite build && node scripts/bundle-electron-main.mjs && node scripts/stage-native-deps.mjs",
+    "build": "node ../../scripts/fetch-editor-sdk.mjs && node scripts/assert-root-install.mjs && node scripts/write-build-stamp.mjs && vite build && node scripts/bundle-electron-main.mjs && node scripts/stage-native-deps.mjs",
     "postbuild": "node scripts/assert-dist-built.mjs",
     "prebuilder": "node scripts/patch-electron-builder-mac-binary.mjs",
     "builder": "cross-env NODE_OPTIONS=--max-old-space-size=16384 node scripts/run-electron-builder.mjs",
@@ -209,6 +209,7 @@
       }
     ],
     "asar": true,
+    "disableAsarIntegrity": true,
     "afterSign": "scripts/notarize.mjs",
     "asarUnpack": [
       "**/*.node",
@@ -219,18 +220,20 @@
       "category": "public.app-category.developer-tools",
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
+      "extendInfo": {
+        "CFBundleDisplayName": "智能审",
+        "CFBundleExecutable": "DechnicAuditor",
+        "CFBundleName": "智能审",
+        "NSAudioCaptureUsageDescription": "智能审 uses audio capture for voice conversations.",
+        "NSCameraUsageDescription": "智能审 uses the camera when a plugin or feature you enable requests it.",
+        "NSMicrophoneUsageDescription": "智能审 uses the microphone for voice input and voice conversations."
+      },
       "gatekeeperAssess": false,
       "hardenedRuntime": true,
       "target": [
         "dmg",
         "zip"
-      ],
-      "CFBundleDisplayName": "智能审",
-      "CFBundleExecutable": "DechnicAuditor",
-      "CFBundleName": "智能审",
-      "NSAudioCaptureUsageDescription": "智能审 uses audio capture for voice conversations.",
-      "NSCameraUsageDescription": "智能审 uses the camera when a plugin or feature you enable requests it.",
-      "NSMicrophoneUsageDescription": "智能审 uses the microphone for voice input and voice conversations."
+      ]
     },
     "dmg": {
       "title": "Install 智能审",
@@ -270,9 +273,7 @@
         "AppImage",
         "deb",
         "rpm"
-      ],
-      "shortcutName": "智能审",
-      "uninstallDisplayName": "智能审"
+      ]
     },
     "nsis": {
       "oneClick": false,
