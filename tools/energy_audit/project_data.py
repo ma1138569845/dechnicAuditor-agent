@@ -30,6 +30,7 @@ class ProjectBase:
     unit_type: str = "公共机构"          # 审计类型: 公共机构/公共建筑/工业企业
     institution_category: str = ""     # 机构类别: 医疗/教育/党政机关/场馆/体育/政务服务中心
     specific_type: str = ""            # 具体类型: 医院/大学/法院/机关...
+    basic_situation: str = ""          # 单位基本情况概述（来自 ts_customer_info.basic_situation）
     contact_person: str = ""           # 联系人
     contact_phone: str = ""            # 联系电话
     audit_start: str = ""              # 审计起始时间 ex: "2025年6月"
