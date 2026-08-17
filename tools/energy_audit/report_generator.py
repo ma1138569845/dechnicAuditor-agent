@@ -758,10 +758,11 @@ class WordReportBuilder:
         self._add_heading_2("2.1  公共机构基本情况")
         text_21 = ch2.get('section_2_1', '')
         if not text_21:
-            # 不再自动填模板——应由 LLM 根据项目数据 + RAG 参考自然生成
-            text_21 = (f"⚠️ 2.1 需LLM生成：请根据被审计单位信息（{buildings[0].get('name','') if buildings else ''}等"
-                       f"{len(buildings)}栋建筑，面积{area}m²，人数{people}人）和同类参考报告，生成自然段落。\n"
-                       f"参考：search_for_chapter('第2章', {tags})")
+            # 2.1 直取 basic_situation（load_from_project 已填 + PG 兜底）；这里仍为空才提示补全
+            text_21 = (f"⚠️ 2.1 单位基本情况缺失：请补充 basic_situation 字段"
+                       f"（数据收集阶段或 PG ts_customer_info.get_customer_info 均无值）"
+                       f"或由 author agent 根据被审计单位信息（{buildings[0].get('name','') if buildings else ''}等"
+                       f"{len(buildings)}栋建筑，面积{area}m²，人数{people}人）人工补全。")
         for p in text_21.split('\n'):
             if p.strip():
                 self._add_body_text(p.strip())
@@ -2686,6 +2687,33 @@ class ReportGenerator:
         self.word_builder.set_data(data)
         self.md_builder.set_data(data)
 
+    def _query_basic_situation_fallback(self, unit_name: str) -> str:
+        """2.1 兜底：项目数据无 basic_situation 时，从 PG ts_customer_info 反查。
+
+        链路: find_project_by_name(unit_name) → customer_id →
+              get_customer_info(customer_id) → basic_situation
+        任何一步失败/无数据都返回 ''（不抛异常，避免生成报告被 DB 故障阻断）。
+        """
+        if not unit_name:
+            return ''
+        try:
+            from tools.energy_audit import PgDataQuery
+            pg = PgDataQuery()
+            pg.connect()
+            try:
+                proj = pg.find_project_by_name(unit_name)
+                customer_id = proj.get('customer_id') if proj else None
+                if not customer_id:
+                    return ''
+                cust = pg.get_customer_info(customer_id=customer_id)
+                if cust and cust[0].get('basic_situation'):
+                    return str(cust[0]['basic_situation'])
+                return ''
+            finally:
+                pg.disconnect()
+        except Exception:
+            return ''
+
     def load_from_project(self, project) -> Dict:
         """从 AuditProject 自动构建 report_data（字段溯源: project_data → 用户 → 默认）"""
         from tools.energy_audit.project_data import AuditProject
@@ -2723,6 +2751,9 @@ class ReportGenerator:
             },
             'chapter2': {
                 'unit_name': b.unit_name,
+                # 2.1 直接取项目数据 basic_situation（数据收集阶段已从 ts_customer_info 解析，
+                # 溯源 PG → Excel → Config）；为空则兜底查询 PG get_customer_info
+                'section_2_1': b.basic_situation or self._query_basic_situation_fallback(b.unit_name),
                 'building_area': b.building_area,
                 'people_count': b.people_count,
                 'beds_count': b.beds_count,
