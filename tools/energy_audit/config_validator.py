@@ -25,7 +25,7 @@ OPTIONAL = [
     'contact_person', 'contact_phone', 'auditor', 'report_date',
     'province', 'data_start', 'data_end', 'admin_affiliation',
     'buildings', 'energy_yearly', 'equipment', 'metering',
-    'management', 'images', 'chapter_texts',
+    'management', 'energy_saving', 'images', 'chapter_texts',
 ]
 
 FIELD_TYPES = {
@@ -52,6 +52,7 @@ FIELD_TYPES = {
     'equipment': list,
     'metering': dict,
     'management': dict,
+    'energy_saving': list,
     'images': list,
     'chapter_texts': dict,
 }

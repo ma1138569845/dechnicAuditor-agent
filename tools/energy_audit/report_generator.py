@@ -15,6 +15,8 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import json, os
 
+from tools.energy_audit.chart_utils import setup_chart_font, chart_text
+
 
 # ============================================================
 # 格式常量
@@ -920,6 +922,12 @@ class WordReportBuilder:
             t33 = f"{unit}在能源管理方面虽已建立基本的制度框架，但仍存在进一步改进的空间。"
         for p in t33.split('\n'): p=p.strip(); p and self._add_body_text(p)
 
+        # 3.4 节能改造与管理措施（有节能管理信息记录时渲染，否则跳过）
+        t34 = ch3.get('section_3_4', '')
+        if t34:
+            self._add_heading_2("3.4  节能改造与管理措施")
+            for p in t34.split('\n'): p=p.strip(); p and self._add_body_text(p)
+
         # 图片
         for idx, img_info in enumerate(ch3.get('images', []), 1):
             p = img_info.get('path', '')
@@ -1023,6 +1031,40 @@ class WordReportBuilder:
             for item in indicators.get('yearly', [])
             if isinstance(item, dict) and 'year' in item
         }
+
+        # 指标单元格安全取值：指标 dict 带 error（基础数据不足）或缺失时返回 default，
+        # 不抛 KeyError，并在 5.3 末尾汇总友好提示。
+        indicator_warnings = []
+
+        def _cell(r, key, fmt='{:.2f}', divisor=None, default='—'):
+            """从指标 dict 取单元格值；error/缺失/非数字时返回 default。"""
+            if isinstance(r, dict) and not r.get('error'):
+                v = r.get(key)
+                if v is not None:
+                    try:
+                        if divisor:
+                            v = v / divisor
+                        return fmt.format(v)
+                    except (TypeError, ValueError):
+                        pass
+            return default
+
+        def _eval_cell(r, bm, val_key='kgce_per_m2'):
+            """评价结果单元格：优先指标自带评价，其次按约束/基准/引导值判断。"""
+            if isinstance(r, dict) and not r.get('error'):
+                bm_r = r.get('benchmark')
+                if isinstance(bm_r, dict) and bm_r.get('评价结果'):
+                    return bm_r['评价结果']
+                val = r.get(val_key)
+                if val is not None:
+                    if val <= bm['引导值']:
+                        return '低于引导值'
+                    if val <= bm['基准值']:
+                        return '低于基准值'
+                    if val <= bm['约束值']:
+                        return '低于约束值'
+                    return '高于约束值'
+            return '—'
 
         # 收集能源类型
         all_types = set()
@@ -1576,20 +1618,15 @@ class WordReportBuilder:
             r = indicator_yearly.get(yd.year, {}).get('unit_area_non_heating')
             if not r:
                 r = calc_unit_area_non_heating_energy(yd)
-            rows[0].append(f"{r['non_heating_kgce']/1000:.2f}")
+            if isinstance(r, dict) and r.get('error'):
+                indicator_warnings.append(f"{yd.year}年单位建筑面积非供暖能耗：{r['error']}")
+            rows[0].append(_cell(r, 'non_heating_kgce', divisor=1000))
             rows[1].append(f"{area:.2f}")
-            rows[2].append(f"{r['kgce_per_m2']:.2f}")
+            rows[2].append(_cell(r, 'kgce_per_m2'))
             rows[3].append(str(bm['约束值']))
             rows[4].append(str(bm['基准值']))
             rows[5].append(str(bm['引导值']))
-            val = r['kgce_per_m2']
-            ev = r.get('benchmark', {}).get('评价结果')
-            if not ev:
-                if val <= bm['引导值']: ev = '低于引导值'
-                elif val <= bm['基准值']: ev = '低于基准值'
-                elif val <= bm['约束值']: ev = '低于约束值'
-                else: ev = '高于约束值'
-            rows[6].append(ev)
+            rows[6].append(_eval_cell(r, bm))
         self._add_table(headers, rows, f"表5.{next_table}  单位建筑面积非供暖能耗")
 
         # 5.3.2 常规用能系统单位建筑面积电耗
@@ -1622,12 +1659,14 @@ class WordReportBuilder:
             r = indicator_yearly.get(yd.year, {}).get('unit_area_electricity')
             if not r:
                 r = calc_unit_area_electricity(yd, institution_type=institution_type)
-            rows[0].append(f"{r['total_electricity_kwh']:,.0f}")
-            rows[1].append(f"{r['kwh_per_m2']:.2f}")
+            if isinstance(r, dict) and r.get('error'):
+                indicator_warnings.append(f"{yd.year}年常规用能系统单位建筑面积电耗：{r['error']}")
+            rows[0].append(_cell(r, 'total_electricity_kwh', '{:,.0f}'))
+            rows[1].append(_cell(r, 'kwh_per_m2'))
             rows[2].append(str(bm2['约束值']))
             rows[3].append(str(bm2['基准值']))
             rows[4].append(str(bm2['引导值']))
-            rows[5].append(r['benchmark']['评价结果'] if r.get('benchmark') else '—')
+            rows[5].append(_eval_cell(r, bm2, val_key='kwh_per_m2'))
         self._add_table(headers, rows, f"表5.{next_table+1}  常规用能系统单位建筑面积电耗")
 
         # 5.3.3 人均综合能耗
@@ -1674,13 +1713,15 @@ class WordReportBuilder:
             r = indicator_yearly.get(yd.year, {}).get('per_capita_energy')
             if not r:
                 r = calc_per_capita_energy(yd, institution_type=institution_type)
-            rows[0].append(f"{r['total_kgce']:,.2f}")
+            if isinstance(r, dict) and r.get('error'):
+                indicator_warnings.append(f"{yd.year}年人均综合能耗：{r['error']}")
+            rows[0].append(_cell(r, 'total_kgce'))
             rows[1].append(str(people))
-            rows[2].append(f"{r['kgce_per_person']:.2f}")
+            rows[2].append(_cell(r, 'kgce_per_person'))
             rows[3].append(str(bm3['约束值']))
             rows[4].append(str(bm3['基准值']))
             rows[5].append(str(bm3['引导值']))
-            rows[6].append(r['benchmark']['评价结果'] if r.get('benchmark') else '—')
+            rows[6].append(_eval_cell(r, bm3, val_key='kgce_per_person'))
         self._add_table(headers, rows, f"表5.{next_table+2}  人均综合能耗")
 
         # 5.3.4 用水指标（按机构类型分三种形态）
@@ -1712,10 +1753,12 @@ class WordReportBuilder:
                 r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
                 if not r:
                     r = calc_per_capita_water(yd, institution_type=institution_type, bed_count=beds)
-                rows[0].append(f"{r['total_water_m3']:,.2f}")
+                if isinstance(r, dict) and r.get('error'):
+                    indicator_warnings.append(f"{yd.year}年卫生业单位用水量：{r['error']}")
+                rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
                 rows[1].append(str(beds))
-                rows[2].append(f"{r.get('L_per_bed_day', 0):,.2f}")
-                bm_w = r.get('benchmark', {})
+                rows[2].append(_cell(r, 'L_per_bed_day', '{:,.2f}'))
+                bm_w = (r.get('benchmark') or {}) if isinstance(r, dict) else {}
                 rows[3].append(str(bm_w.get('约束值', bm_w.get('通用值', ''))))
                 rows[4].append(str(bm_w.get('引导值', bm_w.get('先进值', ''))))
                 rows[5].append(bm_w.get('评价结果', '—'))
@@ -1743,10 +1786,12 @@ class WordReportBuilder:
                 r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
                 if not r:
                     r = calc_per_capita_water(yd, institution_type=institution_type)
-                rows[0].append(f"{r['total_water_m3']:,.2f}")
+                if isinstance(r, dict) and r.get('error'):
+                    indicator_warnings.append(f"{yd.year}年单位标准人数用水量：{r['error']}")
+                rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
                 rows[1].append(str(people))
-                rows[2].append(f"{r.get('m3_per_person', 0):.2f}")
-                bm_w = r.get('benchmark', {})
+                rows[2].append(_cell(r, 'm3_per_person', '{:,.2f}'))
+                bm_w = (r.get('benchmark') or {}) if isinstance(r, dict) else {}
                 rows[3].append(str(bm_w.get('约束值', bm_w.get('通用值', ''))))
                 rows[4].append(str(bm_w.get('引导值', bm_w.get('先进值', ''))))
                 rows[5].append(bm_w.get('评价结果', '—'))
@@ -1774,14 +1819,24 @@ class WordReportBuilder:
                 r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
                 if not r:
                     r = calc_per_capita_water(yd, institution_type=institution_type)
-                rows[0].append(f"{r['total_water_m3']:,.2f}")
+                if isinstance(r, dict) and r.get('error'):
+                    indicator_warnings.append(f"{yd.year}年人均机关取水量：{r['error']}")
+                rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
                 rows[1].append(str(people))
-                rows[2].append(f"{r.get('m3_per_person', 0):.2f}")
-                bm_w = r.get('benchmark', {})
+                rows[2].append(_cell(r, 'm3_per_person', '{:,.2f}'))
+                bm_w = (r.get('benchmark') or {}) if isinstance(r, dict) else {}
                 rows[3].append(str(bm_w.get('约束值', bm_w.get('通用值', ''))))
                 rows[4].append(str(bm_w.get('引导值', bm_w.get('先进值', ''))))
                 rows[5].append(bm_w.get('评价结果', '—'))
             self._add_table(headers, rows, f"表5.{next_table+3}  人均机关取水量")
+
+        # 5.3 指标计算不足提示（缺数据时友好提示而非崩溃）
+        if indicator_warnings:
+            self._add_body_text(
+                "注：因基础数据不足，上表部分指标未能计算，以'—'标注。"
+                "具体原因：" + '；'.join(sorted(set(indicator_warnings))) + "。"
+                "请补充建筑面积、用能人数、床位数等基础参数及逐年能耗数据后重新生成报告。"
+            )
 
         # ===== 5.4 能耗基准 =====
         self._add_heading_2("5.4  建筑能耗基准")
@@ -2228,17 +2283,17 @@ class WordReportBuilder:
                 nh = r_nh.get('kgce_per_m2', 0)
                 ed = r_ed.get('kwh_per_m2', 0)
                 pe = r_pe.get('kgce_per_person', 0)
-                ev1 = r_nh.get('benchmark', {}).get('评价结果', '—')
-                ev2 = r_ed.get('benchmark', {}).get('评价结果', '—')
-                ev3 = r_pe.get('benchmark', {}).get('评价结果', '—')
+                ev1 = _indicator_eval(r_nh)
+                ev2 = _indicator_eval(r_ed)
+                ev3 = _indicator_eval(r_pe)
 
                 if beds:
                     pw = r_pw.get('L_per_bed_day', 0)
-                    ev4 = r_pw.get('benchmark', {}).get('评价结果', '—')
+                    ev4 = _indicator_eval(r_pw)
                     pw_text = f"单位开放床日用水量{pw:.2f}L/(床·d)（{ev4}）"
                 else:
                     pw = r_pw.get('m3_per_person', 0)
-                    ev4 = r_pw.get('benchmark', {}).get('评价结果', '—')
+                    ev4 = _indicator_eval(r_pw)
                     pw_text = f"人均取水量{pw:.2f}m³/(p·a)（{ev4}）"
 
                 self._add_body_text(
@@ -2277,17 +2332,17 @@ class WordReportBuilder:
                 nh = r_nh.get('kgce_per_m2', 0)
                 ed = r_ed.get('kwh_per_m2', 0)
                 pe = r_pe.get('kgce_per_person', 0)
-                ev1 = r_nh.get('benchmark', {}).get('评价结果', '—')
-                ev2 = r_ed.get('benchmark', {}).get('评价结果', '—')
-                ev3 = r_pe.get('benchmark', {}).get('评价结果', '—')
+                ev1 = _indicator_eval(r_nh)
+                ev2 = _indicator_eval(r_ed)
+                ev3 = _indicator_eval(r_pe)
 
                 if beds:
                     pw = r_pw.get('L_per_bed_day', 0)
-                    ev4 = r_pw.get('benchmark', {}).get('评价结果', '—')
+                    ev4 = _indicator_eval(r_pw)
                     pw_text = f"单位开放床日用水量{pw:.2f}L/(床·d)（{ev4}）"
                 else:
                     pw = r_pw.get('m3_per_person', 0)
-                    ev4 = r_pw.get('benchmark', {}).get('评价结果', '—')
+                    ev4 = _indicator_eval(r_pw)
                     pw_text = f"人均取水量{pw:.2f}m³/(p·a)（{ev4}）"
 
                 self._add_body_text(
@@ -2315,8 +2370,7 @@ class WordReportBuilder:
             import matplotlib
             matplotlib.use('Agg')
             import matplotlib.pyplot as plt
-            plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei']
-            plt.rcParams['axes.unicode_minus'] = False
+            setup_chart_font(plt)
         except ImportError:
             return None
 
@@ -2329,7 +2383,7 @@ class WordReportBuilder:
             return None
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
-        ax.set_title(f'{latest.year}年能源消费结构')
+        ax.set_title(chart_text(f'{latest.year}年能源消费结构'))
         path = os.path.join(output_dir, 'chart_structure.png')
         fig.savefig(path, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -2341,8 +2395,7 @@ class WordReportBuilder:
             import matplotlib
             matplotlib.use('Agg')
             import matplotlib.pyplot as plt
-            plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei']
-            plt.rcParams['axes.unicode_minus'] = False
+            setup_chart_font(plt)
         except ImportError:
             return None
 
@@ -2366,7 +2419,7 @@ class WordReportBuilder:
         ax.set_xticks([xi + width*(len(et_values)-1)/2 for xi in x])
         ax.set_xticklabels(years)
         ax.set_ylabel('tce')
-        ax.set_title('逐年能耗趋势')
+        ax.set_title(chart_text('逐年能耗趋势'))
         ax.legend()
         ax.grid(True, alpha=0.3, axis='y')
         path = os.path.join(output_dir, 'chart_trend.png')
@@ -2721,6 +2774,32 @@ class ReportGenerator:
             raise TypeError("需要 AuditProject 对象")
 
         b = project.base
+
+        # 第3章：管理信息 + 节能管理信息（ts_institution_energy_saving）合并，
+        # 节能管理信息有记录时用真实数据生成，无记录时保留既有兜底文案。
+        chapter3 = {
+            'section_3_1': project.management.management_org or '',
+            # 3.2 目标与方针：优先用 LLM 从制度文件提炼的正文，否则留空由兜底文案补
+            'section_3_2': project.management.management_policy or '',
+            'section_3_3': project.management.honors or '',
+        }
+        es_list = sorted((es for es in project.energy_saving if es is not None),
+                         key=lambda es: es.statistical_year or 0, reverse=True)
+        if es_list:
+            es_secs = _energy_saving_chapter3_sections(es_list[0], b.unit_short or b.unit_name)
+            for k, v in es_secs.items():
+                # 3.2 若已从制度文件提炼到正文（management_policy），不再叠加兜底文案
+                if k == 'section_3_2' and chapter3.get('section_3_2'):
+                    continue
+                chapter3[k] = '\n\n'.join(filter(None, [chapter3.get(k, ''), v]))
+            # 管理文件 / 获奖证书附件图片（file_resolver 已下载到本地）
+            _ch3_imgs = []
+            for _p in (es_list[0].management_file_images + es_list[0].award_certificate_images):
+                if _p and os.path.exists(_p):
+                    _ch3_imgs.append({'path': _p, 'caption': f'图3-{len(_ch3_imgs)+1}'})
+            if _ch3_imgs:
+                chapter3['images'] = _ch3_imgs
+
         rd = {
             'tags': {
                 'audit_type': b.unit_type or '公共机构',
@@ -2770,11 +2849,7 @@ class ReportGenerator:
                               for i, bg in enumerate(project.buildings)],
                 'images': [{'path':img, 'caption':f'图2-{i+1}'} for i, img in enumerate(project.images[:5])],
             },
-            'chapter3': {
-                'section_3_1': project.management.management_org or '',
-                'section_3_2': f"方针: {project.management.management_policy}\n目标: {project.management.management_goals}" if project.management.management_policy else '',
-                'section_3_3': project.management.honors or '',
-            },
+            'chapter3': chapter3,
             'chapter4': {
                 'section_4_1': f"计量体系按GB/T29149-2012划分为三级计量。⚠️ 请说明具体计量分级和监测系统建设情况。" if not project.metering.has_monitoring_system else f"计量体系按GB/T29149-2012划分为三级计量。",
                 'section_4_2': f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块。⚠️ 请确认具体数量和型号。" if not project.metering.electric_meters else f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块、气表{project.metering.gas_meters}块。",
@@ -2874,6 +2949,76 @@ class ReportGenerator:
 # 使用示例
 # ============================================================
 
+def _indicator_eval(r) -> str:
+    """从指标 dict 安全取评价结果；dict 缺失/含 error 或 benchmark 为 None 时返回 '—'。"""
+    if isinstance(r, dict) and not r.get('error'):
+        bm = r.get('benchmark')
+        if isinstance(bm, dict) and bm.get('评价结果'):
+            return bm['评价结果']
+    return '—'
+
+
+def _energy_saving_chapter3_sections(es, unit: str) -> dict:
+    """从一条节能管理信息（ts_institution_energy_saving）生成第3章各节真实文案。
+
+    返回 {section_3_2 / section_3_3 / section_3_4: 文本}，无对应数据的键不返回；
+    load_from_project 会与 management 文案合并，无记录时保留既有兜底文案。
+    """
+    sections = {}
+
+    # 3.2 能源管理制度
+    if es.energy_management == 1:
+        sections['section_3_2'] = (f"{unit}已建立能源管理制度，将节能管理纳入日常运营，"
+                                   "通过制度建设、定期监督等方式落实节能责任。")
+    elif es.energy_management == 0:
+        sections['section_3_2'] = f"{unit}目前尚未建立完善的能源管理制度，节能管理仍有提升空间。"
+
+    # 3.3 管理成效与问题
+    parts_33 = []
+    if es.has_awards == 1 and es.award_name:
+        parts_33.append(f"{unit}节能工作取得成效，{es.award_name}。")
+    if es.energy_pain_points:
+        parts_33.append(f"目前能源利用方面存在的主要痛点：{es.energy_pain_points}。")
+    if parts_33:
+        sections['section_3_3'] = '\n'.join(parts_33)
+
+    # 3.4 节能改造与管理措施
+    parts_34 = []
+    replaced = []
+    if es.lighting_replacement == 1:
+        replaced.append('照明灯具')
+    if es.ac_replacement == 1:
+        replaced.append('空调设备')
+    if es.water_saving_fixture_replacement == 1:
+        replaced.append('节水型卫生器具')
+    if replaced:
+        parts_34.append(f"{unit}已实施{'、'.join(replaced)}更换等节能改造措施。")
+    if es.central_ac_control == 1:
+        parts_34.append("中央空调系统已增加集中控制，以提升运行能效。")
+    if es.other_measures:
+        parts_34.append(f"其他节能改造措施：{es.other_measures}。")
+    if es.third_party_system:
+        parts_34.append(f"能源系统已由第三方托管运营：{es.third_party_system}。")
+    if es.charging_pile == 1:
+        cp = "单位已配置充电桩"
+        if es.charging_settlement:
+            cp += f"，结算方式为{es.charging_settlement}"
+        if es.charging_installation:
+            cp += f"，安装方式为{es.charging_installation}"
+        parts_34.append(cp + "。")
+    if es.third_party_outsource == 1:
+        out = "用能系统已由第三方外包管理"
+        if es.outsource_content:
+            out += f"，内容包括{es.outsource_content}"
+        if es.outsource_settlement:
+            out += f"，结算方式为{es.outsource_settlement}"
+        parts_34.append(out + "。")
+    if parts_34:
+        sections['section_3_4'] = '\n'.join(parts_34)
+
+    return sections
+
+
 def _iso_to_cn(date_str: str) -> str:
     """2022-01-01 → 2022年1月1日"""
     if not date_str or '年' in date_str:
@@ -2884,14 +3029,14 @@ def _iso_to_cn(date_str: str) -> str:
         return f"{y}年{m}月{d}日"
     return date_str
 
+
 def _generate_single_energy_chart(yd_objects, et_key, label, unit, output_dir='./charts'):
     """生成单种能源的逐年柱状图"""
     try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        plt.rcParams['font.sans-serif'] = ['SimHei']
-        plt.rcParams['axes.unicode_minus'] = False
+        setup_chart_font(plt)
         years = [yd.year for yd in yd_objects]
         values = [float(getattr(yd, et_key, 0) or 0) for yd in yd_objects]
         if not any(v > 0 for v in values):
@@ -2901,8 +3046,8 @@ def _generate_single_energy_chart(yd_objects, et_key, label, unit, output_dir='.
         for bar, val in zip(bars, values):
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.02,
                     f'{val:,.0f}', ha='center', va='bottom', fontsize=8)
-        ax.set_ylabel(f'{label}({unit})', fontsize=9)
-        ax.set_title(f'逐年{label}趋势', fontsize=11)
+        ax.set_ylabel(chart_text(f'{label}({unit})'), fontsize=9)
+        ax.set_title(chart_text(f'逐年{label}趋势'), fontsize=11)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.tight_layout()
@@ -2920,8 +3065,7 @@ def _generate_monthly_bar_chart(energy_data_list, et_key, monthly_attr, label, u
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        plt.rcParams['font.sans-serif'] = ['SimHei']
-        plt.rcParams['axes.unicode_minus'] = False
+        setup_chart_font(plt)
 
         months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -2950,8 +3094,8 @@ def _generate_monthly_bar_chart(energy_data_list, et_key, monthly_attr, label, u
 
         ax.set_xticks(x)
         ax.set_xticklabels(months, fontsize=8)
-        ax.set_ylabel(f'{label}({unit})', fontsize=9)
-        ax.set_title(f'逐月{label}趋势（年度对比）', fontsize=12, fontweight='bold')
+        ax.set_ylabel(chart_text(f'{label}({unit})'), fontsize=9)
+        ax.set_title(chart_text(f'逐月{label}趋势（年度对比）'), fontsize=12, fontweight='bold')
         ax.legend(fontsize=9)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -2970,8 +3114,7 @@ def _generate_cost_pie_chart(year: int, labels: list, values: list, output_dir='
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        plt.rcParams['font.sans-serif'] = ['SimHei']
-        plt.rcParams['axes.unicode_minus'] = False
+        setup_chart_font(plt)
 
         # 过滤0值
         filtered = [(l, v) for l, v in zip(labels, values) if v > 0]
@@ -2986,7 +3129,7 @@ def _generate_cost_pie_chart(year: int, labels: list, values: list, output_dir='
             colors=colors[:len(vals)], startangle=90,
             textprops={'fontsize': 9}
         )
-        ax.set_title(f'{year}年能源费用占比', fontsize=12)
+        ax.set_title(chart_text(f'{year}年能源费用占比'), fontsize=12)
 
         plt.tight_layout()
         os.makedirs(output_dir, exist_ok=True)

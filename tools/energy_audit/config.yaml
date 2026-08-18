@@ -12,6 +12,19 @@ database:
   user: "postgres"
   sslmode: "prefer"
 
+# 文件服务配置：用于把 ts_attachment.attach_url 相对路径（如 /20260803/xxx.png）
+# 拼成完整 URL，供附件解析（management_files / award_certificate 文件ID → 图片）。
+# 采用「查库拿相对路径 + 文件服务器 IP 直连」方式，无需 web 接口 token。
+#   base_url：完整前缀（含 scheme://host[:port]），优先级最高。
+#   scheme/host/port：base_url 未填时按此拼接；host 留空则复用 database.host。
+#   仅当显式配置了 base_url 或 host/port 之一才启用；否则跳过附件解析。
+#   支持环境变量：EA_FILE_BASE_URL / EA_FILE_SCHEME / EA_FILE_HOST / EA_FILE_PORT。
+file:
+  base_url: "https://eademo.bmscloud.top/images/"
+  scheme: "http"
+  host: ""     # 留空 → 复用 database.host (10.10.1.165)
+  port: ""     # 文件服务器端口，例如 80 / 8080 / 9000
+
 # RAG系统配置
 rag:
   collection_name: "knowledge_segment_qwen"

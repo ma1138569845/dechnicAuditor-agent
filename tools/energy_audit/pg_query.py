@@ -406,6 +406,50 @@ class PgDataQuery:
         query += " ORDER BY statistical_year DESC, data_type, id"
         return self._execute(query, tuple(params))
 
+    # ========== 节能管理信息 ==========
+
+    def get_institution_energy_saving(self, customer_id: int = None,
+                                      year: int = None) -> List[Dict]:
+        """ts_institution_energy_saving — 公共机构节能管理信息。
+
+        Args:
+            customer_id: 所属客户 ID。
+            year: 统计年份；不填则返回全部。
+        """
+        query = """SELECT id, statistical_year, energy_management, energy_pain_points,
+                    management_files, has_awards, award_name, award_certificate,
+                    other_measures, third_party_system, charging_pile,
+                    charging_settlement, charging_installation, third_party_outsource,
+                    outsource_content, outsource_settlement, lighting_replacement,
+                    ac_replacement, water_saving_fixture_replacement, central_ac_control,
+                    customer_id, version_code, is_draft
+                 FROM ts_institution_energy_saving
+                 WHERE deleted = 0"""
+        params = []
+        if customer_id:
+            query += " AND customer_id = %s"; params.append(customer_id)
+        if year is not None:
+            query += " AND statistical_year = %s"; params.append(year)
+        query += " ORDER BY statistical_year DESC, id"
+        return self._execute(query, tuple(params))
+
+    # ========== 附件（文件） ==========
+
+    def get_attachments(self, group_ids: List[int] = None) -> List[Dict]:
+        """ts_attachment — 按附件组 ID（group_id）批量查询附件元数据。
+
+        ts_institution_energy_saving.management_files / award_certificate 中
+        逗号分隔的雪花 ID 即 ts_attachment.group_id。返回列表元素包含
+        group_id / attach_initial_name（原始文件名）/ attach_name / attach_url（相对路径）
+        / attach_size / attach_type。
+        """
+        if not group_ids:
+            return []
+        query = """SELECT group_id, attach_initial_name, attach_name, attach_url, attach_size, attach_type
+                   FROM ts_attachment
+                   WHERE group_id = ANY(%s) AND (deleted IS NULL OR deleted = 0)"""
+        return self._execute(query, (list(group_ids),))
+
     # ========== 兼容旧接口 ==========
 
     def get_energy_consumption(self, start_date: str = None, end_date: str = None,

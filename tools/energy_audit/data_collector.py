@@ -17,7 +17,7 @@ try:
     from tools.energy_audit.pg_collector import collect_from_pg
     from tools.energy_audit.project_data import (
         AuditProject, ProjectBase, BuildingInfo, EnergyYearly, EnergyMonthly,
-        Equipment, MeteringInfo, ManagementInfo, IndoorEnv, save_project,
+        Equipment, MeteringInfo, ManagementInfo, EnergySaving, IndoorEnv, save_project,
         _PROJECTS_ROOT, SourceResolver, first_non_empty_source,
         is_valid_coefficient,
     )
@@ -313,6 +313,11 @@ def build_audit_project(project_name: str, config: dict = None,
             excel_data.get('metering', {}),
             config.get('metering', {})
         ),
+        energy_saving=_merge_energy_saving(
+            pg_found.get('energy_saving', []),
+            excel_data.get('energy_saving', []),
+            config.get('energy_saving', [])
+        ),
     )
 
     # 记录集合/对象级数据来源
@@ -337,6 +342,11 @@ def build_audit_project(project_name: str, config: dict = None,
         ('PG', pg_found.get('metering', {})),
         ('Excel', excel_data.get('metering', {})),
         ('Config', config.get('metering', {})),
+    )
+    proj.data_sources['energy_saving'] = first_non_empty_source(
+        ('PG', pg_found.get('energy_saving', [])),
+        ('Excel', excel_data.get('energy_saving', [])),
+        ('Config', config.get('energy_saving', [])),
     )
 
     return proj
@@ -404,6 +414,19 @@ def _merge_metering(*sources: dict) -> MeteringInfo:
             if v not in (None, '', 0, False) and not merged.get(k):
                 merged[k] = v
     return MeteringInfo(**merged)
+
+
+def _merge_energy_saving(*sources: List[dict]) -> List[EnergySaving]:
+    """多源节能管理信息合并（按统计年去重：同年保留第一个来源的记录）"""
+    seen = set()
+    result = []
+    for src in sources:
+        for es in src:
+            year = es.get('statistical_year', 0)
+            if year and year not in seen:
+                seen.add(year)
+                result.append(EnergySaving(**es))
+    return result
 
 
 # ============================================================

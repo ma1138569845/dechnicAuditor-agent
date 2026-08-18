@@ -14,11 +14,15 @@ from typing import Any, Dict
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
-    Equipment, MeteringInfo, ManagementInfo,
+    Equipment, MeteringInfo, ManagementInfo, EnergySaving,
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient,
 )
 from tools.energy_audit.indicators import compute_project_indicators
+from tools.energy_audit.file_resolver import (
+    enrich_energy_saving_images,
+    enrich_management_info,
+)
 
 
 # ============================================================
@@ -322,6 +326,34 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     else:
         result['missing'].append('能源折标系数（ts_energy_standard）')
 
+    # ---- 6.7 节能管理信息 ----
+    energy_saving = pg.get_institution_energy_saving(customer_id=customer_id)
+    if energy_saving:
+        result['found']['energy_saving'] = [
+            {
+                'statistical_year': _int(r.get('statistical_year')),
+                'energy_management': r.get('energy_management'),
+                'energy_pain_points': r.get('energy_pain_points') or '',
+                'management_files': r.get('management_files') or '',
+                'has_awards': _int(r.get('has_awards')),
+                'award_name': r.get('award_name') or '',
+                'award_certificate': r.get('award_certificate') or '',
+                'other_measures': r.get('other_measures') or '',
+                'third_party_system': r.get('third_party_system') or '',
+                'charging_pile': _int(r.get('charging_pile')),
+                'charging_settlement': r.get('charging_settlement') or '',
+                'charging_installation': r.get('charging_installation') or '',
+                'third_party_outsource': _int(r.get('third_party_outsource')),
+                'outsource_content': r.get('outsource_content') or '',
+                'outsource_settlement': r.get('outsource_settlement') or '',
+                'lighting_replacement': _int(r.get('lighting_replacement')),
+                'ac_replacement': _int(r.get('ac_replacement')),
+                'water_saving_fixture_replacement': _int(r.get('water_saving_fixture_replacement')),
+                'central_ac_control': _int(r.get('central_ac_control')),
+            }
+            for r in energy_saving
+        ]
+
     # ---- 7. 整理缺失清单 ----
     req = [
         ('buildings', '建筑信息（ts_institution_build）'),
@@ -329,6 +361,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         ('equipment', '设备数据（ts_institution_device_*）'),
         ('metering', '计量信息'),
         ('energy_meter', '表具计量信息（ts_institution_energy_meter）'),
+        ('energy_saving', '节能管理信息（ts_institution_energy_saving）'),
     ]
     for key, label in req:
         if key not in result['found']:
@@ -362,6 +395,7 @@ def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditPro
     pg_energy = pg_data['found'].get('energy_yearly', [])
     pg_equipment = pg_data['found'].get('equipment', [])
     pg_metering = pg_data['found'].get('metering', {})
+    pg_energy_saving = pg_data['found'].get('energy_saving', [])
     pg_building_area = sum(b['area'] for b in pg_buildings) or 0
 
     proj = AuditProject(
@@ -436,12 +470,25 @@ def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditPro
         equipment=[Equipment(**e) for e in pg_equipment],
         metering=MeteringInfo(**pg_metering),
         management=ManagementInfo(),
+        energy_saving=[EnergySaving(**es) for es in pg_energy_saving],
     )
 
     if not proj.buildings and config.get('buildings'):
         proj.buildings = [BuildingInfo(**b) for b in config['buildings']]
     if not proj.energy_yearly and config.get('energy_yearly'):
         proj.energy_yearly = [EnergyYearly(**ey) for ey in config['energy_yearly']]
+    if not proj.energy_saving and config.get('energy_saving'):
+        proj.energy_saving = [EnergySaving(**es) for es in config['energy_saving']]
+
+    # 解析节能管理信息中的附件文件 ID（management_files / award_certificate）
+    # → 下载图片到 reports/attachments/，回填 EnergySaving 的 *_images 字段。
+    # file.base_url 未配置时自动跳过，不阻塞采集。
+    enrich_energy_saving_images(proj)
+    # 有能源管理制度（energy_management==1）且制度文件存在时：
+    # 下载制度文档 → 提取文字 → LLM 提炼，回填 proj.management（3.1 机构职责 / 3.2 目标方针）。
+    # 缺 key / 文件 / 提取失败均静默降级，不阻塞采集。
+    enrich_management_info(proj)
+
     pg_cats = {e.category for e in proj.equipment}
     for e in config.get('equipment', []):
         if e.get('category') not in pg_cats:
@@ -464,6 +511,10 @@ def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditPro
     )
     proj.data_sources['metering'] = first_non_empty_source(
         ('PG', pg_metering),
+    )
+    proj.data_sources['energy_saving'] = first_non_empty_source(
+        ('PG', pg_energy_saving),
+        ('Config', config.get('energy_saving', [])),
     )
     proj.data_sources['management'] = 'default'
 

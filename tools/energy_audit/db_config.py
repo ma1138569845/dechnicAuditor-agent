@@ -60,8 +60,8 @@ def _hermes_config_path() -> Optional[Path]:
     return None
 
 
-def _from_hermes_config(key: str) -> Optional[str]:
-    """Hermes 全局 config.yaml → energy_audit.database.{key}"""
+def _from_hermes_config(section: str, key: str) -> Optional[str]:
+    """Hermes 全局 config.yaml → energy_audit.{section}.{key}"""
     try:
         path = _hermes_config_path()
         if not path or not path.exists():
@@ -69,7 +69,7 @@ def _from_hermes_config(key: str) -> Optional[str]:
         import yaml
         with open(path, encoding='utf-8') as f:
             cfg = yaml.safe_load(f) or {}
-        val = ((cfg.get('energy_audit') or {}).get('database') or {}).get(key)
+        val = ((cfg.get('energy_audit') or {}).get(section) or {}).get(key)
         if _non_blank(val):
             return str(val).strip()
     except Exception:
@@ -77,15 +77,15 @@ def _from_hermes_config(key: str) -> Optional[str]:
     return None
 
 
-def _from_local_config(key: str) -> Optional[str]:
-    """包内 config.yaml → database.{key}（独立运行、无 Hermes 环境时兜底）"""
+def _from_local_config(section: str, key: str) -> Optional[str]:
+    """包内 config.yaml → {section}.{key}（独立运行、无 Hermes 环境时兜底）"""
     try:
         if not _LOCAL_CONFIG_YAML.exists():
             return None
         import yaml
         with open(_LOCAL_CONFIG_YAML, encoding='utf-8') as f:
             cfg = yaml.safe_load(f) or {}
-        val = (cfg.get('database') or {}).get(key)
+        val = (cfg.get(section) or {}).get(key)
         if _non_blank(val):
             return str(val).strip()
     except Exception:
@@ -110,9 +110,9 @@ def get_pg_config(overrides: Optional[Dict] = None) -> Dict:
         if not _non_blank(val):
             val = _from_env(key)
         if not _non_blank(val):
-            val = _from_hermes_config(key)
+            val = _from_hermes_config('database', key)
         if not _non_blank(val):
-            val = _from_local_config(key)
+            val = _from_local_config('database', key)
         if not _non_blank(val):
             val = default
         if _non_blank(val):
@@ -126,3 +126,53 @@ def get_pg_config(overrides: Optional[Dict] = None) -> Dict:
             '  3. tools/energy_audit/config.yaml → database.password（本地开发）'
         )
     return resolved
+
+
+def _file_value(overrides: Dict, env_var: str, key: str) -> Optional[str]:
+    """按 overrides → 环境变量 → Hermes config → 本地 config 顺序取 file 段配置值。"""
+    val = overrides.get(key)
+    if not _non_blank(val):
+        val = os.environ.get(env_var)
+    if not _non_blank(val):
+        val = _from_hermes_config('file', key)
+    if not _non_blank(val):
+        val = _from_local_config('file', key)
+    return str(val).strip() if _non_blank(val) else None
+
+
+def _db_host() -> Optional[str]:
+    """解析数据库主机（不要求 password），供文件服务地址回退使用。"""
+    return (_from_env('host') or _from_hermes_config('database', 'host')
+            or _from_local_config('database', 'host') or _KEYS['host'][2])
+
+
+def get_file_base_url(overrides: Optional[Dict] = None) -> str:
+    """解析文件服务基础地址（拼接 ts_attachment.attach_url 相对路径 → 完整 URL）。
+
+    优先级（高 → 低）：
+      1. 完整前缀 base_url（overrides → EA_FILE_BASE_URL → Hermes → 本地 config）
+      2. base_url 未填时，用 scheme + host + port 拼接；host 留空回退到数据库主机。
+
+    未显式配置 base_url / host / port 任一者时返回空字符串，
+    调用方据此跳过附件解析，不阻塞报告生成。
+    """
+    overrides = overrides or {}
+
+    base_url = _file_value(overrides, 'EA_FILE_BASE_URL', 'base_url')
+    if base_url:
+        return base_url.rstrip('/')
+
+    explicit_host = _file_value(overrides, 'EA_FILE_HOST', 'host')
+    explicit_port = _file_value(overrides, 'EA_FILE_PORT', 'port')
+    if not explicit_host and not explicit_port:
+        return ''
+
+    scheme = _file_value(overrides, 'EA_FILE_SCHEME', 'scheme') or 'http'
+    host = explicit_host or _db_host()
+    if not host:
+        return ''
+
+    url = f"{scheme}://{host}"
+    if explicit_port:
+        url += f":{explicit_port}"
+    return url.rstrip('/')

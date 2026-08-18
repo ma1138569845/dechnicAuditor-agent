@@ -365,11 +365,15 @@ def calc_unit_area_non_heating_energy(
       M    = 建筑面积 (m²)
 
     注: 医疗机构的大型医疗设备、数据中心、厨房炊事、洗衣房等特定功能用能不计入。
-    返回 {kgce_m2: 值, tce: 非供暖能耗tce, area: 使用面积, formula: 公式说明}
+    返回 {kgce_per_m2, non_heating_kgce, building_area_m2, total_energy_tce,
+          heating_energy_tce, transportation_energy_tce, formula}；
+    建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
     area = data.building_area - exclude_special_area
     if area <= 0:
-        return {'kgce_m2': 0, 'tce': 0, 'area': 0, 'error': '建筑面积无效'}
+        return {'kgce_per_m2': 0, 'non_heating_kgce': 0, 'building_area_m2': 0,
+                'total_energy_tce': 0, 'heating_energy_tce': 0,
+                'transportation_energy_tce': 0, 'error': '建筑面积无效'}
 
     non_heat_kgce = data.non_heating_energy_kgce
     kgce_per_m2 = round(non_heat_kgce / area, 2)
@@ -427,11 +431,13 @@ def calc_unit_area_electricity(
     DB37/T 2673-2019 定额（医疗机构）：
       约束值 73.1、基准值 55.2、引导值 38.9 kWh/(m²·a)
 
-    返回 {kwh_per_m2, total_kwh, area, benchmark}
+    返回 {kwh_per_m2, total_electricity_kwh, building_area_m2, benchmark}；
+    建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
     area = data.building_area - exclude_special_area
     if area <= 0:
-        return {'kwh_per_m2': 0, 'error': '建筑面积无效'}
+        return {'kwh_per_m2': 0, 'total_electricity_kwh': 0, 'building_area_m2': 0,
+                'benchmark': None, 'error': '建筑面积无效'}
 
     non_heat_elec = data.non_heating_electricity_kwh
     kwh_per_m2 = round(non_heat_elec / area, 2)
@@ -474,10 +480,12 @@ def calc_per_capita_energy(
       约束值 500、基准值 350、引导值 250 kgce/(人·a)
     （注：该值因地区气候、医院等级差异较大，优先查 DB/用户）
 
-    返回 {kgce_per_person, total_kgce, people_count, benchmark}
+    返回 {kgce_per_person, total_kgce, people_count, benchmark}；
+    用能人数无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
     if data.people_count <= 0:
-        return {'kgce_per_person': 0, 'error': '用能人数无效'}
+        return {'kgce_per_person': 0, 'total_kgce': 0, 'people_count': data.people_count,
+                'benchmark': None, 'error': '用能人数无效'}
 
     # 综合能耗用持久化折标系数（或三级兜底）计算
     kgce_total = (
@@ -535,7 +543,8 @@ def calc_per_capita_water(
       机关:     先进值 10, 通用值 25 m³/(人·a)
 
     返回 dict，包含 {m3_per_person, total_water_m3, people_count, benchmark}
-    医院模式额外返回 {L_per_bed_day, bed_count}
+    医院模式额外返回 {L_per_bed_day, bed_count}；
+    用能人数无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
     metric_map = {
         'medical': 'water_per_bed_day',
@@ -568,7 +577,9 @@ def calc_per_capita_water(
 
     # 机关/教育：人均取水量
     if data.people_count <= 0:
-        return {'m3_per_person': 0, 'error': '用能人数无效'}
+        return {'m3_per_person': 0, 'total_water_m3': data.water_m3,
+                'people_count': data.people_count, 'benchmark': None,
+                'error': '用能人数无效'}
 
     per_person = round(data.water_m3 / data.people_count, 2)
 

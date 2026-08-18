@@ -15,6 +15,8 @@ from typing import Dict, List, Optional, Tuple
 
 from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 
+from tools.energy_audit.chart_utils import setup_chart_font, chart_text
+
 from tools.energy_audit.indicators import (
     YearlyEnergyData,
     calc_unit_area_non_heating_energy,
@@ -464,8 +466,7 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
-        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei']
-        plt.rcParams['axes.unicode_minus'] = False
+        setup_chart_font(plt)
     except ImportError:
         return
 
@@ -482,7 +483,7 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
         if values and any(v > 0 for v in values):
             fig, ax = plt.subplots(figsize=(7, 7))
             ax.pie(values, labels=labels, autopct='%1.1f%%')
-            ax.set_title(f'{y}年能源消费结构')
+            ax.set_title(chart_text(f'{y}年能源消费结构'))
             fig.savefig(os.path.join(output_dir, 'chart_structure.png'), dpi=150, bbox_inches='tight')
             plt.close(fig)
 
@@ -497,7 +498,7 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
                 ax.plot(range(12), monthly, marker='o')
                 ax.set_xticks(range(12))
                 ax.set_xticklabels(months_cn)
-                ax.set_title(f'{latest}年逐月{_coeff_info(code)["name"]}消耗趋势')
+                ax.set_title(chart_text(f'{latest}年逐月{_coeff_info(code)["name"]}消耗趋势'))
                 ax.grid(True, alpha=0.3)
                 fig.savefig(os.path.join(output_dir, f'chart_{code}_monthly.png'), dpi=150, bbox_inches='tight')
                 plt.close(fig)

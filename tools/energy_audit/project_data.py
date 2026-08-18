@@ -215,6 +215,36 @@ class ManagementInfo:
 
 
 @dataclass
+class EnergySaving:
+    """公共机构节能管理信息 —— 对应 PG 表 ts_institution_energy_saving
+
+    所有字段对齐 ts_institution_energy_saving 表结构，0/1 标记字段沿用 int 类型
+    （1:有/是, 0:无/否），与 BuildingInfo 中 wallwarm_change 等字段风格一致。
+    """
+    statistical_year: int = 0           # 统计年
+    energy_management: Optional[int] = None  # 能源管理制度 (1:有, 0:无, None:未填写)
+    energy_pain_points: str = ""        # 目前能源利用痛点
+    management_files: str = ""          # 能源管理制度文件ID，多个以逗号分隔
+    management_file_images: List[str] = field(default_factory=list)  # 管理制度附件解析下载后的图片本地路径
+    has_awards: int = 0                 # 节能相关奖项 (1:有, 0:无)
+    award_name: str = ""                # 节能奖项名称
+    award_certificate: str = ""         # 节能奖项证明文件ID
+    award_certificate_images: List[str] = field(default_factory=list)  # 奖项证明附件解析下载后的图片本地路径
+    other_measures: str = ""            # 其他节能改造措施
+    third_party_system: str = ""        # 第三方托管能源系统
+    charging_pile: int = 0              # 充电桩 (1:有, 0:无)
+    charging_settlement: str = ""       # 充电桩结算方式
+    charging_installation: str = ""     # 充电桩安装方式
+    third_party_outsource: int = 0      # 第三方外包用能系统 (1:有, 0:无)
+    outsource_content: str = ""         # 第三方外包用能系统内容
+    outsource_settlement: str = ""      # 第三方外包用能系统结算方式
+    lighting_replacement: int = 0       # 照明灯具更换 (1:有, 0:无)
+    ac_replacement: int = 0             # 空调设备更换 (1:有, 0:无)
+    water_saving_fixture_replacement: int = 0  # 节水型卫生器具更换 (1:有, 0:无)
+    central_ac_control: int = 0         # 中央空调系统增加集中控制 (1:有, 0:无)
+
+
+@dataclass
 class IndoorEnv:
     """室内环境检测"""
     test_date: str = ""
@@ -238,11 +268,12 @@ class AuditProject:
     equipment: List[Equipment] = field(default_factory=list)
     metering: MeteringInfo = field(default_factory=MeteringInfo)
     management: ManagementInfo = field(default_factory=ManagementInfo)
+    energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）
     indoor_env: IndoorEnv = field(default_factory=IndoorEnv)
     images: List[str] = field(default_factory=list)  # 图片文件路径列表
     data_sources: Dict[str, str] = field(default_factory=dict)  # 字段→来源追溯
     indicators: Dict[str, Any] = field(default_factory=dict)   # 预计算能源审计指标
-    _version: str = "1.1.0"            # 数据格式版本（新增 EnergyYearly.coefficients / coefficient_sources）
+    _version: str = "1.2.0"            # 数据格式版本（新增 energy_saving / EnergySaving）
 
 
 # ============================================================
