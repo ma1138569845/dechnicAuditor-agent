@@ -219,3 +219,10 @@ native/fts5_cjk/*.so
 /apps/desktop/electron-dev.log
 /apps/desktop/renderer-dev.log
 /electron-restart.log
+
+# Energy audit tool output: generated reports (.md/.docx) + downloaded attachment
+# files under reports/attachments/. Regenerated on every audit run, never source.
+reports/
+
+# Stray empty temp file (unexpanded `$tmp` shell variable left in the repo root)
+$tmp
