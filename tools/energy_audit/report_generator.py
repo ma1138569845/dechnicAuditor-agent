@@ -784,10 +784,22 @@ class WordReportBuilder:
             # 段1: 总览
             bldg_names = '、'.join(b.get('name','') for b in buildings[:6])
             text_22 = f"{unit}院内主要建筑物包括{bldg_names}等{len(buildings)}栋建筑。"
-            # 共性特征
+            # 共性特征（扩展：含屋面保温 / 监测 / 遮阳 / 楼层计量）
+            total = len(buildings)
+
+            def _rate(field, want):
+                """统计满足 want 的建筑数，返回 '全部N栋' / 'N栋（X%）' / None"""
+                cnt = sum(1 for b in buildings if b.get(field) == want)
+                if cnt == 0:
+                    return None
+                if cnt == total:
+                    return f"全部{total}栋"
+                return f"{cnt}栋（{cnt/total*100:.0f}%）"
+
             structures = set(b.get('structure','') for b in buildings if b.get('structure'))
             insulations = set(b.get('insulation','') for b in buildings if b.get('insulation'))
             windows = set(b.get('window_type','') for b in buildings if b.get('window_type'))
+            sunshades = set(b.get('sunshade_type','') for b in buildings if b.get('sunshade_type'))
             common_parts = []
             if structures:
                 s = '、'.join(structures)
@@ -795,8 +807,28 @@ class WordReportBuilder:
             if insulations and '有' in str(insulations): common_parts.append("设有外墙保温")
             if windows and '—' not in str(windows) and '无' not in str(windows):
                 common_parts.append(f"外窗采用{'、'.join(windows)}")
+            # ---- 新增维度 ----
+            roof = _rate('roof_insulation', '有')
+            if roof: common_parts.append(f"{roof}建筑设有屋面保温")
+            mon = _rate('monitoring', '有')
+            if mon: common_parts.append(f"{mon}建筑配备能耗在线监测系统")
+            sm = _rate('storey_metrology', '是')
+            if sm: common_parts.append(f"{sm}建筑实现楼层单独计量")
+            if sunshades:
+                common_parts.append(f"遮阳形式为{'、'.join(sunshades)}")
             if common_parts:
                 text_22 += f"各建筑{'，'.join(common_parts)}。\n\n"
+
+            # 面积汇总：供冷 / 供热 / 地下车库
+            total_cool = sum(float(b.get('cooling_area') or 0) for b in buildings)
+            total_heat = sum(float(b.get('heating_area') or 0) for b in buildings)
+            total_garage = sum(float(b.get('garage_area') or 0) for b in buildings)
+            agg = []
+            if total_cool > 0: agg.append(f"供冷面积{total_cool:g}m²")
+            if total_heat > 0: agg.append(f"供热面积{total_heat:g}m²")
+            if total_garage > 0: agg.append(f"地下车库面积{total_garage:g}m²")
+            if agg:
+                text_22 += f"\n\n全院合计：{'，'.join(agg)}。\n"
 
             # 段2: 逐栋详情
             text_22 += "各建筑物详细情况如下：\n"
@@ -2775,6 +2807,21 @@ class ReportGenerator:
 
         b = project.base
 
+        # ---- 照片按分类路由（对齐 photo_manager.PHOTO_REQUIREMENTS）----
+        # 未分类照片（category=''）兜底进第2章；分类照片按章节/系统分发。
+        img_by_cat: Dict[str, List] = {}
+        for _img in project.images:
+            _cat = getattr(_img, 'category', '') or ''
+            img_by_cat.setdefault(_cat, []).append(_img)
+
+        def _chapter_imgs(*cats: str, prefix: str = '图2') -> List[Dict]:
+            """取指定分类的照片 → [{path, caption}]；caption 未填时按章节自动编号"""
+            items = []
+            for c in cats:
+                items.extend(img_by_cat.get(c, []))
+            return [{'path': _i.path, 'caption': _i.caption or f'{prefix}-{idx+1}'}
+                    for idx, _i in enumerate(items)]
+
         # 第3章：管理信息 + 节能管理信息（ts_institution_energy_saving）合并，
         # 节能管理信息有记录时用真实数据生成，无记录时保留既有兜底文案。
         chapter3 = {
@@ -2785,6 +2832,7 @@ class ReportGenerator:
         }
         es_list = sorted((es for es in project.energy_saving if es is not None),
                          key=lambda es: es.statistical_year or 0, reverse=True)
+        _ch3_imgs = []
         if es_list:
             es_secs = _energy_saving_chapter3_sections(es_list[0], b.unit_short or b.unit_name)
             for k, v in es_secs.items():
@@ -2793,12 +2841,13 @@ class ReportGenerator:
                     continue
                 chapter3[k] = '\n\n'.join(filter(None, [chapter3.get(k, ''), v]))
             # 管理文件 / 获奖证书附件图片（file_resolver 已下载到本地）
-            _ch3_imgs = []
             for _p in (es_list[0].management_file_images + es_list[0].award_certificate_images):
                 if _p and os.path.exists(_p):
                     _ch3_imgs.append({'path': _p, 'caption': f'图3-{len(_ch3_imgs)+1}'})
-            if _ch3_imgs:
-                chapter3['images'] = _ch3_imgs
+        # 第3章照片：合并数据模型分类图片（管理文件/荣誉）
+        _ch3_imgs += _chapter_imgs('管理文件/荣誉', prefix='图3')
+        if _ch3_imgs:
+            chapter3['images'] = _ch3_imgs
 
         rd = {
             'tags': {
@@ -2838,19 +2887,28 @@ class ReportGenerator:
                 'beds_count': b.beds_count,
                 'buildings': [{'name':bg.name or f'建筑{i+1}', 'address':bg.address or b.address,
                                'year':bg.year, 'function':bg.function, 'floors':bg.floors,
-                               'area':bg.area, 'structure':bg.structure,
+                               'area':bg.area, 'use_area':bg.use_area, 'structure':bg.structure,
+                               'wall_body_material':bg.wall_body_material,
                                'window_type':bg.window_type, 'insulation':bg.insulation,
+                               'roof_insulation':bg.roof_insulation,
+                               'roof_insulation_material':bg.roof_insulation_material,
+                               'sunshade_type':bg.sunshade_type, 'sunshade_material':bg.sunshade_material,
                                'orientation':bg.orientation, 'function_zoning':bg.function_zoning,
                                'height':bg.height,
                                'cooling_source':bg.cooling_source, 'heating_source':bg.heating_source,
+                               'cooling_area':bg.cooling_area, 'heating_area':bg.heating_area,
                                'cooling_terminal':bg.cooling_terminal, 'heating_terminal':bg.heating_terminal,
                                'water_system':bg.water_system, 'fire_system':bg.fire_system,
-                               'hot_water':bg.hot_water, 'monitoring':bg.monitoring}
+                               'hot_water':bg.hot_water, 'monitoring':bg.monitoring,
+                               'run_time':bg.run_time, 'storey_metrology':bg.storey_metrology,
+                               'garage':bg.garage, 'garage_area':bg.garage_area}
                               for i, bg in enumerate(project.buildings)],
-                'images': [{'path':img, 'caption':f'图2-{i+1}'} for i, img in enumerate(project.images[:5])],
+                # 建筑照片：分类（建筑外观/各建筑外观）+ 未分类兜底
+                'images': _chapter_imgs('建筑外观', '各建筑外观', '', prefix='图2'),
             },
             'chapter3': chapter3,
             'chapter4': {
+                'images': _chapter_imgs('计量器具', prefix='图4'),
                 'section_4_1': f"计量体系按GB/T29149-2012划分为三级计量。⚠️ 请说明具体计量分级和监测系统建设情况。" if not project.metering.has_monitoring_system else f"计量体系按GB/T29149-2012划分为三级计量。",
                 'section_4_2': f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块。⚠️ 请确认具体数量和型号。" if not project.metering.electric_meters else f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块、气表{project.metering.gas_meters}块。",
                 'section_4_3': '⚠️ 请提供数据采集方式和统计制度说明。来源：被审计单位调研表。',
@@ -2860,7 +2918,7 @@ class ReportGenerator:
                 'text': '',
             },
             'chapter6': {},
-            'chapter7': {},
+            'chapter7': {'images': _chapter_imgs('节能改造示意', prefix='图7')},
             'chapter8': {},
             'sections': {},
         }
@@ -2916,11 +2974,25 @@ class ReportGenerator:
             energy_types = [k for k, v in counts.items() if v > 0]
             rd['chapter1']['energy_types'] = energy_types  # 供 chapter1 使用
 
+        # 第5章账单照片（分类：能耗账单）
+        rd['chapter5']['images'] = _chapter_imgs('能耗账单', prefix='图5')
+
         # 设备 → chapter6
         if project.equipment:
             eq_list = [{'name':eq.name,'category':eq.category,'spec':eq.spec,'quantity':eq.quantity,'remark':eq.remark} for eq in project.equipment]
             rd['chapter6'] = ch6 = rd.get('chapter6', {}) or {}
             ch6['_equipment'] = eq_list
+            # 第6章设备照片：按系统分组；兼容旧版顶层 images_equipment 消费方（顺序: 制冷→照明→变配电→水泵→厨房）
+            _eq_imgs = _chapter_imgs('制冷设备', '照明设备', '变压器/配电', '水泵/水箱', '厨房设备', prefix='图6')
+            if _eq_imgs:
+                rd['images_equipment'] = [_i['path'] for _i in _eq_imgs]
+                ch6['images'] = {
+                    'cooling': _chapter_imgs('制冷设备', prefix='图6'),
+                    'lighting': _chapter_imgs('照明设备', prefix='图6'),
+                    'transformer': _chapter_imgs('变压器/配电', prefix='图6'),
+                    'water': _chapter_imgs('水泵/水箱', prefix='图6'),
+                    'other_energy': _chapter_imgs('厨房设备', prefix='图6'),
+                }
 
         self.set_report_data(rd)
         return rd

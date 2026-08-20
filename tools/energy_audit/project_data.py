@@ -17,6 +17,25 @@ from pathlib import Path
 
 
 # ============================================================
+# 照片分类（名称与 photo_manager.PHOTO_REQUIREMENTS 一一对应）
+# 数据采集 agent 写入 project.images 时按此分类标注，报告按分类路由到各章节。
+# ============================================================
+PHOTO_CATEGORIES = (
+    '建筑外观',      # 第2章 被审计单位建筑全景或主立面照片
+    '各建筑外观',    # 第2章 每栋建筑单独外观照
+    '管理文件/荣誉',  # 第3章 能源管理制度文件、节能荣誉证书
+    '计量器具',      # 第4章 电表、水表、气表等计量仪表照片
+    '能耗账单',      # 第5章 电费、水费、燃气费账单示例
+    '制冷设备',      # 第6章 冷水机组/多联机外机/分体空调等
+    '照明设备',      # 第6章 典型照明灯具照片
+    '变压器/配电',   # 第6章 变压器室、配电柜等
+    '水泵/水箱',     # 第6章 生活水泵、消防水箱等
+    '厨房设备',      # 第6章 厨房设备
+    '节能改造示意',  # 第7章 改造前现状照片（可选对比）
+)
+
+
+# ============================================================
 # 数据模型
 # ============================================================
 
@@ -252,6 +271,17 @@ class IndoorEnv:
     rooms: List[dict] = field(default_factory=list)  # [{room, temp, humidity, co2, illumination, voc, pm25, remark}]
 
 
+@dataclass
+class ImageItem:
+    """项目照片（带分类，供报告章节路由与照片完整性校验）
+
+    category 取 PHOTO_CATEGORIES 之一；空字符串表示未分类（兼容旧数据，报告兜底进第2章）。
+    """
+    path: str                          # 图片文件路径（本地绝对路径）
+    category: str = ""                 # 照片分类（PHOTO_CATEGORIES）
+    caption: str = ""                  # 图注（可选，报告内展示用）
+
+
 # ============================================================
 # 顶层项目数据
 # ============================================================
@@ -270,10 +300,10 @@ class AuditProject:
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）
     indoor_env: IndoorEnv = field(default_factory=IndoorEnv)
-    images: List[str] = field(default_factory=list)  # 图片文件路径列表
+    images: List[ImageItem] = field(default_factory=list)  # 照片列表（带分类）
     data_sources: Dict[str, str] = field(default_factory=dict)  # 字段→来源追溯
     indicators: Dict[str, Any] = field(default_factory=dict)   # 预计算能源审计指标
-    _version: str = "1.2.0"            # 数据格式版本（新增 energy_saving / EnergySaving）
+    _version: str = "1.3.0"            # 数据格式版本（images 升级为带分类的 ImageItem）
 
 
 # ============================================================
@@ -338,6 +368,15 @@ def is_valid_coefficient(value) -> bool:
         return False
 
 
+def total_building_area(buildings: List[dict]) -> float:
+    """各建筑面积合计（m²），None / 缺字段按 0 计。
+
+    采集（pg_collector）与质检（data_collection_cli）多处需要"建筑合计面积"，
+    统一收敛到此，避免 sum(b.get('area', 0)) 散落多个文件。
+    """
+    return sum(b.get('area', 0) or 0 for b in buildings)
+
+
 # ============================================================
 # 持久化层
 # ============================================================
@@ -373,7 +412,15 @@ def _dict_to_dataclass(data: dict, cls: type) -> Any:
     origin = getattr(cls, '__origin__', None)
     if origin is list or origin is List:
         item_cls = cls.__args__[0]
-        return [_dict_to_dataclass(item, item_cls) for item in data]
+        result = []
+        for item in data:
+            # 兼容旧数据：images 为纯字符串路径 → 转为 ImageItem(path=...)
+            if isinstance(item, str) and hasattr(item_cls, '__dataclass_fields__') \
+                    and 'path' in item_cls.__dataclass_fields__:
+                result.append(item_cls(path=item))
+            else:
+                result.append(_dict_to_dataclass(item, item_cls))
+        return result
 
     # 普通 dataclass
     if isinstance(data, dict):

@@ -5,9 +5,119 @@
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 import os
 from datetime import datetime
+
+
+# ============================================================
+# Excel → excel_data 字典转换（供 pg_collector.build_and_save_project 合并）
+#
+# 每个数据类别定义：标准字段 → 候选列头别名列表。
+# 列头匹配优先级：精确 > 包含（最长别名优先）> 编辑距离。
+# 输出 schema 与 collect_from_pg 的 found 结构一致：
+#   - base 标量直接进 excel_data 顶层（unit_name/address/...）
+#   - 集合类进 excel_data['buildings'|'energy_yearly'|'equipment'|'metering']
+# ============================================================
+
+EXCEL_SCHEMAS = {
+    'base': {
+        'unit_name': ['单位名称', '被审计单位名称', '被审计单位', '单位'],
+        'unit_short': ['单位简称', '简称'],
+        'address': ['地址', '单位地址'],
+        'province': ['省份', '省'],
+        'unit_type': ['审计类型', '单位类型'],
+        'institution_category': ['机构类别'],
+        'specific_type': ['具体类型'],
+        'basic_situation': ['基本情况', '单位概况'],
+        'contact_person': ['联系人'],
+        'contact_phone': ['联系电话', '电话'],
+        'auditor': ['审计机构', '审计单位'],
+        'building_area': ['建筑面积', '总面积'],
+        'people_count': ['用能人数', '职工数', '人数'],
+        'beds_count': ['床位数', '床位'],
+        'audit_start': ['审计开始', '审计起始'],
+        'audit_end': ['审计结束', '审计截止'],
+        'data_start': ['数据开始', '数据起始'],
+        'data_end': ['数据结束', '数据截止'],
+        'report_date': ['报告日期'],
+    },
+    'buildings': {
+        'name': ['建筑名称', '楼栋', '建筑'],
+        'address': ['地址'],
+        'year': ['竣工年份', '建成年份'],
+        'function': ['建筑功能', '功能'],
+        'area': ['建筑面积', '面积'],
+        'use_area': ['使用面积'],
+        'cooling_area': ['供冷面积'],
+        'heating_area': ['供热面积'],
+        'floors': ['层数', '楼层'],
+        'up_floor': ['地上层数'],
+        'down_floor': ['地下层数'],
+        'structure': ['结构形式', '结构'],
+        'insulation': ['外墙保温', '保温形式'],
+        'cooling_source': ['冷源', '供冷方式'],
+        'heating_source': ['热源', '供暖方式'],
+    },
+    'energy': {
+        'year': ['年份', '年度'],
+        'electricity_kwh': ['用电量', '用电', '电量', '电(kWh)', '电'],
+        'water_m3': ['用水量', '用水', '水量', '水(m³)', '水'],
+        'natural_gas_m3': ['天然气', '燃气', '气量', '气(m³)', '气'],
+        'heating_energy_heat_gj': ['热能', '供热量', '供热'],
+        'petrol_kg': ['汽油'],
+        'diesel_kg': ['柴油'],
+        'electricity_cost_wan': ['电费', '电费(万元)'],
+        'water_cost_wan': ['水费', '水费(万元)'],
+        'natural_gas_cost_wan': ['燃气费', '气费'],
+        'heating_cost_wan': ['热费', '供暖费'],
+    },
+    'equipment': {
+        'name': ['设备名称', '设备'],
+        'category': ['分类', '设备分类'],
+        'spec': ['规格', '规格型号'],
+        'quantity': ['数量', '台数', '设备数量'],
+    },
+    'metering': {
+        'has_monitoring_system': ['有无监测系统', '监测系统'],
+        'has_separate_metering': ['分项计量'],
+        'has_household_metering': ['分户计量'],
+        'electric_meters': ['电表数量', '电表数'],
+        'water_meters': ['水表数量', '水表数'],
+        'gas_meters': ['气表数量', '气表数'],
+        'heat_meters': ['热量表数量', '热量表数'],
+    },
+}
+
+# 各类别中按 float / int / bool 收敛的字段
+EXCEL_NUMERIC_FIELDS = {
+    'base': {'building_area'},
+    'buildings': {'area', 'use_area', 'cooling_area', 'heating_area'},
+    'energy': {'electricity_kwh', 'water_m3', 'natural_gas_m3', 'heating_energy_heat_gj',
+               'petrol_kg', 'diesel_kg', 'electricity_cost_wan', 'water_cost_wan',
+               'natural_gas_cost_wan', 'heating_cost_wan'},
+    'equipment': set(),
+    'metering': set(),
+}
+EXCEL_INT_FIELDS = {
+    'base': {'people_count', 'beds_count'},
+    'buildings': {'year', 'up_floor', 'down_floor'},
+    'energy': {'year'},
+    'equipment': {'quantity'},
+    'metering': {'electric_meters', 'water_meters', 'gas_meters', 'heat_meters'},
+}
+EXCEL_BOOL_FIELDS = {
+    'metering': {'has_monitoring_system', 'has_separate_metering', 'has_household_metering'},
+}
+
+# 各类别输出到 excel_data 的顶层键；base 的标量直接进顶层（None）
+EXCEL_OUTPUT_KEYS = {
+    'base': None,
+    'buildings': 'buildings',
+    'energy': 'energy_yearly',
+    'equipment': 'equipment',
+    'metering': 'metering',
+}
 
 
 class ExcelDataProcessor:
@@ -288,8 +398,185 @@ class ExcelDataProcessor:
                 'total_numeric_values': df[numeric_columns].count().sum(),
                 'total_missing_values': df.isnull().sum().sum()
             }
-        
+
         return summary
+
+    # ============================================================
+    # Excel → excel_data 字典转换（供 build_and_save_project 合并）
+    # ============================================================
+
+    @staticmethod
+    def _levenshtein(a: str, b: str) -> int:
+        """编辑距离，用于列头模糊匹配。"""
+        if a == b:
+            return 0
+        la, lb = len(a), len(b)
+        if la == 0:
+            return lb
+        if lb == 0:
+            return la
+        prev = list(range(lb + 1))
+        for i in range(1, la + 1):
+            cur = [i] + [0] * lb
+            for j in range(1, lb + 1):
+                cur[j] = min(prev[j] + 1, cur[j - 1] + 1,
+                             prev[j - 1] + (a[i - 1] != b[j - 1]))
+            prev = cur
+        return prev[lb]
+
+    def _match_header_to_field(self, header: str,
+                               schema: Dict[str, List[str]]) -> Optional[str]:
+        """列头 → 标准字段名，匹配优先级：精确 > 包含（最长别名优先）> 编辑距离。
+
+        单字别名（如 '电'）仅用于包含匹配兜底；'电费' 会优先命中更长的
+        '电费'/'电费(万元)'，避免被单字 '电' 误吞到 electricity_kwh。
+        """
+        if header is None:
+            return None
+        h = str(header).strip().lower()
+        if not h:
+            return None
+
+        # 1) 精确匹配
+        for field, aliases in schema.items():
+            for alias in aliases:
+                if str(alias).strip().lower() == h:
+                    return field
+
+        # 2) 包含匹配（优先最长别名）
+        best_alias, best_field, best_len = None, None, 0
+        for field, aliases in schema.items():
+            for alias in aliases:
+                a = str(alias).strip().lower()
+                if not a:
+                    continue
+                if a in h or h in a:
+                    if len(a) > best_len:
+                        best_len, best_alias, best_field = len(a), a, field
+        if best_field is not None:
+            return best_field
+
+        # 3) 编辑距离兜底（容忍轻微拼写差异）
+        best_d, best_field = 2, None
+        for field, aliases in schema.items():
+            for alias in aliases:
+                a = str(alias).strip().lower()
+                if not a:
+                    continue
+                d = self._levenshtein(h, a)
+                if d < best_d:
+                    best_d, best_field = d, field
+        return best_field
+
+    def _normalize_columns(self, df: pd.DataFrame,
+                           category: str) -> Tuple[Dict[str, str], List[str]]:
+        """列头标准化：{标准字段: 原始列名}。返回 (映射, 未匹配列名列表)。
+
+        同一标准字段只接受第一个匹配列，避免重复。
+        """
+        schema = EXCEL_SCHEMAS.get(category)
+        if schema is None:
+            raise ValueError(f"未知 Excel 类别: {category}，可选 {list(EXCEL_SCHEMAS)}")
+        mapping, unmatched, used = {}, [], set()
+        for col in df.columns:
+            field = self._match_header_to_field(col, schema)
+            if field and field not in used:
+                mapping[field] = col
+                used.add(field)
+            elif not field:
+                unmatched.append(str(col))
+        return mapping, unmatched
+
+    @staticmethod
+    def _coerce(value, numeric: bool = False, integer: bool = False,
+                boolean: bool = False):
+        """单元格值按目标字段类型收敛：NaN/None → 0 或 ''；布尔列识别 有/是/1。"""
+        if value is None:
+            return False if boolean else (0 if numeric or integer else '')
+        try:
+            is_na = bool(pd.isna(value))
+        except Exception:
+            is_na = False
+        if is_na:
+            return False if boolean else (0 if numeric or integer else '')
+        if boolean:
+            return str(value).strip() in ('有', '是', '1', '1.0', 'true', 'True', 'TRUE')
+        if integer:
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return 0
+        if numeric:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return 0
+        return str(value)
+
+    def to_excel_data(self, category: str = 'base', df: pd.DataFrame = None) -> dict:
+        """把 DataFrame 按类别转换为 excel_data 字典片段。
+
+        Args:
+            category: 'base' | 'buildings' | 'energy' | 'equipment' | 'metering'
+            df: 目标 DataFrame；缺省用 self.data（read_excel 的产物）
+
+        Returns:
+            base → 顶层标量字典；其余 → {输出键: 记录列表/dict}。
+            未匹配的列跳过并打印提示（不进入结果）。
+        """
+        if df is None:
+            df = self.data
+        if df is None:
+            raise ValueError("请先 read_excel() 或传入 df")
+
+        mapping, unmatched = self._normalize_columns(df, category)
+        if unmatched:
+            print(f"[excel] {category} 未匹配的列已跳过: {', '.join(unmatched)}")
+
+        numeric = EXCEL_NUMERIC_FIELDS.get(category, set())
+        integer = EXCEL_INT_FIELDS.get(category, set())
+        boolean = EXCEL_BOOL_FIELDS.get(category, set())
+        output_key = EXCEL_OUTPUT_KEYS.get(category)
+
+        def _row_to_rec(series) -> dict:
+            rec = {}
+            for field, col in mapping.items():
+                rec[field] = self._coerce(series[col],
+                                          field in numeric,
+                                          field in integer,
+                                          field in boolean)
+            return rec
+
+        if category == 'base':
+            if len(df) == 0:
+                return {}
+            return _row_to_rec(df.iloc[0])
+
+        rows = [_row_to_rec(r) for _, r in df.iterrows()]
+        if output_key is None:
+            return rows
+        if category == 'metering':
+            return {output_key: rows[0] if rows else {}}
+        return {output_key: rows}
+
+    def build_excel_data(self, sheets: Dict[str, pd.DataFrame]) -> dict:
+        """把多类别 DataFrame 合并为完整的 excel_data 字典。
+
+        Args:
+            sheets: {类别: DataFrame}，如
+                {'base': df_base, 'buildings': df_buildings, 'energy': df_energy,
+                 'equipment': df_equipment, 'metering': df_metering}
+
+        Returns:
+            可直接传给 build_and_save_project(excel_data=...) 的字典。
+        """
+        result = {}
+        for category, df in sheets.items():
+            if category not in EXCEL_SCHEMAS:
+                print(f"[excel] 忽略未知类别: {category}")
+                continue
+            result.update(self.to_excel_data(category, df))
+        return result
 
 
 def compute_audit_indicators(project) -> Dict:

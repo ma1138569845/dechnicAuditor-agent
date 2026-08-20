@@ -2,7 +2,7 @@
 能源审计PostgreSQL数据查询工具
 适配 dc_energy_audit2 数据库实际表结构
 
-prod - serial number - 4
+prod - serial number - 2
 """
 
 import psycopg2

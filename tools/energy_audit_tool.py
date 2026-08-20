@@ -596,7 +596,7 @@ def rest_generate_energy_audit_report(
 ) -> dict:
     """从 PG 取数生成能源审计报告 .docx（REST 版本，返回 dict）。
 
-    管线：build_from_pg_and_config（PG 取数 → AuditProject）
+    管线：build_and_save_project（PG 取数 → AuditProject）
           → ReportGenerator.load_from_project → generate_word → .docx
     """
     if not _PG_AVAILABLE:
@@ -607,7 +607,7 @@ def rest_generate_energy_audit_report(
         return {"error": "project_name 不能为空", "message": "请提供单位/项目名称"}
 
     try:
-        from tools.energy_audit.pg_collector import build_from_pg_and_config
+        from tools.energy_audit.pg_collector import build_and_save_project
         from tools.energy_audit.report_generator import ReportGenerator
     except ImportError as e:
         return {"error": "能源审计报告工具加载失败", "message": str(e)}
@@ -620,11 +620,11 @@ def rest_generate_energy_audit_report(
         return {"error": "无法创建输出目录", "message": str(e)}
 
     try:
-        project = build_from_pg_and_config(project_name)
+        project = build_and_save_project(project_name)
     except Exception as e:
         return {"error": "从数据库取数失败", "message": f"{project_name}: {e}"}
 
-    # build_from_pg_and_config 内部会 save_project；项目未找到时返回空 AuditProject。
+    # build_and_save_project 内部会 save_project；项目未找到时返回空 AuditProject。
     if not project.base.unit_name:
         return {"error": "未找到项目", "message": f"数据库中不存在单位/项目：{project_name}"}
 

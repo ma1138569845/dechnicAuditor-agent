@@ -10,7 +10,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from tools.energy_audit import data_collector as dc
 from tools.energy_audit import indicators
 from tools.energy_audit import pg_collector as pgc
 from tools.energy_audit.project_data import (
@@ -144,14 +143,13 @@ def test_pg_collector_cost_records_do_not_write_coefficients():
 
 
 # ============================================================
-# data_collector merge
+# data_collection_cli merge
 # ============================================================
 
 def test_merge_energy_preserves_pg_coefficients():
     pg = [{'year': 2023, 'electricity_kwh': 100, 'coefficients': {'electricity': 0.15}}]
     excel = [{'year': 2023, 'electricity_kwh': 200, 'coefficients': {'electricity': 0.25}}]
-    config = []
-    merged = dc._merge_energy(pg, excel, config)
+    merged = pgc._merge_energy(pg, excel)
     assert merged[0].electricity_kwh == 100  # PG quantity wins
     assert merged[0].coefficients['electricity'] == pytest.approx(0.15)
 
@@ -159,8 +157,7 @@ def test_merge_energy_preserves_pg_coefficients():
 def test_merge_energy_fills_missing_coefficients_from_lower_priority():
     pg = [{'year': 2023, 'electricity_kwh': 100, 'coefficients': {'electricity': 0.15}}]
     excel = [{'year': 2023, 'electricity_kwh': 200, 'coefficients': {'water': 0.35}}]
-    config = []
-    merged = dc._merge_energy(pg, excel, config)
+    merged = pgc._merge_energy(pg, excel)
     assert merged[0].coefficients['electricity'] == pytest.approx(0.15)
     assert merged[0].coefficients['water'] == pytest.approx(0.35)
 
@@ -168,8 +165,7 @@ def test_merge_energy_fills_missing_coefficients_from_lower_priority():
 def test_merge_energy_keeps_excel_when_pg_empty():
     pg = []
     excel = [{'year': 2023, 'electricity_kwh': 200, 'coefficients': {'electricity': 0.25}}]
-    config = []
-    merged = dc._merge_energy(pg, excel, config)
+    merged = pgc._merge_energy(pg, excel)
     assert merged[0].electricity_kwh == 200
     assert merged[0].coefficients['electricity'] == pytest.approx(0.25)
 

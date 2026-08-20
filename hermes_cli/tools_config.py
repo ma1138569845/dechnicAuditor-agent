@@ -121,6 +121,7 @@ CONFIGURABLE_TOOLSETS = [
     ("discord_admin",   "🛡️  Discord Server Admin",    "list channels/roles, pin, assign roles"),
     ("yuanbao",          "🤖 Yuanbao",                  "group info, member queries, DM"),
     ("computer_use",     "🖱️  Computer Use (macOS/Windows/Linux)", "background desktop control via cua-driver"),
+    ("energy_audit",     "🔍 能源审计",                 "PG 查询 + RAG/知识图谱检索（项目/建筑/设备/能耗/表具/报告）"),
 ]
 
 

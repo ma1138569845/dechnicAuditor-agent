@@ -10,13 +10,13 @@ import sys
 
 from tools.energy_audit import PgDataQuery
 from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
     Equipment, MeteringInfo, ManagementInfo, EnergySaving,
     save_project, SourceResolver, first_non_empty_source,
-    is_valid_coefficient,
+    is_valid_coefficient, total_building_area,
 )
 from tools.energy_audit.indicators import compute_project_indicators
 from tools.energy_audit.file_resolver import (
@@ -370,115 +370,116 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     return result
 
 
-def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditProject:
+def build_and_save_project(project_name: str, excel_data: dict = None, pg_result: dict = None) -> AuditProject:
     """
-    datacollection Agent v2：先查PG，缺失的用config补充。
+    datacollection Agent v2：先查PG，缺失的用Excel补充。
+
+    注意：本函数带持久化副作用 —— 内部会 save_project(proj) 落盘，
+    并触发附件图片下载 / LLM 提炼（网络副作用），不纯是内存构建。
+
+    Args:
+        pg_result: 可选的已采集结果（collect_from_pg 返回值）。
+            传入时跳过内部二次查询，供调用方复用采集结果。
     """
     print(f"[datacollection v2] 正在从PG查询项目: {project_name}")
-    pg_data = collect_from_pg(project_name)
+    if pg_result is None:
+        pg_result = collect_from_pg(project_name)
 
-    found_count = len(pg_data['found'])
-    missing_count = len(pg_data['missing'])
-    print(f"[datacollectionv2] PG查询完成: 找到{found_count}类数据, 缺失{missing_count}项")
+    found_count = len(pg_result['found'])
+    missing_count = len(pg_result['missing'])
+    print(f"[datacollection v2] PG查询完成: 找到{found_count}类数据, 缺失{missing_count}项")
 
-    if pg_data['missing']:
-        print("\n⚠️ 以下数据未在PG中找到，需从config或手动补充：")
-        for m in pg_data['missing']:
+    if pg_result['missing']:
+        print("\n⚠️ 以下数据未在PG中找到，需手动补充：")
+        for m in pg_result['missing']:
             print(f"  · {m}")
         print()
 
-    config = config or {}
+    excel_data = excel_data or {}
     sr = SourceResolver()
 
-    pg_project = pg_data['found'].get('project', {})
-    pg_buildings = pg_data['found'].get('buildings', [])
-    pg_energy = pg_data['found'].get('energy_yearly', [])
-    pg_equipment = pg_data['found'].get('equipment', [])
-    pg_metering = pg_data['found'].get('metering', {})
-    pg_energy_saving = pg_data['found'].get('energy_saving', [])
-    pg_building_area = sum(b['area'] for b in pg_buildings) or 0
+    pg_project = pg_result['found'].get('project', {})
+    pg_buildings = pg_result['found'].get('buildings', [])
+    pg_energy = pg_result['found'].get('energy_yearly', [])
+    pg_equipment = pg_result['found'].get('equipment', [])
+    pg_metering = pg_result['found'].get('metering', {})
+    pg_energy_saving = pg_result['found'].get('energy_saving', [])
+    pg_building_area = total_building_area(pg_buildings)
 
     proj = AuditProject(
         base=ProjectBase(
             name=f"{project_name}能源审计",
             unit_name=sr.resolve('unit_name',
                                  ('PG', pg_project),
-                                 ('Config', config),
+                                 ('Excel', excel_data),
                                  ('default', project_name)),
             unit_short=sr.resolve('unit_short',
-                                  ('Config', config),
+                                  ('Excel', excel_data),
                                   ('default', project_name)),
             address=sr.resolve('address',
-                               ('Config', config),
+                               ('Excel', excel_data),
                                ('default', '')),
             unit_type=sr.resolve('unit_type',
-                                 ('Config', config),
+                                 ('Excel', excel_data),
                                  ('default', '公共机构')),
             institution_category=sr.resolve('institution_category',
-                                            ('Config', config),
+                                            ('Excel', excel_data),
                                             ('default', '')),
             specific_type=sr.resolve('specific_type',
-                                     ('Config', config),
+                                     ('Excel', excel_data),
                                      ('default', '')),
             basic_situation=sr.resolve('basic_situation',
-                                       ('PG', pg_data['found'].get('customer_info', {})),
-                                       ('Config', config),
+                                       ('PG', pg_result['found'].get('customer_info', {})),
+                                       ('Excel', excel_data),
                                        ('default', '')),
             contact_person=sr.resolve('contact_person',
                                       ('PG', pg_project),
-                                      ('Config', config),
+                                      ('Excel', excel_data),
                                       ('default', '')),
             contact_phone=sr.resolve('contact_phone',
                                      ('PG', pg_project),
-                                     ('Config', config),
+                                     ('Excel', excel_data),
                                      ('default', '')),
             auditor=sr.resolve('auditor',
                                ('PG', pg_project),
-                               ('Config', config),
+                               ('Excel', excel_data),
                                ('default', '同方德诚（山东）科技股份公司')),
             building_area=sr.resolve('building_area',
                                      ('PG', pg_building_area),
-                                     ('Config', config),
+                                     ('Excel', excel_data),
                                      ('default', 0)),
             people_count=sr.resolve('people_count',
-                                    ('Config', config),
+                                    ('Excel', excel_data),
                                     ('default', 300)),
             beds_count=sr.resolve('beds_count',
-                                  ('Config', config),
+                                  ('Excel', excel_data),
                                   ('default', 0)),
             province=sr.resolve('province',
-                                ('Config', config),
+                                ('Excel', excel_data),
                                 ('default', '山东')),
             audit_start=sr.resolve('audit_start',
-                                   ('Config', config),
+                                   ('Excel', excel_data),
                                    ('default', '')),
             audit_end=sr.resolve('audit_end',
-                                 ('Config', config),
+                                 ('Excel', excel_data),
                                  ('default', '')),
             data_start=sr.resolve('data_start',
-                                  ('Config', config),
+                                  ('Excel', excel_data),
                                   ('default', '')),
             data_end=sr.resolve('data_end',
-                                ('Config', config),
+                                ('Excel', excel_data),
                                 ('default', '')),
             report_date=sr.resolve('report_date',
-                                   ('Config', config),
+                                   ('Excel', excel_data),
                                    ('default', '')),
         ),
-        buildings=[BuildingInfo(**b) for b in pg_buildings],
-        energy_yearly=[EnergyYearly(**ey) for ey in pg_energy],
-        equipment=[Equipment(**e) for e in pg_equipment],
-        metering=MeteringInfo(**pg_metering),
+        buildings=_merge_buildings(pg_buildings, excel_data.get('buildings', [])),
+        energy_yearly=_merge_energy(pg_energy, excel_data.get('energy_yearly', [])),
+        equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
+        metering=_merge_metering(pg_metering, excel_data.get('metering', {})),
         management=ManagementInfo(),
-        energy_saving=[EnergySaving(**es) for es in pg_energy_saving],
+        energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
     )
-
-    if not proj.buildings and config.get('buildings'):
-        proj.buildings = [BuildingInfo(**b) for b in config['buildings']]
-    if not proj.energy_yearly and config.get('energy_yearly'):
-        proj.energy_yearly = [EnergyYearly(**ey) for ey in config['energy_yearly']]
-    if not proj.energy_saving and config.get('energy_saving'):
-        proj.energy_saving = [EnergySaving(**es) for es in config['energy_saving']]
 
     # 解析节能管理信息中的附件文件 ID（management_files / award_certificate）
     # → 下载图片到 reports/attachments/，回填 EnergySaving 的 *_images 字段。
@@ -489,32 +490,28 @@ def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditPro
     # 缺 key / 文件 / 提取失败均静默降级，不阻塞采集。
     enrich_management_info(proj)
 
-    pg_cats = {e.category for e in proj.equipment}
-    for e in config.get('equipment', []):
-        if e.get('category') not in pg_cats:
-            proj.equipment.append(Equipment(**e))
-
     # 记录集合/对象级数据来源
     proj.data_sources = sr.sources
     proj.data_sources['name'] = 'derived'
     proj.data_sources['buildings'] = first_non_empty_source(
         ('PG', pg_buildings),
-        ('Config', config.get('buildings', [])),
+        ('Excel', excel_data.get('buildings', [])),
     )
     proj.data_sources['energy_yearly'] = first_non_empty_source(
         ('PG', pg_energy),
-        ('Config', config.get('energy_yearly', [])),
+        ('Excel', excel_data.get('energy_yearly', [])),
     )
     proj.data_sources['equipment'] = first_non_empty_source(
         ('PG', pg_equipment),
-        ('Config', config.get('equipment', [])),
+        ('Excel', excel_data.get('equipment', [])),
     )
     proj.data_sources['metering'] = first_non_empty_source(
         ('PG', pg_metering),
+        ('Excel', excel_data.get('metering', {})),
     )
     proj.data_sources['energy_saving'] = first_non_empty_source(
         ('PG', pg_energy_saving),
-        ('Config', config.get('energy_saving', [])),
+        ('Excel', excel_data.get('energy_saving', [])),
     )
     proj.data_sources['management'] = 'default'
 
@@ -532,6 +529,89 @@ def build_from_pg_and_config(project_name: str, config: dict = None) -> AuditPro
 
     save_project(proj)
     return proj
+
+
+# ============================================================
+# 多源合并辅助（PG > Excel）
+# ============================================================
+
+def _merge_buildings(*sources: List[dict]) -> List[BuildingInfo]:
+    """多源建筑信息合并（去重：同名保留第一个来源的）"""
+    seen = set()
+    result = []
+    for src in sources:
+        for b in src:
+            name = b.get('name', '')
+            if name and name not in seen:
+                seen.add(name)
+                result.append(BuildingInfo(**b))
+    return result
+
+
+def _merge_energy(pg: List[dict], excel: List[dict]) -> List[EnergyYearly]:
+    """多源能耗数据合并（同一年保留第一个来源的整对象；coefficients 按能源类型跨来源合并）。
+
+    优先级 PG > Excel：同一年份以 PG 的整对象为准，但折标煤系数按能源类型
+    跨来源合并（PG 缺失某类系数时用 Excel 补）。
+    """
+    seen = {}
+    coeff_merges = {}  # year -> {energy_type: (value, source_name)}
+    for source_name, src in [('PG', pg), ('Excel', excel)]:
+        for e in src:
+            year = e.get('year', 0)
+            if year and year not in seen:
+                seen[year] = e
+            # 按能源类型合并系数，优先级 PG > Excel
+            for k, v in e.get('coefficients', {}).items():
+                if is_valid_coefficient(v) and k not in coeff_merges.get(year, {}):
+                    coeff_merges.setdefault(year, {})[k] = (
+                        float(v),
+                        e.get('coefficient_sources', {}).get(k, source_name),
+                    )
+
+    result = []
+    for year, e in seen.items():
+        merged = dict(e)
+        coeffs = coeff_merges.get(year, {})
+        if coeffs:
+            merged['coefficients'] = {k: v for k, (v, _) in coeffs.items()}
+            merged['coefficient_sources'] = {k: src for k, (_, src) in coeffs.items()}
+        result.append(EnergyYearly(**merged))
+    return result
+
+
+def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
+    """多源设备合并（类别去重：同类别以后续来源补充）"""
+    seen_cats = set()
+    result = []
+    for src in sources:
+        for e in src:
+            cat = e.get('category', '')
+            if cat not in seen_cats:
+                seen_cats.add(cat)
+                result.append(Equipment(**e))
+    return result
+
+
+def _merge_metering(*sources: dict) -> MeteringInfo:
+    """多源计量信息合并（优先采用第一个非空源，保留 False/0 等有效值）"""
+    for src in sources:
+        if src:
+            return MeteringInfo(**src)
+    return MeteringInfo()
+
+
+def _merge_energy_saving(*sources: List[dict]) -> List[EnergySaving]:
+    """多源节能管理信息合并（按统计年去重：同年保留第一个来源的记录）"""
+    seen = set()
+    result = []
+    for src in sources:
+        for es in src:
+            year = es.get('statistical_year', 0)
+            if year and year not in seen:
+                seen.add(year)
+                result.append(EnergySaving(**es))
+    return result
 
 
 if __name__ == "__main__":

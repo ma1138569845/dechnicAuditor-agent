@@ -351,13 +351,13 @@ class TestCronjobToolScript:
             action="create",
             schedule="every 1h",
             prompt="Monitor things",
-            script="data_collector.py",
+            script="data_collection_cli.py",
         )
 
         list_result = json.loads(cronjob(action="list"))
         assert list_result["success"] is True
         assert len(list_result["jobs"]) == 1
-        assert list_result["jobs"][0]["script"] == "data_collector.py"
+        assert list_result["jobs"][0]["script"] == "data_collection_cli.py"
 
 
 class TestScriptPathContainment:
