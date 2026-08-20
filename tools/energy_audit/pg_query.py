@@ -73,6 +73,60 @@ class PgDataQuery:
             query += " AND id = %s"; params.append(customer_id)
         return self._execute(query, tuple(params))
 
+    @staticmethod
+    def district_id_to_province_code(district_id) -> str:
+        """行政区划代码 → 省级代码。例：370611 → 370000。"""
+        digits = ''.join(ch for ch in str(district_id or '') if ch.isdigit())
+        if len(digits) < 2:
+            return ''
+        return f"{digits[:2]}0000"
+
+    @staticmethod
+    def short_province_name(name: str) -> str:
+        """省级全称缩短为规章检索用简称。例：山东省 → 山东。"""
+        text = (name or '').strip()
+        if not text:
+            return ''
+        for suffix in (
+            '特别行政区', '维吾尔自治区', '壮族自治区', '回族自治区',
+            '自治区', '省', '市',
+        ):
+            if text.endswith(suffix) and len(text) > len(suffix):
+                return text[:-len(suffix)]
+        return text
+
+    def get_area_by_code(self, area_code: str) -> Dict | None:
+        """system_bd_areadict 按 f_areacode 查一条。"""
+        code = str(area_code or '').strip()
+        if not code:
+            return None
+        rows = self._execute(
+            """SELECT f_areacode, f_areaname, f_areasupcode, f_type, f_memo
+               FROM system_bd_areadict WHERE f_areacode = %s LIMIT 1""",
+            (code,),
+        )
+        return rows[0] if rows else None
+
+    def get_province_name_by_district_id(self, district_id) -> str:
+        """ts_customer_info.district_id → 省级名称（如 山东省）。"""
+        province_code = self.district_id_to_province_code(district_id)
+        if province_code:
+            area = self.get_area_by_code(province_code)
+            if area and area.get('f_areaname'):
+                return str(area['f_areaname']).strip()
+        # 字典缺省级码时，沿父级走到 f_type=0
+        current = str(district_id or '').strip()
+        seen = set()
+        while current and current not in seen and current not in ('0', '00', '000000'):
+            seen.add(current)
+            area = self.get_area_by_code(current)
+            if not area:
+                break
+            if area.get('f_type') == 0:
+                return str(area.get('f_areaname') or '').strip()
+            current = str(area.get('f_areasupcode') or '').strip()
+        return ''
+
     # ========== 审计项目 ==========
 
     def get_institution_project(self, project_id: int = None, audited_name: str = None) -> List[Dict]:

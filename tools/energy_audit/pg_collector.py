@@ -6,11 +6,13 @@ PG数据采集器 —— datacollection agent v2 tool
 prod - serial number - 3
 """
 
+import calendar
+import re
 import sys
 
 from tools.energy_audit import PgDataQuery
 from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
@@ -19,10 +21,18 @@ from tools.energy_audit.project_data import (
     is_valid_coefficient, total_building_area,
 )
 from tools.energy_audit.indicators import compute_project_indicators
+from tools.energy_audit.institution_classifier import classify_institution
 from tools.energy_audit.file_resolver import (
     enrich_energy_saving_images,
     enrich_management_info,
 )
+
+# ts_customer_info.field_type → ProjectBase.unit_type（审计类型）
+_FIELD_TYPE_UNIT = {
+    '10': '公共机构',
+    '20': '公共建筑',
+    '30': '工业企业',
+}
 
 
 # ============================================================
@@ -83,6 +93,92 @@ def _date(v):
         return str(v) if v else ''
 
 
+def parse_audit_year_range(audit_year) -> Tuple[str, str]:
+    """把 ts_institution_project.audit_year 解析为 (audit_start, audit_end)。
+
+    示例：
+      2022-5~2022-10  → ('2022年5月', '2022年10月')
+      2023~2024       → ('2023年', '2024年')
+      2025            → ('2025年', '2025年')
+    """
+    if audit_year is None:
+        return '', ''
+    text = str(audit_year).strip()
+    if not text:
+        return '', ''
+    parts = [p.strip() for p in re.split(r'[~～至—–]+', text) if p.strip()]
+    if not parts:
+        return '', ''
+    start = _format_audit_year_part(parts[0])
+    end = _format_audit_year_part(parts[1] if len(parts) > 1 else parts[0])
+    return start, end
+
+
+def _format_audit_year_part(part: str) -> str:
+    matched = re.match(r'^(\d{4})(?:[-./年](\d{1,2}))?月?$', part.strip())
+    if not matched:
+        return part
+    year, month = matched.group(1), matched.group(2)
+    if month:
+        return f"{year}年{int(month)}月"
+    return f"{year}年"
+
+
+def parse_data_year_range(data_year) -> Tuple[str, str]:
+    """把单个年度字段解析为 (data_start, data_end) ISO 日期。
+
+    示例：
+      2023~2024       → ('2023-01-01', '2024-12-31')
+      2022-5~2022-10  → ('2022-05-01', '2022-10-31')
+      2025            → ('2025-01-01', '2025-12-31')
+    """
+    if data_year is None:
+        return '', ''
+    text = str(data_year).strip()
+    if not text:
+        return '', ''
+    parts = [p.strip() for p in re.split(r'[~～至—–]+', text) if p.strip()]
+    if not parts:
+        return '', ''
+    start = _format_data_year_part(parts[0], is_end=False)
+    end = _format_data_year_part(parts[1] if len(parts) > 1 else parts[0], is_end=True)
+    return start, end
+
+
+def parse_data_period(reference_year, audit_year) -> Tuple[str, str]:
+    """合并 reference_year + audit_year：起点取最早，终点取最晚。
+
+    示例：reference_year=2023~2024, audit_year=2025
+      → ('2023-01-01', '2025-12-31')
+    """
+    starts, ends = [], []
+    for raw in (reference_year, audit_year):
+        start, end = parse_data_year_range(raw)
+        if start:
+            starts.append(start)
+        if end:
+            ends.append(end)
+    if not starts or not ends:
+        return '', ''
+    return min(starts), max(ends)
+
+
+def _format_data_year_part(part: str, is_end: bool) -> str:
+    matched = re.match(r'^(\d{4})(?:[-./年](\d{1,2}))?月?$', part.strip())
+    if not matched:
+        return ''
+    year = int(matched.group(1))
+    month = int(matched.group(2)) if matched.group(2) else None
+    if month:
+        if is_end:
+            last = calendar.monthrange(year, month)[1]
+            return f"{year:04d}-{month:02d}-{last:02d}"
+        return f"{year:04d}-{month:02d}-01"
+    if is_end:
+        return f"{year:04d}-12-31"
+    return f"{year:04d}-01-01"
+
+
 def _sunshade(v):
     if v is None or v == '':
         return ''
@@ -117,8 +213,20 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     }
     if proj.get('audit_year'):
         result['found']['project']['audit_year'] = proj['audit_year']
+        audit_start, audit_end = parse_audit_year_range(proj['audit_year'])
+        if audit_start:
+            result['found']['project']['audit_start'] = audit_start
+        if audit_end:
+            result['found']['project']['audit_end'] = audit_end
     if proj.get('reference_year'):
         result['found']['project']['data_year'] = proj['reference_year']
+    data_start, data_end = parse_data_period(
+        proj.get('reference_year'), proj.get('audit_year')
+    )
+    if data_start:
+        result['found']['project']['data_start'] = data_start
+    if data_end:
+        result['found']['project']['data_end'] = data_end
     result['found']['project'].update({
         'commission_person': proj.get('commission_person', ''),
         'commission_tel': proj.get('commission_tel', ''),
@@ -132,7 +240,12 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     if customer_id:
         cust = pg.get_customer_info(customer_id=customer_id)
         if cust:
-            result['found']['customer_info'] = cust[0]
+            customer = dict(cust[0])
+            province_full = pg.get_province_name_by_district_id(customer.get('district_id'))
+            if isinstance(province_full, str) and province_full.strip():
+                customer['admin_affiliation'] = province_full.strip()
+                customer['province'] = PgDataQuery.short_province_name(province_full)
+            result['found']['customer_info'] = customer
         else:
             result['missing'].append('客户信息（ts_customer_info 无记录）')
     else:
@@ -399,12 +512,22 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     sr = SourceResolver()
 
     pg_project = pg_result['found'].get('project', {})
+    pg_customer = pg_result['found'].get('customer_info', {}) or {}
     pg_buildings = pg_result['found'].get('buildings', [])
     pg_energy = pg_result['found'].get('energy_yearly', [])
     pg_equipment = pg_result['found'].get('equipment', [])
     pg_metering = pg_result['found'].get('metering', {})
     pg_energy_saving = pg_result['found'].get('energy_saving', [])
     pg_building_area = total_building_area(pg_buildings)
+
+    # unit_type：来自 ts_customer_info.field_type（10/20/30）
+    # institution_category / specific_type：PG 无中文字段，按单位名分类器识别
+    unit_for_class = pg_project.get('unit_name') or project_name
+    classified_cat, classified_spec = classify_institution(unit_for_class)
+    ft = str(pg_customer.get('field_type') or '').strip()
+    pg_unit_type = _FIELD_TYPE_UNIT.get(ft, '')
+    pg_institution_category = classified_cat if classified_cat != '未分类' else ''
+    pg_specific_type = classified_spec if classified_spec != '其他' else ''
 
     proj = AuditProject(
         base=ProjectBase(
@@ -417,19 +540,23 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                   ('Excel', excel_data),
                                   ('default', project_name)),
             address=sr.resolve('address',
+                               ('PG', pg_customer),
                                ('Excel', excel_data),
                                ('default', '')),
             unit_type=sr.resolve('unit_type',
+                                 ('PG', pg_unit_type),
                                  ('Excel', excel_data),
                                  ('default', '公共机构')),
             institution_category=sr.resolve('institution_category',
+                                            ('PG', pg_institution_category),
                                             ('Excel', excel_data),
                                             ('default', '')),
             specific_type=sr.resolve('specific_type',
+                                     ('PG', pg_specific_type),
                                      ('Excel', excel_data),
                                      ('default', '')),
             basic_situation=sr.resolve('basic_situation',
-                                       ('PG', pg_result['found'].get('customer_info', {})),
+                                       ('PG', pg_customer),
                                        ('Excel', excel_data),
                                        ('default', '')),
             contact_person=sr.resolve('contact_person',
@@ -454,19 +581,28 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
             beds_count=sr.resolve('beds_count',
                                   ('Excel', excel_data),
                                   ('default', 0)),
+            admin_affiliation=sr.resolve('admin_affiliation',
+                                         ('PG', pg_customer),
+                                         ('Excel', excel_data),
+                                         ('default', '')),
             province=sr.resolve('province',
+                                ('PG', pg_customer),
                                 ('Excel', excel_data),
                                 ('default', '山东')),
             audit_start=sr.resolve('audit_start',
+                                   ('PG', pg_project),
                                    ('Excel', excel_data),
                                    ('default', '')),
             audit_end=sr.resolve('audit_end',
+                                 ('PG', pg_project),
                                  ('Excel', excel_data),
                                  ('default', '')),
             data_start=sr.resolve('data_start',
+                                  ('PG', pg_project),
                                   ('Excel', excel_data),
                                   ('default', '')),
             data_end=sr.resolve('data_end',
+                                ('PG', pg_project),
                                 ('Excel', excel_data),
                                 ('default', '')),
             report_date=sr.resolve('report_date',
