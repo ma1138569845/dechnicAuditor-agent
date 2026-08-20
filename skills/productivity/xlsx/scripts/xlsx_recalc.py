@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-"""Recalculate a workbook's formulas headlessly with LibreOffice.
+"""Recalculate a workbook's formulas headlessly.
 
-openpyxl never computes formulas. This script shells out to `soffice`
-(LibreOffice) to open the workbook, recalculate, and re-save it, so
-cached formula results become available to `xlsx_read.py --data-only`
-and `--formulas`.
+openpyxl never computes formulas. This script uses Excel COM automation
+(Windows) to open, recalculate, and re-save the workbook, falling back to
+`soffice` (LibreOffice) on non-Windows / no-Office environments. Cached
+formula results then become available to `xlsx_read.py --data-only` and
+`--formulas`.
 
 Behavior:
-  * soffice on PATH: converts the file to .xlsx in a temp dir (which
-    recalculates all formulas) and replaces the original (or writes
-    --out). Prints {"recalculated": true, ...} and exits 0.
-  * soffice absent: prints {"recalculated": false, "reason": ...} with
+  * Excel COM available: recalculates via Excel and writes --out (or
+    replaces the input). Prints {"recalculated": true, ...} and exits 0.
+  * Excel COM unavailable but soffice on PATH: converts the file to .xlsx
+    in a temp dir (which recalculates all formulas) and writes --out.
+  * Neither available: prints {"recalculated": false, "reason": ...} with
     installation guidance and STILL exits 0 — callers can branch on the
     JSON instead of the exit code.
-
-Note: LibreOffice recalculates .xlsx on load per its default
-calculation settings; conversion re-saves with fresh cached values.
 
 Usage:
   xlsx_recalc.py book.xlsx
@@ -26,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -50,13 +50,43 @@ def count_cached(path):
     return formulas, cached
 
 
+def _find_repo_root() -> str | None:
+    """Locate the repo root (the directory containing ``tools/``) from __file__."""
+    current = os.path.dirname(os.path.realpath(__file__))
+    for _ in range(8):
+        if os.path.isfile(os.path.join(current, "tools", "office_excel_recalc.py")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+    return None
+
+
+def _recalc_via_com(src: Path, dest: Path) -> str | None:
+    """Recalculate via Excel COM (no LibreOffice required).
+
+    Returns the output path, or None when the shared converter is unavailable
+    or fails — callers then fall back to soffice.
+    """
+    try:
+        root = _find_repo_root()
+        if root and root not in sys.path:
+            sys.path.insert(0, root)
+        from tools.office_excel_recalc import recalc_via_com
+        out_path = str(dest) if dest != src else None
+        return recalc_via_com(str(src), out_path=out_path)
+    except Exception:
+        return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="Recalculate .xlsx formulas headlessly via LibreOffice.")
+        description="Recalculate .xlsx formulas headlessly via Excel COM or LibreOffice.")
     ap.add_argument("file", help="path to .xlsx file")
     ap.add_argument("--out", help="output path (default: replace input)")
     ap.add_argument("--timeout", type=int, default=180,
-                    help="seconds to wait for soffice (default 180)")
+                    help="seconds to wait for the recalc engine (default 180)")
     args = ap.parse_args(argv)
 
     src = Path(args.file).resolve()
@@ -65,15 +95,29 @@ def main(argv=None):
               file=sys.stderr)
         return 1
 
+    dest = Path(args.out).resolve() if args.out else src
+
+    # 1. Prefer Excel COM (no LibreOffice dependency).
+    output = _recalc_via_com(src, dest)
+    if output is not None:
+        formulas, cached = count_cached(output)
+        print(json.dumps({
+            "ok": True, "recalculated": True, "output": str(output),
+            "formula_cells": formulas, "with_cached_values": cached,
+        }, ensure_ascii=False))
+        return 0
+
+    # 2. Fall back to LibreOffice.
     soffice = shutil.which("soffice")
     if not soffice:
         print(json.dumps({
             "ok": True, "recalculated": False,
-            "reason": "LibreOffice (soffice) not found on PATH",
+            "reason": "No recalc engine — LibreOffice (soffice) absent and "
+                      "Excel COM unavailable",
             "guidance": "Install LibreOffice (e.g. `apt install "
                         "libreoffice-calc` or `brew install --cask "
-                        "libreoffice`), or open the file in Excel/"
-                        "LibreOffice once and re-save it.",
+                        "libreoffice`) or Microsoft Excel, or open the file "
+                        "in Excel/LibreOffice once and re-save it.",
         }, ensure_ascii=False))
         return 0
 
@@ -93,7 +137,6 @@ def main(argv=None):
                   file=sys.stderr)
             return 1
         formulas, cached = count_cached(produced)
-        dest = Path(args.out).resolve() if args.out else src
         shutil.copyfile(produced, dest)
 
     print(json.dumps({

@@ -517,18 +517,28 @@ def test_recalc_reports_json_both_ways(tmp_path):
     book = tmp_path / "calc.xlsx"
     run("xlsx_create.py", spec_path, book)
 
-    # absent-soffice branch is always testable by hiding PATH
+    # Hiding PATH removes soffice, but Excel COM may still recalc on Windows.
     env = dict(os.environ, LC_ALL="C", LANG="C", PATH=str(tmp_path))
     proc = subprocess.run(
         [sys.executable, str(SCRIPTS / "xlsx_recalc.py"), str(book)],
         capture_output=True, text=True, env=env, encoding="utf-8")
     assert proc.returncode == 0
-    absent = json.loads(proc.stdout)
-    assert absent["recalculated"] is False and "soffice" in absent["reason"]
-    assert "guidance" in absent
+    hidden = json.loads(proc.stdout)
+
+    if hidden["recalculated"] is True:
+        # Excel COM succeeded without soffice on PATH.
+        assert hidden["formula_cells"] == 1
+        assert hidden["with_cached_values"] == 1
+        formulas = json.loads(run("xlsx_read.py", book, "--formulas").stdout)
+        entry = formulas["formulas"][0]
+        assert entry["formula"] == "=SUM(A1:A2)" and entry["cached"] == 5
+    else:
+        # Neither Excel COM nor soffice available: must explain why.
+        assert "recalc engine" in hidden["reason"]
+        assert "guidance" in hidden
 
     if not shutil.which("soffice"):
-        pytest.skip("LibreOffice not installed; absent branch covered above")
+        pytest.skip("LibreOffice not installed; recalc branch covered above")
 
     out = tmp_path / "calced.xlsx"
     proc = run("xlsx_recalc.py", book, "--out", out, "--timeout", "300")

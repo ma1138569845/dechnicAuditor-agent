@@ -202,14 +202,12 @@ center.font = BOLD
 
 openpyxl writes formula strings but does not compute them. Excel recalculates on open, but downstream consumers (auto-check scripts, CI) need computed values.
 
-Run LibreOffice or a dedicated recalc step before delivery:
+Run a dedicated recalc step before delivery — `scripts/recalc.py` in this skill prefers local Excel COM automation (Windows) and falls back to LibreOffice `soffice`:
 
 ```bash
-# LibreOffice headless recalc
-libreoffice --headless --calc --convert-to xlsx ./out/model.xlsx --outdir ./out/
+# recalc via Excel COM (or soffice fallback) — see scripts/recalc.py
+python scripts/recalc.py ./out/model.xlsx
 ```
-
-Or use a Python recalc helper (see `scripts/recalc.py` in this skill).
 
 ## Model layout planning
 

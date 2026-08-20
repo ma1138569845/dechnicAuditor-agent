@@ -635,8 +635,9 @@ OFFICE_RENDER_SCHEMA = {
     "name": "office_render",
     "description": (
         "Render an open document to PNG images (and optionally PDF) for visual "
-        "quality assurance. Uses LibreOffice headless to produce page images "
-        "that reveal layout defects invisible through text extraction.\n\n"
+        "quality assurance. Converts via OnlyOffice (Microsoft Office COM "
+        "fallback) and rasterizes with pymupdf, revealing layout defects "
+        "invisible through text extraction.\n\n"
         "Supported document types: docx, xlsx, pptx (and variants).\n\n"
         "Examples:\n"
         "  office_render(file_id=\"new_doc_xxx\", doc_type=\"doc\")\n"
@@ -670,6 +671,19 @@ OFFICE_RENDER_SCHEMA = {
         "required": ["file_id", "doc_type"],
     },
 }
+
+def _pdf_to_png(pdf_path: str, output_dir: str, dpi: int) -> list[str]:
+    """Rasterize PDF pages to PNG via pymupdf (pure pip, no poppler)."""
+    import pymupdf
+
+    images: list[str] = []
+    with pymupdf.open(pdf_path) as doc:
+        for index, page in enumerate(doc):
+            img_path = os.path.join(output_dir, f"page-{index + 1:03d}.png")
+            page.get_pixmap(dpi=dpi).save(img_path)
+            images.append(os.path.abspath(img_path))
+    return images
+
 
 def _handle_office_render(args: dict, **kwargs) -> str:
     file_id = args.get("file_id", "")
@@ -710,40 +724,21 @@ def _handle_office_render(args: dict, **kwargs) -> str:
         )
 
     import os
-    import subprocess
     import tempfile
-    import shutil
 
     if not os.path.exists(file_path):
         return tool_error(f"File not found on disk: {file_path}")
 
     output_dir = tempfile.mkdtemp(prefix="hermes_render_")
-    ext_map = {"doc": ".docx", "sheet": ".xlsx", "slide": ".pptx"}
-    ext = ext_map.get(doc_type, ".docx")
 
     try:
-        # Convert to PDF using LibreOffice headless
-        pdf_path = os.path.join(output_dir, "output.pdf")
-        soffice = shutil.which("soffice") or shutil.which("libreoffice")
-        if not soffice:
-            return tool_error(
-                "LibreOffice not found. Install it for document rendering: "
-                "apt install libreoffice (Linux) or brew install libreoffice (macOS)."
-            )
+        # Office → PDF via OnlyOffice ConvertService, COM automation fallback.
+        from tools.office_pdf_convert import office_to_pdf
+        pdf_path = office_to_pdf(file_path, doc_type)
+    except Exception as exc:
+        return tool_error(f"Rendering failed: {exc}")
 
-        subprocess.run(
-            [soffice, "--headless", "--convert-to", "pdf", "--outdir", output_dir, file_path],
-            check=True, capture_output=True, text=True, timeout=60,
-            env={**os.environ, "HOME": os.environ.get("HOME", "/tmp")},
-        )
-
-        # Find the generated PDF (LibreOffice names it after the input stem)
-        import glob as _glob
-        pdfs = _glob.glob(os.path.join(output_dir, "*.pdf"))
-        if not pdfs:
-            return tool_error("LibreOffice produced no PDF output")
-        pdf_path = pdfs[0]
-
+    try:
         if fmt == "pdf":
             import shutil as _shutil
             final_path = os.path.join(tempfile.gettempdir(), f"hermes_render_{file_id}.pdf")
@@ -756,30 +751,22 @@ def _handle_office_render(args: dict, **kwargs) -> str:
                 message=f"Rendered to PDF: {final_path}. Use vision_analyze to inspect.",
             )
 
-        # Convert PDF pages to PNG images
-        output_prefix = os.path.join(output_dir, "page")
-        subprocess.run(
-            ["pdftoppm", "-jpeg", f"-r", str(dpi), pdf_path, output_prefix],
-            check=True, capture_output=True, text=True, timeout=60,
-        )
-
-        images = sorted(_glob.glob(os.path.join(output_dir, "page-*.jpg")))
+        # Convert PDF pages to PNG images via pymupdf.
+        images = _pdf_to_png(pdf_path, output_dir, dpi)
         if not images:
-            return tool_error("pdftoppm produced no output images")
+            return tool_error("pymupdf produced no output images")
 
         return tool_result(
             success=True,
             file_id=file_id,
             page_count=len(images),
             dpi=dpi,
-            images=[os.path.abspath(img) for img in images],
+            images=images,
             message=(
                 f"Rendered {len(images)} page(s) at {dpi} DPI. "
                 "Inspect each image with vision_analyze for layout defects."
             ),
         )
-    except subprocess.CalledProcessError as e:
-        return tool_error(f"Rendering failed: {e.stderr or str(e)}")
     except Exception as e:
         return tool_error(str(e))
 
@@ -1141,8 +1128,8 @@ registry.register(
     toolset="office_editor",
     schema=OFFICE_RENDER_SCHEMA,
     handler=_handle_office_render,
-    check_fn=None,  # libreoffice check at runtime; works even without editor_sdk
-    requires_env=["soffice", "pdftoppm"],
+    check_fn=None,  # OnlyOffice/COM/pymupdf resolved at runtime; works without editor_sdk
+    requires_env=[],
     is_async=False,
     description=OFFICE_RENDER_SCHEMA.get("description", "").split("\n")[0][:80],
     emoji="\U0001f3de",

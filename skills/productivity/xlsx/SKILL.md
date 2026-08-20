@@ -30,8 +30,8 @@ scripts are argparse CLIs that print JSON and use explicit UTF-8 I/O.
 - Editing existing files: set cells, append rows, insert/delete
   rows/columns (reference-aware via `xlsx_restructure.py`),
   copy/rename sheets, tables, names, notes, protection.
-- Recalculating formulas headlessly via LibreOffice
-  (`xlsx_recalc.py`).
+- Recalculating formulas headlessly via Excel COM (Windows) with a
+  LibreOffice fallback (`xlsx_recalc.py`).
 - CSV interop with type inference and non-UTF-8 encodings.
 - Not for the legacy .xls binary format (use LibreOffice to convert
   first: `soffice --headless --convert-to xlsx old.xls`).
@@ -55,8 +55,8 @@ Do not load domain guidance for unrelated tasks. User request > reference/templa
 
 - Python 3.10+ with `openpyxl` (`pip install openpyxl`). No other
   third-party packages are needed; everything else is stdlib.
-- Optional: LibreOffice (`soffice`) for headless recalculation or
-  format conversion.
+- Optional: Microsoft Excel (Windows) or LibreOffice (`soffice`) for
+  headless recalculation or format conversion.
 
 ## How to Run
 
@@ -99,7 +99,7 @@ Author the JSON spec with `write_file`, inspect script JSON output with
 | Hyperlink | `--hyperlink "A1=https://example.com|Docs"` |
 | Cell note | `--note "B2=Check this|Reviewer"`; read via `xlsx_read.py f.xlsx --notes` |
 | Protect sheet (see Pitfalls) | `--protect your-password --unlock B2:B9` |
-| Recalculate via LibreOffice | `xlsx_recalc.py f.xlsx` |
+| Recalculate (Excel COM / LibreOffice) | `xlsx_recalc.py f.xlsx` |
 | Copy / rename sheet | `--copy-sheet Src:New --rename-sheet Old:New` |
 | Force recalc on open | `xlsx_edit.py f.xlsx --recalc` |
 | CSV -> styled xlsx | `csv_to_xlsx.py in.csv out.xlsx` |
@@ -132,9 +132,9 @@ Author the JSON spec with `write_file`, inspect script JSON output with
    cell comments, `--names` for defined names. Cached results
    exist only if the file was last saved by a real spreadsheet app;
    files fresh from openpyxl return `null` there. To materialize
-   results headlessly run `xlsx_recalc.py file.xlsx` (uses
-   LibreOffice; prints `{"recalculated": false, ...}` and exits 0
-   when `soffice` is absent), then reload with `--data-only`.
+   results headlessly run `xlsx_recalc.py file.xlsx` (prefers Excel
+   COM, falls back to LibreOffice; prints `{"recalculated": false, ...}`
+   and exits 0 when neither is available), then reload with `--data-only`.
 4. **Edit**: `xlsx_edit.py` applies renames/copies first, then
    structural row/column changes, then `--set`/`--append`. It edits in
    place unless `--out` is given — copy the file first if you need the

@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import socket
+import tempfile
 import threading
 import urllib.parse
 import urllib.request
@@ -424,3 +425,78 @@ def force_save(file_id: str) -> dict:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# File conversion (ConvertService)
+# ---------------------------------------------------------------------------
+
+def convert_to_pdf(file_path: str, doc_type: str = "doc",
+                   timeout: int = 120) -> Optional[str]:
+    """Convert an Office file to PDF via the DocumentServer ConvertService.
+
+    Registers the file with the preview server so the DS can download it, then
+    POSTs a synchronous conversion request. Returns the local path of the
+    produced PDF, or ``None`` when OnlyOffice is disabled/unreachable or the
+    conversion fails — callers should fall back to COM automation on ``None``.
+    """
+    if not is_enabled() or not os.path.isfile(file_path):
+        return None
+
+    file_id = str(uuid.uuid4())
+    registry.register(file_id, file_path, doc_type)
+    try:
+        from tools.office_preview_server import preview_server
+        preview_server.ensure_started()
+
+        filetype = os.path.splitext(file_path)[1].lstrip(".").lower() or "docx"
+        body = {
+            "url": (
+                f"{callback_base()}/api/onlyoffice/download"
+                f"?file_id={urllib.parse.quote(file_id)}"
+                f"&token={urllib.parse.quote(_download_token(file_id))}"
+            ),
+            "filetype": filetype,
+            "key": file_id,
+            "outputtype": "pdf",
+            "title": os.path.basename(file_path),
+            "async": False,
+        }
+        # The token is the HS256 signature of the request body (token excluded).
+        body["token"] = sign_jwt(body)
+
+        ds = ds_url()
+        result = None
+        for endpoint in (f"{ds}/converter", f"{ds}/ConvertService.ashx"):
+            try:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=json.dumps(body).encode("utf-8"),
+                    headers={"Content-Type": "application/json",
+                             "Accept": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                break
+            except Exception:
+                continue
+
+        file_url = result.get("fileUrl") if isinstance(result, dict) else None
+        if not file_url:
+            return None
+        if not urllib.parse.urlparse(file_url).scheme:
+            file_url = f"{ds}/{file_url.lstrip('/')}"
+
+        with urllib.request.urlopen(file_url, timeout=timeout) as resp:
+            pdf_bytes = resp.read()
+
+        out_path = os.path.join(
+            tempfile.gettempdir(), f"hermes_convert_{file_id}.pdf")
+        with open(out_path, "wb") as handle:
+            handle.write(pdf_bytes)
+        return out_path
+    except Exception:
+        return None
+    finally:
+        registry.close(file_id)

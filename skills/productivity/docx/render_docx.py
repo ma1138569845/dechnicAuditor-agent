@@ -67,6 +67,36 @@ def _prepend_bundled_runtime_bin() -> None:
         return
 
 
+def _find_repo_root() -> str | None:
+    """Locate the repo root (the directory containing ``tools/``) from __file__."""
+    current = os.path.dirname(os.path.realpath(__file__))
+    for _ in range(8):
+        if os.path.isfile(os.path.join(current, "tools", "office_pdf_convert.py")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+    return None
+
+
+def _office_to_pdf_fallback(doc_path: str) -> str | None:
+    """Convert DOCX -> PDF via OnlyOffice (then COM), skipping LibreOffice.
+
+    Returns a PDF path, or None when the shared converter is unavailable or
+    fails — callers fall back to the soffice pipeline.
+    """
+    try:
+        root = _find_repo_root()
+        if root and root not in sys.path:
+            sys.path.insert(0, root)
+        from tools.office_pdf_convert import office_to_pdf
+        pdf = office_to_pdf(doc_path, "doc")
+        return pdf if pdf and os.path.exists(pdf) else None
+    except Exception:
+        return None
+
+
 def calc_dpi_via_ooxml_docx(input_path: str, max_w_px: int, max_h_px: int) -> int:
     """Calculate DPI from OOXML `word/document.xml` page size (w:pgSz in twips).
 
@@ -179,6 +209,12 @@ def convert_to_pdf(
 
     _prepend_bundled_runtime_bin()
     _default_macos_tmpdir_for_soffice()
+
+    # Prefer OnlyOffice -> COM (no LibreOffice dependency); fall back to soffice.
+    shared_pdf = _office_to_pdf_fallback(doc_path)
+    if shared_pdf:
+        return shared_pdf, "OnlyOffice/COM converter produced PDF (no LibreOffice needed)"
+
     env = _build_lo_env(user_profile)
     logs: list[str] = []
 
