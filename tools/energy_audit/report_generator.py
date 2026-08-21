@@ -2537,11 +2537,15 @@ class WordReportBuilder:
 
     def get_chapter_reference(self, chapter_key: str, context: str = "") -> str:
         """
-        检索同类报告的对应章节作为LLM参考
+        检索同类报告的对应章节作为 LLM 参考（RAG 库函数包装）。
+
+        注意：build_chapter1/3 等章节生成器 **不调用** 本方法。
+        第3章现行路径是 PG 节能管理表 + 制度文件 LLM 提炼 + 模板兜底。
+        search_for_chapter() 仍可用，但未接入 rest_generate 管线。
 
         用法:
           ref = builder.get_chapter_reference('第2章', '公共机构基本情况')
-          # → 返回 Markdown 格式的参考文本，可直接嵌入 prompt
+          # → 返回 Markdown 格式的参考文本；不会自动写入报告
         """
         tags = self.report_data.get('tags', {})
         if not tags:

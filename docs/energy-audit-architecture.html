@@ -314,13 +314,13 @@
 <div class="arch-header">
   <div>
     <h1>🏗️ Hermes Agent + 能源审计报告编制 — 系统架构图</h1>
-    <div class="meta">同方德诚 · 公共机构能源审计 · 四Agent协同系统</div>
+    <div class="meta">同方德诚 · 公共机构能源审计 · PG 取数 + Word 生成（RAG 不写入章节）</div>
   </div>
   <div class="tags">
     <span class="tag">🐍 Python 3.11+</span>
-    <span class="tag">🤖 4 Agent 协同</span>
     <span class="tag">📄 8章报告</span>
-    <span class="tag">🧠 KG 因果推理</span>
+    <span class="tag">🐘 PostgreSQL</span>
+    <span class="tag">🧠 KG 库函数（未接入自动生成）</span>
   </div>
 </div>
 
@@ -416,36 +416,36 @@
     <div class="layer-header">
       <span class="layer-badge">L3</span>
       <span class="layer-name">能源审计应用层 Application</span>
-      <span class="layer-desc">流水线编排 · Agent调度 · 报告流程控制</span>
+      <span class="layer-desc">报告入口 · 数据采集 · Word 组装（无 run_pipeline / agent_xiaocheng）</span>
     </div>
     <div class="layer-body">
       <div class="comp highlight">
-        <div class="comp-name">🎯 主流水线</div>
-        <div class="comp-file">run_pipeline.py (9步串行)</div>
+        <div class="comp-name">🎯 报告入口</div>
+        <div class="comp-file">energy_audit_tool.rest_generate_energy_audit_report</div>
       </div>
       <div class="comp highlight">
-        <div class="comp-name">⚡ 并行流水线 v3.0</div>
-        <div class="comp-file">run_pipeline_parallel.py (两阶段)</div>
+        <div class="comp-name">🖥️ 采集 CLI</div>
+        <div class="comp-file">data_collection_cli.py</div>
       </div>
       <div class="comp">
-        <div class="comp-name">📦 流程封装</div>
-        <div class="comp-file">tools/energy_audit/__init__.py :: EnergyAuditPipeline</div>
+        <div class="comp-name">📦 旧封装（非现行入口）</div>
+        <div class="comp-file">EnergyAuditPipeline（Excel/PG/RAG 封装）</div>
       </div>
       <div class="comp">
-        <div class="comp-name">🔵 小数 Agent</div>
-        <div class="comp-file">agent_xiaoshu() 数据初始化</div>
+        <div class="comp-name">📥 数据采集</div>
+        <div class="comp-file">pg_collector.build_and_save_project</div>
       </div>
       <div class="comp">
-        <div class="comp-name">🔵 小诚 Agent</div>
-        <div class="comp-file">agent_xiaocheng() 知识检索</div>
+        <div class="comp-name">📝 第3章制度提炼</div>
+        <div class="comp-file">file_resolver.enrich_management_info</div>
       </div>
       <div class="comp">
-        <div class="comp-name">🔵 小方 Agent</div>
-        <div class="comp-file">agent_xiaofang() 指标计算</div>
+        <div class="comp-name">📊 指标计算</div>
+        <div class="comp-file">indicators.py</div>
       </div>
       <div class="comp">
-        <div class="comp-name">🔵 小同 Agent</div>
-        <div class="comp-file">agent_xiaotong_generate() 报告组装</div>
+        <div class="comp-name">📄 Word 组装</div>
+        <div class="comp-file">report_generator.load_from_project + generate_word</div>
       </div>
     </div>
   </div>
@@ -494,7 +494,7 @@
           <div class="comp"><div class="comp-name">能流图</div><div class="comp-file">energy_flow_chart.py</div></div>
           <div class="comp"><div class="comp-name">照片管理</div><div class="comp-file">photo_manager.py</div></div>
           <div class="comp"><div class="comp-name">省级规章</div><div class="comp-file">province_regulations.py</div></div>
-          <div class="comp"><div class="comp-name">Config 校验</div><div class="comp-file">config_validator.py</div></div>
+          <div class="comp"><div class="comp-name">制度文件提炼</div><div class="comp-file">llm_client.py</div></div>
         </div>
       </div>
     </div>
@@ -566,11 +566,11 @@
 <!-- ============================================================ -->
 <!-- AGENT ORCHESTRATION -->
 <!-- ============================================================ -->
-<div class="section-title">🤖 Agent 协同架构</div>
+<div class="section-title">🤖 现行模块职责</div>
 
 <table class="agent-table">
   <tr>
-    <th>Agent</th>
+    <th>模块</th>
     <th>角色</th>
     <th>输入</th>
     <th>核心依赖</th>
@@ -578,44 +578,52 @@
     <th>数据流</th>
   </tr>
   <tr>
-    <td>🔵 <strong>小数</strong><br><small>Xiaoshu</small></td>
-    <td>数据初始化</td>
-    <td>Config JSON + PG</td>
-    <td>pg_collector.py<br>pg_query.py<br>project_data.py</td>
+    <td><strong>报告入口</strong></td>
+    <td>触发生成</td>
+    <td>项目名称</td>
+    <td>energy_audit_tool.py<br>data_collection_cli.py</td>
+    <td>.docx 路径</td>
+    <td>REST / CLI → 采集 → Word</td>
+  </tr>
+  <tr>
+    <td><strong>数据采集</strong></td>
+    <td>PG 取数 + 制度提炼</td>
+    <td>单位名称</td>
+    <td>pg_collector.py<br>file_resolver.py<br>llm_client.py</td>
     <td>AuditProject</td>
-    <td>PG (3层回退) → data.json</td>
+    <td>PG → 附件 LLM → data.json</td>
   </tr>
   <tr>
-    <td>🔵 <strong>小诚</strong><br><small>Xiaocheng</small></td>
-    <td>知识检索 + 对标</td>
-    <td>tags + chapters</td>
-    <td>rag_search.py<br>indicators.py</td>
-    <td>chapter_refs<br>_benchmarks</td>
-    <td>Qdrant → refs + 定额</td>
+    <td><strong>RAG 检索</strong></td>
+    <td>对话侧知识检索<br><small>不写入报告章节</small></td>
+    <td>query + tags</td>
+    <td>rag_search.py<br>energy_audit_rag_tool.py</td>
+    <td>报告片段 / 诊断文本</td>
+    <td>Qdrant；search_for_chapter 未接入生成管线</td>
   </tr>
   <tr>
-    <td>🔵 <strong>小方</strong><br><small>Xiaofang</small></td>
-    <td>指标计算</td>
+    <td><strong>指标计算</strong></td>
+    <td>折标 + 定额对标</td>
     <td>AuditProject</td>
     <td>indicators.py</td>
     <td>energy_data<br>baselines</td>
     <td>折标系数 × 3层定额</td>
   </tr>
   <tr>
-    <td>🔵 <strong>小同</strong><br><small>Xiaotong</small></td>
-    <td>主编组装</td>
-    <td>report_data (rd)</td>
+    <td><strong>报告组装</strong></td>
+    <td>8 章 Word</td>
+    <td>AuditProject</td>
     <td>report_generator.py</td>
     <td>.docx 报告</td>
-    <td>rd → Word (python-docx)</td>
+    <td>load_from_project → generate_word</td>
   </tr>
   <tr>
-    <td>🧠 <strong>KG 引擎</strong><br><small>EnergyKG</small></td>
-    <td>因果诊断</td>
+    <td>🧠 <strong>KG 引擎</strong></td>
+    <td>因果诊断（库函数）</td>
     <td>AnalysisResult</td>
     <td>energy_kg.py<br>knowledge_schema.py</td>
     <td>DiagnosisReport</td>
-    <td>异常 → 因果链匹配 → 措施</td>
+    <td>未接入 rest_generate 入口</td>
   </tr>
 </table>
 
@@ -626,27 +634,29 @@
 
 <div class="dep-graph">
 <span class="dep-label"># === 入口层 ===</span>
-<span class="dep-module">run_pipeline.py</span> <span class="dep-arrow">──></span> <span class="dep-file">tools/energy_audit/</span>
-<span class="dep-module">run_pipeline_parallel.py</span> <span class="dep-arrow">──></span> <span class="dep-file">run_pipeline.py (subprocess)</span>
+<span class="dep-module">energy_audit_tool.rest_generate_energy_audit_report</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_collector + report_generator</span>
+<span class="dep-module">data_collection_cli.py</span> <span class="dep-arrow">──></span> <span class="dep-file">collect_from_pg → build_and_save_project → check_completeness</span>
 
-<span class="dep-label"># === 应用层 (Agent定义) ===</span>
-<span class="dep-module">run_pipeline.py</span>
-  <span class="dep-arrow">├── agent_xiaoshu()</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_collector.py</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">──></span> <span class="dep-file">project_data.py</span>
-  <span class="dep-arrow">├── agent_xiaocheng()</span> <span class="dep-arrow">──></span> <span class="dep-file">rag_search.py</span> <span class="dep-arrow">──></span> <span class="dep-file">Qdrant</span>
-  <span class="dep-arrow">│                    </span> <span class="dep-arrow">──></span> <span class="dep-file">indicators.py (resolve_benchmark)</span>
-  <span class="dep-arrow">├── agent_xiaofang()</span> <span class="dep-arrow">──></span> <span class="dep-file">indicators.py (calc_unit_area_*, calc_baseline)</span>
-  <span class="dep-arrow">├── build_rd_from_project()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_generator.py (load_from_project)</span>
-  <span class="dep-arrow">├── analyze_with_diagnosis()</span> <span class="dep-arrow">──></span> <span class="dep-file">data_analysis.py</span> <span class="dep-arrow">──></span> <span class="dep-file">energy_kg.py</span> <span class="dep-arrow">──></span> <span class="dep-file">knowledge_schema.py</span>
-  <span class="dep-arrow">├── inject_diagnosis_to_chapter7()</span> <span class="dep-arrow">──></span> <span class="dep-file">data_analysis.py</span>
-  <span class="dep-arrow">├── agent_xiaotong_generate()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_generator.py (generate_word)</span>
-  <span class="dep-arrow">└── check_report()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_qa.py</span>
+<span class="dep-label"># === 现行生成管线 ===</span>
+<span class="dep-module">build_and_save_project()</span>
+  <span class="dep-arrow">├── collect_from_pg()</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">──></span> <span class="dep-file">PostgreSQL</span>
+  <span class="dep-arrow">├── enrich_energy_saving_images()</span> <span class="dep-arrow">──></span> <span class="dep-file">file_resolver.py</span>
+  <span class="dep-arrow">├── enrich_management_info()</span> <span class="dep-arrow">──></span> <span class="dep-file">llm_client.summarize_management_docs</span> <span class="dep-arrow">(第3章 3.1/3.2)</span>
+  <span class="dep-arrow">└── compute_project_indicators()</span> <span class="dep-arrow">──></span> <span class="dep-file">indicators.py</span>
+<span class="dep-module">ReportGenerator</span>
+  <span class="dep-arrow">├── load_from_project()</span> <span class="dep-arrow">──></span> <span class="dep-file">_energy_saving_chapter3_sections()</span>
+  <span class="dep-arrow">└── generate_word()</span> <span class="dep-arrow">──></span> <span class="dep-file">WordReportBuilder.build_chapter1..8</span>
+
+<span class="dep-label"># === 库函数（未接入自动生成入口）===</span>
+<span class="dep-file">search_for_chapter()</span> <span class="dep-arrow">──></span> <span class="dep-file">Qdrant</span> <span class="dep-arrow">(对话工具 energy_audit_rag_search 可调；报告章节不消费)</span>
+<span class="dep-file">analyze_with_diagnosis() / inject_diagnosis_to_chapter7()</span> <span class="dep-arrow">──></span> <span class="dep-file">energy_kg.py</span>
+<span class="dep-file">check_report()</span> <span class="dep-arrow">──></span> <span class="dep-file">report_qa.py</span>
 
 <span class="dep-label"># === 领域层内部依赖 ===</span>
 <span class="dep-file">energy_kg.py</span> <span class="dep-arrow">──></span> <span class="dep-file">knowledge_schema.py</span> <span class="dep-arrow">(CausalChain, CauseNode, MeasureNode, DiagnosisResult)</span>
 <span class="dep-file">data_analysis.py</span> <span class="dep-arrow">──></span> <span class="dep-file">energy_kg.py</span> <span class="dep-arrow">(EnergyKnowledgeGraph.diagnose_all)</span>
 <span class="dep-file">report_generator.py</span> <span class="dep-arrow">──></span> <span class="dep-file">project_data.py</span> <span class="dep-arrow">(AuditProject)</span>
-<span class="dep-file">pg_collector.py</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">+</span> <span class="dep-file">project_data.py</span>
-<span class="dep-file">config_validator.py</span> <span class="dep-arrow">──></span> <span class="dep-file">config.yaml</span>
+<span class="dep-file">pg_collector.py</span> <span class="dep-arrow">──></span> <span class="dep-file">pg_query.py</span> <span class="dep-arrow">+</span> <span class="dep-file">project_data.py</span> <span class="dep-arrow">+</span> <span class="dep-file">file_resolver.py</span>
 
 <span class="dep-label"># === 数据基础设施 ===</span>
 <span class="dep-module">Hermes Core</span> <span class="dep-arrow">──></span> <span class="dep-file">SQLite (会话) </span> <span class="dep-arrow">+</span> <span class="dep-file"> PostgreSQL (业务) </span> <span class="dep-arrow">+</span> <span class="dep-file"> Qdrant (向量)</span>

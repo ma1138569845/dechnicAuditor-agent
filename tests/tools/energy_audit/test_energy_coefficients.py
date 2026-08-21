@@ -51,6 +51,7 @@ def _make_pg_instance(energy_records, project_id='P001', customer_id=1):
     pg.get_energy_meter.return_value = []
     pg.get_energy_standards.return_value = []
     pg.get_customer_info.return_value = [{'name': 'Test'}]
+    pg.get_province_name_by_district_id.return_value = ''
     return pg
 
 
@@ -105,6 +106,102 @@ def test_pg_collector_extracts_standard_coal_coefficient():
     assert ey['coefficients']['water'] == pytest.approx(0.2571)
     assert ey['coefficient_sources']['electricity'] == 'PG'
     assert ey['coefficient_sources']['water'] == 'PG'
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('2022-5~2022-10', ('2022年5月', '2022年10月')),
+    ('2022-05～2022-10', ('2022年5月', '2022年10月')),
+    ('2023~2024', ('2023年', '2024年')),
+    ('2025', ('2025年', '2025年')),
+    ('', ('', '')),
+    (None, ('', '')),
+])
+def test_parse_audit_year_range(raw, expected):
+    assert pgc.parse_audit_year_range(raw) == expected
+
+
+@pytest.mark.parametrize('district_id,expected', [
+    ('370611', '370000'),
+    ('370000', '370000'),
+    ('11', '110000'),
+    ('', ''),
+    (None, ''),
+])
+def test_district_id_to_province_code(district_id, expected):
+    from tools.energy_audit.pg_query import PgDataQuery
+    assert PgDataQuery.district_id_to_province_code(district_id) == expected
+
+
+@pytest.mark.parametrize('full,short', [
+    ('山东省', '山东'),
+    ('北京市', '北京'),
+    ('内蒙古自治区', '内蒙古'),
+    ('新疆维吾尔自治区', '新疆'),
+    ('', ''),
+])
+def test_short_province_name(full, short):
+    from tools.energy_audit.pg_query import PgDataQuery
+    assert PgDataQuery.short_province_name(full) == short
+
+
+def test_pg_collector_admin_affiliation_from_district_id():
+    pg = _make_pg_instance([])
+    pg.get_customer_info.return_value = [{'district_id': '370611'}]
+    pg.get_province_name_by_district_id.return_value = '山东省'
+    result = pgc._collect_from_pg_impl(pg, '测试项目')
+    customer = result['found']['customer_info']
+    assert customer['admin_affiliation'] == '山东省'
+    assert customer['province'] == '山东'
+    pg.get_province_name_by_district_id.assert_called_once_with('370611')
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('2023~2024', ('2023-01-01', '2024-12-31')),
+    ('2022-5~2022-10', ('2022-05-01', '2022-10-31')),
+    ('2025', ('2025-01-01', '2025-12-31')),
+    ('', ('', '')),
+    (None, ('', '')),
+])
+def test_parse_data_year_range(raw, expected):
+    assert pgc.parse_data_year_range(raw) == expected
+
+
+@pytest.mark.parametrize('reference_year,audit_year,expected', [
+    ('2023~2024', '2025', ('2023-01-01', '2025-12-31')),
+    ('2023~2024', None, ('2023-01-01', '2024-12-31')),
+    (None, '2025', ('2025-01-01', '2025-12-31')),
+    ('2022-5~2022-10', '2025', ('2022-05-01', '2025-12-31')),
+])
+def test_parse_data_period_unions_reference_and_audit(reference_year, audit_year, expected):
+    assert pgc.parse_data_period(reference_year, audit_year) == expected
+
+
+def test_pg_collector_parses_audit_year_into_start_end():
+    pg = _make_pg_instance([])
+    pg.find_project_by_name.return_value['audit_year'] = '2022-5~2022-10'
+    result = pgc._collect_from_pg_impl(pg, '测试项目')
+    project = result['found']['project']
+    assert project['audit_start'] == '2022年5月'
+    assert project['audit_end'] == '2022年10月'
+
+
+def test_pg_collector_parses_reference_year_into_data_start_end():
+    pg = _make_pg_instance([])
+    pg.find_project_by_name.return_value['audit_year'] = '2025'
+    pg.find_project_by_name.return_value['reference_year'] = '2023~2024'
+    result = pgc._collect_from_pg_impl(pg, '测试项目')
+    project = result['found']['project']
+    assert project['data_start'] == '2023-01-01'
+    assert project['data_end'] == '2025-12-31'
+
+
+def test_pg_collector_data_range_falls_back_to_audit_year():
+    pg = _make_pg_instance([])
+    pg.find_project_by_name.return_value['audit_year'] = '2025'
+    result = pgc._collect_from_pg_impl(pg, '测试项目')
+    project = result['found']['project']
+    assert project['data_start'] == '2025-01-01'
+    assert project['data_end'] == '2025-12-31'
 
 
 def test_pg_collector_ignores_invalid_coefficients():

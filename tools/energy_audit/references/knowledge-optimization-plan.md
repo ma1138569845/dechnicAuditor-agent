@@ -1,6 +1,10 @@
 # 能源审计知识库优化计划 v1.0
 
-> 2026-07-14 | 基于当前系统现状 + 三方案对比分析
+> 2026-07-14 | 基于当时系统现状 + 三方案对比分析
+>
+> **流水线现状（2026-08 更正）**：`run_pipeline.py` / `agent_xiaocheng()` 已不存在。
+> 现行入口是 `energy_audit_tool.rest_generate_energy_audit_report` → `build_and_save_project` → `load_from_project` → `generate_word`。
+> `search_for_chapter()` 仍是 RAG 库函数，**不写入第1/3章**。第3章走 PG 节能管理表 + 制度文件 LLM 提炼。
 
 ---
 
@@ -14,7 +18,7 @@
 | **数据结构** | project_data.py dataclass（ProjectBase/BuildingInfo/EnergyYearly/EquipmentInfo） | ⭐⭐⭐⭐ 基础好 |
 | **规则引擎** | indicators.py 三级兜底（DB→用户→GB默认），定额对标，折标系数 | ⭐⭐⭐⭐ 核心资产 |
 | **知识沉淀** | Obsidian wiki（E:/data/wiki）+ references/*.md（章节写作指南） | ⭐⭐⭐ 有但散 |
-| **流水线** | run_pipeline.py 9步 + 多Agent两阶段并行 | ⭐⭐⭐⭐ 工程化成熟 |
+| **流水线** | `rest_generate_energy_audit_report` → `build_and_save_project` → `generate_word`（旧 `run_pipeline.py` 9步已移除） | ⭐⭐⭐⭐ 工程化成熟 |
 | **数据源** | PostgreSQL（dc_energy_audit2）+ config.json + Excel | ⭐⭐⭐⭐ 结构化 |
 
 ### 缺失项
@@ -211,7 +215,7 @@ related_standards: [GB 50189-2015, DB37/T 2673-2019]
 #### 2.2 Agent-Wiki 集成
 
 ```python
-# agent-xiaocheng 新增能力
+# 对话侧 RAG 工具（energy_audit_rag_search）可扩展 wiki；
 def search_wiki(topic: str, system: str = None) -> dict:
     """从 Obsidian wiki 检索结构化知识页"""
     # 1. 搜索 frontmatter tags 匹配
@@ -297,7 +301,7 @@ class EnergyKG:
 #### 3.3 Agent调用方式
 
 ```python
-# agent-xiaocheng 新增能力
+# 挂到 energy_kg / data_analysis（库函数）；当前 rest_generate 入口未调用
 def causal_diagnosis(anomalies: List[str], building_context: dict) -> dict:
     """
     输入: ["冷机COP偏低", "冷冻水温差小"]
@@ -331,7 +335,7 @@ NetworkX 方案的瓶颈：
 ### 阶段4（长期）：知识工程完整形态
 
 ```
-                        Hermes Agent（小同）
+                        Hermes Agent（DechnicAuditor）
                               │
                     ┌─────────┼─────────┐
                     │         │         │
@@ -345,7 +349,7 @@ NetworkX 方案的瓶颈：
             └───────┴────┴────┴────┴────┴───────┘
                               │
                       Report Generator
-                      （小德 + 小方）
+                      （小德 + author）
 ```
 
 各模块职责：
@@ -361,21 +365,26 @@ NetworkX 方案的瓶颈：
 ## 四、与当前流水线的集成点
 
 ```
-run_pipeline.py 9步流程中的知识调用时机：
+现行生成管线中的知识调用时机：
 
-Step 0 (config_validator) → Rule Engine: 校验数据合理性
-Step 1 (pg_collector)     → 不使用知识库
-Step 2 (rag_search)       → 普通RAG + Wiki: 检索规范、案例、方法论
-Step 3 (indicators)       → Rule Engine: 指标计算 + 定额对标
-Step 4 (data_analysis)    → GraphRAG: 异常检测 + 因果推理 ★ 核心升级点
-Step 5 (data_check)       → Rule Engine: 数据完整性校验
-Step 6 (photo_manager)    → 不使用知识库
-Step 7 (report_generator) → 全部知识源: 生成各章节时按需调用
-Step 8 (report_qa)        → Rule Engine + Wiki: 格式校验 + 规范对照
+build_and_save_project
+  collect_from_pg          → 不使用知识库
+  enrich_management_info   → LLM：制度文件提炼第3章 3.1/3.2（不是 RAG 仿写）
+  compute_project_indicators → Rule Engine: 指标计算 + 定额对标
+
+load_from_project / generate_word
+  第3章  → PG energy_saving + management + 模板兜底（不调用 search_for_chapter）
+  第1章  → 固定模板 + province_regulations
+  第5章  → indicators.py
+
+库函数（未接入 rest_generate 入口）：
+  search_for_chapter / energy_audit_rag_search → 对话检索 Qdrant
+  analyze_with_diagnosis / energy_kg          → GraphRAG 因果推理
+  check_report                                → report_qa 格式校验
 ```
 
-**最优先升级：Step 4（data_analysis.py）+ GraphRAG 因果推理。**
-这是当前流水线中最大的价值洼地——目前只做统计异常检测（±30%阈值、2σ），不做因果推断。
+**最优先升级：把 `data_analysis.py` + GraphRAG 因果推理接到生成入口（若需要）。**
+这是当前流水线中最大的价值洼地——自动生成路径只做 PG 取数 + 模板/指标填充，不做因果推断。`analyze_with_diagnosis()` 存在但未被 `rest_generate_energy_audit_report` 调用。
 
 ---
 

@@ -2,23 +2,25 @@
 
 > 本文档定义「第一章内容生成」所需的输入结构，字段全部对齐当前代码中的最新数据模型：
 > - `tools/energy_audit/project_data.py` — `AuditProject` / `ProjectBase` / `BuildingInfo` / `EnergyYearly`（v2.0.0）
-> - `tools/energy_audit/report_generator.py` — `build_chapter1()`、`build_rd_from_project()`
+> - `tools/energy_audit/report_generator.py` — `build_chapter1()`、`load_from_project()`
 > - `tools/energy_audit/data_check.py` — 第一章完整性校验
-> - `rag/rag_search.py` — `search_for_chapter()` 同类报告章节检索
+>
+> **RAG 参考模式已过期**：`search_for_chapter()` 仍是库函数，但 `build_chapter1()` **不消费** `rag_reference[]`。
+> 1.1–1.5 为固定模板填空；1.6 用 `province_regulations.get_provincial_regulations()` + 固定国标清单。
 
 ---
 
 ## 一、修改后的 ## 输入内容
 
-保留原有四组输入（`base` / `project_context` / `building_data[]` / `rag_reference[]`），
+保留原有三组输入（`base` / `project_context` / `building_data[]`），
 将每组内容按第一章实际消费点细化，并补充来源字段与章节映射：
 
 | 输入 | 内容（第一章所需） | 数据模型来源 | 第一章消费点 |
 | ---- | ---- | ---- | ---- |
 | `base` | 项目基本信息（审计主体与周期）：审计类型 `unit_type`（公共机构/公共建筑/工业企业）、审计机构 `auditor`、审计项目负责人 `project_manager`、审计起止时间 `audit_start`/`audit_end`、数据统计周期 `data_start`/`data_end`、省份 `province`、报告日期 `report_date`、客户ID `customer_id` | `AuditProject.base`（`ProjectBase`） | 1.1 审计目的（委托机构）；1.3 审计周期（`audit_time`/`audit_cycle`）；1.6 审计依据（省份 → 地方规章检索） |
-| `project_context` | 被审计单位概况：单位全称 `unit_name`、简称 `unit_short`、行政归属 `admin_affiliation`、地址 `address`、内设机构/科室 `department_count`、用能人数 `people_count`、床位数 `beds_count`、机构类别 `institution_category`（医疗/教育/党政机关/场馆…）、具体类型 `specific_type`、单位基本情况 `basic_situation`、总建筑面积 `building_area`、建筑数量 `building_count` | `AuditProject.base` + `AuditProject.buildings` 汇总 | 1.1 审计目的（单位简称）；1.2 审计范围（地址、N 栋建筑）；tags → 1.6 审计依据的机构类型 + RAG 检索标签 |
+| `project_context` | 被审计单位概况：单位全称 `unit_name`、简称 `unit_short`、行政归属 `admin_affiliation`、地址 `address`、内设机构/科室 `department_count`、用能人数 `people_count`、床位数 `beds_count`、机构类别 `institution_category`（医疗/教育/党政机关/场馆…）、具体类型 `specific_type`、单位基本情况 `basic_situation`、总建筑面积 `building_area`、建筑数量 `building_count` | `AuditProject.base` + `AuditProject.buildings` 汇总 | 1.1 审计目的（单位简称）；1.2 审计范围（地址、N 栋建筑）；tags → 1.6 审计依据的机构类型 |
 | `building_data[]` | 建筑列表（每栋）：`name` 建筑名称、`address` 地址、`year` 竣工年份、`function` 建筑功能、`floors` 层数（地上X层/地下Y层）、`height` 高度、`structure` 结构形式、`area` 建筑面积、`use_area` 使用面积、`function_zoning` 功能分区 | `AuditProject.buildings`（`BuildingInfo`） | 1.2 审计范围（"位于…的 N 栋建筑"）；派生汇总：`building_count = len(building_data)`、`total_area = Σ area` |
-| `rag_reference[]` | 同类报告第一章写作参考：每项含报告名称、机构类型标签（`tags`）、章节 = `第1章`、小节（1.1–1.6）、参考正文；检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')` | `rag.rag_search.search_for_chapter()` 返回的 `format_reference()` 结果 | 1.1–1.6 的措辞、结构、审计依据清单参考；**不得**覆盖 `base`/`project_context` 中的本项目事实数据 |
+| `rag_reference[]`（未接入） | 同类报告写作参考；检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')` | `rag.rag_search.search_for_chapter()` 仍可用，**`build_chapter1()` 不读取此字段** | 历史「参考模式」遗留；不得当作第一章输入 |
 
 补充一行（可自动推导，非人工必填）：
 
@@ -61,7 +63,7 @@
 - `audit_time`（审计时间）
 - `province`（省份，参与 1.6 地方规章）
 - `buildings`（建筑数量描述，1.2 审计范围）
-- `tags.institution_category`（机构类型，参与 1.6 与 RAG 检索）
+- `tags.institution_category`（机构类型，参与 1.6 地方规章映射）
 
 ---
 
@@ -113,15 +115,6 @@
       "natural_gas_m3": 180000,
       "heating_energy_heat_gj": 21000
     }
-  ],
-  "rag_reference": [
-    {
-      "filename": "XX市人民医院能源审计报告.docx",
-      "tags": {"audit_type": "公共机构", "institution_category": "医疗"},
-      "chapter": "第1章",
-      "section": "1.1 审计目的",
-      "text": "为了准确了解XX医院用能情况…"
-    }
   ]
 }
 ```
@@ -137,4 +130,4 @@
 | 1.3 | 审计周期 | `base.audit_start/audit_end`、`base.data_start/data_end` |
 | 1.4 | 审计内容 | 固定模板（无需输入） |
 | 1.5 | 审计过程 | `project_context.unit_short`（其余为固定模板） |
-| 1.6 | 审计依据 | `base.province`、`project_context.institution_category`、`rag_reference[]` |
+| 1.6 | 审计依据 | `base.province`、`project_context.institution_category`（映射后查 `province_regulations`；**不使用** `rag_reference[]`） |

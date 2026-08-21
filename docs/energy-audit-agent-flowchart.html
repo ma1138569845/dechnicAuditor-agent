@@ -325,9 +325,9 @@
 <div class="header">
   <div>
     <h1>⚡ Hermes Agent — 能源审计报告编制流程</h1>
-    <div class="subtitle">同方德诚 · 公共机构能源审计 · 多Agent协同流水线 v3.0</div>
+    <div class="subtitle">同方德诚 · 公共机构能源审计 · 现行管线（PG 取数 → Word；无 run_pipeline / agent_xiaocheng）</div>
   </div>
-  <div class="badge">🏗️ 四Agent协同：小数 · 小诚 · 小方 · 小同</div>
+  <div class="badge">入口：rest_generate_energy_audit_report / data_collection_cli</div>
 </div>
 
 <div class="container">
@@ -363,7 +363,7 @@
 
   <div class="node data-source">
     <div class="node-title">📚 Qdrant 向量库</div>
-    <div class="node-sub">knowledge_segment_qwen<br>历史审计报告<br>DB37/T 定额标准</div>
+    <div class="node-sub">energy_audit_reports<br>对话检索可用<br><strong>不写入报告章节</strong></div>
   </div>
 </div>
 
@@ -374,65 +374,61 @@
 <div class="flow-row" style="justify-content:center">
   <div class="node step">
     <div class="step-num">0</div>
-    <div class="node-title">Config 校验</div>
-    <div class="node-sub">config_validator.py<br>必填字段 · 数据类型 · 值域检查</div>
+    <div class="node-title">报告入口</div>
+    <div class="node-sub">energy_audit_tool.rest_generate_energy_audit_report<br>或 data_collection_cli.py</div>
   </div>
 </div>
 
 <!-- ============================================================ -->
-<!-- PHASE 1: 四Agent流水线 -->
+<!-- PHASE 1: 现行生成管线 -->
 <!-- ============================================================ -->
-<div class="section-title"><span class="icon">🤖</span> 阶段 1：四Agent串行流水线（核心）</div>
+<div class="section-title"><span class="icon">🤖</span> 阶段 1：PG 采集 → 第3章提炼 → Word</div>
 
-<!-- Agent 1: 小数 -->
+<!-- 采集 -->
 <div class="arrow-down">
   <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
 </div>
 <div class="flow-row" style="justify-content:center">
   <div class="node agent" style="min-width:200px">
-    <div class="node-label">🔵 Agent 1</div>
-    <div class="node-name">小数 (Xiaoshu)</div>
-    <div class="node-desc">项目数据初始化</div>
+    <div class="node-label">📥 采集</div>
+    <div class="node-name">pg_collector</div>
+    <div class="node-desc">build_and_save_project</div>
   </div>
 </div>
 <div style="text-align:center;margin:4px 0">
-  <span class="chapter-badge">pg_collector.py</span>
-  <span style="color:var(--gray-500);margin:0 6px">→</span>
-  <span class="chapter-badge">build_from_pg_and_config()</span>
+  <span class="chapter-badge">collect_from_pg()</span>
   <span style="color:var(--gray-500);margin:0 6px">→</span>
   <span class="chapter-badge">AuditProject 数据类</span>
 </div>
 <div style="text-align:center;font-size:12px;color:var(--gray-500);margin-top:2px">
-  三层回退策略: PostgreSQL → Config JSON → 内置默认值
+  三层回退策略: PostgreSQL → Excel → 内置默认值
 </div>
 
-<!-- Agent 2: 小诚 -->
+<!-- 第3章：制度 LLM，不是 RAG 仿写 -->
 <div class="arrow-down">
   <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
 </div>
 <div class="flow-row" style="justify-content:center">
-  <div class="node agent" style="min-width:200px">
-    <div class="node-label">🔵 Agent 2</div>
-    <div class="node-name">小诚 (Xiaocheng)</div>
-    <div class="node-desc">知识检索 + 定额对标</div>
+  <div class="node agent" style="min-width:240px">
+    <div class="node-label">📝 第3章</div>
+    <div class="node-name">制度文件 + 节能管理表</div>
+    <div class="node-desc">不再 search_for_chapter 仿写</div>
   </div>
 </div>
 <div style="text-align:center;margin:4px 0">
-  <span class="chapter-badge">RAG检索: 第2/5/6/7章</span>
+  <span class="chapter-badge">enrich_management_info() LLM 提炼 3.1/3.2</span>
   <span style="color:var(--gray-500);margin:0 6px">+</span>
-  <span class="chapter-badge">定额对标: DB37/T 2672-2674</span>
-  <span style="color:var(--gray-500);margin:0 6px">+</span>
-  <span class="chapter-badge">resolve_benchmark() 三层回退</span>
+  <span class="chapter-badge">_energy_saving_chapter3_sections() 3.2/3.3/3.4</span>
 </div>
 
-<!-- Agent 3: 小方 -->
+<!-- 指标 -->
 <div class="arrow-down">
   <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
 </div>
 <div class="flow-row" style="justify-content:center">
   <div class="node agent" style="min-width:200px">
-    <div class="node-label">🔵 Agent 3</div>
-    <div class="node-name">小方 (Xiaofang)</div>
+    <div class="node-label">📊 指标</div>
+    <div class="node-name">indicators.py</div>
     <div class="node-desc">能耗指标计算</div>
   </div>
 </div>
@@ -454,7 +450,7 @@
   <div class="node step">
     <div class="step-num">4</div>
     <div class="node-title">构建 Report Data (rd)</div>
-    <div class="node-sub">build_rd_from_project() → ReportGenerator.load_from_project()<br>合并 agent_xiaofang 计算指标到 chapter5.energy_data</div>
+    <div class="node-sub">ReportGenerator.load_from_project()<br>PG 字段 + 第3章节能管理文案 + chapter5.energy_data</div>
   </div>
 </div>
 
@@ -465,7 +461,7 @@
   <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#c0392b" stroke-width="2"/><polygon points="12,28 6,22 18,22" fill="#c0392b"/></svg>
 </div>
 
-<div class="section-title"><span class="icon">🔬</span> 阶段 2：异常检测 &amp; 知识图谱因果诊断（关键节点）</div>
+<div class="section-title"><span class="icon">🔬</span> 阶段 2：异常检测 &amp; KG（库函数，<strong>未接入 rest_generate</strong>）</div>
 
 <div class="flow-row" style="justify-content:center;gap:14px;flex-wrap:wrap">
   <div class="node step">
@@ -567,17 +563,15 @@
   </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- Agent 4: 小同 -->
-<!-- ============================================================ -->
+<!-- Word 组装 -->
 <div class="arrow-down">
   <svg width="24" height="28"><line x1="12" y1="0" x2="12" y2="22" stroke="#005ab4" stroke-width="2.5"/><polygon points="12,28 6,22 18,22" fill="#005ab4"/></svg>
 </div>
 <div class="flow-row" style="justify-content:center">
   <div class="node agent" style="min-width:220px">
-    <div class="node-label">🔵 Agent 4</div>
-    <div class="node-name">小同 (Xiaotong)</div>
-    <div class="node-desc">主编组装 + Word报告生成</div>
+    <div class="node-label">📄 Word</div>
+    <div class="node-name">report_generator</div>
+    <div class="node-desc">load_from_project + generate_word</div>
   </div>
 </div>
 <div style="text-align:center;margin:4px 0">
@@ -654,25 +648,28 @@
 <!-- ============================================================ -->
 <!-- AGENT SUMMARY TABLE -->
 <!-- ============================================================ -->
-<div class="section-title"><span class="icon">📋</span> Agent 角色总览</div>
+<div class="section-title"><span class="icon">📋</span> 现行模块职责</div>
 <table class="info-table">
   <tr>
-    <th>Agent</th><th>名称</th><th>职责</th><th>核心文件</th><th>数据源</th>
+    <th>模块</th><th>名称</th><th>职责</th><th>核心文件</th><th>数据源</th>
   </tr>
   <tr>
-    <td>🔵 小数</td><td>数据初始化 Agent</td><td>项目数据采集，三层回退</td><td>pg_collector.py</td><td>PostgreSQL → Config → 内置值</td>
+    <td>入口</td><td>报告生成</td><td>REST / CLI 触发</td><td>energy_audit_tool.py、data_collection_cli.py</td><td>项目名称</td>
   </tr>
   <tr>
-    <td>🔵 小诚</td><td>知识检索 Agent</td><td>RAG搜索历史报告 + 定额对标</td><td>rag_search.py</td><td>Qdrant 向量库</td>
+    <td>采集</td><td>数据采集</td><td>PG 取数 + 制度文件 LLM 提炼</td><td>pg_collector.py、file_resolver.py、llm_client.py</td><td>PostgreSQL + 附件</td>
   </tr>
   <tr>
-    <td>🔵 小方</td><td>计算 Agent</td><td>能耗指标计算 + 基准值</td><td>indicators.py</td><td>AuditProject 数据类</td>
+    <td>RAG</td><td>对话检索</td><td>search_for_chapter 仍可用，<strong>不写入报告章节</strong></td><td>rag_search.py、energy_audit_rag_tool.py</td><td>Qdrant</td>
   </tr>
   <tr>
-    <td>🔵 小同</td><td>主编 Agent</td><td>组装 + 生成 Word 报告</td><td>report_generator.py (154KB)</td><td>report_data 字典</td>
+    <td>指标</td><td>计算</td><td>折标 + 定额对标</td><td>indicators.py</td><td>AuditProject</td>
   </tr>
   <tr>
-    <td>🧠 KG</td><td>知识图谱引擎</td><td>因果诊断 + 措施推荐 + 置信度学习</td><td>energy_kg.py (75KB)</td><td>50+因果链 × 12用能系统</td>
+    <td>Word</td><td>报告组装</td><td>8 章 Word</td><td>report_generator.py</td><td>load_from_project</td>
+  </tr>
+  <tr>
+    <td>KG</td><td>知识图谱</td><td>因果诊断库函数，未接入 rest_generate</td><td>energy_kg.py、data_analysis.py</td><td>内置因果链</td>
   </tr>
 </table>
 
@@ -682,32 +679,20 @@
 <div class="section-title"><span class="icon">🔄</span> 数据流摘要</div>
 
 <div style="background:var(--white);border:1px solid var(--gray-200);border-radius:8px;padding:16px 20px;font-size:13px;line-height:2">
-<strong>Config JSON</strong>
-  → <span style="color:var(--blue-accent)">小数(pg_collector)</span>
-  → AuditProject
-  → <span style="color:var(--blue-accent)">build_rd_from_project()</span>
-  → report_data (rd)
+<strong>项目名</strong>
+  → <span style="color:var(--blue-accent)">build_and_save_project()</span>
+  → AuditProject（PG + 制度 LLM 提炼第3章）
 <br>
-<strong>rd</strong>
-  → <span style="color:var(--blue-accent)">小方(indicators)</span>
-  → chapter5.energy_data + baselines
+<strong>AuditProject</strong>
+  → <span style="color:var(--blue-accent)">ReportGenerator.load_from_project()</span>
+  → chapter3 = management + _energy_saving_chapter3_sections（模板兜底）
+  → chapter5.energy_data / indicators
 <br>
-<strong>rd + tags</strong>
-  → <span style="color:var(--blue-accent)">小诚(rag_search)</span>
-  → chapter_refs + _benchmarks
+<strong>search_for_chapter('第3章', {institution_category: 党政机关})</strong>
+  → 仅 RAG 库函数 / 对话工具；<span style="color:var(--red-accent)">不进入 generate_word</span>
 <br>
-<strong>rd.chapter5.energy_data</strong>
-  → <span style="color:var(--red-accent)">analyze_with_diagnosis()</span>
-  → AnalysisResult
-  → <span style="color:var(--red-accent)">用户确认闸门</span>
-  → inject_diagnosis_to_chapter7()
-  → chapter7.problems + solutions
-<br>
-<strong>rd (完整)</strong>
-  → <span style="color:var(--blue-accent)">小同(ReportGenerator)</span>
-  → <span style="color:var(--green-accent)">{unit_name}_能源审计报告.docx</span>
-  → report_qa.check_report()
-  → 🎉 完成
+<strong>generate_word()</strong>
+  → <span style="color:var(--green-accent)">{unit_name}能源审计报告.docx</span>
 </div>
 
 </div><!-- .container -->
