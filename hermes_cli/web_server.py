@@ -12043,6 +12043,18 @@ class EnergyAuditGenerateRequest(BaseModel):
     output_dir: Optional[str] = None
 
 
+class EnergyAuditImitateRequest(BaseModel):
+    project_name: str
+    chapter: str
+    section: str = ""
+    institution_category: str = ""
+    specific_type: str = ""
+    audit_type: str = ""
+    extra_context: str = ""
+    top_k: int = 5
+    refresh_from_pg: bool = False
+
+
 @app.post("/api/energy-audit/projects")
 async def energy_audit_projects(body: EnergyAuditProjectsRequest):
     """Search energy-audit projects by name (for the composer form autocomplete).
@@ -12076,6 +12088,32 @@ async def energy_audit_generate(body: EnergyAuditGenerateRequest):
         body.project_name,
         body.audit_type,
         body.output_dir,
+    )
+
+
+@app.post("/api/energy-audit/imitate")
+async def energy_audit_imitate(body: EnergyAuditImitateRequest):
+    """Retrieve reference reports and imitate a chapter paragraph for a project.
+
+    Returns {"ok": true, "paragraph": "...", ...} or an {error, message}
+    envelope (HTTP 200, matching the other energy-audit endpoints).
+    """
+    try:
+        from tools.energy_audit_imitate_tool import rest_imitate_energy_audit_paragraph
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Energy audit imitate tool unavailable: {exc}") from exc
+
+    return await run_in_threadpool(
+        rest_imitate_energy_audit_paragraph,
+        body.project_name,
+        body.chapter,
+        body.section,
+        body.institution_category,
+        body.specific_type,
+        body.audit_type,
+        body.extra_context,
+        body.top_k,
+        body.refresh_from_pg,
     )
 
 

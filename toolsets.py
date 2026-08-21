@@ -80,6 +80,8 @@ _HERMES_CORE_TOOLS = [
     "energy_audit_get_energy", "energy_audit_get_energy_meter",
     # 能源审计 RAG / 知识图谱检索
     "energy_audit_rag_search",
+    # 能源审计：检索参考报告并按段落结构仿写
+    "energy_audit_imitate_paragraph",
     # Home Assistant smart home control (gated on HASS_TOKEN via check_fn)
     "ha_list_entities", "ha_get_state", "ha_list_services", "ha_call_service",
     # Kanban multi-agent coordination — only in schema when the agent is
@@ -227,12 +229,13 @@ TOOLSETS = {
     },
 
     "energy_audit": {
-        "description": "能源审计 PG 数据库查询与 RAG/知识图谱检索：项目、建筑、设备、能耗、表具计量、报告检索、异常诊断、节能措施等",
+        "description": "能源审计 PG 数据库查询、RAG 检索与章节仿写：项目、建筑、设备、能耗、表具计量、报告检索、参考段落仿写等",
         "tools": [
             "energy_audit_search_projects", "energy_audit_get_project",
             "energy_audit_get_equipment", "energy_audit_get_buildings",
             "energy_audit_get_energy", "energy_audit_get_energy_meter",
             "energy_audit_rag_search",
+            "energy_audit_imitate_paragraph",
         ],
         "includes": []
     },

@@ -1,4 +1,4 @@
-"""轻量 LLM 客户端：能源管理制度文件 → 第三章 3.1/3.2 正文提炼。
+"""轻量 LLM 客户端：管理制度提炼、参考报告段落仿写。
 
 复用 rag 的 DeepSeek 直连模式（环境变量 DEEPSEEK_API_KEY / DEEPSEEK_API_BASE），
 模型取 energy_audit config.yaml 的 rag.deepseek_model（默认 deepseek-v4-flash）。
@@ -30,13 +30,13 @@ def _api_base() -> str:
     return os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
 
 
-def _chat(messages, temperature=0.3, max_tokens=1200) -> Optional[str]:
+def _chat(messages, temperature=0.3, max_tokens=1200, task="energy_audit_management") -> Optional[str]:
     """单次 LLM 调用：优先 Hermes auxiliary client，回退 DeepSeek 直连。失败返回 None。"""
     try:
         from agent.auxiliary_client import call_llm
 
         resp = call_llm(
-            task="energy_audit_management",
+            task=task,
             provider="deepseek",
             model=_model(),
             messages=messages,
@@ -110,3 +110,45 @@ def summarize_management_docs(doc_texts: List[str], unit_name: str) -> Optional[
     if not org and not goals:
         return None
     return {"org": (org or "").strip(), "goals_policy": (goals or "").strip()}
+
+
+def imitate_from_structure(
+    *,
+    unit_name: str,
+    chapter: str,
+    section: str,
+    outline_text: str,
+    project_facts: str,
+    reference_excerpt: str,
+) -> Optional[str]:
+    """按参考报告段落结构，用当前项目数据仿写正式报告段落。失败返回 None。"""
+    section_hint = f"（{section}）" if section else ""
+    excerpt = (reference_excerpt or "").strip()
+    if len(excerpt) > 6000:
+        excerpt = excerpt[:6000] + "\n\n[...参考文本过长已截断...]"
+
+    facts = (project_facts or "").strip() or "（当前项目未提供可用数据）"
+    outline = (outline_text or "").strip() or "（未能解析出明确小节结构，按规范报告段落撰写）"
+
+    system = (
+        "你是能源审计报告撰写助手。你的任务是仿写正式报告段落："
+        "严格沿用参考报告的段落结构与公文语气，但只使用当前被审计单位的真实数据。"
+        "禁止照抄参考报告中的单位名称、人数、面积、能耗数字或其他事实。"
+        "数据缺失时用一句说明，不要编造。"
+        "直接输出可用于报告的中文正文，不要前言、不要解释写作过程。"
+    )
+    user = (
+        f"被审计单位：{unit_name}\n"
+        f"目标章节：{chapter}{section_hint}\n\n"
+        f"【参考段落结构】\n{outline}\n\n"
+        f"【当前项目数据】\n{facts}\n\n"
+        f"【参考报告原文（只学结构与语气，不抄事实）】\n{excerpt or '（无参考原文）'}\n\n"
+        "请按上述结构仿写本项目对应段落。保留小节标题（如 3.1 …），"
+        "图表位置用「（此处插图/表）」占位，不要输出 Markdown 代码围栏。"
+    )
+    return _chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.35,
+        max_tokens=2500,
+        task="energy_audit_imitate",
+    )
