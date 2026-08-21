@@ -1,8 +1,8 @@
 """
 报告数据完整性检查
 
-在 run_pipeline.py 的 agent_xiaotong() 中调用，
-发现缺失项时打印清晰提示并返回缺失清单（不生成报告）。
+由 data_collection_cli.py 在 build_and_save_project 之后调用，
+发现缺失项时打印清晰提示并返回缺失清单（不阻断报告生成）。
 """
 
 from typing import List, Dict, Tuple
