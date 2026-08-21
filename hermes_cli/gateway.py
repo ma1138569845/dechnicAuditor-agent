@@ -5,6 +5,7 @@ Handles: hermes gateway [run|start|stop|restart|status|install|uninstall|setup]
 """
 
 import asyncio
+from hermes_cli.cli_output import line_input
 import json
 import logging
 import os
@@ -97,17 +98,28 @@ class ProfileGatewayProcess:
     pid: int
 
 
-def _get_service_pids() -> set:
+def _get_service_pids(all_profiles: bool = False) -> set:
     """Return PIDs currently managed by systemd or launchd gateway services.
 
     Used to avoid killing freshly-restarted service processes when sweeping
-    for stale manual gateway processes after a service restart.  Relies on the
-    service manager having committed the new PID before the restart command
+    for stale manual gateway processes after a service restart.  Relies on
+    the service manager having committed the new PID before the restart command
     returns (true for both systemd and launchd in practice).
+
+    ``all_profiles`` widens the launchd branch to every installed
+    ``ai.hermes.gateway*`` LaunchAgent — the update path needs the whole
+    fleet excluded from its sweep (#41403, #73626): sibling-profile launchd
+    gateways found by the (BSD-fixed) ps scan must not be misclassified as
+    manual processes and killed.  Default-scope callers (``gateway status``,
+    cron checks) keep seeing only the current profile's service; the orphan
+    reaper passes all_profiles=True for the same friendly-fire reason.  The
+    systemd branch has always been fleet-wide (``hermes-gateway*``) and is
+    unaffected.
     """
     pids: set = set()
 
     # --- systemd (Linux): user and system scopes ---
+    # systemd always lists every hermes-gateway* unit regardless of scope.
     if supports_systemd_services():
         for scope_args in [["systemctl", "--user"], ["systemctl"]]:
             try:
@@ -146,33 +158,49 @@ def _get_service_pids() -> set:
 
     # --- launchd (macOS) ---
     if is_macos():
-        try:
-            label = get_launchd_label()
-            result = subprocess.run(
-                ["launchctl", "list", label],
-                capture_output=True,
-                text=True, encoding='utf-8', errors='replace',
-                timeout=5,
-            )
-            if result.returncode == 0:
-                # Try plist format first (macOS 26+): "PID" = <N>;
-                pid = _parse_launchd_pid_from_list_output(result.stdout)
-                if pid is not None and pid > 0:
-                    pids.add(pid)
-                else:
-                    # Fall back to legacy tab-separated format:
-                    # "PID\tStatus\tLabel"
+        labels = {get_launchd_label()}
+        if all_profiles:
+            # Every gateway LaunchAgent, not just the invoking profile's —
+            # mirrors the systemd branch's ``hermes-gateway*`` pattern above.
+            # The update path restarts the whole fleet, and its stale-process
+            # sweep must not mistake a sibling service's fresh PID for a
+            # manual gateway it should kill (#41403).
+            labels.update(launchd_gateway_labels_for_install())
+        for label in sorted(labels):
+            try:
+                _domain, pid = _locate_launchd_gateway_service(label)
+            except subprocess.TimeoutExpired:
+                continue
+            if pid is not None and pid > 0:
+                pids.add(pid)
+        if all_profiles:
+            # Belt-and-suspenders for the EXCLUDE use case (#74075): a bare
+            # ``launchctl list`` prefix scan also catches ai.hermes.gateway*
+            # agents the label derivation can't map (renamed profiles, other
+            # installs sharing this user).  Over-inclusion is safe here —
+            # these PIDs are only ever protected from the kill sweep, never
+            # targeted.  Restart paths use the label-derived set only.
+            try:
+                result = subprocess.run(
+                    ["launchctl", "list"],
+                    capture_output=True,
+                    text=True, encoding='utf-8', errors='replace',
+                    timeout=5,
+                )
+                if result.returncode == 0:
                     for line in result.stdout.strip().splitlines():
                         parts = line.split()
-                        if len(parts) >= 3 and parts[2] == label:
+                        if len(parts) >= 3 and parts[-1].startswith(
+                            "ai.hermes.gateway"
+                        ):
                             try:
                                 pid = int(parts[0])
                                 if pid > 0:
                                     pids.add(pid)
                             except ValueError:
                                 pass
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
 
     return pids
 
@@ -529,35 +557,35 @@ def _scan_gateway_pids(
             # Prefer wmic when present (fast, stable output format).  On
             # modern Windows 11 / Win 10 late builds, wmic has been
             # removed as part of the WMIC deprecation — fall back to
-            # PowerShell's Get-CimInstance.  Any OSError here (FileNotFoundError
-            # on missing wmic) trips the fallback.
-            # Hide the console window: this scan runs inside the windowless
-            # pythonw.exe gateway/desktop backend, so a bare wmic/powershell
-            # spawn would flash a conhost window on every watchdog probe.
-            from hermes_cli._subprocess_compat import windows_hide_flags
+            # PowerShell's Get-CimInstance.  A spawn failure or timeout
+            # (result is None) trips the fallback.
+            # The scans go through ``bounded_probe_run`` — NOT plain
+            # ``subprocess.run(timeout=...)`` — because on Windows ``run()``'s
+            # post-timeout cleanup joins the pipe reader threads unbounded; a
+            # descendant (conhost.exe) holding duplicated pipe handles then
+            # wedges the caller forever. ``hermes update`` hung exactly there
+            # on slow-WMI machines where the full Win32_Process scan exceeds
+            # its budget (#87134).
+            # bounded_probe_run also hides the console window: this scan runs
+            # inside the windowless pythonw.exe gateway/desktop backend, so a
+            # bare wmic/powershell spawn would flash a conhost window on every
+            # watchdog probe.
+            from hermes_cli._subprocess_compat import bounded_probe_run
 
-            _no_window = {"creationflags": windows_hide_flags()}
             wmic_path = shutil.which("wmic")
             result = None
             if wmic_path is not None:
-                try:
-                    result = subprocess.run(
-                        [
-                            wmic_path,
-                            "process",
-                            "get",
-                            "ProcessId,CommandLine",
-                            "/FORMAT:LIST",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="ignore",
-                        timeout=10,
-                        **_no_window,
-                    )
-                except (OSError, subprocess.TimeoutExpired):
-                    result = None
+                result = bounded_probe_run(
+                    [
+                        wmic_path,
+                        "process",
+                        "get",
+                        "ProcessId,CommandLine",
+                        "/FORMAT:LIST",
+                    ],
+                    timeout=10,
+                    errors="ignore",
+                )
             if result is None or result.returncode != 0 or not (result.stdout or ""):
                 # Fallback: PowerShell Get-CimInstance, emit LIST-style output
                 # so the downstream parser below doesn't need to branch.
@@ -572,17 +600,12 @@ def _scan_gateway_pids(
                     "  '' "
                     "}"
                 )
-                try:
-                    result = subprocess.run(
-                        [powershell, "-NoProfile", "-Command", ps_cmd],
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="ignore",
-                        timeout=15,
-                        **_no_window,
-                    )
-                except (OSError, subprocess.TimeoutExpired):
+                result = bounded_probe_run(
+                    [powershell, "-NoProfile", "-Command", ps_cmd],
+                    timeout=15,
+                    errors="ignore",
+                )
+                if result is None:
                     return []
             if result.returncode != 0 or result.stdout is None:
                 return []
@@ -603,7 +626,7 @@ def _scan_gateway_pids(
                     current_cmd = ""
         else:
             # Try /proc first (works in Docker without procps installed),
-            # fall back to ps -A eww.
+            # fall back to `ps -Aww` (BSD-safe; see below).
             _found_via_proc = False
             if os.path.isdir("/proc"):
                 try:
@@ -630,7 +653,13 @@ def _scan_gateway_pids(
 
             if not _found_via_proc:
                 result = subprocess.run(
-                    ["ps", "-A", "eww", "-o", "pid=,command="],
+                    # ``-Aww`` (not ``-A eww``): the BSD ``e`` flag (show
+                    # environment) is illegal on macOS/BSD ps and makes the
+                    # whole command fail with rc 1, silently returning [] on
+                    # every macOS machine (#73626).  The matcher only needs
+                    # argv, not env vars, so ``e`` is unnecessary.  ``-ww``
+                    # keeps unlimited-width output on both BSD and procps ps.
+                    ["ps", "-Aww", "-o", "pid=,command="],
                     capture_output=True,
                     text=True, encoding='utf-8', errors='replace',
                     timeout=10,
@@ -738,7 +767,7 @@ def find_gateway_pids(
             _append_unique_pid(pids, get_running_pid(), _exclude)
         except Exception:
             pass
-    for pid in _get_service_pids():
+    for pid in _get_service_pids(all_profiles=all_profiles):
         _append_unique_pid(pids, pid, _exclude)
     try:
         include_restart_managers = not supports_systemd_services()
@@ -1402,6 +1431,87 @@ def _parse_launchd_pid_from_list_output(output: str) -> int | None:
     return None
 
 
+def _parse_launchd_pid_from_print_output(output: str) -> int | None:
+    """Extract the live PID from ``launchctl print`` output (``pid = <N>``).
+
+    A bootstrapped-but-not-running service prints no ``pid =`` line; the
+    first (service-level) occurrence wins over any nested endpoint state.
+    Returns ``None`` when no PID is found or the PID is non-positive.
+    """
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("pid = "):
+            try:
+                pid = int(stripped[len("pid = "):].strip())
+                return pid if pid > 0 else None
+            except ValueError:
+                return None
+    return None
+
+
+def _launchd_print_service_pid(domain: str, label: str) -> tuple[bool, int | None]:
+    """Return ``(loaded, pid)`` for ``domain/label`` via ``launchctl print``.
+
+    Domain-explicit on purpose: legacy ``launchctl list`` infers its domain
+    from the caller's execution context, which is exactly the ambiguity that
+    sank the first fleet-restart attempt (#41403 review). ``TimeoutExpired``
+    propagates — fleet-restart callers own per-label failure accounting (a
+    wedged launchctl call must be reported, not read as "unloaded").
+    """
+    try:
+        result = subprocess.run(
+            ["launchctl", "print", f"{domain}/{label}"],
+            capture_output=True,
+            text=True, encoding='utf-8', errors='replace',
+            timeout=5,
+        )
+    except FileNotFoundError:
+        return (False, None)
+    if result.returncode != 0:
+        return (False, None)
+    return (True, _parse_launchd_pid_from_print_output(result.stdout))
+
+
+def _launchd_service_registered(label: str) -> bool:
+    """True when launchd knows ``label`` (``launchctl list <label>`` exit 0).
+
+    Registration is domain-agnostic and — unlike the ``launchctl print``
+    domain probes in ``_locate_launchd_gateway_service`` — stays true on
+    macOS 26+ hosts whose per-user domains reject service management, so
+    the update path can still hand the label to ``launchd_restart()``,
+    which owns that fallback.  ``FileNotFoundError``/``TimeoutExpired``
+    propagate: the caller treats gate errors as a best-effort skip,
+    matching the pre-fleet inline behavior.
+    """
+    result = subprocess.run(
+        ["launchctl", "list", label],
+        capture_output=True,
+        text=True, encoding='utf-8', errors='replace',
+        timeout=5,
+    )
+    return result.returncode == 0
+
+
+def _locate_launchd_gateway_service(label: str) -> tuple[str | None, int | None]:
+    """Return ``(domain, pid)`` for ``label``, probing both per-user domains.
+
+    Probes ``gui/<uid>`` first (Aqua sessions), then ``user/<uid>``
+    (Background/SSH sessions).  ``domain`` is None when the label is not
+    bootstrapped in either; ``pid`` is None when the service has no live
+    process.  Sibling profile services resolve independently — a fleet can
+    legitimately mix domains (a profile installed over SSH lands in
+    ``user/<uid>`` while the rest live in ``gui/<uid>``), so the current
+    profile's cached domain (``_launchd_domain()``) is never consulted.
+    ``TimeoutExpired`` propagates (see ``_launchd_print_service_pid``).
+    """
+    uid = os.getuid()  # windows-footgun: ok — POSIX launchd (macOS) helper, never invoked on Windows
+    for domain in (f"gui/{uid}", f"user/{uid}"):
+        loaded, pid = _launchd_print_service_pid(domain, label)
+        if loaded:
+            return (domain, pid)
+    return (None, None)
+
+
 def _probe_launchd_service_running() -> bool:
     """Return True when launchd is actively supervising the gateway process.
 
@@ -1738,7 +1848,14 @@ def _reap_unsupervised_gateway_orphans(extra_exclude: set | None = None) -> bool
     # under KeepAlive.SuccessfulExit=false) and any systemd unit reachable
     # from a host that got past the gate above (#83683, #85344).
     try:
-        own |= _get_service_pids()
+        # all_profiles=True: the reaper's process scan sees every profile's
+        # gateway (and on macOS the now-working ps fallback surfaces sibling
+        # launchd gateways, #73626), so the service exclusion must cover the
+        # whole ai.hermes.gateway* fleet — not just the current profile's
+        # label — or a sibling profile's launchd gateway is misclassified as
+        # an unsupervised orphan and reaped. Same class as the update-sweep
+        # fix in #74075.
+        own |= _get_service_pids(all_profiles=True)
     except Exception:
         pass
     # On Windows there is no systemd/launchd service query at all
@@ -2049,6 +2166,32 @@ def _windows_gateway_should_absorb_console_controls() -> bool:
         return not bool(sys.stdin and sys.stdin.isatty())
     except (ValueError, OSError):
         return True
+
+
+def _windows_console_window_attached() -> bool | None:
+    """Return whether Windows assigned this process a console window."""
+    if not is_windows():
+        return None
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.kernel32.GetConsoleWindow())  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        return None
+
+
+def _windows_gateway_breakaway_state() -> bool | None:
+    """Consume private spawn metadata without guessing for older launchers."""
+    if not is_windows():
+        return None
+    from hermes_cli._subprocess_compat import _WINDOWS_GATEWAY_BREAKAWAY_ENV
+
+    value = os.environ.pop(_WINDOWS_GATEWAY_BREAKAWAY_ENV, None)
+    if value == "1":
+        return True
+    if value == "0":
+        return False
+    return None
 
 
 # =============================================================================
@@ -2950,6 +3093,36 @@ def get_launchd_plist_path() -> Path:
     return _launchd_user_home() / "Library" / "LaunchAgents" / f"{name}.plist"
 
 
+def launchd_gateway_labels_for_install() -> list[str]:
+    """Return the launchd gateway label for every profile of THIS install.
+
+    Derived from the install's profile layout (rooted at
+    ``get_default_hermes_root()``), NOT by globbing ``~/Library/LaunchAgents``:
+    the LaunchAgents directory is shared per-user, so a sandboxed
+    ``HERMES_HOME`` (tests, capture sandboxes, side-by-side installs) must
+    never enumerate — let alone restart — another install's fleet.
+
+    Root label first, then profile labels sorted by name.  Profile names
+    that cannot map to a service suffix (see ``_profile_suffix``'s naming
+    rule) are skipped — ``gateway install`` could never have created a
+    predictable label for them.  Profiles without an installed gateway are
+    harmless to include: their labels simply aren't bootstrapped and
+    callers skip them after a failed locate.
+    """
+    import re as _re
+
+    from hermes_cli.profiles import list_profiles
+
+    root_label: list[str] = []
+    profile_labels: list[str] = []
+    for profile in list_profiles():
+        if profile.is_default:
+            root_label.append("ai.hermes.gateway")
+        elif _re.match(r"^[a-z0-9][a-z0-9_-]{0,63}$", profile.name):
+            profile_labels.append(f"ai.hermes.gateway-{profile.name}")
+    return root_label + sorted(profile_labels)
+
+
 def _detect_venv_dir() -> Path | None:
     """Detect the active virtualenv directory.
 
@@ -3240,19 +3413,20 @@ def _append_node_dir_for_service(
 
     PATH lookup remains the fallback rung for installs with no managed Node.
     """
-    from hermes_constants import iter_hermes_node_dirs
+    from hermes_constants import (
+        hermes_managed_node_tree_present,
+        iter_hermes_node_dirs,
+    )
 
-    managed_node_present = False
-    for directory in iter_hermes_node_dirs(hermes_root):
+    managed_node_present = hermes_managed_node_tree_present(hermes_root)
+    for directory in iter_hermes_node_dirs(hermes_root) if managed_node_present else ():
         entry = str(directory)
         try:
             present = directory.is_dir()
         except OSError:
             present = False
-        if present:
-            managed_node_present = True
-            if entry not in path_entries:
-                path_entries.append(entry)
+        if present and entry not in path_entries:
+            path_entries.append(entry)
 
     # Ambient PATH lookup is a fallback, not an additional rung. Once the
     # target Hermes home provides managed Node, consulting the invoker's PATH
@@ -4162,52 +4336,35 @@ def get_launchd_label() -> str:
 _resolved_launchd_domain: str | None = None
 
 
-def _launchd_domain() -> str:
-    """Return the launchd domain that actually manages the gateway service.
+def _probe_launchd_domain_for_label(label: str) -> str:
+    """Resolve the launchd domain that manages ``label`` — uncached, per label.
 
     Probes ``gui/<uid>`` first (Aqua sessions), then ``user/<uid>``
     (Background/SSH sessions).  When neither domain contains a loaded
     service, falls back to ``launchctl managername`` as a heuristic.
 
-    The result is cached for the lifetime of the process so that repeated
-    calls (``start``, ``stop``, ``restart``) use a consistent domain.
-
-    See #40831, #23387.
+    Sibling profile services resolve independently: a fleet can legitimately
+    mix domains (a profile installed over SSH lands in ``user/<uid>`` while
+    the rest live in ``gui/<uid>``), so the current profile's cached domain
+    (``_launchd_domain()``) must never be reused for another label.
     """
-    global _resolved_launchd_domain
-    if _resolved_launchd_domain is not None:
-        return _resolved_launchd_domain
-
     uid = os.getuid()  # windows-footgun: ok — POSIX launchd (macOS) helper, never invoked on Windows
-    label = get_launchd_label()
     gui_domain = f"gui/{uid}"
     user_domain = f"user/{uid}"
 
     # 1. Probe gui/<uid> first — in Aqua sessions the service is loaded here.
-    try:
-        subprocess.run(
-            ["launchctl", "print", f"{gui_domain}/{label}"],
-            check=True,
-            timeout=5,
-            capture_output=True,
-        )
-        _resolved_launchd_domain = gui_domain
-        return gui_domain
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-
-    # 2. Probe user/<uid> — in Background/SSH sessions this is the working domain.
-    try:
-        subprocess.run(
-            ["launchctl", "print", f"{user_domain}/{label}"],
-            check=True,
-            timeout=5,
-            capture_output=True,
-        )
-        _resolved_launchd_domain = user_domain
-        return user_domain
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+    # 2. Then user/<uid> — in Background/SSH sessions this is the working domain.
+    for domain in (gui_domain, user_domain):
+        try:
+            subprocess.run(
+                ["launchctl", "print", f"{domain}/{label}"],
+                check=True,
+                timeout=5,
+                capture_output=True,
+            )
+            return domain
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
 
     # 3. Neither domain has the service loaded — use managername as heuristic.
     #    Aqua → gui/<uid>, anything else (Background, loginwindow) → user/<uid>.
@@ -4219,15 +4376,30 @@ def _launchd_domain() -> str:
             timeout=5,
         )
         if "Aqua" in (result.stdout or ""):
-            _resolved_launchd_domain = gui_domain
             return gui_domain
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         pass
 
     # 4. Default to user/<uid> (matches the pre-probing behavior for
     #    Background/SSH sessions and is the recommended domain on macOS 26+).
-    _resolved_launchd_domain = user_domain
     return user_domain
+
+
+def _launchd_domain() -> str:
+    """Return the launchd domain that actually manages the gateway service.
+
+    Per-label probing lives in ``_probe_launchd_domain_for_label``; this
+    wrapper resolves the *current* profile's label and caches the result for
+    the lifetime of the process so that repeated calls (``start``, ``stop``,
+    ``restart``) use a consistent domain.
+
+    See #40831, #23387.
+    """
+    global _resolved_launchd_domain
+    if _resolved_launchd_domain is not None:
+        return _resolved_launchd_domain
+    _resolved_launchd_domain = _probe_launchd_domain_for_label(get_launchd_label())
+    return _resolved_launchd_domain
 
 
 # On macOS, exit code 125 ("Domain does not support specified action") and
@@ -5094,6 +5266,43 @@ def _wait_for_gateway_exit(
     return True
 
 
+def _launchd_kickstart(label: str, domain: str) -> None:
+    """Hard-restart ``domain/label`` via ``launchctl kickstart -k``.
+
+    Raises ``CalledProcessError``/``TimeoutExpired`` — callers own the
+    per-label failure accounting during fleet restarts.
+    """
+    subprocess.run(
+        ["launchctl", "kickstart", "-k", f"{domain}/{label}"],
+        check=True,
+        capture_output=True,
+        text=True, encoding='utf-8', errors='replace',
+        timeout=90,
+    )
+
+
+def _wait_for_launchd_service_pid(
+    label: str, old_pid: int | None, timeout: float = 10.0, *, domain: str
+) -> bool:
+    """Poll ``domain/label`` until the service runs on a fresh PID.
+
+    launchd's exit → ``KeepAlive`` respawn transition is not instantaneous;
+    a one-shot check races that window and falsely reports the service as
+    down (same rationale as the systemd ``is-active`` poll in the update
+    path).  Poll every 0.5s up to ``timeout`` seconds before giving up.
+    ``TimeoutExpired`` from launchctl propagates — callers own per-label
+    failure accounting.
+    """
+    deadline = time.monotonic() + max(timeout, 0.5)
+    while True:
+        _loaded, pid = _launchd_print_service_pid(domain, label)
+        if pid is not None and pid > 0 and pid != old_pid:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
+
+
 def launchd_restart():
     label = get_launchd_label()
     target = f"{_launchd_domain()}/{label}"
@@ -5539,6 +5748,12 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
         _stdin_is_tty = bool(sys.stdin and sys.stdin.isatty())
     except (ValueError, OSError):
         _stdin_is_tty = False
+    _console_window_attached = _windows_console_window_attached()
+    _gateway_detached = (
+        os.getenv("HERMES_GATEWAY_DETACHED", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    _breakaway = _windows_gateway_breakaway_state()
     _absorb_windows_console_controls = _windows_gateway_should_absorb_console_controls()
     if _absorb_windows_console_controls:
         try:
@@ -5641,6 +5856,9 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
         replace=replace,
         argv=sys.argv,
         stdin_is_tty=_stdin_is_tty,
+        console_window_attached=_console_window_attached,
+        detached=_gateway_detached,
+        breakaway=_breakaway,
         absorb_windows_console_controls=_absorb_windows_console_controls,
     )
 
@@ -6781,7 +6999,7 @@ def _setup_signal():
     print_info("  Enter the URL where signal-cli HTTP daemon is running.")
     default_url = existing_url or "http://127.0.0.1:8080"
     try:
-        url = input(f"  HTTP URL [{default_url}]: ").strip() or default_url
+        url = line_input(f"  HTTP URL [{default_url}]: ").strip() or default_url
     except (EOFError, KeyboardInterrupt):
         print("\n  Setup cancelled.")
         return
@@ -6813,7 +7031,7 @@ def _setup_signal():
     print_info("  Example: +15551234567")
     default_account = existing_account or ""
     try:
-        account = input(
+        account = line_input(
             f"  Account number{f' [{default_account}]' if default_account else ''}: "
         ).strip()
         if not account:
@@ -6836,7 +7054,7 @@ def _setup_signal():
     default_allowed = existing_allowed or account
     try:
         allowed = (
-            input(f"  Allowed users [{default_allowed}]: ").strip() or default_allowed
+            line_input(f"  Allowed users [{default_allowed}]: ").strip() or default_allowed
         )
     except (EOFError, KeyboardInterrupt):
         print("\n  Setup cancelled.")
@@ -6854,7 +7072,7 @@ def _setup_signal():
         existing_groups = get_env_value("SIGNAL_GROUP_ALLOWED_USERS") or ""
         try:
             groups = (
-                input(f"  Group IDs [{existing_groups or '*'}]: ").strip()
+                line_input(f"  Group IDs [{existing_groups or '*'}]: ").strip()
                 or existing_groups
                 or "*"
             )
@@ -7480,7 +7698,7 @@ def _gateway_command_inner(args):
     # Service management commands
     if subcmd == "install":
         if is_managed():
-            managed_error("install gateway service (managed by NixOS)")
+            managed_error("install gateway service")
             return
         force = getattr(args, "force", False)
         system = getattr(args, "system", False)
@@ -7592,7 +7810,7 @@ def _gateway_command_inner(args):
 
     elif subcmd == "uninstall":
         if is_managed():
-            managed_error("uninstall gateway service (managed by NixOS)")
+            managed_error("uninstall gateway service")
             return
         system = getattr(args, "system", False)
         if is_termux():

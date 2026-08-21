@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesConnection } from '@/global'
 
+import { deferred } from '../test/deferred'
+
 // Registry-agent activation (ensureGatewayAgent — the SDK ensureAgent door).
 // Two regressions pinned here:
 //  1. Activating an ALREADY-OPEN registry agent must still resync
@@ -14,7 +16,7 @@ import type { HermesConnection } from '@/global'
 //     without it, two rapid activations could complete out of order and the
 //     EARLIER setActive() landed last.
 
-const ensureGatewayForAgent = vi.fn(async (_connectionId: null | string, _profile: string) => undefined)
+const ensureGatewayForAgent = vi.fn(async (_connectionId: null | string, _profile: string) => true)
 const ensureGatewayForProfile = vi.fn(async (_profile: string) => undefined)
 const openGatewayForProfile = vi.fn(async (_profile: string) => undefined)
 const $gateway = atom<unknown>({ id: 'live-socket' })
@@ -43,17 +45,9 @@ const localConn = (over: Partial<HermesConnection> = {}): HermesConnection =>
   ({ baseUrl: '', mode: 'local', profile: 'default', ...over }) as HermesConnection
 
 const getConnection = vi.fn<(profile?: string | null) => Promise<HermesConnection>>()
-const getConnectionFor = vi.fn<(payload: { connectionId?: null | string; profile?: null | string }) => Promise<HermesConnection>>()
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void
-
-  const promise = new Promise<void>(r => {
-    resolve = r
-  })
-
-  return { promise, resolve }
-}
+const getConnectionFor =
+  vi.fn<(payload: { connectionId?: null | string; profile?: null | string }) => Promise<HermesConnection>>()
 
 beforeEach(() => {
   getConnection.mockReset()
@@ -96,7 +90,21 @@ describe('ensureGatewayAgent → $connection / $activeGatewayProfile sync', () =
     expect($connection.get()?.mode).toBe('local')
   })
 
-  it('falls through to the profile path for a local/null connectionId', async () => {
+  it('does not republish a registry identity invalidated during activation', async () => {
+    ensureGatewayForAgent.mockResolvedValueOnce(false)
+
+    await ensureGatewayAgent('removed-source', 'research')
+
+    expect($activeGatewayProfile.get()).toBe('default')
+    expect($connection.get()?.mode).toBe('local')
+    // The descriptor lookup DOES run: it is issued concurrently with the dial
+    // so nothing awaits between the activation verdict and the publication
+    // frame. The invariant that matters — nothing is PUBLISHED for a dead
+    // target — is asserted above; the lookup itself is a read-only probe.
+    expect(getConnectionFor).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls through to the profile path for a null connectionId', async () => {
     getConnection.mockResolvedValue(agentConn({ mode: 'local', profile: 'research' }))
 
     await ensureGatewayAgent(null, 'research')
@@ -104,6 +112,16 @@ describe('ensureGatewayAgent → $connection / $activeGatewayProfile sync', () =
     expect(ensureGatewayForProfile).toHaveBeenCalledWith('research')
     expect(ensureGatewayForAgent).not.toHaveBeenCalled()
     expect(getConnectionFor).not.toHaveBeenCalled()
+  })
+
+  it('keeps an explicit local registry id on the registry-aware path', async () => {
+    getConnectionFor.mockResolvedValue(localConn({ profile: 'research' }))
+
+    await ensureGatewayAgent('local', 'research')
+
+    expect(ensureGatewayForAgent).toHaveBeenCalledWith('local', 'research')
+    expect(ensureGatewayForProfile).not.toHaveBeenCalled()
+    expect(getConnectionFor).toHaveBeenCalledWith({ connectionId: 'local', profile: 'research' })
   })
 })
 
@@ -118,6 +136,8 @@ describe('ensureGatewayAgent shares the gatewaySwitch mutex with profile switche
     })
     ensureGatewayForAgent.mockImplementation(async (_connectionId, profile) => {
       order.push(`agent:${profile}`)
+
+      return true
     })
     getConnection.mockResolvedValue(localConn({ profile: 'worker' }))
     getConnectionFor.mockResolvedValue(agentConn())
@@ -149,6 +169,8 @@ describe('ensureGatewayAgent shares the gatewaySwitch mutex with profile switche
     ensureGatewayForAgent.mockImplementation(async (_connectionId, profile) => {
       order.push(`agent:${profile}`)
       await agentGate.promise
+
+      return true
     })
     ensureGatewayForProfile.mockImplementation(async (profile: string) => {
       order.push(`profile:${profile}`)

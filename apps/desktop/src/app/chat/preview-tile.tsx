@@ -19,7 +19,7 @@ import { $previewTabs, closeRightRailTab, type PreviewTab, type PreviewTarget } 
 
 import { paneMirror } from './pane-mirror'
 import { PreviewTilePane } from './right-rail/preview'
-import { forgetPreviewStripTools, previewStripTools } from './right-rail/preview-strip-tools'
+import { forgetPreviewConsole } from './right-rail/preview-console-store'
 
 function previewPaneId(tab: PreviewTab): string {
   return `${PREVIEW_TILE_PREFIX}:${tab.id}`
@@ -157,12 +157,9 @@ const watchPreviewTileMirror = paneMirror<PreviewTab>({
   minWidth: '22rem',
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,
-  // Console + DevTools as bare strip glyphs after the last tab, where "+" sits.
-  // Only a URL preview has a webview behind it, so a file/artifact tab gets none.
-  stripTools: tabId => (targetFor(tabId)?.kind === 'url' ? previewStripTools(tabId) : []),
   render: tabId => <PreviewTilePane tabId={tabId} />,
   close: tabId => {
-    forgetPreviewStripTools(tabId)
+    forgetPreviewConsole(tabId)
     closeRightRailTab(tabId)
   }
 })

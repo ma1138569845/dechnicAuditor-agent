@@ -22,7 +22,9 @@ import {
   listAllProfileSessions,
   listSessions,
   listSidebarSessions,
+  pluginSocket,
   resetSidebarBatchCapability,
+  setApiRequestConnection,
   setApiRequestProfile,
   speakText,
   transcribeAudio,
@@ -51,6 +53,7 @@ describe('Hermes REST helpers', () => {
   })
 
   afterEach(() => {
+    setApiRequestConnection(null)
     setApiRequestProfile(null)
     vi.restoreAllMocks()
     Reflect.deleteProperty(window, 'hermesDesktop')
@@ -98,6 +101,40 @@ describe('Hermes REST helpers', () => {
         timeoutMs: 60_000
       })
     )
+  })
+
+  it('routes session, profile, and model reads through the active registry source', async () => {
+    api.mockImplementation(async ({ path }: { path: string }) =>
+      path.startsWith('/api/profiles/sessions/sidebar')
+        ? { recents: { sessions: [] }, cron: { sessions: [] }, messaging: { sessions: [] } }
+        : emptySessionsResponse
+    )
+    setApiRequestConnection('personal')
+
+    await listSessions()
+    await listAllProfileSessions()
+    await listSidebarSessions({
+      recentsProfile: 'default',
+      recentsLimit: 20,
+      recentsExclude: [],
+      cronLimit: 20,
+      messagingLimit: 20,
+      messagingExclude: []
+    })
+    await getProfiles()
+    await getGlobalModelInfo()
+
+    for (const call of api.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ connectionId: 'personal' }))
+    }
+  })
+
+  it('keeps an explicit This device source on REST requests', async () => {
+    setApiRequestConnection('local')
+
+    await getProfiles()
+
+    expect(api).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'local', path: '/api/profiles' }))
   })
 
   it('defaults missing sidebar slices to empty session arrays', async () => {
@@ -527,5 +564,43 @@ describe('Hermes REST helpers', () => {
         path: '/api/model/options?refresh=1&include_unconfigured=1'
       })
     )
+  })
+})
+
+describe('pluginSocket', () => {
+  let getConnection: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    getConnection = vi.fn().mockResolvedValue(null)
+    Object.defineProperty(window, 'hermesDesktop', {
+      configurable: true,
+      value: { api: vi.fn(), getConnection }
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    Reflect.deleteProperty(window, 'hermesDesktop')
+    setApiRequestProfile(null)
+  })
+
+  it('scopes the connection to the active profile, like pluginRest', async () => {
+    setApiRequestProfile('work')
+
+    const dispose = pluginSocket('kanban', '/events', () => {})
+
+    await vi.waitFor(() => expect(getConnection).toHaveBeenCalled())
+    expect(getConnection).toHaveBeenCalledWith('work')
+
+    dispose()
+  })
+
+  it('passes null when no profile is scoped (single-profile / primary)', async () => {
+    const dispose = pluginSocket('kanban', '/events', () => {})
+
+    await vi.waitFor(() => expect(getConnection).toHaveBeenCalled())
+    expect(getConnection).toHaveBeenCalledWith(null)
+
+    dispose()
   })
 })

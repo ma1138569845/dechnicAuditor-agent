@@ -46,6 +46,9 @@ export const ar = defineLocale({
     revealInSidebar: 'إظهار في شجرة الملفات',
     copyPath: 'نسخ المسار',
     copyRelativePath: 'نسخ المسار النسبي',
+    download: 'تنزيل',
+    downloadSaved: 'تم الحفظ',
+    downloadFailed: 'فشل التنزيل',
     rename: 'إعادة تسمية...',
     delete: 'حذف',
     renameTitle: 'إعادة تسمية',
@@ -61,6 +64,7 @@ export const ar = defineLocale({
       connectingGateway: 'جار الاتصال ببوابة سطح المكتب',
       loadingSettings: 'جار تحميل إعدادات DechnicAuditor',
       loadingSessions: 'جار تحميل الجلسات الأخيرة',
+      retryingRemoteBackend: 'جارٍ إعادة الاتصال بخادم Hermes البعيد…',
       startingDesktopConnection: 'جار بدء اتصال سطح المكتب',
       startingHermesDesktop: 'جار تشغيل DechnicAuditor Desktop...'
     },
@@ -177,6 +181,7 @@ export const ar = defineLocale({
     swapSidebarSides: 'تبديل جانبي الأشرطة',
     hideRightSidebar: 'إخفاء الشريط الأيمن',
     showRightSidebar: 'إظهار الشريط الأيمن',
+    unreadSessions: count => (count === 1 ? 'جلسة واحدة غير مقروءة' : `${count} جلسات غير مقروءة`),
     muteHaptics: 'كتم الاهتزازات',
     unmuteHaptics: 'تفعيل الاهتزازات',
     openSettings: 'فتح الإعدادات',
@@ -239,6 +244,7 @@ export const ar = defineLocale({
       'view.toggleRightSidebar': 'تبديل متصفح الملفات',
       'view.toggleReview': 'تبديل لوحة المراجعة',
       'view.showFiles': 'إظهار متصفح الملفات',
+      'view.showBrowser': 'فتح المتصفح',
       'view.showTerminal': 'إظهار الطرفية',
       'view.closeTab': 'إغلاق علامة التبويب',
       'view.reopenTab': 'إعادة فتح علامة التبويب المغلقة',
@@ -409,9 +415,28 @@ export const ar = defineLocale({
       reasoningCollapsedTitle: 'طي التفكير افتراضيًا',
       reasoningCollapsedDesc: 'أبقِ التفكير المتدفق متاحًا دون توسيعه حتى تفتحه.',
       translucencyTitle: 'شفافية النافذة',
-      translucencyDesc: 'إظهار سطح المكتب من خلال النافذة بالكامل. متاح على macOS وWindows فقط.',
+      translucencyDesc: 'إظهار سطح المكتب من خلال النافذة بالكامل، بما في ذلك النص.',
+      translucencyGlassDesc: 'زجاج غير لامع: يظهر سطح المكتب كضبابية ناعمة بينما يبقى النص واضحًا.',
+      translucencyModeClear: 'شفاف',
+      translucencyModeGlass: 'زجاج',
+      translucencyTintTitle: 'التلوين',
+      translucencyFadeTitle: 'التلاشي',
+      translucencyFrostTitle: 'نوع الضبابية',
+      translucencyFrost: {
+        'under-window': 'عميق',
+        popover: 'ناعم',
+        titlebar: 'ساطع',
+        header: 'متوهج'
+      },
+      translucencyScopeTitle: 'النطاق',
+      translucencyScope: {
+        window: 'النافذة كاملة',
+        sidebar: 'الشريط الجانبي فقط'
+      },
       backdropTitle: 'خلفية النافذة',
       backdropDesc: 'اختيار مقدار مزج خلفية سطح المكتب مع سطح DechnicAuditor.',
+      introSplashTitle: 'شاشة المقدمة',
+      introSplashDesc: 'الشعار النصي والعبارة التمهيدية في محادثة فارغة.',
       reactionsTitle: 'تفاعلات الرسائل',
 reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل مع الرسائل، ويمكن لـ DechnicAuditor التفاعل مع رسائلك.',
       composerPopoutTitle: 'محرر عائم',
@@ -604,6 +629,10 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       heading: 'حول DechnicAuditor',
       version: value => `الإصدار ${value}`,
       versionUnavailable: 'الإصدار غير متاح',
+      bundleOutOfSync: 'إصدار التطبيق قديم',
+      bundleOutOfSyncDesc:
+        'تم تحديث وقت تشغيل Hermes، لكن تطبيق سطح المكتب نفسه لا يزال إصدارًا قديمًا — لن تظهر ميزات الواجهة الجديدة (مثل Bot Mode) حتى يتم تحديث التطبيق. شغّل التحديث أدناه لإعادة بناء التطبيق. إذا لم يختفِ هذا التحذير، فأعد التثبيت من أحدث مثبّت لسطح المكتب.',
+      bundleOutOfSyncAction: 'الحصول على المثبّت',
       updates: 'التحديثات',
       checkNow: 'التحقق الآن',
       checking: 'جار التحقق...',
@@ -743,6 +772,10 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       loading: 'جار تحميل مفاتيح API وبيانات الاعتماد...',
       failedLoad: 'فشل تحميل مفاتيح API',
       empty: 'لا يوجد شيء مضبوط في هذه الفئة بعد.'
+    },
+    profileScope: {
+      appliesTo: 'ينطبق على',
+      editsProfile: profile => `تنطبق التغييرات في هذه الصفحة على الملف الشخصي «${profile}».`
     },
     mcp: {
       loading: 'جار تحميل خوادم MCP...',
@@ -1115,8 +1148,10 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     gatewayStopped: 'البوابة متوقفة',
     hermesActiveSessions: (version, count) => `DechnicAuditor ${version} لديه ${count} جلسة نشطة`,
     restartGateway: 'إعادة تشغيل البوابة',
+    openBrowser: 'فتح المتصفح',
     gatewayRestartFailed: 'فشل إعادة تشغيل البوابة.',
     updateHermes: 'تحديث DechnicAuditor',
+    reloadWindow: 'إعادة تحميل النافذة',
     actionRunning: 'الإجراء قيد التشغيل',
     actionDone: 'اكتمل الإجراء',
     actionFailed: 'فشل الإجراء',
@@ -1332,6 +1367,8 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     allProfiles: 'كل الملفات الشخصية',
     showAllProfiles: 'إظهار كل الملفات الشخصية',
     switchToProfile: name => `التبديل إلى ${name}`,
+    switchToConnection: name => `التبديل إلى ${name}`,
+    switchConnectionFailed: name => `تعذّر الاتصال بـ ${name}`,
     manageProfiles: 'إدارة الملفات الشخصية',
     actions: 'إجراءات',
     color: 'اللون',
@@ -1634,6 +1671,8 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       newWorktreeDesc: 'سمِّ الفرع لشجرة العمل هذه.',
       branchPlaceholder: 'مثال: my-feature',
       startWorkFailed: 'تعذّر إنشاء شجرة العمل',
+      worktreeStaleBackend:
+        'حدِّث خادم Hermes لإنشاء أشجار العمل عبر هذا الاتصال البعيد — فهو أقدم من واجهة git worktree.',
       worktreeProjectLabel: 'المشروع',
       worktreeProjectPlaceholder: 'ابحث في المشاريع…',
       worktreeProjectNone: 'لا توجد مشاريع بمجلد',
@@ -1735,6 +1774,7 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     endShort: 'إنهاء',
     stopDictation: 'إيقاف الإملاء',
     transcribingDictation: 'جار تفريغ الإملاء',
+    voiceControls: 'صوت',
     voiceDictation: 'إملاء صوتي',
     lookupLoading: 'جار البحث...',
     lookupNoMatches: 'لا توجد نتائج',
@@ -1882,6 +1922,7 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       openPr: 'فتح PR',
       ghMissing: 'ثبّت GitHub CLI (gh) وسجّل الدخول لفتح طلبات السحب',
       agentShip: 'اطلب من DechnicAuditor فتح PR',
+      agentShipUnavailable: 'المحادثة التي تملك هذه التغييرات ليست على الشاشة.',
       agentShipPrompt: 'راجع التغييرات الحالية، وأودعها برسالة إيداع تقليدية واضحة، وادفع الفرع، وافتح طلب سحب.',
       newBranch: 'فرع جديد',
       branchOffFrom: base => `فرع جديد من ${base}`,
@@ -1952,6 +1993,14 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     pidLabel: pid => `معرّف العملية ${pid}`,
     technicalDetails: 'التفاصيل التقنية',
     notNow: 'ليس الآن',
+    clientAlsoBehindTitle: 'تطبيق سطح المكتب متأخر',
+    clientAlsoBehindMessage:
+      'الخادم الخلفي محدث، لكن تطبيق سطح المكتب هذا لا يزال على إصدار أقدم. حدّثه للحصول على أحدث الإصلاحات.',
+    clientAlsoBehindAction: 'تحديث تطبيق سطح المكتب',
+    everythingDispatched: 'تم إرسال التحديث',
+    everythingSkipped: 'تم التخطي',
+    everythingRowFailed: 'فشل التحديث',
+    everythingFanoutFailedTitle: 'تعذر تحديث المثيلات الأخرى',
     applyStatus: {
       preparing: 'جار تحديث الواجهة الخلفية...',
       pulling: 'جار تحديث الواجهة الخلفية...',
@@ -2136,6 +2185,7 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       inferenceNotReady: 'الاستدلال غير جاهز',
       checkingInference: 'جار فحص الاستدلال',
       disconnected: 'منقطع',
+      reconnectGateway: 'إعادة الاتصال بالبوابة',
       openSystem: 'فتح النظام',
       connection: label => `الاتصال: ${label}`,
       recentActivity: 'النشاط الأخير',
@@ -2279,6 +2329,8 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     web: {
       appFailedToBoot: 'فشل إقلاع تطبيق المعاينة',
       serverNotFound: 'الخادم غير موجود',
+      remoteLoopback:
+        'يشير هذا العنوان إلى الجهاز الذي يشغّل الوكيل، وليس هذا الجهاز. تحمّل لوحة المتصفح الصفحات محليًا، لذا يحتاج خادم التطوير البعيد إلى إعادة توجيه منفذ أو اسم مضيف يمكن الوصول إليه.',
       failedToLoad: 'فشل تحميل المعاينة',
       tryAgain: 'إعادة المحاولة',
       restarting: 'جار إعادة تشغيل DechnicAuditor...',
@@ -2292,6 +2344,12 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       showConsole: 'إظهار كونسول المعاينة',
       hideDevTools: 'إخفاء DevTools المعاينة',
       openDevTools: 'فتح DevTools المعاينة',
+      goBack: 'رجوع',
+      goForward: 'تقدم',
+      reload: 'إعادة تحميل الصفحة',
+      address: 'العنوان',
+      addressPlaceholder: 'أدخل العنوان',
+      blankPageBody: 'اكتب عنوانًا في الأعلى للتصفح، أو اطلب من Hermes فتح صفحة.',
       finishedRestarting: message => `أنهى DechnicAuditor إعادة تشغيل خادم المعاينة${message ? `: ${message}` : ''}`,
       failedRestarting: message => `فشلت إعادة تشغيل الخادم: ${message}`,
       unknownError: 'خطأ غير معروف',
@@ -2316,6 +2374,12 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
   zones: {
     showHeader: 'إظهار الرأس',
     hideHeader: 'إخفاء الرأس',
+    showStripTab: title => `إظهار ${title}`,
+    hideStripTab: title => `إخفاء ${title}`,
+    lastTabKeptTitle: 'يبقى آخر تبويب',
+    lastTabKeptBody:
+      'تحتاج هذه المنطقة إلى تبويب مرئي واحد على الأقل. أظهر تبويبا آخر أولا، أو اطو الشريط الجانبي بأكمله.',
+    toggleStripTab: title => `تبديل تبويب ${title}`,
     minimize: 'تصغير',
     restore: 'استعادة',
     closeRunningTitle: 'إغلاق تبويب يعمل؟',
@@ -2353,6 +2417,29 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     notExpressible: 'هذا الترتيب متشابك — لا يمكن تمثيله كتقسيمات متداخلة بعد',
     zoneCount: count => `${count} مناطق`,
     tabCount: count => `${count} تبويبات`
+  },
+  contextMenu: {
+    link: {
+      openInApp: 'فتح في متصفح التطبيق',
+      openExternal: 'فتح في المتصفح الخارجي',
+      copyUrl: 'نسخ الرابط',
+      copyResolvedUrl: 'نسخ الرابط المُحلَّل'
+    },
+    image: {
+      copyImage: 'نسخ الصورة',
+      copyImageAddress: 'نسخ عنوان الصورة',
+      saveImageAs: 'حفظ الصورة باسم…'
+    },
+    edit: {
+      cut: 'قص',
+      paste: 'لصق',
+      selectAll: 'تحديد الكل',
+      addToDictionary: 'إضافة إلى القاموس'
+    },
+    page: {
+      copyPageUrl: 'نسخ رابط الصفحة',
+      inspectElement: 'فحص العنصر'
+    }
   },
   assistant: {
     thread: {
@@ -2416,7 +2503,10 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
       other: 'غير ذلك',
       placeholder: 'اكتب إجابتك...',
       skip: 'تخطي',
-      continueLabel: 'متابعة'
+      continueLabel: 'متابعة',
+      confirmAndContinueLabel: 'تأكيد ومتابعة',
+      answeredBadge: 'تمت الإجابة',
+      questionProgress: (answered, total) => `تمت الإجابة على ${answered} من ${total}`
     },
     tool: {
       copyCode: 'نسخ الكود',

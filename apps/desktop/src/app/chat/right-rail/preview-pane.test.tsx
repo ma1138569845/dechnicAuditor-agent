@@ -2,10 +2,9 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $connection } from '@/store/session'
-import { notifyWorkspaceChanged, resetWorkspaceChangeThrottle } from '@/store/workspace-events'
 
+import { forgetPreviewConsole, previewConsoleState } from './preview-console-store'
 import { PreviewPane } from './preview-pane'
-import { forgetPreviewStripTools, previewConsoleState } from './preview-strip-tools'
 
 function stubPdfObjectUrls() {
   const NativeUrl = URL
@@ -30,106 +29,12 @@ describe('PreviewPane console state', () => {
       window.setTimeout(() => callback(Date.now()), 0)
     )
     vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id))
-    resetWorkspaceChangeThrottle()
   })
 
   afterEach(() => {
     cleanup()
     $connection.set(null)
     vi.unstubAllGlobals()
-  })
-
-  it('reloads an office preview when the agent touches the previewed file', async () => {
-    const targetUrl = 'file:///tmp/report.docx'
-    forgetPreviewStripTools(targetUrl)
-
-    await act(async () => {
-      render(
-        <PreviewPane
-          target={{
-            kind: 'file',
-            label: 'report.docx',
-            officeKind: 'docx',
-            path: '/tmp/report.docx',
-            previewKind: 'office',
-            source: '/tmp/report.docx',
-            url: targetUrl
-          }}
-        />
-      )
-    })
-
-    await act(async () => {
-      notifyWorkspaceChanged('/tmp/report.docx')
-    })
-
-    const logs = previewConsoleState(targetUrl).$logs.get()
-
-    expect(logs.some(log => log.message.includes('report.docx'))).toBe(true)
-    forgetPreviewStripTools(targetUrl)
-  })
-
-  it('ignores a workspace tick that touched a different file', async () => {
-    const targetUrl = 'file:///tmp/report.docx'
-    forgetPreviewStripTools(targetUrl)
-
-    await act(async () => {
-      render(
-        <PreviewPane
-          target={{
-            kind: 'file',
-            label: 'report.docx',
-            officeKind: 'docx',
-            path: '/tmp/report.docx',
-            previewKind: 'office',
-            source: '/tmp/report.docx',
-            url: targetUrl
-          }}
-        />
-      )
-    })
-
-    await act(async () => {
-      notifyWorkspaceChanged('/tmp/unrelated.txt')
-    })
-
-    const logs = previewConsoleState(targetUrl).$logs.get()
-
-    expect(logs.some(log => log.message.includes('report.docx'))).toBe(false)
-    forgetPreviewStripTools(targetUrl)
-  })
-
-  it('reloads an office preview on an opaque (pathless) tick', async () => {
-    const targetUrl = 'file:///tmp/report.docx'
-    forgetPreviewStripTools(targetUrl)
-
-    await act(async () => {
-      render(
-        <PreviewPane
-          target={{
-            kind: 'file',
-            label: 'report.docx',
-            officeKind: 'docx',
-            path: '/tmp/report.docx',
-            previewKind: 'office',
-            source: '/tmp/report.docx',
-            url: targetUrl
-          }}
-        />
-      )
-    })
-
-    // A terminal command (or office_save without save_path) carries no path —
-    // it may have edited the previewed file, so the preview gets a reload
-    // chance and OfficePreview mtime-verifies before doing anything.
-    await act(async () => {
-      notifyWorkspaceChanged()
-    })
-
-    const logs = previewConsoleState(targetUrl).$logs.get()
-
-    expect(logs.some(log => log.message.includes('report.docx'))).toBe(true)
-    forgetPreviewStripTools(targetUrl)
   })
 
   it('does not watch backend-only remote filesystem previews locally', async () => {
@@ -169,7 +74,7 @@ describe('PreviewPane console state', () => {
   it('streams console logs into the tab-keyed console store', async () => {
     const tabId = 'url:http://localhost:5174'
 
-    forgetPreviewStripTools(tabId)
+    forgetPreviewConsole(tabId)
 
     let rendered!: ReturnType<typeof render>
     await act(async () => {
@@ -202,7 +107,229 @@ describe('PreviewPane console state', () => {
 
     expect(previewConsoleState(tabId).$logs.get().at(-1)?.message).toBe('streamed log line')
 
-    forgetPreviewStripTools(tabId)
+    forgetPreviewConsole(tabId)
+  })
+
+  // The bar is chrome for a LIVE page. A file peek, an artifact, and remote
+  // HTML in a sandboxed iframe have no webview to navigate.
+  it('shows the browser bar only for a live webview preview', async () => {
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5174', url: 'http://localhost:5174' }}
+        />
+      )
+    })
+
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).not.toBeNull()
+
+    await act(async () => {
+      rendered.rerender(
+        <PreviewPane
+          target={{
+            kind: 'file',
+            label: 'notes.txt',
+            path: '/tmp/notes.txt',
+            previewKind: 'text',
+            source: '/tmp/notes.txt',
+            url: 'file:///tmp/notes.txt'
+          }}
+        />
+      )
+    })
+
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
+  })
+
+  it('drives the webview from the bar and tracks its history', async () => {
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5174', url: 'http://localhost:5174' }}
+        />
+      )
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement & Record<string, unknown>
+    const loadURL = vi.fn(async () => undefined)
+
+    Object.assign(webview, {
+      canGoBack: () => true,
+      canGoForward: () => false,
+      goBack: vi.fn(),
+      loadURL
+    })
+
+    // Back is disabled until the webview reports history, and a navigation is
+    // what makes it ask.
+    expect((rendered.getByRole('button', { name: 'Back' }) as HTMLButtonElement).disabled).toBe(true)
+
+    act(() => {
+      webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'http://localhost:5174/two' }))
+    })
+
+    const back = rendered.getByRole('button', { name: 'Back' }) as HTMLButtonElement
+
+    expect(back.disabled).toBe(false)
+    fireEvent.click(back)
+    expect(webview.goBack).toHaveBeenCalledOnce()
+
+    const address = rendered.getByRole('textbox', { name: 'Address' }) as HTMLInputElement
+
+    expect(address.value).toBe('http://localhost:5174/two')
+
+    fireEvent.focus(address)
+    fireEvent.change(address, { target: { value: 'localhost:4000/app' } })
+    fireEvent.keyDown(address, { key: 'Enter' })
+
+    // loadURL, not a `src` swap — re-entering the current address must reload.
+    // Awaited: navigation first asks main whether the address needs a loopback
+    // forward, so the load lands a microtask later.
+    await waitFor(() => expect(loadURL).toHaveBeenCalledWith('http://localhost:4000/app'))
+    expect(webview.getAttribute('src')).toBe('http://localhost:5174')
+  })
+
+  // The webview always runs on THIS machine, so a remote agent's localhost is
+  // a different computer's localhost. The failure is honest but baffling
+  // without saying so.
+  it('explains a failed loopback URL when the agent is on a remote gateway', async () => {
+    $connection.set({ mode: 'remote' } as never)
+
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5173', url: 'http://localhost:5173' }}
+        />
+      )
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement
+
+    await act(async () => {
+      webview.dispatchEvent(
+        Object.assign(new Event('did-fail-load'), {
+          errorCode: -102,
+          errorDescription: 'ERR_CONNECTION_REFUSED',
+          isMainFrame: true,
+          validatedURL: 'http://localhost:5173'
+        })
+      )
+    })
+
+    await waitFor(() => expect(rendered.container.textContent).toContain('machine running your agent'))
+  })
+
+  it('stays quiet about loopback when the gateway is local', async () => {
+    $connection.set({ mode: 'local' } as never)
+
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5173', url: 'http://localhost:5173' }}
+        />
+      )
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement
+
+    await act(async () => {
+      webview.dispatchEvent(
+        Object.assign(new Event('did-fail-load'), {
+          errorCode: -102,
+          errorDescription: 'ERR_CONNECTION_REFUSED',
+          isMainFrame: true,
+          validatedURL: 'http://localhost:5173'
+        })
+      )
+    })
+
+    await waitFor(() => expect(rendered.container.textContent).toContain('ERR_CONNECTION_REFUSED'))
+    expect(rendered.container.textContent).not.toContain('machine running your agent')
+  })
+
+  // A public host fails for ordinary reasons; the remote-vs-local distinction
+  // has nothing to do with it.
+  it('stays quiet for a non-loopback host on a remote gateway', async () => {
+    $connection.set({ mode: 'remote' } as never)
+
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'https://example.com', url: 'https://example.com' }}
+        />
+      )
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement
+
+    await act(async () => {
+      webview.dispatchEvent(
+        Object.assign(new Event('did-fail-load'), {
+          errorCode: -105,
+          errorDescription: 'ERR_NAME_NOT_RESOLVED',
+          isMainFrame: true,
+          validatedURL: 'https://example.com'
+        })
+      )
+    })
+
+    await waitFor(() => expect(rendered.container.textContent).toContain('ERR_NAME_NOT_RESOLVED'))
+    expect(rendered.container.textContent).not.toContain('machine running your agent')
+  })
+
+  it('surfaces a rejected navigation as a load error', async () => {
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane
+          target={{ kind: 'url', label: 'Preview', source: 'http://localhost:5174', url: 'http://localhost:5174' }}
+        />
+      )
+    })
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement & Record<string, unknown>
+
+    Object.assign(webview, { loadURL: vi.fn(async () => Promise.reject(new Error('ERR_CONNECTION_REFUSED'))) })
+
+    const address = rendered.getByRole('textbox', { name: 'Address' }) as HTMLInputElement
+
+    await act(async () => {
+      fireEvent.focus(address)
+      fireEvent.change(address, { target: { value: 'http://localhost:4000' } })
+      fireEvent.keyDown(address, { key: 'Enter' })
+    })
+
+    await waitFor(() => expect(rendered.container.textContent).toContain('ERR_CONNECTION_REFUSED'), {
+      container: rendered.container
+    })
+  })
+
+  // `about:blank` in a webview is a white void that reads as broken against
+  // the app's chrome — the pane should say it's empty on purpose.
+  it('shows the blank-page empty state instead of a white void', async () => {
+    let rendered!: ReturnType<typeof render>
+    await act(async () => {
+      rendered = render(
+        <PreviewPane target={{ kind: 'url', label: 'Browser', source: 'about:blank', url: 'about:blank' }} />
+      )
+    })
+
+    expect(rendered.container.textContent).toContain('Type an address above')
+
+    const webview = rendered.container.querySelector('webview') as HTMLElement
+
+    // Navigating away dismisses it; the bar and the webview stay put.
+    act(() => {
+      webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'https://example.com' }))
+    })
+
+    expect(rendered.container.textContent).not.toContain('Type an address above')
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).not.toBeNull()
   })
 
   it('renders authenticated remote HTML safely and honors source mode', async () => {

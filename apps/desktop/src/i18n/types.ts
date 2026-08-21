@@ -98,6 +98,9 @@ export interface Translations {
     revealInSidebar: string
     copyPath: string
     copyRelativePath: string
+    download: string
+    downloadSaved: string
+    downloadFailed: string
     rename: string
     delete: string
     renameTitle: string
@@ -114,6 +117,7 @@ export interface Translations {
       connectingGateway: string
       loadingSettings: string
       loadingSessions: string
+      retryingRemoteBackend: string
       startingDesktopConnection: string
       startingHermesDesktop: string
     }
@@ -249,6 +253,7 @@ export interface Translations {
     swapSidebarSides: string
     hideRightSidebar: string
     showRightSidebar: string
+    unreadSessions: (count: number) => string
     muteHaptics: string
     unmuteHaptics: string
     openSettings: string
@@ -303,7 +308,7 @@ export interface Translations {
       providerApiKeys: string
       providerCustomEndpoints: string
       gateway: string
-onlyoffice: string
+      onlyoffice: string
       connections: string
       apiKeys: string
       keybinds: string
@@ -331,6 +336,7 @@ onlyoffice: string
       agent: {
         title: string
         blurb: string
+        appliesTo: string
         empty: string
         loadFailed: string
         portable: string
@@ -339,6 +345,38 @@ onlyoffice: string
         toggleFailed: (name: string) => string
         updateBackendToManage: string
         sources: Record<string, string>
+      }
+      installModal: {
+        title: string
+        description: string
+        repoLabel: string
+        includesHeading: string
+        agentLabel: string
+        desktopLabel: string
+        agentTargetLocal: (profile: string) => string
+        agentTargetRemote: (profile: string) => string
+        desktopTarget: string
+        desktopOnlyNote: string
+        insecureWarning: string
+        securityHeading: string
+        securityIntro: string
+        sourceHeading: string
+        viewRepository: string
+        viewPluginFiles: string
+        gitCloneLabel: string
+        enableAgent: string
+        forceReinstall: string
+        install: string
+        installing: string
+        probing: string
+        probeUnavailable: string
+        desktopUnavailable: string
+        selectComponent: string
+        agentSuccess: (name: string) => string
+        desktopSuccess: (name: string) => string
+        agentFailed: string
+        desktopFailed: string
+        missingEnv: (vars: string) => string
       }
     }
     notifications: {
@@ -386,8 +424,27 @@ onlyoffice: string
       terminalFontReset: string
       translucencyTitle: string
       translucencyDesc: string
+      translucencyGlassDesc: string
+      translucencyModeClear: string
+      translucencyModeGlass: string
+      translucencyTintTitle: string
+      translucencyFadeTitle: string
+      translucencyFrostTitle: string
+      translucencyFrost: {
+        'under-window': string
+        popover: string
+        titlebar: string
+        header: string
+      }
+      translucencyScopeTitle: string
+      translucencyScope: {
+        window: string
+        sidebar: string
+      }
       backdropTitle: string
       backdropDesc: string
+      introSplashTitle: string
+      introSplashDesc: string
       reactionsTitle: string
       reactionsDesc: string
       composerPopoutTitle: string
@@ -458,6 +515,9 @@ onlyoffice: string
       heading: string
       version: (value: string) => string
       versionUnavailable: string
+      bundleOutOfSync: string
+      bundleOutOfSyncDesc: string
+      bundleOutOfSyncAction: string
       updates: string
       checkNow: string
       checking: string
@@ -542,7 +602,12 @@ onlyoffice: string
       title: string
       intro: string
       stagedNote: string
+      launchModeTitle: string
+      launchModeDesc: string
+      searchPlaceholder: string
+      noSearchResults: string
       loadFailed: string
+      currentPill: string
       primaryPill: string
       managedPill: string
       addConnection: string
@@ -574,6 +639,18 @@ onlyoffice: string
       labelPlaceholder: string
       urlTitle: string
       sshHostTitle: string
+      headersTitle: string
+      headersDesc: string
+      headerValuePlaceholder: string
+      headerValueSaved: string
+      headerAdd: string
+      headerRemove: string
+      duplicateLocal: string
+      duplicateUrl: (label: string) => string
+      duplicateSsh: (label: string) => string
+      sameBackendHint: (label: string) => string
+      localAddHint: string
+      cloudAddHint: string
       save: string
       saving: string
       cancel: string
@@ -755,6 +832,14 @@ onlyoffice: string
       failedLoad: string
       empty: string
     }
+    search: {
+      placeholder: string
+      pill: string
+    }
+    profileScope: {
+      appliesTo: string
+      editsProfile: (profile: string) => string
+    }
     mcp: {
       loading: string
       failedLoad: string
@@ -833,7 +918,7 @@ onlyoffice: string
       deepLinkErrorConfig: string
       deepLinkErrorShape: string
       deepLinkErrorUrl: string
-      deepLinkErrorTooLarge: string,
+      deepLinkErrorTooLarge: string
       importButton: string
       importPlaceholder: string
       importNoMatch: string
@@ -1252,8 +1337,10 @@ onlyoffice: string
     gatewayStopped: string
     hermesActiveSessions: (version: string, count: number) => string
     restartGateway: string
+    openBrowser: string
     gatewayRestartFailed: string
     updateHermes: string
+    reloadWindow: string
     actionRunning: string
     actionDone: string
     actionFailed: string
@@ -1462,6 +1549,8 @@ onlyoffice: string
     allProfiles: string
     showAllProfiles: string
     switchToProfile: (name: string) => string
+    switchToConnection: (name: string) => string
+    switchConnectionFailed: (name: string) => string
     manageProfiles: string
     connectGateway: string
     actions: string
@@ -1512,6 +1601,9 @@ onlyoffice: string
     creating: string
     createAction: string
     renameTitle: string
+    displayNameTitle: string
+    displayNameDesc: string
+    displayNameLabel: string
     renameDescPrefix: string
     renameDescSuffix: string
     newNameLabel: string
@@ -1755,6 +1847,7 @@ onlyoffice: string
       baseBranchPlaceholder: string
       baseBranchNone: string
       startWorkFailed: string
+      worktreeStaleBackend: string
       worktreeProjectLabel: string
       worktreeProjectPlaceholder: string
       worktreeProjectNone: string
@@ -1870,6 +1963,7 @@ onlyoffice: string
     endShort: string
     stopDictation: string
     transcribingDictation: string
+    voiceControls: string
     voiceDictation: string
     speakReplies: string
     stopSpeakingReplies: string
@@ -2035,6 +2129,7 @@ onlyoffice: string
       openPr: string
       ghMissing: string
       agentShip: string
+      agentShipUnavailable: string
       agentShipPrompt: string
       newBranch: string
       branchOffFrom: (base: string) => string
@@ -2090,6 +2185,15 @@ onlyoffice: string
     pidLabel: (pid: number) => string
     technicalDetails: string
     notNow: string
+    /** Multi-target update flow: client nudge after a backend update, and
+     *  per-row fan-out outcomes when updating every registered instance. */
+    clientAlsoBehindTitle: string
+    clientAlsoBehindMessage: string
+    clientAlsoBehindAction: string
+    everythingDispatched: string
+    everythingSkipped: string
+    everythingRowFailed: string
+    everythingFanoutFailedTitle: string
     applyStatus: {
       preparing: string
       pulling: string
@@ -2278,6 +2382,7 @@ onlyoffice: string
       inferenceNotReady: string
       checkingInference: string
       disconnected: string
+      reconnectGateway: string
       openSystem: string
       connection: (label: string) => string
       recentActivity: string
@@ -2493,6 +2598,7 @@ onlyoffice: string
     web: {
       appFailedToBoot: string
       serverNotFound: string
+      remoteLoopback: string
       failedToLoad: string
 
 
@@ -2508,6 +2614,12 @@ onlyoffice: string
       showConsole: string
       hideDevTools: string
       openDevTools: string
+      goBack: string
+      goForward: string
+      reload: string
+      address: string
+      addressPlaceholder: string
+      blankPageBody: string
       finishedRestarting: (message?: string) => string
       failedRestarting: (message: string) => string
       unknownError: string
@@ -2531,6 +2643,11 @@ onlyoffice: string
   zones: {
     showHeader: string
     hideHeader: string
+    showStripTab: (title: string) => string
+    hideStripTab: (title: string) => string
+    lastTabKeptTitle: string
+    lastTabKeptBody: string
+    toggleStripTab: (title: string) => string
     minimize: string
     restore: string
     closeRunningTitle: string
@@ -2568,6 +2685,30 @@ onlyoffice: string
     notExpressible: string
     zoneCount: (count: number) => string
     tabCount: (count: number) => string
+  }
+
+  contextMenu: {
+    link: {
+      openInApp: string
+      openExternal: string
+      copyUrl: string
+      copyResolvedUrl: string
+    }
+    image: {
+      copyImage: string
+      copyImageAddress: string
+      saveImageAs: string
+    }
+    edit: {
+      cut: string
+      paste: string
+      selectAll: string
+      addToDictionary: string
+    }
+    page: {
+      copyPageUrl: string
+      inspectElement: string
+    }
   }
 
   assistant: {
@@ -2634,6 +2775,9 @@ onlyoffice: string
       skip: string
       skipped: string
       continueLabel: string
+      confirmAndContinueLabel: string
+      answeredBadge: string
+      questionProgress: (answered: number, total: number) => string
       lateAnswer: (question: string, choice: string) => string
       lateAnswerTip: string
       lateAnswerHint: string
