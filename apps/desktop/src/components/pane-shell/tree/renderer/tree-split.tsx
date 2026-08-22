@@ -648,9 +648,9 @@ function Sash({
       className={cn(
         'group absolute z-20 [-webkit-app-region:no-drag]',
         // Asymmetric grab band: only 1px reaches into the leading pane so its
-        // edge-hugging 4px scrollbar stays clickable (the old centered 9px band
-        // swallowed it entirely — the pointer got col-resize instead of the
-        // thumb). The trailing side keeps a generous 7px reach; total grab
+        // edge-hugging themed scrollbar stays clickable (the old centered 9px
+        // band swallowed it entirely — the pointer got col-resize instead of
+        // the thumb). The trailing side keeps a generous 7px reach; total grab
         // width stays ~8px so the sash is no harder to hit.
         horizontal ? 'inset-y-0 left-0 w-[8px] -translate-x-[1px]' : 'inset-x-0 top-0 h-[8px] -translate-y-[1px]',
         disabled ? 'pointer-events-none' : horizontal ? 'cursor-col-resize' : 'cursor-row-resize'

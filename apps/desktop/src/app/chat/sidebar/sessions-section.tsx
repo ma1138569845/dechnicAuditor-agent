@@ -494,7 +494,7 @@ export function SidebarSessionsSection({
   // The virtualizer owns its own scroller, so suppress the wrapper's overflow
   // to avoid a double scroll container. Both axes: `overflow-y-visible` next
   // to the inherited `overflow-x-hidden` computes to `auto` (CSS spec), which
-  // kept a phantom 4px scrollbar gutter and cut every row short on the right.
+  // kept a phantom themed scrollbar gutter and cut every row short on the right.
   const resolvedContentClassName = cn(contentClassName, flatVirtualized && 'overflow-visible')
 
   return (

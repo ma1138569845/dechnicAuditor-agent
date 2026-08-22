@@ -418,6 +418,10 @@
        midground so each theme still gets a thumb that sits right against its
        own surfaces — chroma 0 is the only thing removed. */
     --dt-scrollbar-thumb: oklch(from var(--dt-midground) l 0 h);
+    /* Classic gutter width. 8px is hittable on Windows without eating the
+       conversation / list the way a system 17px bar would. Overlay surfaces
+       (`scrollbar-overlay`) opt out and keep native overlay / OS bars. */
+    --dt-scrollbar-size: 0.5rem;
     --dt-composer-ring: var(--ui-base);
     --dt-destructive: #cf2d56;
     --dt-destructive-foreground: #ffffff;
@@ -1316,12 +1320,16 @@ body.guest-pointer-lock :is(webview, iframe) {
      platform overlay (fade in on scroll, zero gutter) to classic always-on
      gutters. `.scrollbar-overlay` opts a surface out of the themed rules so
      Electron keeps native overlay — used by conversation code blocks where a
-     permanent 4px track eats the card and always draws a bar. */
+     permanent themed track eats the card and always draws a bar.
+
+     Default treatment is hover-reveal: the gutter is reserved (no reflow) but
+     the thumb stays invisible until the pointer is in that scroller. 8px
+     (`--dt-scrollbar-size`) is the hittable width. */
 
   .scrollbar-dt::-webkit-scrollbar,
   .scrollbar-dt *:not(.scrollbar-overlay)::-webkit-scrollbar {
-    width: 0.25rem;
-    height: 0.25rem;
+    width: var(--dt-scrollbar-size);
+    height: var(--dt-scrollbar-size);
   }
 
   .scrollbar-dt::-webkit-scrollbar-track,
@@ -1333,15 +1341,22 @@ body.guest-pointer-lock :is(webview, iframe) {
 
   .scrollbar-dt::-webkit-scrollbar-thumb,
   .scrollbar-dt *:not(.scrollbar-overlay)::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent);
+    background-color: transparent;
     border-radius: 9999rem;
     background-clip: padding-box;
+    transition: background-color 150ms ease-out;
   }
 
-  .scrollbar-dt::-webkit-scrollbar-thumb:hover,
-  .scrollbar-dt *:not(.scrollbar-overlay)::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 40%, transparent);
-    background-clip: padding-box;
+  .scrollbar-dt:hover::-webkit-scrollbar-thumb,
+  .scrollbar-dt *:not(.scrollbar-overlay):hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent);
+  }
+
+  .scrollbar-dt:hover::-webkit-scrollbar-thumb:hover,
+  .scrollbar-dt *:not(.scrollbar-overlay):hover::-webkit-scrollbar-thumb:hover,
+  .scrollbar-dt::-webkit-scrollbar-thumb:active,
+  .scrollbar-dt *:not(.scrollbar-overlay)::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 50%, transparent);
   }
 
   .scrollbar-dt::-webkit-scrollbar-button,
@@ -1349,24 +1364,20 @@ body.guest-pointer-lock :is(webview, iframe) {
     display: none;
   }
 
-  /* Hover-only bars. A thumb sitting on a list you aren't touching is chrome,
-     not information — the gutter is reserved either way, so fading it in and
-     out costs no reflow. Opt-in per surface: the sidebar wants it, a document
-     you're reading down wants its bar where you can see it. */
-  .scrollbar-fade::-webkit-scrollbar-thumb,
-  .scrollbar-dt .scrollbar-fade::-webkit-scrollbar-thumb {
+  /* Alias kept for call sites that mark a scroller as hover-reveal. Same look
+     as the `.scrollbar-dt` default; harmless when both apply. */
+  .scrollbar-fade::-webkit-scrollbar-thumb {
     background-color: transparent;
     transition: background-color 150ms ease-out;
   }
 
-  .scrollbar-fade:hover::-webkit-scrollbar-thumb,
-  .scrollbar-dt .scrollbar-fade:hover::-webkit-scrollbar-thumb {
-    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent);
+  .scrollbar-fade:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent);
   }
 
   .scrollbar-fade:hover::-webkit-scrollbar-thumb:hover,
-  .scrollbar-dt .scrollbar-fade:hover::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 40%, transparent);
+  .scrollbar-fade::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 50%, transparent);
   }
 
   /* Hover marquee: a truncated line that scrolls its overflow into view while
@@ -1403,8 +1414,8 @@ body.guest-pointer-lock :is(webview, iframe) {
      #root. Same visual treatment, applied directly to the overlay
      container so its (and only its) internal scrollbar is themed. */
   .dt-portal-scrollbar::-webkit-scrollbar {
-    width: 0.25rem;
-    height: 0.25rem;
+    width: var(--dt-scrollbar-size);
+    height: var(--dt-scrollbar-size);
   }
 
   .dt-portal-scrollbar::-webkit-scrollbar-track,
@@ -1413,14 +1424,19 @@ body.guest-pointer-lock :is(webview, iframe) {
   }
 
   .dt-portal-scrollbar::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent);
+    background-color: transparent;
     border-radius: 9999rem;
     background-clip: padding-box;
+    transition: background-color 150ms ease-out;
   }
 
-  .dt-portal-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 50%, transparent);
-    background-clip: padding-box;
+  .dt-portal-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent);
+  }
+
+  .dt-portal-scrollbar:hover::-webkit-scrollbar-thumb:hover,
+  .dt-portal-scrollbar::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 50%, transparent);
   }
 
   .dt-portal-scrollbar::-webkit-scrollbar-button {
@@ -1429,13 +1445,17 @@ body.guest-pointer-lock :is(webview, iframe) {
 
   @supports not selector(::-webkit-scrollbar) {
     .scrollbar-dt,
-    .scrollbar-dt *:not(.scrollbar-overlay) {
-      scrollbar-width: thin;
-      scrollbar-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent) transparent;
-    }
-
+    .scrollbar-dt *:not(.scrollbar-overlay),
+    .scrollbar-fade,
     .dt-portal-scrollbar {
       scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+
+    .scrollbar-dt:hover,
+    .scrollbar-dt *:not(.scrollbar-overlay):hover,
+    .scrollbar-fade:hover,
+    .dt-portal-scrollbar:hover {
       scrollbar-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent) transparent;
     }
 
@@ -1444,15 +1464,6 @@ body.guest-pointer-lock :is(webview, iframe) {
     .scrollbar-overlay {
       scrollbar-width: thin;
       scrollbar-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 28%, transparent) transparent;
-    }
-
-    /* No transition — Firefox doesn't animate scrollbar-color. */
-    .scrollbar-fade {
-      scrollbar-color: transparent transparent;
-    }
-
-    .scrollbar-fade:hover {
-      scrollbar-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent) transparent;
     }
   }
 }
