@@ -707,6 +707,9 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
     # ``_get_tool_call_id_static``'s ``call_id || id`` — a match set must
     # accept every legitimate reference, not just the canonical one (#58168).
     known_tool_ids: set = set()
+    # Maps every registered id variant back to the full variant set of the
+    # tool_call it came from, so consuming one variant consumes its siblings.
+    tool_id_siblings: Dict[str, set] = {}
     filtered: List[Dict] = []
     for msg in collapsed:
         if not isinstance(msg, dict):
@@ -715,13 +718,24 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
         role = msg.get("role")
         if role == "assistant":
             known_tool_ids = set()
+            tool_id_siblings = {}
             for tc in (msg.get("tool_calls") or []):
-                if not isinstance(tc, dict):
-                    continue
+                # Mirror ``_get_tool_call_id_static``'s dict-or-object
+                # tolerance: SDK tool_call objects (e.g. an unserialized
+                # ``ChatCompletionMessageToolCall``) reach this pass on
+                # host-fed / pre-serialization histories just as often as
+                # plain dicts. Skipping non-dict entries left
+                # ``known_tool_ids`` empty for such messages, so the
+                # following legitimate ``tool`` result was misclassified
+                # as orphaned and silently dropped.
+                variants = set()
                 for key in ("id", "call_id"):
-                    tc_id = tc.get(key)
+                    tc_id = tc.get(key) if isinstance(tc, dict) else getattr(tc, key, None)
                     if tc_id:
-                        known_tool_ids.add(tc_id)
+                        variants.add(tc_id)
+                for tc_id in variants:
+                    known_tool_ids.add(tc_id)
+                    tool_id_siblings[tc_id] = variants
             filtered.append(msg)
         elif role == "tool":
             tc_id = msg.get("tool_call_id")
@@ -732,7 +746,16 @@ def repair_message_sequence(agent, messages: List[Dict]) -> int:
                 # glitch) falls into the drop branch below instead of being
                 # replayed — strict providers (DeepSeek) reject a duplicate
                 # tool_call_id with HTTP 400 (#58327). Credit: #55436.
-                known_tool_ids.discard(tc_id)
+                #
+                # Consume EVERY variant of the matched call, not just the one
+                # this result referenced. A Codex/Responses tool_call registers
+                # both ``id`` (``fc_...``) and ``call_id`` (``call_...``) above
+                # (#58168), so discarding only the matched key leaves its
+                # sibling live — and a duplicate result keyed on that sibling
+                # sails straight through this guard, re-creating the very 400
+                # the consume step exists to prevent.
+                for sibling in tool_id_siblings.get(tc_id, {tc_id}):
+                    known_tool_ids.discard(sibling)
             else:
                 repairs += 1
         else:
@@ -3456,6 +3479,25 @@ def repair_tool_call(agent, tool_name: str) -> str | None:
     return None
 
 
+def _tool_call_id_variants(tc: Any) -> set:
+    """Return every id a tool result might legitimately match this tool_call on.
+
+    A tool_call can carry both ``call_id`` and ``id`` with different values
+    (Responses-API / codex flows), and different code paths key the matching
+    ``role="tool"`` result's ``tool_call_id`` off one or the other. Returning
+    all non-empty variants lets the sanitizer treat a result matching ANY of
+    them as paired, so a valid result is never falsely orphaned and dropped.
+    """
+    variants: set = set()
+    if isinstance(tc, dict):
+        candidates = (tc.get("call_id"), tc.get("id"))
+    else:
+        candidates = (getattr(tc, "call_id", None), getattr(tc, "id", None))
+    for c in candidates:
+        if isinstance(c, str) and c.strip():
+            variants.add(c.strip())
+    return variants
+
 
 # Placeholder substituted for an empty non-final message that would otherwise
 # make the provider reject the whole request. Kept identical to the stub-
@@ -3696,8 +3738,18 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     for msg in messages:
         if msg.get("role") == "assistant":
             for tc in msg.get("tool_calls") or []:
-                cid = _ra().AIAgent._get_tool_call_id_static(tc)
-                if cid:
+                # A tool_call may carry BOTH ``call_id`` and ``id`` with
+                # DIFFERENT values (e.g. Responses-API / codex tool calls,
+                # where ``id`` is a ``fc_...`` response-item id distinct from
+                # the ``call_...`` id). ``_get_tool_call_id_static`` returns
+                # only the preferred one (``call_id``), but a tool result
+                # keyed on the OTHER id would then look orphaned and get
+                # dropped + replaced with a bogus "[Result unavailable]"
+                # stub — silently eating a perfectly valid tool result
+                # (#55626). Register EVERY id variant so a result matching
+                # any of them survives. This is purely additive: it can only
+                # prevent false drops, never introduce new ones.
+                for cid in _tool_call_id_variants(tc):
                     surviving_call_ids.add(cid)
 
     result_call_ids: set = set()
@@ -3719,26 +3771,37 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
             len(orphaned_results),
         )
 
-    # 2. Inject stub results for calls whose result was dropped
-    missing_results = surviving_call_ids - result_call_ids
-    if missing_results:
-        patched: List[Dict[str, Any]] = []
-        for msg in messages:
-            patched.append(msg)
-            if msg.get("role") == "assistant":
-                for tc in msg.get("tool_calls") or []:
-                    cid = _ra().AIAgent._get_tool_call_id_static(tc)
-                    if cid in missing_results:
-                        patched.append({
-                            "role": "tool",
-                            "name": _ra().AIAgent._get_tool_call_name_static(tc),
-                            "content": "[Result unavailable — see context summary above]",
-                            "tool_call_id": cid,
-                        })
+    # 2. Inject stub results for calls whose result was dropped.
+    #    A call is "answered" when ANY of its id variants (call_id/id) has a
+    #    matching result, so a call answered via its ``id`` (fc_...) is not
+    #    mistaken for unanswered just because its distinct ``call_id`` has no
+    #    result of its own (#55626).
+    stub_count = 0
+    patched: List[Dict[str, Any]] = []
+    for msg in messages:
+        patched.append(msg)
+        if msg.get("role") == "assistant":
+            for tc in msg.get("tool_calls") or []:
+                variants = _tool_call_id_variants(tc)
+                if not variants:
+                    continue
+                if variants & result_call_ids:
+                    continue  # already answered on some id variant
+                cid = _ra().AIAgent._get_tool_call_id_static(tc)
+                if not cid:
+                    continue
+                patched.append({
+                    "role": "tool",
+                    "name": _ra().AIAgent._get_tool_call_name_static(tc),
+                    "content": "[Result unavailable — see context summary above]",
+                    "tool_call_id": cid,
+                })
+                stub_count += 1
+    if stub_count:
         messages = patched
         _ra().logger.debug(
             "Pre-call sanitizer: added %d stub tool result(s)",
-            len(missing_results),
+            stub_count,
         )
 
     # 3. Deduplicate tool_call_ids. Strict providers (DeepSeek) reject a
@@ -3763,6 +3826,14 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
     # that reuses the id re-arms that id first.
     seen_assistant_call_ids: set = set()
     outstanding_call_ids: set = set()
+    # Variant → full variant-set of the tool_call it belongs to, so answering
+    # or deduping one variant consumes its siblings too. A Codex/Responses
+    # tool_call registers BOTH ``id`` (fc_...) and ``call_id`` (call_...)
+    # (#55626/#58168); tracking only the coalesced id here made a result
+    # keyed on the OTHER variant look like it answered no outstanding call,
+    # so this pass deleted the very result step 2's variant-aware matching
+    # had just preserved (issue #93251 — whole parallel batches vanished).
+    dedup_id_siblings: Dict[str, set] = {}
     deduped: List[Dict[str, Any]] = []
     removed_dupes = 0
     for msg in messages:
@@ -3770,13 +3841,14 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
         if role == "assistant" and msg.get("tool_calls"):
             kept_tcs = []
             for tc in msg.get("tool_calls") or []:
-                cid = _ra().AIAgent._get_tool_call_id_static(tc)
-                if cid and cid in seen_assistant_call_ids:
+                variants = _tool_call_id_variants(tc)
+                if variants and variants & seen_assistant_call_ids:
                     removed_dupes += 1
                     continue
-                if cid:
+                for cid in variants:
                     seen_assistant_call_ids.add(cid)
                     outstanding_call_ids.add(cid)
+                    dedup_id_siblings[cid] = variants
                 kept_tcs.append(tc)
             if kept_tcs:
                 msg = {**msg, "tool_calls": kept_tcs}
@@ -3789,11 +3861,13 @@ def sanitize_api_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 removed_dupes += 1
                 continue
             if cid:
-                # Answered: this id is no longer outstanding, so a second
-                # result replaying it is still caught above.
-                outstanding_call_ids.discard(cid)
-                # A reused id must be re-armable by the next assistant call.
-                seen_assistant_call_ids.discard(cid)
+                # Answered: consume EVERY variant of the matched call so a
+                # second result replaying either sibling is still caught
+                # above, and the ids are re-armable by the next assistant
+                # call that reuses them.
+                for sibling in dedup_id_siblings.get(cid, {cid}):
+                    outstanding_call_ids.discard(sibling)
+                    seen_assistant_call_ids.discard(sibling)
             deduped.append(msg)
         else:
             deduped.append(msg)

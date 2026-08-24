@@ -66,6 +66,56 @@ class TestGatewayLifecyclePattern:
         )
         assert not _contains_gateway_lifecycle_command(text), f"Should NOT match: {text!r}"
 
+    @pytest.mark.parametrize("text", [
+        # #80269: the shell resolves quote-splicing and backslash-escaping
+        # into a single literal word BEFORE the command runs, so
+        # `launchctl kick"start" ... ai.hermes.gateway` executes exactly as
+        # the blocked `kickstart` form. Raw-text matching sees the quote (or
+        # backslash) wedged between the verb's halves and misses it, leaving
+        # the bypassable approval layer as the only cover.
+        'launchctl kick"start" -k gui/501/ai.hermes.gateway',
+        "launchctl kick'start' -k gui/501/ai.hermes.gateway",
+        "launchctl kick\\start -k gui/501/ai.hermes.gateway",
+        'launchctl "kickstart" -k gui/501/ai.hermes.gateway',
+        # Splices on the newer/legacy unload spellings this PR added.
+        'launchctl boot"out" gui/501/ai.hermes.gateway',
+        "launchctl dis\\able gui/501/ai.hermes.gateway",
+        # The gateway identifier itself can be spliced just as easily.
+        'launchctl bootout gui/501/ai.hermes."gateway"',
+        # Same class on the systemctl and hermes-CLI branches.
+        'systemctl re"start" hermes-gateway',
+        'hermes gateway re"start"',
+    ])
+    def test_shell_token_spliced_lifecycle_verbs(self, text):
+        assert _contains_gateway_lifecycle_command(text), f"Should match: {text!r}"
+
+    def test_spliced_verb_inside_shell_c_payload_is_blocked(self):
+        # A splice nested in a `sh -c` payload resolves one level deeper than
+        # the flat scan: POSIX single quotes preserve the inner double quotes
+        # verbatim, so the outer tokenization yields the payload with the
+        # splice still intact. The recursion re-scans that payload through the
+        # same choke point, where it collapses to `kickstart`. This is the
+        # entry point terminal_tool.py calls in gateway sessions, so it is the
+        # boundary that matters.
+        from cron.lifecycle_guard import (
+            contains_gateway_lifecycle_command_or_referenced_script,
+        )
+
+        command = 'sh -c \'launchctl kick"start" -k gui/501/ai.hermes.gateway\''
+        assert contains_gateway_lifecycle_command_or_referenced_script(command)
+
+    @pytest.mark.parametrize("text", [
+        # The tokenizing pass must not widen the blast radius: prose and
+        # non-gateway services stay allowed even though tokenization now
+        # strips their quotes too.
+        'echo "restart the payment gateway"',
+        'launchctl kick"start" -k gui/501/ai.hermes.update-checker',
+        'systemctl re"start" hermes-meta.service',
+        "Summarize how the API gateway handles a restart after rate limiting",
+    ])
+    def test_tokenizing_pass_does_not_overmatch(self, text):
+        assert not _contains_gateway_lifecycle_command(text), f"Should NOT match: {text!r}"
+
 
     @pytest.mark.parametrize("text", [
         "restart the server application",
@@ -102,9 +152,125 @@ class TestGatewayLifecyclePattern:
         "Monitor the gateway and tell me if a restart is recommended",
         "research how the OpenAI API gateway handles restart after rate limiting",
         "compare AWS API Gateway vs Cloudflare on restart latency",
+        # #92372 Branch A: no trailing boundary meant ordinary prose matched —
+        # "restarted" carries the "restart" prefix and the old pattern ended
+        # exactly there. \b after the verb group fixes it.
+        "echo after the hermes gateway restarted cleanly",
+        "the hermes gateway stopped responding, please investigate",
+        # #92372 Branch D: `p?kill` without a leading \b matched the "kill"
+        # tail of "skill".
+        "hermes skill view gateway-notes && echo hermes gateway docs",
     ])
     def test_safe_commands(self, text):
         assert not _contains_gateway_lifecycle_command(text), f"Should NOT match: {text!r}"
+
+    @pytest.mark.parametrize("text", [
+        # Trailing-boundary fix must not weaken real commands.
+        "hermes gateway restart",
+        "hermes gateway restart; echo done",
+        "hermes gateway stop && echo stopped",
+    ])
+    def test_boundary_fix_still_blocks_real_commands(self, text):
+        assert _contains_gateway_lifecycle_command(text), f"Should match: {text!r}"
+
+    def test_quoted_multiline_payload_tokenizes_as_one_logical_line(self):
+        # #92372: a newline inside a quoted string is data, not a command
+        # separator. A quoted data-file path on its own physical line inside
+        # a multiline construct must not be promoted to command position.
+        text = (
+            'FILES=(\n'
+            '  "/tmp/notes about procedures.txt"\n'
+            ')\n'
+            'echo "${FILES[@]}"'
+        )
+        assert not _contains_gateway_lifecycle_command(text), f"Should NOT match: {text!r}"
+
+    def test_unbalanced_quotes_still_scanned_not_waved_through(self):
+        # Fail-closed contract: when the logical line cannot tokenize
+        # (unbalanced quote), the per-physical-line fallback must still SCAN
+        # the content — a lifecycle command alongside an unbalanced quote
+        # must remain blocked, never waved through.
+        text = 'echo "unbalanced\nhermes gateway restart'
+        assert _contains_gateway_lifecycle_command(text), f"Should match: {text!r}"
+
+
+class TestProfileFlagGatewayLifecycle:
+    """#78028: `hermes -p <profile> gateway restart|stop` bypasses Branch A's
+    literal adjacency, so it needs its own pattern. It is only the same
+    self-termination foot-gun when the named profile IS the profile running
+    the guard; sibling-profile restarts are legitimate fleet operations and
+    must stay allowed."""
+
+    @pytest.fixture(autouse=True)
+    def _pin_profile_identity(self, monkeypatch):
+        # The ambient test env may carry HERMES_HOME/HERMES_PROFILE; pin the
+        # profile identity explicitly so every assertion is deterministic.
+        monkeypatch.setenv("HERMES_PROFILE", "zeus")
+        monkeypatch.delenv("HERMES_PROFILE_NAME", raising=False)
+
+    @pytest.mark.parametrize("text", [
+        "hermes -p zeus gateway stop",
+        "hermes -p zeus gateway restart",
+        "hermes --profile zeus gateway restart",
+        "hermes --profile zeus gateway stop",
+        "hermes --profile=zeus gateway restart",
+        # Global flags before/after the selector must not hide the shape.
+        "hermes -v -p zeus gateway restart",
+        "hermes -p zeus -v gateway restart",
+        "hermes --debug --profile zeus gateway stop",
+        # Shell quoting of the profile id is equivalent to the bare name.
+        "hermes -p 'zeus' gateway restart",
+        "hermes --profile \"zeus\" gateway stop",
+    ])
+    def test_self_target_blocked(self, text):
+        assert _contains_gateway_lifecycle_command(text), f"Should block: {text!r}"
+
+    @pytest.mark.parametrize("text", [
+        "hermes -p venus gateway stop",
+        "hermes -p venus gateway restart",
+        "hermes --profile venus gateway restart",
+        "hermes --profile=venus gateway stop",
+        "hermes -p venus -v gateway restart",
+    ])
+    def test_sibling_allowed(self, text):
+        assert not _contains_gateway_lifecycle_command(text), f"Should allow: {text!r}"
+
+    @pytest.mark.parametrize("text", [
+        "hermes -p zeus gateway start",
+        "hermes -p zeus gateway start --all",
+    ])
+    def test_start_still_allowed(self, text):
+        # `start` is intentionally excluded from the guard, with or without
+        # the profile flag (#30719 rationale).
+        assert not _contains_gateway_lifecycle_command(text), f"Should allow: {text!r}"
+
+    def test_adjacent_form_still_blocked(self):
+        # Branch A remains unconditional — the profile-flag check is an
+        # additional layer, not a replacement.
+        assert _contains_gateway_lifecycle_command("hermes gateway restart")
+        assert _contains_gateway_lifecycle_command("hermes gateway stop")
+
+    def test_hermes_home_derived_profile(self, monkeypatch):
+        # Without HERMES_PROFILE the guard falls back to the HERMES_HOME-
+        # derived profile identity (get_active_profile_name) — the signal the
+        # gateway process itself carries.
+        monkeypatch.delenv("HERMES_PROFILE", raising=False)
+        monkeypatch.delenv("HERMES_PROFILE_NAME", raising=False)
+        import hermes_cli.profiles as profiles_mod
+
+        monkeypatch.setattr(profiles_mod, "get_active_profile_name", lambda: "zeus")
+        assert _contains_gateway_lifecycle_command("hermes -p zeus gateway restart")
+        assert not _contains_gateway_lifecycle_command("hermes -p venus gateway restart")
+
+    def test_no_profile_context_conservative_allow(self, monkeypatch):
+        # With no profile identity the guard cannot prove self-targeting, so
+        # the profile-flag form is allowed rather than over-blocking siblings;
+        # the adjacent form stays blocked unconditionally.
+        import cron.lifecycle_guard as lifecycle_guard
+
+        monkeypatch.setattr(lifecycle_guard, "_current_profile_name", lambda: None)
+        assert not _contains_gateway_lifecycle_command("hermes -p zeus gateway restart")
+        assert _contains_gateway_lifecycle_command("hermes gateway restart")
 
 
 class TestCronCreateLifecycleBlock:
@@ -200,7 +366,10 @@ class TestGatewaySelfTargetingGuard:
     """Verify hermes gateway stop/restart refuse when _HERMES_GATEWAY=1."""
 
     def test_stop_refuses_inside_gateway(self, monkeypatch):
-        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        from tools import process_registry
+        monkeypatch.setattr(
+            process_registry, "_is_supervised_gateway_process", lambda: True
+        )
         from hermes_cli.gateway import gateway_command
         args = Namespace(gateway_command="stop", all=False, system=False)
         with pytest.raises(SystemExit) as exc_info:
@@ -254,15 +423,16 @@ class TestTerminalToolGatewayLifecycleGuard:
 
     def _patch_env(self, monkeypatch, fake_env, *, inside_gateway: bool):
         import tools.terminal_tool as tt
+        from tools import process_registry
         eid = "default"
         monkeypatch.setattr(tt, "_active_environments", {eid: fake_env})
         monkeypatch.setattr(tt, "_last_activity", {eid: 0.0})
         monkeypatch.setattr(tt, "_task_env_overrides", {})
         monkeypatch.setattr(tt, "_get_env_config", self._minimal_config)
-        if inside_gateway:
-            monkeypatch.setenv("_HERMES_GATEWAY", "1")
-        else:
-            monkeypatch.delenv("_HERMES_GATEWAY", raising=False)
+        monkeypatch.setattr(
+            process_registry, "_is_supervised_gateway_process",
+            lambda: inside_gateway,
+        )
 
     @pytest.mark.parametrize("cmd", [
         "systemctl restart hermes-gateway",
@@ -371,6 +541,39 @@ class TestTerminalToolGatewayLifecycleGuard:
 
         assert result["exit_code"] == 0
         assert calls == [command]
+
+    def test_cli_agent_session_not_blocked_by_inherited_env(
+        self, monkeypatch
+    ):
+        """#92560: CLI/TUI agent sessions inherit _HERMES_GATEWAY=1 from the
+        gateway but are NOT the gateway supervisor.  The env gate must not
+        fire for them — only for the actual gateway process (PID-file owner).
+        """
+        import tools.terminal_tool as tt
+
+        calls = []
+
+        class _FakeEnv:
+            env = {}
+
+            def execute(self, cmd, **kwargs):
+                calls.append(cmd)
+                return {"output": "", "returncode": 0}
+
+        # Simulate a CLI agent session: _HERMES_GATEWAY=1 is in the
+        # environment (inherited from the gateway), but
+        # _is_supervised_gateway_process() returns False because the
+        # process does not own the gateway PID file.
+        self._patch_env(monkeypatch, _FakeEnv(), inside_gateway=False)
+        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        monkeypatch.setattr(
+            tt, "_check_all_guards", lambda cmd, env, **kwargs: {"approved": True}
+        )
+
+        result = json.loads(tt.terminal_tool(command="hermes gateway restart"))
+
+        assert result["exit_code"] == 0
+        assert calls == ["hermes gateway restart"]
 
     def test_blocks_launchctl_submit_hidden_in_referenced_script(
         self, monkeypatch, tmp_path
@@ -1165,15 +1368,16 @@ class TestTerminalToolGatewayLifecycleGuardRemote:
 
     def _patch_env(self, monkeypatch, fake_env, *, inside_gateway: bool):
         import tools.terminal_tool as tt
+        from tools import process_registry
         eid = "default"
         monkeypatch.setattr(tt, "_active_environments", {eid: fake_env})
         monkeypatch.setattr(tt, "_last_activity", {eid: 0.0})
         monkeypatch.setattr(tt, "_task_env_overrides", {})
         monkeypatch.setattr(tt, "_get_env_config", lambda: {"env_type": "local", "cwd": "/tmp", "timeout": 60, "lifetime_seconds": 3600})
-        if inside_gateway:
-            monkeypatch.setenv("_HERMES_GATEWAY", "1")
-        else:
-            monkeypatch.delenv("_HERMES_GATEWAY", raising=False)
+        monkeypatch.setattr(
+            process_registry, "_is_supervised_gateway_process",
+            lambda: inside_gateway,
+        )
 
     def test_remote_backend_script_read_uses_env_execute(self, monkeypatch, tmp_path):
         import tools.terminal_tool as tt

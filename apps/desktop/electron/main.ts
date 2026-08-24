@@ -35,7 +35,12 @@ import { stopBackendChild as stopBackendChildImpl, stopBackendTreesForUpdate } f
 import { dashboardFallbackArgs, sourceDeclaresServe } from './backend-command'
 import { createBackendConnectionState } from './backend-connection-state'
 import { buildDesktopBackendEnv, hermesManagedNodePathEntries, normalizeHermesHomeRoot } from './backend-env'
-import { isReauthRequiredError, waitForHermesReady } from './backend-health'
+import {
+  isReauthRequiredError,
+  makeNousCloudBackendDownError,
+  makeUnsignedOauthError,
+  waitForHermesReady
+} from './backend-health'
 import { backendCommandMatches, createBackendOwnership, createBackendShutdownCoordinator } from './backend-ownership'
 import {
   canImportHermesCli,
@@ -94,7 +99,8 @@ import {
   resolveTestWsUrl,
   savedProfileSsh,
   tokenPreview,
-  translateSelfProfileQuery
+  translateSelfProfileQuery,
+  withTransientRetries
 } from './connection-config'
 import {
   backendScopeKey,
@@ -241,6 +247,7 @@ import { rehomePrimaryConnection } from './primary-connection-rehome'
 import {
   assertLocalProfileCanStart,
   decideProfileDeleteAction,
+  dispatchConnectionScopedProfileDelete,
   localProfilePoolKeys,
   ProfileDeletionGate,
   profileNameFromDeleteRequest,
@@ -252,6 +259,7 @@ import {
   fetchPrimaryProfileSessions,
   fetchRegistrySessionRows,
   fetchRemoteProfileSessions,
+  findRemoteOwnerProfileForSession,
   mergeProfileSessionWindow,
   type RegistrySessionSource,
   spliceRegistrySessionRows
@@ -1393,11 +1401,13 @@ let nativeThemeListenerInstalled = false
 let bootProgressState = {
   error: null,
   fakeMode: BOOT_FAKE_MODE,
+  isCloudBackendDown: false,
   message: 'Waiting to start Hermes backend',
   phase: 'idle',
   progress: 0,
   retryable: false,
   running: false,
+  statusCode: null,
   timestamp: Date.now()
 }
 
@@ -2497,6 +2507,35 @@ function findGitBash() {
 
 function getVenvPython(venvRoot) {
   return path.join(venvRoot, IS_WINDOWS ? path.join('Scripts', 'python.exe') : path.join('bin', 'python'))
+}
+
+// Map a selected interpreter back to the venv that OWNS it (the directory
+// above bin/ or Scripts/), but only when that venv lives inside `root`.
+// Returns null for system pythons — they own no site-packages we should mount.
+//
+// This exists because findPythonForRoot() probes `.venv` before `venv`, and a
+// checkout can legitimately have BOTH (dev tooling venv + the CLI install
+// venv, possibly on different Python versions). The interpreter and the
+// site-packages placed on PYTHONPATH must come from the SAME venv: pairing a
+// .venv 3.12 python with venv/lib/python3.11/site-packages makes the backend
+// die on its first native import (pydantic_core) before the gateway binds —
+// the renderer then reports "Gateway offline" on every profile.
+function venvRootForPython(python: string, root: string) {
+  const parent = path.dirname(python)
+  const binName = path.basename(parent).toLowerCase()
+
+  if (binName !== 'bin' && binName !== 'scripts') {
+    return null
+  }
+
+  const candidate = path.dirname(parent)
+  const relative = path.relative(root, candidate)
+
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null
+  }
+
+  return candidate
 }
 
 // Windows console-window flashes are governed by the *parent's* console, not by
@@ -4420,7 +4459,12 @@ function createPythonBackend(root, label, backendArgs, options: any = {}) {
     return null
   }
 
-  const venvRoot = path.join(root, 'venv')
+  // The venv whose interpreter we selected is the venv whose site-packages
+  // belong on PYTHONPATH — findPythonForRoot may have picked `.venv` over
+  // `venv`, and mixing the two crashes the backend on its first native
+  // import (see venvRootForPython). Fall back to root/venv only for a
+  // system python, where the historical layout is the best guess.
+  const venvRoot = venvRootForPython(python, root) ?? path.join(root, 'venv')
   const venvPython = getVenvPython(venvRoot)
   const command = IS_WINDOWS && fileExists(venvPython) ? venvPython : python
 
@@ -7588,15 +7632,34 @@ async function saveGatewayFileViaDataUrl(connection, profile, filePath, ctx: any
 // falling back to the OAuth cookie partition otherwise.
 // Throws (with statusCode 401) if the session cookie is missing/expired —
 // callers treat that as "needs re-login".
+// Transient transport blips (brief host unreachable, 5xx, timeouts) are retried
+// a few times before failing — those 1-3s flaps were promoting into the
+// full-screen "couldn't start" lockout on reconnect.
 async function mintGatewayWsTicket(baseUrl, headers = {}) {
-  // Native flow: mint the ticket with the bearer token, no cookie involved.
-  const nativeAt = await ensureNativeAccessToken(baseUrl).catch(() => null)
+  return withTransientRetries(async () => {
+    // Native flow: mint the ticket with the bearer token, no cookie involved.
+    const nativeAt = await ensureNativeAccessToken(baseUrl).catch(() => null)
 
-  if (nativeAt) {
-    const body = (await fetchJson(`${baseUrl}/api/auth/ws-ticket`, null, {
+    if (nativeAt) {
+      const body = (await fetchJson(`${baseUrl}/api/auth/ws-ticket`, null, {
+        method: 'POST',
+        timeoutMs: 8_000,
+        bearer: nativeAt,
+        headers
+      })) as any
+
+      const ticket = body?.ticket
+
+      if (!ticket || typeof ticket !== 'string') {
+        throw new Error('Gateway did not return a WS ticket.')
+      }
+
+      return ticket
+    }
+
+    const body = (await fetchJsonViaOauthSession(`${baseUrl}/api/auth/ws-ticket`, {
       method: 'POST',
       timeoutMs: 8_000,
-      bearer: nativeAt,
       headers
     })) as any
 
@@ -7607,21 +7670,7 @@ async function mintGatewayWsTicket(baseUrl, headers = {}) {
     }
 
     return ticket
-  }
-
-  const body = (await fetchJsonViaOauthSession(`${baseUrl}/api/auth/ws-ticket`, {
-    method: 'POST',
-    timeoutMs: 8_000,
-    headers
-  })) as any
-
-  const ticket = body?.ticket
-
-  if (!ticket || typeof ticket !== 'string') {
-    throw new Error('Gateway did not return a WS ticket.')
-  }
-
-  return ticket
+  })
 }
 
 // Build a fresh WS URL for the *current* connection. Critical for reconnects:
@@ -8999,13 +9048,7 @@ async function buildRemoteConnection(
       !oauthSessionIsLive(hasNativeSession(baseUrl), await hasLiveOauthSession(baseUrl)) &&
       oauthGuardMayHardFail(await gatewayAuthProviders(baseUrl, remoteHeaders))
     ) {
-      const err = new Error(
-        'Remote Hermes gateway uses OAuth, but you are not signed in. ' +
-          'Open Settings → Gateway and click "Sign in", or switch back to Local.'
-      ) as any
-
-      err.needsOauthLogin = true
-      throw err
+      throw makeUnsignedOauthError()
     }
 
     let ticket
@@ -9013,6 +9056,19 @@ async function buildRemoteConnection(
     try {
       ticket = await mintGatewayWsTicket(baseUrl, remoteHeaders)
     } catch (error) {
+      // For a Nous-managed Cloud agent, a 502/503/504 from the WS-ticket mint
+      // means the backend server itself is down — the actionable Cloud-down
+      // error. This boundary runs BEFORE the readiness loop, so without this
+      // the ticket wrapper below would swallow the server-fault classification
+      // and the renderer would never see isCloudBackendDown. Preserve the
+      // existing 401/403 reauth and generic transport behavior for everything
+      // else (#85335).
+      const cloudError = makeNousCloudBackendDownError(baseUrl, error)
+
+      if (cloudError !== null) {
+        throw cloudError
+      }
+
       throw gatewayTicketFailure(
         error,
         'Your remote gateway session has expired. Open Settings → Gateway and click "Sign in" again.',
@@ -10936,6 +10992,18 @@ async function startHermes() {
     const message = error instanceof Error ? error.message : String(error)
     const hostKeyChanged = isHostKeyChangedBootFailure(error)
 
+    // Carry structured Cloud-down metadata through the boot-progress / IPC
+    // boundary when present, so the renderer overlay can key on it rather than
+    // re-classifying the message string. main owns classification; the renderer
+    // only consumes the structured result (#85335).
+    const isCloudBackendDown = Boolean(error && typeof error === 'object' && (error as any).isCloudBackendDown === true)
+
+    const statusCode = Number(
+      error && typeof error === 'object' && Number.isInteger((error as any).statusCode)
+        ? (error as any).statusCode
+        : NaN
+    )
+
     // Only latch LOCAL boot failures. A remote failure (lapsed session / mint
     // timeout / host briefly unreachable across sleep) is transient and has no
     // child 'exit' handler to clear the cache — latching it would wedge the app
@@ -10964,6 +11032,7 @@ async function startHermes() {
     updateBootProgress(
       {
         error: message,
+        isCloudBackendDown: isCloudBackendDown || undefined,
         message: `Desktop boot failed: ${message}`,
         phase: 'backend.error',
         // Renderer contract for the self-heal loop (#82679): a transient
@@ -10977,7 +11046,8 @@ async function startHermes() {
           isReauth: isReauthRequiredError(error),
           isHostKeyChanged: hostKeyChanged
         }),
-        running: false
+        running: false,
+        statusCode: Number.isInteger(statusCode) ? statusCode : undefined
       },
       { allowDecrease: true }
     )
@@ -12310,7 +12380,7 @@ ipcMain.handle('hermes:connection:revalidate', async () => {
         currentConnectionPromise: () => backendConnectionState.getPromise(),
         log: rememberLog,
         probe: fetchPublicJson,
-        resetConnection: resetHermesConnection,
+        resetConnection: () => resetHermesConnection({ soft: true }),
         tracker: remoteLiveness
       }),
       revalidatePool()
@@ -13458,10 +13528,21 @@ async function interceptSessionRequestForRemote(request) {
   //  - global remote mode: ONE backend serves every profile via ?profile=, so
   //    route there and KEEP the profile param so it opens the right state.db.
   if (/^\/api\/sessions\/[^/]+(\/messages)?$/.test(pathname)) {
-    const profile = (searchParams.get('profile') || request.profile || '').trim()
+    let profile = (searchParams.get('profile') || request.profile || '').trim()
 
     if (!profile) {
-      return undefined
+      // No explicit owner hint (#85834). The list endpoints above already know
+      // which remote profile owns each row (remoteSessionList tags s.profile),
+      // but a caller without a hint used to fall straight through to the LOCAL
+      // backend and 404 on its state.db even though the session lives on a
+      // remote. Consult the same remote lists to find the owner; only fall
+      // through when the id is genuinely unknown remotely.
+      const sessionId = decodeURIComponent(pathname.split('/')[3] || '')
+      profile = (await remoteOwnerProfileForSession(sessionId)) || ''
+
+      if (!profile) {
+        return undefined
+      }
     }
 
     // Preserve every non-profile query param (limit/offset/order pagination —
@@ -13518,6 +13599,39 @@ async function remoteSessionList(profile, searchParams) {
   }
 
   return { ...(data as any), sessions: rowsOf(data) }
+}
+
+// #85834: find which remote profile owns a session id when the caller gave no
+// profile hint (pure lookup lives in profile-session-routing.ts). Results are
+// memoized briefly so a burst of hint-less reads (transcript + messages)
+// costs one sweep across the configured remotes.
+const remoteOwnerBySessionId = new Map<string, { at: number; profile: null | string }>()
+const REMOTE_OWNER_CACHE_TTL_MS = 30_000
+
+async function remoteOwnerProfileForSession(sessionId: string) {
+  if (!sessionId) {
+    return null
+  }
+
+  const remoteProfiles = configuredRemoteProfileNames()
+
+  if (remoteProfiles.length === 0) {
+    return null
+  }
+
+  const cached = remoteOwnerBySessionId.get(sessionId)
+
+  if (cached && Date.now() - cached.at < REMOTE_OWNER_CACHE_TTL_MS) {
+    return cached.profile
+  }
+
+  const owner = await findRemoteOwnerProfileForSession(sessionId, remoteProfiles, (profile, params) =>
+    remoteSessionList(profile, params)
+  ).catch(() => null)
+
+  remoteOwnerBySessionId.set(sessionId, { at: Date.now(), profile: owner })
+
+  return owner
 }
 
 // Resolve one /api/profiles/sessions slice with remote profiles spliced in —
@@ -13661,6 +13775,45 @@ async function pooledRegistrySessionSources(): Promise<RegistrySessionSource[]> 
   return sources
 }
 
+async function dispatchRegistryApiRequest(
+  request,
+  registryConnectionId,
+  routeProfile = request?.profile,
+  requestProfile = request?.profile
+) {
+  const connection: any = await ensureRegistryBackend(registryConnectionId, routeProfile)
+
+  const requestPath = connection.sharedRemote
+    ? pathWithProfileScope(request.path, requestProfile)
+    : translateSelfProfileQuery(request.path, requestProfile, connection.remoteProfile)
+
+  return fetchJsonForBackend(connection, requestPath, {
+    method: request?.method,
+    body: request?.body,
+    upload: request?.upload,
+    timeoutMs: resolveTimeoutMs(request?.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
+  })
+}
+
+function registryConnectionKind(connectionId) {
+  const registry = readDesktopConnectionsRegistry()
+  const source = registry.connections.find(connection => connection.id === connectionId)
+
+  if (!source) {
+    throw new Error(`No connection with id "${connectionId}".`)
+  }
+
+  return source.kind
+}
+
+async function teardownConnectionScopedProfileBackend(connectionId, profile) {
+  const key = backendScopeKey(connectionId, profile)
+  await Promise.all([
+    poolStopper.stop(key),
+    sshBootstrapCoordinator.cancelAndWait(key).then(() => teardownSshConnection(key))
+  ])
+}
+
 async function handleHermesApiRequest(request) {
   // Registry-pinned request (request.connectionId): the renderer is working
   // against a REGISTERED gateway connection, so the data — cron jobs and their
@@ -13673,22 +13826,7 @@ async function handleHermesApiRequest(request) {
   const registryConnectionId = apiRequestRegistryConnectionId(request)
 
   if (registryConnectionId) {
-    const connection: any = await ensureRegistryBackend(registryConnectionId, request?.profile)
-
-    // A shared remote host serves every profile via ?profile=; an SSH-scoped
-    // backend instead runs AS one remote profile, so an explicit self-profile
-    // filter must be translated from the desktop routing label into that
-    // backend namespace (same contract as the v1 profileRouteOptions path).
-    const requestPath = connection.sharedRemote
-      ? pathWithProfileScope(request.path, request?.profile)
-      : translateSelfProfileQuery(request.path, request?.profile, connection.remoteProfile)
-
-    return fetchJsonForBackend(connection, requestPath, {
-      method: request?.method,
-      body: request?.body,
-      upload: request?.upload,
-      timeoutMs: resolveTimeoutMs(request?.timeoutMs, DEFAULT_FETCH_TIMEOUT_MS)
-    })
+    return dispatchRegistryApiRequest(request, registryConnectionId)
   }
 
   // Remote-profile session requests would otherwise hit the local primary off
@@ -13799,6 +13937,20 @@ ipcMain.handle('hermes:api', async (_event, request) => {
   // respawn the old-name backend and recreate its HERMES_HOME (#45474).
   const deletingProfile = profileNameFromDeleteRequest(request)
   const mutatingProfile = deletingProfile || profileRenameFromRequest(request)?.oldName || null
+  const registryConnectionId = apiRequestRegistryConnectionId(request)
+
+  if (deletingProfile && registryConnectionId) {
+    return dispatchConnectionScopedProfileDelete(request, {
+      acquire: profile => profileDeletionGate.acquire(profile),
+      connectionKind: connectionId => registryConnectionKind(connectionId),
+      dispatch: routeProfile =>
+        dispatchRegistryApiRequest(request, registryConnectionId, routeProfile, deletingProfile),
+      isDefaultProfile: profile => profile === 'default',
+      isValidProfileName: profile => PROFILE_NAME_RE.test(profile),
+      prepareLocal: localRequest => prepareProfileDeleteRequest(localRequest).then(() => undefined),
+      teardownConnection: (connectionId, profile) => teardownConnectionScopedProfileBackend(connectionId, profile)
+    })
+  }
 
   if (!mutatingProfile) {
     return handleHermesApiRequest(request)
@@ -13988,6 +14140,27 @@ ipcMain.handle('hermes:readFileText', async (_event, filePath) => {
     }
   } finally {
     await handle.close()
+  }
+})
+
+// Runtime desktop plugins load their FULL source through this door.
+// `hermes:readFileText` is the *preview* read and silently truncates at
+// TEXT_PREVIEW_MAX_BYTES (512 KiB) — for a plugin that means evaluating half a
+// file. Dedicated generous cap, full read, and a hard EFBIG (via maxBytes)
+// instead of truncation when the source exceeds it.
+const PLUGIN_SOURCE_MAX_BYTES = 16 * 1024 * 1024
+
+ipcMain.handle('hermes:readPluginSource', async (_event: unknown, filePath: unknown) => {
+  const { resolvedPath, stat } = await resolveReadableFileForIpc(filePath, {
+    maxBytes: PLUGIN_SOURCE_MAX_BYTES,
+    purpose: 'Plugin source'
+  })
+
+  return {
+    byteSize: stat.size,
+    path: resolvedPath,
+    text: await fs.promises.readFile(resolvedPath, 'utf8'),
+    truncated: false
   }
 })
 

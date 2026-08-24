@@ -274,7 +274,15 @@ def _ra():
 
 
 def _is_interpreter_shutdown_submit_error(exc: RuntimeError) -> bool:
-    return "cannot schedule new futures after interpreter shutdown" in str(exc)
+    """Shutdown-race predicate — shared home in ``tools.interpreter_shutdown``.
+
+    Delegates so all sites (cron delivery, conversation-loop retry, tool
+    submission) recognize both CPython shutdown-message variants instead of
+    each matching its own substring (the bug class behind #55924/#58720).
+    """
+    from tools.interpreter_shutdown import interpreter_shutting_down
+
+    return interpreter_shutting_down(exc)
 
 
 def _emit_terminal_post_tool_call(
@@ -2066,6 +2074,31 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             tool_duration = time.time() - tool_start_time
             if agent._should_emit_quiet_tool_messages():
                 agent._vprint(f"  {_get_cute_tool_message_impl('todo', function_args, tool_duration, result=function_result)}")
+        elif function_name == "message_agent":
+            # Bot Mode teammate DM (tools/bot_mode_dm.py) — injected, not
+            # registered: only a canonical Bot Chat session carries the
+            # schema, and the tool re-gates on the session title itself.
+            def _execute(next_args: dict) -> Any:
+                from tools.bot_mode_dm import message_agent_tool as _message_agent_tool
+                return _message_agent_tool(
+                    target=next_args.get("target", ""),
+                    message=next_args.get("message", ""),
+                    task_id=effective_task_id,
+                    agent=agent,
+                )
+            function_result, function_args, middleware_trace, _execution_blocked, _execution_dispatched = _managed_values(_run_agent_tool_execution_middleware(
+                agent,
+                function_name=function_name,
+                function_args=function_args,
+                effective_task_id=effective_task_id,
+                tool_call_id=getattr(tool_call, "id", "") or "",
+                execute=_execute,
+                scope_block=_ts_scope_block,
+                display_index=i,
+            ))
+            tool_duration = time.time() - tool_start_time
+            if agent._should_emit_quiet_tool_messages():
+                agent._vprint(f"  {_get_cute_tool_message_impl('message_agent', function_args, tool_duration, result=function_result)}")
         elif function_name == "session_search":
             def _execute(next_args: dict) -> Any:
                 session_db = agent._get_session_db_for_recall()
