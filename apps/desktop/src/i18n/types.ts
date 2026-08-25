@@ -2815,6 +2815,9 @@ export interface Translations {
       errorSendDiagnostics: string
       filesChanged: (count: number) => string
       reviewChanges: string
+      viewAllArtifacts: (count: number) => string
+      openFilePreview: (name: string) => string
+      openFileFailed: string
       readAloudFailed: string
       preparingAudio: string
       stopReading: string

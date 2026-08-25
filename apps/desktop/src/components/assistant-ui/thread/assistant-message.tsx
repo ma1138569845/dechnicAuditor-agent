@@ -381,23 +381,18 @@ const AssistantPreviewEmbeds: FC = () => {
  * bail out on identity churn — keeping it at the root meant every settle
  * re-rendered the root and everything under it.
  *
- * Cursor's changed-files card only appears once the turn settles: while the
- * agent is still editing, the tool rows narrate each patch and a card that
- * grew a row per write would thrash the transcript. `EMPTY_PARTS` while
+ * Cursor's artifact cards only appear once the turn settles: while the
+ * agent is still editing, the tool rows narrate each patch and a grid that
+ * grew a tile per write would thrash the transcript. `EMPTY_PARTS` while
  * running keeps this selector referentially stable across the 30 Hz delta
  * stream.
  *
- * It also only rides the LAST turn. The card is a "here's what just landed"
- * summary, not a per-turn artifact: leaving one behind on every reply would
- * stack a wall of stale cards down the transcript. Sending the next message
- * retires it — the working tree it describes is already history by then.
+ * Cards stay on the turn that produced them. Clicking a file opens it in the
+ * right preview rail, so a historical write must remain findable after the
+ * next message — retiring the grid on send would hide the artifacts.
  */
 const SettledChangedFiles: FC = () => {
-  const settledParts = useAuiState(s => {
-    const isLastMessage = s.thread.messages[s.thread.messages.length - 1]?.id === s.message.id
-
-    return s.message.status?.type === 'running' || !isLastMessage ? EMPTY_PARTS : s.message.parts
-  })
+  const settledParts = useAuiState(s => (s.message.status?.type === 'running' ? EMPTY_PARTS : s.message.parts))
 
   return <ChangedFilesCard parts={settledParts} />
 }

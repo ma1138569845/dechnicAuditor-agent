@@ -225,6 +225,32 @@ ${payload}
     ])
   })
 
+  it('keeps office documents from assistant text', () => {
+    const artifacts = collectArtifactsForSession(makeSession(), [
+      {
+        content: 'Created: /tmp/generated/audit.docx',
+        role: 'assistant',
+        timestamp: 1_781_774_001
+      },
+      {
+        content: 'Created: C:\\Temp\\data.xlsx',
+        role: 'assistant',
+        timestamp: 1_781_774_002
+      },
+      {
+        content: 'Created: /tmp/generated/slides.pptx',
+        role: 'assistant',
+        timestamp: 1_781_774_003
+      }
+    ])
+
+    expect(artifacts.map(artifact => artifact.value)).toEqual([
+      '/tmp/generated/audit.docx',
+      'C:\\Temp\\data.xlsx',
+      '/tmp/generated/slides.pptx'
+    ])
+  })
+
   it('keeps explicitly delivered MEDIA files', () => {
     const artifacts = collectArtifactsForSession(makeSession(), [
       {
