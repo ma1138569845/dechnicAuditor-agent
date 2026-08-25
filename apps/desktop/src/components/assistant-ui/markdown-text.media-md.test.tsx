@@ -5,10 +5,11 @@ import { isMarkdownDocumentPath, mediaMarkdownHref } from '@/lib/media'
 
 import { MarkdownTextContent } from './markdown-text'
 
-// Regression for #84951: a `.md` delivered via MEDIA has no entry in
-// MEDIA_BY_EXT, so it classified as a generic 'file' and rendered as a
-// download-style link. Markdown is renderable content — it must route to the
-// preview rail (which renders .md with a rendered/source toggle) instead.
+// Regression for #84951 and Office MEDIA: a file delivered via MEDIA has no
+// entry in MEDIA_BY_EXT, so it classified as a generic 'file' and rendered as
+// a download-style `Open …` link (and Windows paths percent-encoded the
+// basename). Documents — markdown, Office, PDF, zip — must route to the
+// preview rail instead.
 describe('markdown documents delivered via MEDIA', () => {
   afterEach(cleanup)
 
@@ -34,12 +35,25 @@ describe('markdown documents delivered via MEDIA', () => {
     expect(screen.getByText('report.md')).toBeTruthy()
   })
 
-  it('still renders a non-markdown MEDIA file through the media fallback', async () => {
+  it('renders a MEDIA office document as a preview attachment, not an Open download link', async () => {
+    const path = 'C:/Users/Dechnic/projects/energy-audit/能源审计技能体系介绍.docx'
+    const href = mediaMarkdownHref(path)
+
+    render(<MarkdownTextContent isRunning={false} text={`[File: 能源审计技能体系介绍.docx](${href})`} />)
+
+    expect(await screen.findByRole('button', { name: 'Open preview' })).toBeTruthy()
+    expect(screen.getByText('能源审计技能体系介绍.docx')).toBeTruthy()
+    expect(screen.queryByText(/^Loading /)).toBeNull()
+    expect(screen.queryByText(/%E8%83%BD/)).toBeNull()
+  })
+
+  it('renders MEDIA zip/pdf through the preview rail instead of the download fallback', async () => {
     const href = mediaMarkdownHref('/home/user/out/archive.zip')
 
     render(<MarkdownTextContent isRunning={false} text={`[archive.zip](${href})`} />)
 
-    expect(await screen.findByText(/archive\.zip/)).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Open preview' })).toBeTruthy()
+    expect(screen.getByText('archive.zip')).toBeTruthy()
+    expect(screen.queryByText(/^Open archive\.zip$/)).toBeNull()
   })
 })

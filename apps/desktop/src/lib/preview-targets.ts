@@ -41,16 +41,27 @@ export function previewTargetFromMarkdownHref(href?: string): string | null {
 }
 
 export function previewName(target: string): string {
-  try {
-    const url = new URL(target)
+  if (/^https?:\/\//i.test(target)) {
+    try {
+      const url = new URL(target)
+      const file = url.pathname.split('/').filter(Boolean).pop()
 
-    if (url.protocol === 'file:') {
-      return decodeURIComponent(url.pathname).split(/[\\/]/).filter(Boolean).pop() || target
+      return file ? decodeURIComponent(file) : url.host
+    } catch {
+      // fall through to the filesystem splitter
     }
+  }
 
-    const file = url.pathname.split('/').filter(Boolean).pop()
+  if (/^file:/i.test(target)) {
+    try {
+      return decodeURIComponent(new URL(target).pathname).split(/[\\/]/).filter(Boolean).pop() || target
+    } catch {
+      // fall through
+    }
+  }
 
-    return file || url.host
+  try {
+    return decodeURIComponent(target).split(/[\\/]/).filter(Boolean).pop() || target
   } catch {
     return target.split(/[\\/]/).filter(Boolean).pop() || target
   }

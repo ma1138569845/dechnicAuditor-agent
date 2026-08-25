@@ -55,14 +55,32 @@ export function mediaMime(path: string): string {
   return mediaInfo(path)?.mime ?? 'application/octet-stream'
 }
 
-export function mediaName(path: string): string {
+function decodeURIComponentSafe(value: string): string {
   try {
-    const url = new URL(path)
-
-    return url.pathname.split('/').filter(Boolean).pop() || path
+    return decodeURIComponent(value)
   } catch {
-    return path.split(/[\\/]/).filter(Boolean).pop() || path
+    return value
   }
+}
+
+export function mediaName(path: string): string {
+  // Do not run Windows drive paths through `new URL()`. WHATWG treats `C:` as a
+  // scheme and percent-encodes non-ASCII segments, which painted
+  // `Open %E8%83%BD…` for MEDIA-delivered Word files.
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const file = new URL(path).pathname.split('/').filter(Boolean).pop()
+
+      return file ? decodeURIComponentSafe(file) : path
+    } catch {
+      // fall through to the filesystem splitter
+    }
+  }
+
+  const file = filePathFromMediaPath(path)
+  const decoded = decodeURIComponentSafe(file)
+
+  return decoded.split(/[?#]/, 1)[0]?.split(/[\\/]/).filter(Boolean).pop() || path
 }
 
 export function mediaMarkdownHref(path: string): string {

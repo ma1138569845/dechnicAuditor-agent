@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractPreviewTargets, previewTargetFromMarkdownHref, stripPreviewTargets } from './preview-targets'
+import {
+  extractPreviewTargets,
+  previewName,
+  previewTargetFromMarkdownHref,
+  stripPreviewTargets
+} from './preview-targets'
 
 describe('preview target detection', () => {
   it('does not infer preview targets from raw paths or URLs', () => {
@@ -16,6 +21,11 @@ describe('preview target detection', () => {
 
   it('extracts preview targets from already-rendered preview markers', () => {
     expect(extractPreviewTargets('[Preview: demo.html](#preview:%2Ftmp%2Fdemo.html)')).toEqual(['/tmp/demo.html'])
+  })
+
+  it('shows a readable basename for Windows office paths', () => {
+    expect(previewName('C:/Users/Dechnic/out/能源审计技能体系介绍.docx')).toBe('能源审计技能体系介绍.docx')
+    expect(previewName('C:\\Users\\Dechnic\\out\\报告.xlsx')).toBe('报告.xlsx')
   })
 
   it('strips preview targets from visible assistant text', () => {

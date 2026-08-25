@@ -24,7 +24,6 @@ import {
   downloadGatewayMediaFile,
   isFileMediaPath,
   isInlineMediaSrc,
-  isMarkdownDocumentPath,
   isRemoteGateway,
   mediaExternalUrl,
   mediaKind,
@@ -258,11 +257,12 @@ function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a
   const mediaPath = mediaPathFromMarkdownHref(href)
 
   if (mediaPath) {
-    // A delivered markdown document is renderable content, not an opaque
-    // download: route it to the preview rail (which renders .md with a
-    // rendered/source toggle) instead of the download-link fallback that
-    // `mediaKind() === 'file'` would produce. (#84951)
-    if (isMarkdownDocumentPath(mediaPath)) {
+    // Images/audio/video keep the inline player. Every other MEDIA delivery
+    // (markdown, Office, PDF, zip) is a document — route it to the preview
+    // rail instead of MediaAttachment's `Open ${name}` download fallback.
+    // That fallback is how Word files from python-docx painted
+    // `Open %E8%83%BD…` in the transcript. (#84951, generalized)
+    if (mediaKind(mediaPath) === 'file') {
       return <PreviewAttachment source="tool-result" target={mediaPath} />
     }
 

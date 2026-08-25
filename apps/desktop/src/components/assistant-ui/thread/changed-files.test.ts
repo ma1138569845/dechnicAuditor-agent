@@ -5,6 +5,7 @@ import {
   formatChangedFileSize,
   isHtmlPath
 } from '@/components/assistant-ui/thread/changed-files'
+import { mediaMarkdownHref } from '@/lib/media'
 
 const PATCH_DIFF = '--- a/src/demo.ts\n+++ b/src/demo.ts\n@@ -1 +1,2 @@\n-old\n+new\n+more\n'
 
@@ -99,6 +100,23 @@ describe('deriveChangedFiles', () => {
           result: { file_id: 'new_doc_xxx', success: true },
           toolName: 'office_save'
         })
+      ])
+    ).toEqual([])
+  })
+
+  it('keeps office files delivered via MEDIA in assistant text', () => {
+    const path = 'C:/Users/Dechnic/projects/energy-audit/能源审计技能体系介绍.docx'
+    const text = `文档已生成\n[File: 能源审计技能体系介绍.docx](${mediaMarkdownHref(path)})`
+
+    expect(deriveChangedFiles([{ type: 'text', text }])).toEqual([
+      { added: 0, byteSize: undefined, name: '能源审计技能体系介绍.docx', path, removed: 0 }
+    ])
+  })
+
+  it('does not treat inline MEDIA images as file artifacts', () => {
+    expect(
+      deriveChangedFiles([
+        { type: 'text', text: `[Image: shot.png](${mediaMarkdownHref('/tmp/shot.png')})` }
       ])
     ).toEqual([])
   })
