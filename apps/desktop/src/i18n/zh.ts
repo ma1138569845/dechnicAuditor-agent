@@ -871,7 +871,7 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
       versionUnavailable: '版本不可用',
       bundleOutOfSync: '应用构建版本过旧',
       bundleOutOfSyncDesc:
-        'Hermes 运行时已更新,但桌面应用本身仍是旧构建——在应用更新之前,新的界面功能(如 Bot Mode)不会显示。请运行下方的更新以重新构建应用。如果此警告仍未消除,请从最新的桌面安装程序重新安装。',
+        'DechnicAuditor 运行时已更新,但桌面应用本身仍是旧构建——在应用更新之前,新的界面功能(如 Bot Mode)不会显示。请运行下方的更新以重新构建应用。如果此警告仍未消除,请从最新的桌面安装程序重新安装。',
       bundleOutOfSyncAction: '获取安装程序',
       updates: '更新',
       checkNow: '立即检查',
@@ -957,7 +957,7 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
     // v2 多连接注册表：设置 → 网关。
     connections: {
       title: '已注册网关',
-      intro: '管理本机以及通过远程、SSH 或 Hermes Cloud 连接可访问的每个 Hermes 网关。',
+      intro: '管理本机以及通过远程、SSH 或 DechnicAuditor Cloud 连接可访问的每个 DechnicAuditor 网关。',
       stagedNote:
         '可在“会话”侧边栏切换网关。配置档案、聊天、消息和定时任务归属于各自网关；其他网关上的工作会继续运行。',
       launchModeTitle: '启动时返回上次使用网关的会话视图',
@@ -988,9 +988,9 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
       kindRemote: '远程网关',
       kindCloud: 'Hermes Cloud',
       kindSsh: 'SSH',
-      kindLocalDesc: '由本应用管理的 Hermes 运行时。',
+      kindLocalDesc: '由本应用管理的 DechnicAuditor 运行时。',
       kindRemoteDesc: '可通过 HTTP(S) 访问的 Hermes 网关——局域网、Tailscale 或互联网。',
-      kindCloudDesc: '通过你的 Hermes Cloud 账户发现的托管实例。',
+      kindCloudDesc: '通过你的 DechnicAuditor Cloud 账户发现的托管实例。',
       kindSshDesc: '通过 SSH 访问的 Hermes 安装。',
       labelTitle: '名称',
       labelDesc: '必填。此实例出现的所有位置都会显示该名称；必须唯一（例如“家庭服务器”、“工作笔记本”）。',
@@ -1009,7 +1009,7 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
       duplicateSsh: (label: string) => `已存在指向此 SSH 主机的连接（“${label}”）。`,
       sameBackendHint: (label: string) => `与“${label}”是同一后端`,
       localAddHint: '“本地”不可用：应用管理的本地连接已存在（永远只有一个）。',
-      cloudAddHint: '提示：在上方登录 Hermes Cloud 可自动发现你的智能体——此表单仅用于手动注册已知的实例 URL。',
+      cloudAddHint: '提示：在上方登录 DechnicAuditor Cloud 可自动发现你的智能体——此表单仅用于手动注册已知的实例 URL。',
       save: '保存连接',
       saving: '保存中…',
       cancel: '取消',
