@@ -5916,7 +5916,7 @@ function displayName(bot, meta) {
   // that reads like nobody bothered. Present it as Hermes (the agent it is)
   // unless the user gives it a real title.
   if ((bot.name || '').trim().toLowerCase() === 'default' && !bot.title) {
-    return 'Hermes'
+    return 'DechnicAuditor'
   }
 
   const raw = (bot.title || bot.name || '').replace(/[-_]+/g, ' ').trim()
