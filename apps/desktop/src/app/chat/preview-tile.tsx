@@ -10,50 +10,37 @@
  * one bar instead of two.
  */
 
-import { allPaneIds, findGroup } from '@/components/pane-shell/tree/model'
-import { $activeTreeGroup, $layoutTree, revealTreePane } from '@/components/pane-shell/tree/store'
+import { useStore } from '@nanostores/react'
+
+import { findGroup } from '@/components/pane-shell/tree/model'
+import { $activeTreeGroup, $layoutTree, revealTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from '@/store/layout'
-import { $previewTabs, closeRightRailTab, type PreviewTab, type PreviewTarget } from '@/store/preview'
+import {
+  $browserPages,
+  $previewTabs,
+  type BrowserPage,
+  closeRightRailTab,
+  forgetBrowserPage,
+  newBrowserTab,
+  type PreviewTarget
+} from '@/store/preview'
 
 import { paneMirror } from './pane-mirror'
 import { PreviewTilePane } from './right-rail/preview'
 import { forgetPreviewConsole } from './right-rail/preview-console-store'
-
-function previewPaneId(tab: PreviewTab): string {
-  return `${PREVIEW_TILE_PREFIX}:${tab.id}`
-}
-
-/** Anchor a new preview to an existing preview zone so multiple files stack as
- *  tabs in the same right-side pane. The first preview has no anchor and docks
- *  to the right of the workspace, creating the zone. */
-function existingPreviewAnchor(newTab: PreviewTab): string | undefined {
-  const tree = $layoutTree.get()
-
-  if (!tree) {
-    return undefined
-  }
-
-  const newPaneId = previewPaneId(newTab)
-  const treePanes = new Set(allPaneIds(tree))
-  const existing = $previewTabs
-    .get()
-    .filter(tab => previewPaneId(tab) !== newPaneId)
-    .map(tab => previewPaneId(tab))
-    .find(id => treePanes.has(id))
-
-  return existing
-}
 
 /** The target behind a tile id, or null once its tab is gone. */
 function targetFor(tabId: string): PreviewTarget | null {
   return $previewTabs.get().find(tab => tab.id === tabId)?.target ?? null
 }
 
-/** Tab title. A URL is a BROWSER — the tab names the surface, not the page, so
- *  it doesn't rename itself on every navigation. A file names the file; an
- *  artifact is titled rather than located, so its label is the whole name. */
+/** Tab title. A URL tab is titled by the CONTRIBUTION as the surface — see
+ *  `BrowserTabLabel` for the live page name the strip actually renders — so
+ *  navigating doesn't re-register the pane on every hop. A file names the
+ *  file; an artifact is titled rather than located, so its label is the whole
+ *  name. */
 function previewTitle(tabId: string): string {
   const target = targetFor(tabId)
 
@@ -73,6 +60,40 @@ function previewTitle(tabId: string): string {
   const tail = value.split(/[\\/]/).filter(Boolean).at(-1)
 
   return tail || value || 'Preview'
+}
+
+/**
+ * What to call a Browser tab. Its page title, else the host it is on, else
+ * the surface — the ladder every browser walks, and the reason more than one
+ * Browser is usable at all: three tabs reading "Browser" name nothing.
+ *
+ * A page that never set a title reports its own address as one, which is a
+ * worse label than the host it came from, so an address-shaped title falls
+ * through.
+ */
+export function browserTabLabel(target: PreviewTarget, page?: BrowserPage): string {
+  const url = page?.url || target.url
+  const title = page?.title.trim()
+
+  if (title && title !== url) {
+    return title
+  }
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, '') || 'Browser'
+  } catch {
+    // `about:blank` and half-typed addresses have no host to fall back to.
+    return 'Browser'
+  }
+}
+
+/** Live tab label for a Browser: it renames itself as the page navigates,
+ *  without the contribution re-registering (see PaneChrome.tabTitle). */
+function BrowserTabLabel({ tabId }: { tabId: string }) {
+  const pages = useStore($browserPages)
+  const target = targetFor(tabId)
+
+  return target ? browserTabLabel(target, pages[tabId]) : null
 }
 
 /** The tab's lead glyph — the same file/tool icon family the file tree and code
@@ -96,6 +117,25 @@ function PreviewTabLead({ tabId }: { tabId: string }) {
 }
 
 const PREVIEW_TILE_PREFIX = 'preview-tile'
+
+const previewPaneId = (tabId: string) => `${PREVIEW_TILE_PREFIX}:${tabId}`
+
+/** The pane a NEW preview tile should stack into: another preview tile already
+ *  in the tree, else another open tab adopted earlier in the same pass (a
+ *  reload restores every tab at once, before any of them is in the tree).
+ *  `undefined` means this is the first preview — it opens its own zone. */
+function existingPreviewAnchor(tabId: string): string | undefined {
+  const own = previewPaneId(tabId)
+  const inTree = treePanesWithPrefix(`${PREVIEW_TILE_PREFIX}:`).find(id => id !== own)
+
+  if (inTree) {
+    return inTree
+  }
+
+  const other = $previewTabs.get().find(tab => tab.id !== tabId)
+
+  return other ? previewPaneId(other.id) : undefined
+}
 
 /** Keep pane contributions mirroring `$previewTabs`, keep the store's selection
  *  and the tree's active pane agreeing, and front a tile when its tab is
@@ -145,7 +185,7 @@ export function watchPreviewTiles(): void {
   $activeTreeGroup.listen(follow)
 }
 
-const watchPreviewTileMirror = paneMirror<PreviewTab>({
+const watchPreviewTileMirror = paneMirror<{ id: string }>({
   source: $previewTabs,
   // Unscoped on purpose. `$previewTabs` is one global Browser/file surface —
   // clicking a link in a bot chat must open the same pane Sessions already
@@ -153,16 +193,23 @@ const watchPreviewTileMirror = paneMirror<PreviewTab>({
   // `openPreview` ran and the click looked like a no-op.
   key: tab => tab.id,
   prefix: PREVIEW_TILE_PREFIX,
-  // First preview: dock to the right of the workspace, creating its own zone.
-  // Subsequent previews: stack as tabs in that existing preview zone so opening
-  // multiple files doesn't split the layout into a new pane per file.
-  anchor: tab => existingPreviewAnchor(tab),
-  dir: tab => (existingPreviewAnchor(tab) ? 'center' : 'right'),
+  // The FIRST preview still opens its own zone docked beside main (identical
+  // to route tiles — NOT anchored to the file tree, so ⌘J can't take it
+  // along). Every SUBSEQUENT preview stacks into that zone as a center tab:
+  // without the anchor each opened file split a new zone off the right edge
+  // (#93610), turning three file opens into three ever-narrower columns.
+  dir: tab => (existingPreviewAnchor(tab.id) ? 'center' : 'right'),
+  anchor: tab => existingPreviewAnchor(tab.id),
   minWidth: '22rem',
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,
+  tabTitle: tabId => (targetFor(tabId)?.kind === 'url' ? <BrowserTabLabel tabId={tabId} /> : undefined),
+  // A Browser is a vessel, so there can be more of it — a file peek is one of
+  // a kind and leaves the strip's "+" to whatever else the zone holds.
+  newTab: tabId => (targetFor(tabId)?.kind === 'url' ? newBrowserTab : undefined),
   render: tabId => <PreviewTilePane tabId={tabId} />,
   close: tabId => {
+    forgetBrowserPage(tabId)
     forgetPreviewConsole(tabId)
     closeRightRailTab(tabId)
   }

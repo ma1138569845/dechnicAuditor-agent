@@ -1395,17 +1395,33 @@ def _close_sessions_for_transport(
             viewers = session.get("viewers")
             if viewers:
                 viewers.pop(transport, None)
-            remaining = [
-                (ts, v)
-                for v, ts in (viewers or {}).items()
-                if v is not transport and not _transport_is_dead(v)
-            ]
-            if remaining:
-                remaining.sort(key=lambda kv: kv[0])
-                session["transport"] = remaining[-1][1]
-                continue
-            session["transport"] = _detached_ws_transport
-            session.pop("_client_gone_interrupt_requested", None)
+            # Revalidate under the sessions lock before stomping (#77129):
+            # between the owned-sessions snapshot above and this write, a
+            # concurrent session.resume can rebind the session to a NEW live
+            # transport. Stomping it back onto the drop sentinel here would
+            # knock an attached client into detached state and arm an orphan
+            # reap against a session that has a live owner. If the transport
+            # already moved on to a different live transport, this disconnect
+            # has nothing left to tear down — skip the park AND the reap.
+            with _sessions_lock:
+                current = session.get("transport")
+                if (
+                    current is not transport
+                    and current is not None
+                    and not _transport_is_dead(current)
+                ):
+                    continue
+                remaining = [
+                    (ts, v)
+                    for v, ts in (viewers or {}).items()
+                    if v is not transport and not _transport_is_dead(v)
+                ]
+                if remaining:
+                    remaining.sort(key=lambda kv: kv[0])
+                    session["transport"] = remaining[-1][1]
+                    continue
+                session["transport"] = _detached_ws_transport
+                session.pop("_client_gone_interrupt_requested", None)
             detached += 1
             try:
                 _schedule_ws_orphan_reap(sid)
@@ -1601,6 +1617,118 @@ def _start_idle_reaper() -> None:
                 pass
 
     threading.Thread(target=_loop, daemon=True).start()
+
+
+# ── Startup sweep for orphaned session rows (#65194) ─────────────────────
+# The WS-orphan reaper above is an in-process threading.Timer: a gateway
+# restart (update, crash, systemd) kills it before it fires, leaving the
+# session row `ended_at IS NULL` forever. This is the startup complement
+# every other resource type already has (docker_orphan_reaper, compression
+# orphans). Scheduled once per process from both gateway entry points
+# (stdio `entry.main` and the WS sidecar's `handle_ws`) — desktop/dashboard
+# never run `entry.main()`. state.db is shared by sibling processes on the
+# same profile, so eligibility is conservative. Disable via
+# `dashboard.startup_orphan_sweep: false` (default on).
+_ORPHAN_SWEEP_SOURCES = ("tui", "desktop", "subagent")
+_startup_orphan_sweep_ran = False
+_startup_orphan_sweep_lock = threading.Lock()
+
+
+def _session_orphan_reaper_enabled() -> bool:
+    """``dashboard.startup_orphan_sweep`` (default on). Fail-open on errors."""
+    try:
+        dashboard_cfg = (_load_cfg() or {}).get("dashboard") or {}
+        if isinstance(dashboard_cfg, dict) and "startup_orphan_sweep" in dashboard_cfg:
+            return is_truthy_value(
+                dashboard_cfg.get("startup_orphan_sweep"), default=True
+            )
+        # Fail-open: a missing key (raw yaml, no DEFAULT_CONFIG merge on
+        # this loader) must keep the sweep on.
+        return True
+    except Exception:
+        return True
+
+
+def _live_session_ids() -> list[str]:
+    """Session ids this process currently holds in memory."""
+    ids: set[str] = set()
+    with _sessions_lock:
+        for sid, session in _sessions.items():
+            if sid:
+                ids.add(str(sid))
+            agent = session.get("agent") if isinstance(session, dict) else None
+            for candidate in (
+                getattr(agent, "session_id", None),
+                session.get("session_key") if isinstance(session, dict) else None,
+            ):
+                if candidate:
+                    ids.add(str(candidate))
+    return sorted(ids)
+
+
+def _sweep_orphaned_session_rows() -> list[str]:
+    """End orphaned tui/desktop/subagent rows left by a dead process.
+
+    "Provably orphaned" is inferred conservatively from inactivity — the
+    row must have been created AND last messaged at least the session TTL
+    ago (``HERMES_TUI_SESSION_TTL_S``). A freshly created row that copied
+    an old transcript is protected by its own ``started_at``. Rows this
+    process still holds in memory (e.g. a ``session.resume`` during the
+    startup grace window) are excluded so the sweep never races a
+    mid-reconnect client.
+    """
+    db = _get_db()
+    if db is None:
+        return []
+    ttl = _SESSION_TTL_S
+    if ttl <= 0:
+        return []
+    swept = db.sweep_orphaned_sessions(
+        max_idle_seconds=ttl,
+        sources=_ORPHAN_SWEEP_SOURCES,
+        exclude_ids=tuple(_live_session_ids()),
+    )
+    if swept:
+        logger.info(
+            "Closed %d orphaned session row(s) from a previous gateway "
+            "process (startup_orphan_reap): %s",
+            len(swept),
+            ", ".join(swept),
+        )
+    return swept
+
+
+def _schedule_startup_orphan_sweep() -> None:
+    """Schedule the once-per-process startup orphan sweep (#65194).
+
+    Called from both gateway entry points. Repeat calls are no-ops. The
+    sweep is delayed by the WS-orphan grace window so a client reconnecting
+    right after a restart can ``session.resume`` its row before the sweep
+    reads the DB. ``HERMES_TUI_WS_ORPHAN_REAP_GRACE_S=0`` (park forever)
+    and ``HERMES_TUI_SESSION_TTL_S=0`` both suppress the sweep; so does
+    ``dashboard.startup_orphan_sweep: false``.
+    """
+    global _startup_orphan_sweep_ran
+    if _WS_ORPHAN_REAP_GRACE_S <= 0 or _SESSION_TTL_S <= 0:
+        return
+    if not _session_orphan_reaper_enabled():
+        return
+    if _startup_orphan_sweep_ran:
+        return
+    with _startup_orphan_sweep_lock:
+        if _startup_orphan_sweep_ran:
+            return
+        _startup_orphan_sweep_ran = True
+
+    def _run() -> None:
+        try:
+            _sweep_orphaned_session_rows()
+        except Exception:
+            logger.warning("startup orphan session sweep failed", exc_info=True)
+
+    timer = threading.Timer(_WS_ORPHAN_REAP_GRACE_S, _run)
+    timer.daemon = True
+    timer.start()
 
 
 atexit.register(_shutdown_sessions)
@@ -1871,12 +1999,24 @@ def write_json(obj: dict) -> bool:
        :func:`dispatch` for the lifetime of a request).
     3. Otherwise the module-level stdio transport, matching the historical
        behaviour and keeping tests that monkey-patch ``_real_stdout`` green.
+
+    Every routed event frame is stamped with a per-session monotonic
+    ``seq`` and recorded in the bounded replay ring (tui_gateway.event_replay)
+    so a WS client can resume losslessly after a reconnect via
+    ``session.events.since``.
     """
     if obj.get("method") == "event":
-        sid = ((obj.get("params") or {}).get("session_id")) or ""
+        params = obj.get("params")
+        sid = ((params or {}).get("session_id")) if isinstance(params, dict) else ""
         if sid and (t := (_sessions.get(sid) or {}).get("transport")) is not None:
+            from tui_gateway.event_replay import _stamp_event
+
+            _stamp_event(obj)
             return t.write(obj)
 
+    from tui_gateway.event_replay import _stamp_event
+
+    _stamp_event(obj)
     return (current_transport() or _stdio_transport).write(obj)
 
 
@@ -2741,8 +2881,25 @@ def _start_agent_build(sid: str, session: dict) -> None:
 
 
 def _sess_nowait(params, rid):
-    s = _sessions.get(params.get("session_id") or "")
-    return (s, None) if s else (None, _err(rid, 4001, "session not found"))
+    sid = params.get("session_id") or ""
+    s = _sessions.get(sid)
+    if s:
+        return (s, None)
+    # A session-scoped RPC hit a runtime id the gateway no longer holds
+    # (detached on WS disconnect and orphan-reaped, LRU-evicted, or torn down
+    # after an idle TTL). The client is expected to recover via
+    # session.resume on the STORED session id, but a plain stale-id send
+    # leaves no trace anywhere when the resume never fires — every RPC in
+    # this class returned a silent 4001. Log it so a "message vanished"
+    # report is diagnosable as "request arrived and was rejected" instead of
+    # "request never arrived" (see #90428).
+    logger.warning(
+        "session-scoped RPC rejected: session_id=%r not in memory "
+        "(detached/reaped runtime; client should resume the stored session), rid=%r",
+        sid,
+        rid,
+    )
+    return (None, _err(rid, 4001, "session not found"))
 
 
 def _sess(params, rid):
@@ -3361,6 +3518,159 @@ def _session_db(session: dict):
         if close_db and db is not None:
             with contextlib.suppress(Exception):
                 db.close()
+
+
+def _rewind_active_session_history(
+    session: dict,
+    user_ordinal: int,
+    *,
+    require_retryable: bool = False,
+) -> tuple[list[dict], dict, int]:
+    """Rewind one canonical user turn while retaining carrier scaffolding.
+
+    The caller holds ``history_lock``.  Persistent sessions archive the target
+    and tail; a composite carrier's own hidden handoff is inserted in that same
+    transaction.  Memory is installed only after the durable commit and is
+    built from the already-validated prefix plus the returned scaffold row id,
+    so there is no fallible post-commit reload.
+    """
+    from agent.context_compressor import (
+        history_before_user_originated_turn,
+        retryable_user_text,
+        split_user_originated_turn,
+        user_originated_turn_view,
+    )
+    from agent.memory_manager import sanitize_context
+    from agent.tool_dispatch_helpers import (
+        _is_multimodal_tool_result,
+        _multimodal_text_summary,
+    )
+
+    def _comparison_content(message: dict) -> Any:
+        content = message.get("content")
+        if _is_multimodal_tool_result(content):
+            content = _multimodal_text_summary(content)
+        elif isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(str(part.get("text", "")))
+                elif (
+                    isinstance(part, dict)
+                    and part.get("type") in {"image", "image_url", "input_image"}
+                ):
+                    text_parts.append("[screenshot]")
+            content = "\n".join(text_parts) if text_parts else None
+        if message.get("role") in {"user", "assistant"} and isinstance(content, str):
+            return sanitize_context(content).strip()
+        return content
+
+    history = _history_without_ephemeral_scaffolding(session.get("history", []))
+    user_indices = [
+        index
+        for index, message in enumerate(history)
+        if user_originated_turn_view(message) is not None
+    ]
+    if user_ordinal < 0 or user_ordinal >= len(user_indices):
+        raise ValueError("target user message is no longer in session history")
+    target_index = user_indices[user_ordinal]
+    installed, live_view = history_before_user_originated_turn(history, target_index)
+    rewound_count = len(history) - target_index
+
+    session_key = str(session.get("session_key") or "").strip()
+    persisted = False
+    if session_key:
+        with _session_db(session) as db:
+            if db is None:
+                raise RuntimeError("session database is unavailable")
+            expected_active_ids = db.get_active_message_ids(session_key)
+            durable = db.get_messages_as_conversation(
+                session_key,
+                include_row_ids=True,
+            )
+            durable_user_indices = [
+                index
+                for index, message in enumerate(durable)
+                if user_originated_turn_view(message) is not None
+            ]
+            if len(durable_user_indices) != len(user_indices):
+                raise RuntimeError(
+                    "session history changed before the rewind could be persisted"
+                )
+            durable_target_index = durable_user_indices[user_ordinal]
+            durable_target = durable[durable_target_index]
+            durable_prefix, durable_live_view = history_before_user_originated_turn(
+                durable, durable_target_index
+            )
+            if _comparison_content(durable_live_view) != _comparison_content(live_view):
+                raise RuntimeError(
+                    "session history changed before the rewind could be persisted"
+                )
+            target_row_id = durable_target.get("_row_id")
+            if not isinstance(target_row_id, int):
+                raise RuntimeError("rewind target has no durable row identity")
+            if require_retryable:
+                retryable_user_text(durable_live_view.get("content"))
+            scaffold, _ = split_user_originated_turn(durable_target)
+            result = db.rewind_to_message(
+                session_key,
+                target_row_id,
+                preserve_compaction_handoff=scaffold is not None,
+                expected_active_ids=expected_active_ids,
+                expected_target_content=durable_live_view.get("content"),
+            )
+            if scaffold is not None:
+                replacement_id = result.get("replacement_message_id")
+                if not isinstance(replacement_id, int):
+                    raise RuntimeError(
+                        "rewind commit did not return the replacement scaffold id"
+                    )
+                durable_prefix[-1]["_row_id"] = replacement_id
+                durable_prefix[-1]["_db_persisted"] = True
+                installed[-1] = durable_prefix[-1]
+            # Current clients address destructive follow-ups by durable row id.
+            # Preserve the richer warm content (for example image parts), but
+            # copy row identities when the retained warm/durable shapes align.
+            if len(installed) == len(durable_prefix) and all(
+                warm.get("role") == durable_message.get("role")
+                and bool(warm.get("display_kind"))
+                == bool(durable_message.get("display_kind"))
+                and _comparison_content(warm)
+                == _comparison_content(durable_message)
+                for warm, durable_message in zip(installed, durable_prefix)
+            ):
+                for warm, durable_message in zip(installed, durable_prefix):
+                    row_id = durable_message.get("_row_id")
+                    if isinstance(row_id, int):
+                        warm["_row_id"] = row_id
+            live_view = durable_live_view
+            rewound_count = int(result.get("rewound_count", 0))
+            persisted = True
+    elif require_retryable:
+        retryable_user_text(live_view.get("content"))
+
+    installed = [message.copy() for message in installed]
+    session["history"] = installed
+    session["history_version"] = int(session.get("history_version", 0)) + 1
+    agent = session.get("agent")
+    if agent is not None:
+        agent._session_messages = installed
+        if hasattr(agent, "_last_flushed_db_idx"):
+            agent._last_flushed_db_idx = len(installed) if persisted else 0
+        if hasattr(agent, "_db_flush_scan_prefix"):
+            agent._db_flush_scan_prefix = installed[:] if persisted else None
+    return installed, live_view, rewound_count
+
+
+def _history_without_ephemeral_scaffolding(history: list[dict]) -> list[dict]:
+    """Return the durable transcript shape without transient recovery rows."""
+    from run_agent import _is_ephemeral_scaffolding
+
+    return [
+        message.copy()
+        for message in history
+        if not _is_ephemeral_scaffolding(message)
+    ]
 
 
 def _persist_session_git_meta(session: dict, cwd: str, generation: int) -> None:
@@ -15175,6 +15485,21 @@ def _persist_wake_enabled(enabled: bool) -> bool:
     except Exception as e:
         logger.warning("wake: failed to persist wake_word.enabled=%s: %s", enabled, e)
         return False
+
+
+@method("ping")
+def _(rid, params: dict) -> dict:
+    """Cheapest possible liveness probe for the desktop client.
+
+    Answered synchronously on the WS reader thread, so it works even while
+    every agent is mid-turn or the GIL is contended — the round-trip only
+    measures socket health, not backend load. A desktop client uses it after
+    sleep/wake to distinguish a half-open TCP connection (no close event, so
+    ``connectionState`` still reads ``open`` while every RPC hangs until its
+    per-call timeout) from a genuinely healthy socket, and forces a reconnect
+    in the former case instead of letting the next ``prompt.submit`` hang.
+    """
+    return _ok(rid, {"pong": True})
 
 
 @method("wake.start")

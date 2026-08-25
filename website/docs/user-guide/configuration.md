@@ -1,10 +1,10 @@
 ---
 sidebar_position: 2
-title: "Configuration"
+title: "Hermes Agent Configuration"
 description: "Configure Hermes Agent — config.yaml, providers, models, API keys, and more"
 ---
 
-# Configuration
+# Hermes Agent Configuration
 
 All settings are stored in the `~/.hermes/` directory for easy access.
 
@@ -2005,6 +2005,15 @@ When `redact_pii` is `true`, the gateway redacts personally identifiable informa
 
 Hashes are deterministic — the same user always maps to the same hash, so the model can still distinguish between users in group chats. Routing and delivery use the original values internally.
 
+### OpenAI Codex request identity
+
+OpenAI requires third-party Codex harnesses to identify themselves.
+ChatGPT-authenticated requests to the official Codex endpoint automatically
+send `originator: hermes-agent` and `User-Agent: HermesAgent/<version>`.
+The existing ChatGPT account header is preserved. No additional prompt content
+or telemetry request is sent.
+Direct OpenAI API requests and custom proxy endpoints are unchanged.
+
 ## Speech-to-Text (STT)
 
 ```yaml
@@ -2611,6 +2620,7 @@ dashboard:
   ws_ping_interval: 20.0      # Non-loopback WebSocket keepalive ping interval (seconds)
   ws_ping_timeout: 20.0       # Non-loopback WebSocket keepalive pong timeout (seconds)
   ws_orphan_reap_grace_s: 20.0 # Grace before a WS-detached session is reaped (seconds)
+  startup_orphan_sweep: true  # Close session rows orphaned by a dead gateway process at boot
 ```
 
 - `theme` — dashboard visual theme.
@@ -2619,3 +2629,4 @@ dashboard:
 - `oauth` / `basic_auth` / `drain_auth` — auth provider config read by the bundled dashboard-auth plugins. The drain secret itself is **not** set here; it's provisioned via the `HERMES_DASHBOARD_DRAIN_SECRET` env var. See [Web Dashboard](/user-guide/features/web-dashboard) for full auth setup.
 - `ws_ping_interval` / `ws_ping_timeout` — WebSocket keepalive tuning for non-loopback binds (loopback connections never ping). Raise these on high-latency links (Tailscale, distant SSH tunnels) where the 20 s defaults can manufacture spurious 1006 disconnects.
 - `ws_orphan_reap_grace_s` — how long a WS-detached session waits before the orphan reaper collects it. Raise alongside the keepalive values if clients reconnect slowly. (`HERMES_TUI_WS_ORPHAN_REAP_GRACE_S` remains as an internal override.)
+- `startup_orphan_sweep` (default `true`) — the WS-orphan reap timer above is in-process, so a gateway restart (update, crash, systemd) before it fires leaves the session row open forever — phantom "active" work in `/resume` and dashboards. On every gateway boot — both the stdio TUI (`entry.main`) and the desktop/dashboard WebSocket sidecar (`handle_ws`) — rows with source `tui` / `desktop` / `subagent` whose start time **and** newest message are both older than the session TTL (`HERMES_TUI_SESSION_TTL_S`, default 6 hours) are closed with `end_reason: startup_orphan_reap`. Messaging-platform sessions (Telegram, Discord, …) are never touched, live in-memory sessions (a client that already resumed) are excluded, and swept sessions remain resumable.

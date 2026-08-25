@@ -456,6 +456,18 @@ def _(rid, params: dict) -> dict:
                         with contextlib.suppress(Exception):
                             db.close()
                     live["last_active"] = time.time()
+                    # This resume reattaches the live record. A lazy session
+                    # (no state.db row yet — every fresh Bot Chat) that was
+                    # sentinel-parked by a WS drop MUST be rebound here, or it
+                    # keeps the drop sentinel and the armed orphan-reap Timer
+                    # fires against a client that is attached right now — the
+                    # unpersisted sibling of the storm-killer paths (#91276).
+                    transport = current_transport()
+                    if transport is not None:
+                        with live.setdefault("history_lock", threading.Lock()):
+                            live["transport"] = transport
+                            live.setdefault("viewers", {})[transport] = time.time()
+                    _cancel_ws_orphan_reap(live_sid)
                     history = live.get("history") or []
                     return _ok(
                         rid,
@@ -471,7 +483,62 @@ def _(rid, params: dict) -> dict:
                             },
                         },
                     )
-                return _err(rid, 4007, "session not found")
+
+                # Stranded-session adoption (#93296 follow-up): before session
+                # RPCs routed by their TARGET session, a profile bot's turns
+                # executed on the focused tile's backend — usually default —
+                # so its canonical session accumulated in the DEFAULT
+                # profile's state.db. Now that routing is correct, this
+                # profile-scoped resume is the first place the fix and the
+                # stranded data collide: the id exists in the default store
+                # but not here, and without adoption the same chat 4001s
+                # forever (the fix made it unreachable instead of misrouted).
+                # Adopt the full lineage from the default store into this
+                # profile's db, then retry the lookup. Only profile-scoped
+                # resumes reach here (owns_db); unknown ids in the default
+                # store still 4007 exactly as before.
+                if owns_db:
+                    try:
+                        default_db = _get_db()
+                        # Exact-id match ONLY. Title lookup (get_session_by_title)
+                        # has no archived filter, no ordering, and bot titles
+                        # collide by design ("Bot Chat") — a title-matched donor
+                        # could adopt and non-recoverably retire an UNRELATED
+                        # default-profile conversation. The stranded-session
+                        # repro always has the exact id (the desktop routes by
+                        # id), so nothing real is lost.
+                        donor_row = (
+                            default_db.get_session(target)
+                            if default_db is not None
+                            else None
+                        )
+                        # Never re-adopt an already-retired donor: a second
+                        # profile resuming the same id would otherwise clone
+                        # the conversation into two "canonical" stores.
+                        if donor_row and donor_row.get("archived"):
+                            donor_row = None
+                        if donor_row:
+                            adoption = db.adopt_session_lineage_from(
+                                default_db, donor_row["id"]
+                            )
+                            if adoption.get("adopted"):
+                                logger.info(
+                                    "adopted stranded session %s (lineage of %s "
+                                    "segment(s)) from default store into profile %s",
+                                    donor_row["id"],
+                                    len(adoption.get("imported_ids") or [])
+                                    + len(adoption.get("skipped_ids") or []),
+                                    profile or "?",
+                                )
+                                found = db.get_session(donor_row["id"])
+                                if found:
+                                    target = found["id"]
+                    except Exception:
+                        logger.exception(
+                            "stranded-session adoption failed for %s", target
+                        )
+                if not found:
+                    return _err(rid, 4007, "session not found")
 
         # Follow the compression-continuation chain to the live tip so a resume on
         # a rotated-out parent id binds to the descendant that actually holds the
@@ -2754,25 +2821,34 @@ def _(rid, params: dict) -> dict:
         )
     removed = 0
     with session["history_lock"]:
-        history = session.get("history", [])
+        if session.get("running"):
+            return _err(
+                rid, 4009, "session busy — /interrupt the current turn before /undo"
+            )
+        history = _history_without_ephemeral_scaffolding(
+            session.get("history", [])
+        )
         # Truncate from the last *real* user turn. Popping only trailing
         # assistant/tool then one user left timeline markers
         # (async_delegation_complete, model_switch, …) or compaction
         # handoffs as the undo target — so session.undo removed
         # bookkeeping instead of the last exchange (#80622).
-        # Match list_recent_user_messages / CLI turn counting.
-        from agent.context_compressor import is_user_originated_turn
+        # Match user_originated_turn_view / CLI turn counting.
+        from agent.context_compressor import user_originated_turn_view
 
-        last_user_idx = None
-        for i in range(len(history) - 1, -1, -1):
-            msg = history[i]
-            if is_user_originated_turn(msg):
-                last_user_idx = i
-                break
-        if last_user_idx is not None:
-            removed = len(history) - last_user_idx
-            del history[last_user_idx:]
-            session["history_version"] = int(session.get("history_version", 0)) + 1
+        user_indices = [
+            index
+            for index, message in enumerate(history)
+            if user_originated_turn_view(message) is not None
+        ]
+        if user_indices:
+            try:
+                _installed, _live_view, rewound_count = (
+                    _rewind_active_session_history(session, len(user_indices) - 1)
+                )
+                removed = rewound_count
+            except Exception as exc:
+                return _err(rid, 5008, f"undo: {exc}")
     return _ok(rid, {"removed": removed})
 
 
@@ -3559,6 +3635,47 @@ def _(rid, params: dict) -> dict:
         return err
     session["cols"] = int(params.get("cols", 80))
     return _ok(rid, {"cols": session["cols"]})
+
+
+@method("session.events.since")
+def _(rid, params: dict) -> dict:
+    """Replay recorded events for a session newer than the client's last-seen seq.
+
+    Reconnect contract (desktop / web clients): every event frame now carries
+    ``params.seq``. After a WS reconnect the client calls this with its last
+    observed seq; this returns the buffered frames in order so no mid-stream
+    event is lost. Frames older than the ring window report ``truncated`` so
+    the client knows to refetch history instead of silently accepting a gap.
+    """
+    sid = str(params.get("session_id") or "")
+    try:
+        last_seen = int(params.get("last_seen", 0))
+    except (TypeError, ValueError):
+        return _err(rid, -32602, "invalid params: last_seen must be an integer")
+    from tui_gateway import event_replay
+
+    frames = event_replay.events_since(sid, last_seen)
+    # Truncated when the buffer's OLDEST retained seq is past last_seen+1 —
+    # i.e. events between last_seen and the buffer start were evicted.
+    truncated = False
+    with event_replay._replay_lock:
+        buf = event_replay._replay_buffers.get(sid)
+        if buf and last_seen + 1 < buf[0][0]:
+            truncated = True
+    return _ok(rid, {
+        "events": [f for f in frames],
+        "latest_seq": event_replay.latest_seq(sid),
+        "truncated": truncated,
+        "count": len(frames),
+    })
+
+
+@method("session.events.stats")
+def _(rid, params: dict) -> dict:
+    """Replay-buffer telemetry (ops/debug)."""
+    from tui_gateway import event_replay
+
+    return _ok(rid, event_replay.replay_stats())
 
 
 def register(server) -> None:
