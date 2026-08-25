@@ -18,7 +18,7 @@ from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
-    Equipment, MeteringInfo, ManagementInfo, EnergySaving,
+    Equipment, MeteringInfo, ManagementInfo, EnergySaving, SharedOfficeUnit,
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
 )
@@ -423,7 +423,9 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         metering = {
             'has_monitoring_system': scene.get('energy_metering') == 1 if scene.get('energy_metering') is not None else False,
             'has_separate_metering': scene.get('separate_meter') == 1 if scene.get('separate_meter') is not None else False,
-            'has_household_metering': scene.get('mode') == 1 if scene.get('mode') is not None else False,
+            'has_household_metering': scene.get('split_measure') == 1 if scene.get('split_measure') is not None else False,
+            'has_household_payment': scene.get('split_payment') == 1 if scene.get('split_payment') is not None else False,
+            'has_shared_office': scene.get('mode') == 1 if scene.get('mode') is not None else False,
             'independent_light_socket': scene.get('light_socket_meter') == 1,
             'independent_power': scene.get('power_meter') == 1,
             'independent_aircon': scene.get('aircon_meter') == 1,
@@ -434,6 +436,14 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'independent_construction_water': scene.get('construction_water_meter') == 1,
         }
         result['found']['metering'] = metering
+        mode_rows = pg.get_institution_scene_mode(
+            customer_id=customer_id, scene_id=scene.get('id'),
+        ) or []
+        shared_offices = [PgDataQuery._fmt_scene_mode(r) for r in mode_rows]
+        if shared_offices:
+            result['found']['shared_offices'] = shared_offices
+        elif metering['has_shared_office']:
+            result['missing'].append('合署办公明细（ts_institution_scene_mode 无记录）')
         if not scene.get('heat_day'):
             result['missing'].append('供暖信息（供热面积/供热天数/热价未记录）')
 
@@ -528,6 +538,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     pg_equipment = pg_result['found'].get('equipment', [])
     pg_metering = pg_result['found'].get('metering', {})
     pg_energy_saving = pg_result['found'].get('energy_saving', [])
+    pg_shared_offices = pg_result['found'].get('shared_offices', [])
     pg_building_area = total_building_area(pg_buildings)
 
     # unit_type：来自 ts_customer_info.field_type（10/20/30）
@@ -623,6 +634,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
         energy_yearly=_merge_energy(pg_energy, excel_data.get('energy_yearly', [])),
         equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
         metering=_merge_metering(pg_metering, excel_data.get('metering', {})),
+        shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
         energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
     )
@@ -654,6 +666,10 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     proj.data_sources['metering'] = first_non_empty_source(
         ('PG', pg_metering),
         ('Excel', excel_data.get('metering', {})),
+    )
+    proj.data_sources['shared_offices'] = first_non_empty_source(
+        ('PG', pg_shared_offices),
+        ('Excel', excel_data.get('shared_offices', [])),
     )
     proj.data_sources['energy_saving'] = first_non_empty_source(
         ('PG', pg_energy_saving),
@@ -756,6 +772,20 @@ def _merge_metering(*sources: dict) -> MeteringInfo:
         if src:
             return _dataclass_from_dict(MeteringInfo, src)
     return MeteringInfo()
+
+
+def _merge_shared_offices(*sources: List[dict]) -> List[SharedOfficeUnit]:
+    """多源合署办公明细合并。同单位同楼层保留先出现的来源（PG 优先于 Excel）。"""
+    seen = set()
+    result = []
+    for src in sources:
+        for row in src:
+            key = (row.get('dept_name') or '', row.get('building') or '')
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(_dataclass_from_dict(SharedOfficeUnit, row))
+    return result
 
 
 def _merge_energy_saving(*sources: List[dict]) -> List[EnergySaving]:

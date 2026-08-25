@@ -32,6 +32,7 @@ from tools.energy_audit.project_data import (
     EnergyYearly,
     Equipment,
     load_project,
+    shared_office_metering_sentence,
 )
 
 
@@ -445,6 +446,10 @@ def extract_project_facts(project: AuditProject, chapter_key: str) -> Dict[str, 
         md.append(f"能耗监测系统：{_fmt_bool(mt.has_monitoring_system)}")
         md.append(f"分项计量：{_fmt_bool(mt.has_separate_metering)}")
         md.append(f"分户计量：{_fmt_bool(mt.has_household_metering)}")
+        md.append(f"分户缴费：{_fmt_bool(mt.has_household_payment)}")
+        shared_line = shared_office_metering_sentence(mt.has_shared_office, project.shared_offices)
+        if shared_line:
+            md.append(shared_line)
         md.append(f"电表/水表/气表/热表：{mt.electric_meters}/{mt.water_meters}/{mt.gas_meters}/{mt.heat_meters}")
         md.append(f"照明插座独立计量：{_fmt_bool(mt.independent_light_socket)}")
         md.append(f"动力用电独立计量：{_fmt_bool(mt.independent_power)}")

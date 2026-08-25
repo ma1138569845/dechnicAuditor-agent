@@ -48,6 +48,7 @@ def _make_pg_instance(energy_records, project_id='P001', customer_id=1):
     pg.get_project_audit_users.return_value = []
     pg.get_project_audited_users.return_value = []
     pg.get_institution_scene.return_value = []
+    pg.get_institution_scene_mode.return_value = []
     pg.get_energy_meter.return_value = []
     pg.get_energy_standards.return_value = []
     pg.get_customer_info.return_value = [{'name': 'Test'}]

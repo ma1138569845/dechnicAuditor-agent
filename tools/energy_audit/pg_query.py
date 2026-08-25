@@ -464,6 +464,52 @@ class PgDataQuery:
         query += " ORDER BY year DESC"
         return self._execute(query, tuple(params))
 
+    def get_institution_scene_mode(self, customer_id: int = None,
+                                   scene_id: int = None) -> List[Dict]:
+        """ts_institution_scene_mode — 合署办公单位明细（含是否独立计量）。"""
+        query = """SELECT id, mode_dept_name, mode_reason, pay_type,
+                    start_time, end_time, scene_id, customer_id,
+                    mode_build, mode_area, mode_ratio, is_metering
+                 FROM ts_institution_scene_mode
+                 WHERE deleted = 0"""
+        params = []
+        if customer_id:
+            query += " AND customer_id = %s"
+            params.append(customer_id)
+        if scene_id:
+            query += " AND scene_id = %s"
+            params.append(scene_id)
+        query += " ORDER BY id"
+        return self._execute(query, tuple(params))
+
+    @staticmethod
+    def _fmt_scene_mode(record: Dict) -> Dict:
+        """格式化合署办公明细，含独立计量。"""
+        metering = ''
+        if 'is_metering' in record:
+            metering = PgDataQuery._flag_cn(record.get('is_metering'))
+        area = record.get('mode_area')
+        ratio = record.get('mode_ratio')
+        try:
+            area_v = float(area) if area is not None else 0.0
+        except (TypeError, ValueError):
+            area_v = 0.0
+        try:
+            ratio_v = float(ratio) if ratio is not None else 0.0
+        except (TypeError, ValueError):
+            ratio_v = 0.0
+        return {
+            'dept_name': (record.get('mode_dept_name') or '').strip(),
+            'reason': (record.get('mode_reason') or '').strip(),
+            'pay_type': (record.get('pay_type') or '').strip(),
+            'start_time': str(record['start_time'])[:10] if record.get('start_time') else '',
+            'end_time': str(record['end_time'])[:10] if record.get('end_time') else '',
+            'building': (record.get('mode_build') or '').strip(),
+            'area': area_v,
+            'ratio': ratio_v,
+            'independent_metering': metering,
+        }
+
     # ========== 表具计量信息 ==========
 
     def get_energy_meter(self, customer_id: int = None, data_type: int = None,

@@ -33,7 +33,9 @@ from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 
 try:
     from tools.energy_audit.pg_collector import build_and_save_project, collect_from_pg
-    from tools.energy_audit.project_data import _PROJECTS_ROOT, total_building_area
+    from tools.energy_audit.project_data import (
+        _PROJECTS_ROOT, shared_office_metering_sentence, total_building_area,
+    )
     from tools.energy_audit.data_check import check_completeness
 except ImportError as e:
     print(f"[错误] 导入失败: {e}")
@@ -167,8 +169,16 @@ def format_collection_report(pg_result: dict, anomalies: List[dict],
 
     metering = found.get('metering', {})
     if metering:
-        lines.append(f"  · 计量: {'有监测系统' if metering.get('has_monitoring_system') else '无监测系统'}"
-                      f", {'有独立计量电表' if metering.get('has_separate_metering') else '无独立计量电表'}")
+        meter_bits = [
+            '有监测系统' if metering.get('has_monitoring_system') else '无监测系统',
+            '有独立计量电表' if metering.get('has_separate_metering') else '无独立计量电表',
+        ]
+        shared_line = shared_office_metering_sentence(
+            metering.get('has_shared_office'), found.get('shared_offices') or [],
+        )
+        if shared_line:
+            meter_bits.append(shared_line)
+        lines.append(f"  · 计量: {', '.join(meter_bits)}")
 
     # 缺失项
     missing = pg_result.get('missing', [])

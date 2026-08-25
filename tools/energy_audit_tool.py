@@ -15,6 +15,8 @@ from tools.registry import registry, tool_error, tool_result
 # 能源审计 PG 查询依赖 psycopg2 / pandas 等可选依赖。
 # 若未安装，工具仍会注册，但 check_fn 会阻止其出现在模型 schema 中，
 # handler 也会返回友好错误提示。
+from tools.energy_audit.project_data import shared_office_metering_sentence
+
 try:
     from tools.energy_audit.pg_collector import collect_from_pg
     from tools.energy_audit.pg_query import PgDataQuery
@@ -119,6 +121,13 @@ def _format_project_summary(result: dict) -> str:
         lines.append(f"- 能耗监测系统：{_yes_no(metering.get('has_monitoring_system'))}")
         lines.append(f"- 分项计量：{_yes_no(metering.get('has_separate_metering'))}")
         lines.append(f"- 分户计量：{_yes_no(metering.get('has_household_metering'))}")
+        if 'has_household_payment' in metering:
+            lines.append(f"- 分户缴费：{_yes_no(metering.get('has_household_payment'))}")
+        shared_line = shared_office_metering_sentence(
+            metering.get('has_shared_office'), found.get('shared_offices') or [],
+        )
+        if shared_line:
+            lines.append(f"- {shared_line}")
         for key, label in (
             ('independent_light_socket', '照明插座独立计量'),
             ('independent_power', '动力用电独立计量'),
@@ -132,6 +141,20 @@ def _format_project_summary(result: dict) -> str:
         other_special = (metering.get('independent_other_special') or '').strip()
         if other_special:
             lines.append(f"- 其他特殊用电独立计量：{other_special}")
+        lines.append("")
+
+    shared_offices = found.get("shared_offices") or []
+    if shared_offices:
+        lines.append(f"## 合署办公（{len(shared_offices)} 家）")
+        for row in shared_offices:
+            name = row.get("dept_name") or "未命名单位"
+            building = row.get("building") or ""
+            loc = f" @ {building}" if building else ""
+            meter = (row.get("independent_metering") or "").strip()
+            meter_part = f" | 独立计量：{meter}" if meter else ""
+            area = row.get("area")
+            area_part = f" | {area} m²" if area else ""
+            lines.append(f"- **{name}**{loc}{area_part}{meter_part}")
         lines.append("")
 
     team = found.get("team_members", [])

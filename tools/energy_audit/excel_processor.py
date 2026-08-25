@@ -83,6 +83,8 @@ EXCEL_SCHEMAS = {
         'has_monitoring_system': ['有无监测系统', '监测系统'],
         'has_separate_metering': ['分项计量'],
         'has_household_metering': ['分户计量'],
+        'has_shared_office': ['合署办公', '是否合署办公'],
+        'has_household_payment': ['分户缴费'],
         'electric_meters': ['电表数量', '电表数'],
         'water_meters': ['水表数量', '水表数'],
         'gas_meters': ['气表数量', '气表数'],
@@ -108,7 +110,8 @@ EXCEL_INT_FIELDS = {
     'metering': {'electric_meters', 'water_meters', 'gas_meters', 'heat_meters'},
 }
 EXCEL_BOOL_FIELDS = {
-    'metering': {'has_monitoring_system', 'has_separate_metering', 'has_household_metering'},
+    'metering': {'has_monitoring_system', 'has_separate_metering', 'has_household_metering',
+                 'has_shared_office', 'has_household_payment'},
 }
 
 # 各类别输出到 excel_data 的顶层键；base 的标量直接进顶层（None）

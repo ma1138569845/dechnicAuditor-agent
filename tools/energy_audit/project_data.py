@@ -233,6 +233,51 @@ class MeteringInfo:
     independent_other_special: str = ""      # 其他特殊用电独立计量描述
     independent_construction_elec: bool = False  # 施工用电独立计量
     independent_construction_water: bool = False # 施工用水独立计量
+    has_shared_office: bool = False          # 是否合署办公 — ts_institution_scene.mode (1是/2否)
+    has_household_payment: bool = False      # 分户缴费 — split_payment (1是/2否)
+
+
+@dataclass
+class SharedOfficeUnit:
+    """合署办公单位 — ts_institution_scene_mode"""
+    dept_name: str = ""                    # 合署单位名称 — mode_dept_name
+    reason: str = ""                       # 合署原因 — mode_reason
+    pay_type: str = ""                     # 缴费方式 — pay_type
+    start_time: str = ""                   # 开始日期
+    end_time: str = ""                     # 结束日期
+    building: str = ""                     # 使用建筑/楼层 — mode_build
+    area: float = 0                        # 使用面积 m² — mode_area
+    ratio: float = 0                       # 使用建筑比例 — mode_ratio
+    independent_metering: str = ""         # 独立计量 — is_metering（有/无/空）
+
+
+SHARED_OFFICE_METERED = "有合署办公且实现了合办公单位独立计量"
+SHARED_OFFICE_UNMETERED = "有合署办公，但未实现各办公单位独立计量"
+_SHARED_OFFICE_YES = {"有", "是", "1", 1, True}
+
+
+def _shared_office_unit_metered(val) -> bool:
+    if val in _SHARED_OFFICE_YES:
+        return True
+    return str(val).strip() in {"有", "是", "1"} if val is not None else False
+
+
+def shared_office_metering_sentence(has_shared_office, shared_offices=None) -> str:
+    """第4章合署办公独立计量固定句。合署办公为否时返回空串，不回显「合署办公：是/否」。
+
+    - 列表中只要有一个独立计量为是/有 → 有合署办公且实现了合办公单位独立计量
+    - 全部为否/无（或无明细）→ 有合署办公，但未实现各办公单位独立计量
+    """
+    if not has_shared_office:
+        return ""
+    units = shared_offices or []
+    for unit in units:
+        val = unit.get("independent_metering") if isinstance(unit, dict) else getattr(
+            unit, "independent_metering", ""
+        )
+        if _shared_office_unit_metered(val):
+            return SHARED_OFFICE_METERED
+    return SHARED_OFFICE_UNMETERED
 
 
 @dataclass
@@ -308,6 +353,7 @@ class AuditProject:
     energy_monthly: List[EnergyMonthly] = field(default_factory=list)
     equipment: List[Equipment] = field(default_factory=list)
     metering: MeteringInfo = field(default_factory=MeteringInfo)
+    shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）
     indoor_env: IndoorEnv = field(default_factory=IndoorEnv)
