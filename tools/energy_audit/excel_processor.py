@@ -77,6 +77,7 @@ EXCEL_SCHEMAS = {
         'category': ['分类', '设备分类'],
         'spec': ['规格', '规格型号'],
         'quantity': ['数量', '台数', '设备数量'],
+        'independent_metering': ['独立计量', '是否独立计量', '单独计量'],
     },
     'metering': {
         'has_monitoring_system': ['有无监测系统', '监测系统'],

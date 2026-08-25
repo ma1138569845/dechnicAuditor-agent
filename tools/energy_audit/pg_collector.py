@@ -10,9 +10,11 @@ import calendar
 import re
 import sys
 
+from dataclasses import fields
+from typing import Any, Dict, List, Tuple
+
 from tools.energy_audit import PgDataQuery
 from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
-from typing import Any, Dict, List, Tuple
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
@@ -422,6 +424,14 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'has_monitoring_system': scene.get('energy_metering') == 1 if scene.get('energy_metering') is not None else False,
             'has_separate_metering': scene.get('separate_meter') == 1 if scene.get('separate_meter') is not None else False,
             'has_household_metering': scene.get('mode') == 1 if scene.get('mode') is not None else False,
+            'independent_light_socket': scene.get('light_socket_meter') == 1,
+            'independent_power': scene.get('power_meter') == 1,
+            'independent_aircon': scene.get('aircon_meter') == 1,
+            'independent_special': scene.get('special_meter') == 1,
+            'independent_other_special': (scene.get('other_special_meter') or '').strip()
+            if scene.get('other_special_meter') else '',
+            'independent_construction_elec': scene.get('construction_elec_meter') == 1,
+            'independent_construction_water': scene.get('construction_water_meter') == 1,
         }
         result['found']['metering'] = metering
         if not scene.get('heat_day'):
@@ -716,16 +726,27 @@ def _merge_energy(pg: List[dict], excel: List[dict]) -> List[EnergyYearly]:
     return result
 
 
+def _dataclass_from_dict(cls, data: dict):
+    """只取 dataclass 已声明字段，忽略 PG/Excel 多出来的列。"""
+    allowed = {f.name for f in fields(cls)}
+    return cls(**{k: v for k, v in data.items() if k in allowed})
+
+
 def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
-    """多源设备合并（类别去重：同类别以后续来源补充）"""
-    seen_cats = set()
+    """多源设备合并。同名同类同规格保留先出现的来源（PG 优先于 Excel）。"""
+    seen = set()
     result = []
     for src in sources:
         for e in src:
-            cat = e.get('category', '')
-            if cat not in seen_cats:
-                seen_cats.add(cat)
-                result.append(Equipment(**e))
+            key = (
+                e.get('category') or '',
+                e.get('name') or '',
+                e.get('spec') or '',
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(_dataclass_from_dict(Equipment, e))
     return result
 
 
@@ -733,7 +754,7 @@ def _merge_metering(*sources: dict) -> MeteringInfo:
     """多源计量信息合并（优先采用第一个非空源，保留 False/0 等有效值）"""
     for src in sources:
         if src:
-            return MeteringInfo(**src)
+            return _dataclass_from_dict(MeteringInfo, src)
     return MeteringInfo()
 
 

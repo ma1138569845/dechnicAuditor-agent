@@ -446,6 +446,14 @@ def extract_project_facts(project: AuditProject, chapter_key: str) -> Dict[str, 
         md.append(f"分项计量：{_fmt_bool(mt.has_separate_metering)}")
         md.append(f"分户计量：{_fmt_bool(mt.has_household_metering)}")
         md.append(f"电表/水表/气表/热表：{mt.electric_meters}/{mt.water_meters}/{mt.gas_meters}/{mt.heat_meters}")
+        md.append(f"照明插座独立计量：{_fmt_bool(mt.independent_light_socket)}")
+        md.append(f"动力用电独立计量：{_fmt_bool(mt.independent_power)}")
+        md.append(f"空调用电独立计量：{_fmt_bool(mt.independent_aircon)}")
+        md.append(f"特殊用电独立计量：{_fmt_bool(mt.independent_special)}")
+        if mt.independent_other_special:
+            md.append(f"其他特殊用电独立计量：{mt.independent_other_special}")
+        md.append(f"施工用电独立计量：{_fmt_bool(mt.independent_construction_elec)}")
+        md.append(f"施工用水独立计量：{_fmt_bool(mt.independent_construction_water)}")
 
     if chapter_key in ("第5章", "第7章", "第8章"):
         energy_lines = _energy_lines(project.energy_yearly)
@@ -467,7 +475,9 @@ def extract_project_facts(project: AuditProject, chapter_key: str) -> Dict[str, 
                 md.append(f"- {cat}：{len(items)}台")
                 for eq in items[:8]:
                     spec = f"（{eq.spec}）" if eq.spec else ""
-                    md.append(f"  · {eq.name}{spec} × {eq.quantity or 1}")
+                    meter = f"，独立计量：{eq.independent_metering}" if eq.independent_metering else ""
+                    desc = f"（{eq.independent_metering_desc}）" if eq.independent_metering_desc else ""
+                    md.append(f"  · {eq.name}{spec} × {eq.quantity or 1}{meter}{desc}")
         else:
             md.append("设备清单：未采集")
 

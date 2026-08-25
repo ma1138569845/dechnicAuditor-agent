@@ -210,6 +210,10 @@ class Equipment:
     usage_years: str = ""              # 使用年限
     location: str = ""                 # 所在位置
     remark: str = ""                   # 设备备注信息
+    independent_metering: str = ""     # 独立计量 — is_metering（有/无/空=该表无此字段或未填）
+    independent_metering_desc: str = ""  # 独立计量情况 — metering_desc
+    independent_metering_ratio: str = ""  # 独立计量比例 — metering_ratio
+    independent_metering_time: str = ""   # 独立计量时间 — metering_time
 
 
 @dataclass
@@ -217,11 +221,18 @@ class MeteringInfo:
     """计量器具信息"""
     has_monitoring_system: bool = False # 是否有能耗监测系统
     has_household_metering: bool = False# 是否有分户计量
-    has_separate_metering: bool = False # 是否有设备单独计量
+    has_separate_metering: bool = False # 是否有设备单独计量（场景表独立计量电表）
     electric_meters: int = 0           # 电表数量
     water_meters: int = 0              # 水表数量
     gas_meters: int = 0                # 气表数量
     heat_meters: int = 0               # 热量表数量
+    independent_light_socket: bool = False   # 照明和插座用电独立计量
+    independent_power: bool = False          # 动力用电独立计量
+    independent_aircon: bool = False         # 空调用电独立计量
+    independent_special: bool = False        # 特殊用电独立计量
+    independent_other_special: str = ""      # 其他特殊用电独立计量描述
+    independent_construction_elec: bool = False  # 施工用电独立计量
+    independent_construction_water: bool = False # 施工用水独立计量
 
 
 @dataclass

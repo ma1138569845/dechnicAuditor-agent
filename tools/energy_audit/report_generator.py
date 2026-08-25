@@ -1955,7 +1955,7 @@ class WordReportBuilder:
             for img in equip_images[:2]:
                 if os.path.exists(img):
                     self._add_image(img, width_cm=7)
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in cooling_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in cooling_eq]
             self._add_equipment_table(eq_table, "表6.1  空调与供暖系统设备清单")
 
         # 6.1.2 照明系统
@@ -1971,7 +1971,7 @@ class WordReportBuilder:
             for img in equip_images[2:4]:
                 if os.path.exists(img):
                     self._add_image(img, width_cm=7)
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in lighting_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in lighting_eq]
             self._add_equipment_table(eq_table, "表6.2  照明系统设备清单")
 
         # 6.1.3 办公设备
@@ -1979,7 +1979,7 @@ class WordReportBuilder:
         if office_eq:
             self._add_heading_3("办公设备系统")
             self._add_body_text(f"{unit}办公设备主要包括{'、'.join(e.get('name','') for e in office_eq)}等。")
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in office_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in office_eq]
             self._add_equipment_table(eq_table, "表6.3  办公设备清单")
 
         # 6.1.4 大型医疗设备 / 其他用电设备（根据机构类型）
@@ -1988,7 +1988,7 @@ class WordReportBuilder:
         if medical_eq:
             self._add_heading_3("大型医疗设备系统")
             self._add_body_text(f"{unit}大型医疗设备主要包括{'、'.join(e.get('name','') for e in medical_eq)}等。")
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in medical_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in medical_eq]
             self._add_equipment_table(eq_table, "表6.4  大型医疗设备清单")
         elif hot_water_eq:
             self._add_heading_3("其他用电设备")
@@ -1997,7 +1997,7 @@ class WordReportBuilder:
                 f"共{sum(e.get('quantity',0) for e in hot_water_eq)}台，"
                 f"用于职工日常饮用水供应，全天候运行。"
             )
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in hot_water_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in hot_water_eq]
             self._add_equipment_table(eq_table, "表6.4  其他用电设备清单")
 
         # 6.1.5 厨房设备
@@ -2005,7 +2005,7 @@ class WordReportBuilder:
         if kitchen_eq:
             self._add_heading_3("厨房设备")
             self._add_body_text(f"{unit}厨房设备主要包括{'、'.join(e.get('name','') for e in kitchen_eq)}等。")
-            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark','')} for e in kitchen_eq]
+            eq_table = [{'name':e.get('name',''),'spec':e.get('spec',''),'qty':e.get('quantity',1),'remark':e.get('remark',''),'independent_metering':e.get('independent_metering',''),'independent_metering_desc':e.get('independent_metering_desc','')} for e in kitchen_eq]
             self._add_equipment_table(eq_table, "表6.5  厨房设备清单")
 
         # 6.1.6 信息机房（提示补充）
@@ -2087,16 +2087,23 @@ class WordReportBuilder:
         from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 
         if headers is None:
-            headers = ['序号', '设备名称', '规格/功率', '数量', '备注']
+            has_metering = any(str(eq.get('independent_metering') or '').strip() for eq in equipment)
+            if has_metering:
+                headers = ['序号', '设备名称', '规格/功率', '数量', '独立计量', '备注']
+            else:
+                headers = ['序号', '设备名称', '规格/功率', '数量', '备注']
         rows = []
+        show_metering = '独立计量' in headers
         for i, eq in enumerate(equipment, 1):
-            rows.append([
-                str(i),
-                eq.get('name', ''),
-                eq.get('spec', ''),
-                str(eq.get('qty', '')),
-                eq.get('remark', ''),
-            ])
+            remark = eq.get('remark', '') or ''
+            desc = (eq.get('independent_metering_desc') or '').strip()
+            if desc and desc not in remark:
+                remark = f"{remark}；{desc}".strip('；') if remark else desc
+            row = [str(i), eq.get('name', ''), eq.get('spec', ''), str(eq.get('qty', ''))]
+            if show_metering:
+                row.append(eq.get('independent_metering', '') or '')
+            row.append(remark)
+            rows.append(row)
 
         # 标题
         para = self.doc.add_paragraph()
@@ -2983,7 +2990,11 @@ class ReportGenerator:
 
         # 设备 → chapter6
         if project.equipment:
-            eq_list = [{'name':eq.name,'category':eq.category,'spec':eq.spec,'quantity':eq.quantity,'remark':eq.remark} for eq in project.equipment]
+            eq_list = [{'name':eq.name,'category':eq.category,'spec':eq.spec,
+                        'quantity':eq.quantity,'remark':eq.remark,
+                        'independent_metering':eq.independent_metering,
+                        'independent_metering_desc':eq.independent_metering_desc}
+                       for eq in project.equipment]
             rd['chapter6'] = ch6 = rd.get('chapter6', {}) or {}
             ch6['_equipment'] = eq_list
             # 第6章设备照片：按系统分组；兼容旧版顶层 images_equipment 消费方（顺序: 制冷→照明→变配电→水泵→厨房）

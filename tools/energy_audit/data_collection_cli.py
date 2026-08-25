@@ -168,7 +168,7 @@ def format_collection_report(pg_result: dict, anomalies: List[dict],
     metering = found.get('metering', {})
     if metering:
         lines.append(f"  · 计量: {'有监测系统' if metering.get('has_monitoring_system') else '无监测系统'}"
-                      f", {'有分项计量' if metering.get('has_separate_metering') else '不分项'}")
+                      f", {'有独立计量电表' if metering.get('has_separate_metering') else '无独立计量电表'}")
 
     # 缺失项
     missing = pg_result.get('missing', [])

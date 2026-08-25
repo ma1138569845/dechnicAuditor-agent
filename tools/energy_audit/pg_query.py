@@ -332,6 +332,10 @@ class PgDataQuery:
         """ts_institution_device_steam — 蒸汽设备。"""
         return self._get_device_by_table("ts_institution_device_steam", customer_id)
 
+    def get_device_td(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_device_td — 输配设备（冷冻水泵/冷却塔等）。"""
+        return self._get_device_by_table("ts_institution_device_td", customer_id)
+
     def get_all_devices(self, customer_id: int = None) -> Dict[str, List[Dict]]:
         """一次性获取所有分类设备，返回 {category: [records]}。"""
         return {
@@ -344,11 +348,27 @@ class PgDataQuery:
             "其他设备": self.get_device_other(customer_id),
             "特殊设备": self.get_device_special(customer_id),
             "蒸汽": self.get_device_steam(customer_id),
+            "输配设备": self.get_device_td(customer_id),
         }
 
     @staticmethod
+    def _flag_cn(val, yes: str = '有', no: str = '无') -> str:
+        """把 1/0 计量标记转成有/无；未填返回空串。"""
+        if val is None or val == '':
+            return ''
+        try:
+            v = int(val)
+        except (TypeError, ValueError):
+            return str(val).strip()
+        if v == 1:
+            return yes
+        if v == 0:
+            return no
+        return str(v)
+
+    @staticmethod
     def _fmt_device(record: Dict, category: str) -> Dict:
-        """把单条设备原始记录格式化为 {name, category, spec, quantity}。"""
+        """把单条设备原始记录格式化为设备清单字段（含独立计量，表无该列则为空）。"""
         name = record.get('device_name') or '未命名'
         quantity = 0
         for qkey in ('device_num', 'use_num', 'quantity'):
@@ -378,11 +398,22 @@ class PgDataQuery:
         if record.get('other_desc'):
             spec_parts.append(str(record['other_desc']))
 
+        metering = ''
+        if 'is_metering' in record:
+            metering = PgDataQuery._flag_cn(record.get('is_metering'))
+
         return {
             'name': name,
             'category': category,
             'spec': ' | '.join(filter(None, spec_parts)),
             'quantity': quantity,
+            'independent_metering': metering,
+            'independent_metering_desc': str(record['metering_desc']).strip()
+            if record.get('metering_desc') else '',
+            'independent_metering_ratio': str(record['metering_ratio']).strip()
+            if record.get('metering_ratio') else '',
+            'independent_metering_time': str(record['metering_time']).strip()
+            if record.get('metering_time') else '',
         }
 
     def get_formatted_equipment(self, customer_id: int = None, category: str = None) -> List[Dict]:
@@ -422,7 +453,9 @@ class PgDataQuery:
         """ts_institution_scene — 用能场景、计量与供暖信息。"""
         query = """SELECT id, year, mode, split_measure, split_payment,
                     energy_metering, separate_meter, heat_area, heat_day, heat_price,
-                    heat_pay_type, work_staff
+                    heat_pay_type, work_staff,
+                    light_socket_meter, power_meter, aircon_meter, special_meter,
+                    other_special_meter, construction_elec_meter, construction_water_meter
                  FROM ts_institution_scene
                  WHERE deleted = 0"""
         params = []

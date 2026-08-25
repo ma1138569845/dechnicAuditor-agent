@@ -119,6 +119,19 @@ def _format_project_summary(result: dict) -> str:
         lines.append(f"- 能耗监测系统：{_yes_no(metering.get('has_monitoring_system'))}")
         lines.append(f"- 分项计量：{_yes_no(metering.get('has_separate_metering'))}")
         lines.append(f"- 分户计量：{_yes_no(metering.get('has_household_metering'))}")
+        for key, label in (
+            ('independent_light_socket', '照明插座独立计量'),
+            ('independent_power', '动力用电独立计量'),
+            ('independent_aircon', '空调用电独立计量'),
+            ('independent_special', '特殊用电独立计量'),
+            ('independent_construction_elec', '施工用电独立计量'),
+            ('independent_construction_water', '施工用水独立计量'),
+        ):
+            if key in metering:
+                lines.append(f"- {label}：{_yes_no(metering.get(key))}")
+        other_special = (metering.get('independent_other_special') or '').strip()
+        if other_special:
+            lines.append(f"- 其他特殊用电独立计量：{other_special}")
         lines.append("")
 
     team = found.get("team_members", [])
@@ -170,7 +183,11 @@ def _format_equipment_section(equipment: list, category: str = None) -> str:
             spec = e.get("spec", "")
             qty = e.get("quantity", 0)
             spec_part = f" | {spec}" if spec else ""
-            lines.append(f"- **{name}** × {qty}{spec_part}")
+            meter = (e.get("independent_metering") or "").strip()
+            meter_part = f" | 独立计量：{meter}" if meter else ""
+            desc = (e.get("independent_metering_desc") or "").strip()
+            desc_part = f"（{desc}）" if desc else ""
+            lines.append(f"- **{name}** × {qty}{spec_part}{meter_part}{desc_part}")
         lines.append("")
     return "\n".join(lines)
 
