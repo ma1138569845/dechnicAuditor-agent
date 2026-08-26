@@ -683,7 +683,7 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
     setSigningIn(true)
 
     try {
-      await window.hermesDesktop.oauthLogoutConnectionConfig(trimmedUrl || undefined)
+      await window.hermesDesktop.oauthLogoutConnectionConfig(trimmedUrl)
       const refreshed = await window.hermesDesktop.getConnectionConfig(scope)
 
       if (seq !== signingSeq.current) {
