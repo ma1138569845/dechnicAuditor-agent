@@ -558,7 +558,10 @@ def _seed_hygiene_system_prompt(
 ) -> bool:
     """Keep gateway hygiene from rebuilding a live session's system prompt.
 
-    The hygiene helper intentionally skips memory-provider initialization.
+    The hygiene helper runs outside the live session's fully initialized
+    prompt environment (hygiene-only platform marker, no platform context
+    files; the memory provider is loaded only when
+    ``compression.checkpoint_required`` demands it).
     Compression is allowed to persist a system prompt, so letting that helper
     rebuild one would strip external provider blocks from the live session.
     Seed the exact persisted prompt instead.  When no usable prompt can be
@@ -1752,7 +1755,6 @@ _AUTO_APPEND_MEDIA_TOOL_NAMES = {
     "text_to_speech",
     "text_to_speech_tool",
     "image_generate",
-    "bfl_flux3_get_result",
 }
 
 # ---- helpers: detect interrupted tool tails & auto-continue noise ----------
@@ -1823,144 +1825,14 @@ _TOOL_MEDIA_RE = re.compile(
 )
 
 
-_COMPUTER_USE_CAPTURE_BASENAME_RE = re.compile(
-    r"^computer_use_[0-9a-f]{32}\.(?:png|jpe?g)$",
-    re.IGNORECASE,
+# Shared with cron delivery and gateway background tasks — the repair must
+# run on every surface that feeds a final response into media extraction.
+# Canonical names live in gateway.media_repair (same retirement of private
+# aliases as the agent.replay_cleanup import above).
+from gateway.media_repair import (  # noqa: E402
+    repair_explicit_computer_use_media_paths,
+    tool_name_by_call_id as _tool_name_by_call_id,
 )
-_COMPUTER_USE_CAPTURE_SUMMARY_RE = re.compile(
-    r"\(shareable screenshot saved to "
-    r"(?P<path>(?:[A-Za-z]:[/\\]|/|\\\\)[^\r\n]*?"
-    r"computer_use_[0-9a-f]{32}\.(?:png|jpe?g))\)",
-    re.IGNORECASE,
-)
-
-
-def _computer_use_capture_basename(path: Any) -> str:
-    """Return a canonical capture basename for either path separator style."""
-    value = str(path or "").strip().strip("`\"'")
-    basename = re.split(r"[/\\]", value)[-1]
-    if _COMPUTER_USE_CAPTURE_BASENAME_RE.fullmatch(basename):
-        return basename.lower()
-    return ""
-
-
-def _iter_computer_use_capture_paths(content: Any):
-    """Yield persisted screenshot paths from computer_use result content.
-
-    The tool can return JSON, a multimodal content list, or a text fallback.
-    The latter two retain the canonical path in the human-readable summary
-    even though the multimodal envelope's ``meta`` dictionary is not stored in
-    the tool message.
-    """
-    if isinstance(content, str):
-        for match in _COMPUTER_USE_CAPTURE_SUMMARY_RE.finditer(content):
-            yield match.group("path").strip()
-        stripped = content.strip()
-        if stripped.startswith(("{", "[")):
-            try:
-                payload = json.loads(stripped)
-            except Exception:
-                payload = None
-            if isinstance(payload, (dict, list)):
-                yield from _iter_computer_use_capture_paths(payload)
-        return
-
-    if isinstance(content, list):
-        for part in content:
-            yield from _iter_computer_use_capture_paths(part)
-        return
-
-    if not isinstance(content, dict):
-        return
-
-    screenshot_path = content.get("screenshot_path")
-    if isinstance(screenshot_path, str):
-        yield screenshot_path
-    meta = content.get("meta")
-    if isinstance(meta, dict) and isinstance(meta.get("screenshot_path"), str):
-        yield meta["screenshot_path"]
-    for field in ("content", "text", "text_summary", "summary"):
-        nested = content.get(field)
-        if isinstance(nested, (str, dict, list)):
-            yield from _iter_computer_use_capture_paths(nested)
-
-
-def _repair_explicit_computer_use_media_paths(
-    response: str,
-    messages: List[Dict[str, Any]],
-    history_offset: int = 0,
-) -> str:
-    """Recover model-mangled paths for explicitly requested screenshots.
-
-    ``computer_use`` persists a bounded screenshot and gives its absolute path
-    to the model. Some models rewrite a Windows path into a POSIX-looking path
-    before emitting ``MEDIA:``, which makes the gateway reject the nonexistent
-    path. Repair only an already-explicit directive whose unique generated
-    basename matches a canonical screenshot path from this turn. This does not
-    auto-attach ordinary computer-use captures, and normal media path
-    validation still runs after the repair.
-    """
-    if "MEDIA:" not in response:
-        return response
-
-    if history_offset and len(messages) >= history_offset:
-        turn_messages = messages[history_offset:]
-    elif history_offset:
-        # Compression can invalidate the original slice boundary. Recover the
-        # current turn from its last user message; fail closed if none remains.
-        last_user = next(
-            (
-                index
-                for index in range(len(messages) - 1, -1, -1)
-                if messages[index].get("role") == "user"
-            ),
-            None,
-        )
-        turn_messages = messages[last_user:] if last_user is not None else []
-    else:
-        turn_messages = messages
-
-    tool_name_by_call_id: Dict[str, str] = {}
-    for msg in turn_messages:
-        if msg.get("role") != "assistant":
-            continue
-        for call in msg.get("tool_calls") or []:
-            call_id = call.get("id") or call.get("call_id")
-            fn = call.get("function") or {}
-            name = str(fn.get("name") or call.get("name") or "")
-            if call_id and name:
-                tool_name_by_call_id[str(call_id)] = name
-
-    canonical_by_basename: Dict[str, str] = {}
-    for msg in turn_messages:
-        if msg.get("role") not in {"tool", "function"}:
-            continue
-        call_id = str(msg.get("tool_call_id") or msg.get("call_id") or "")
-        tool_name = str(
-            msg.get("name")
-            or msg.get("tool_name")
-            or tool_name_by_call_id.get(call_id)
-            or ""
-        )
-        if tool_name != "computer_use":
-            continue
-        for path in _iter_computer_use_capture_paths(msg.get("content")):
-            basename = _computer_use_capture_basename(path)
-            if basename and re.match(r"^(?:[A-Za-z]:[/\\]|/|\\\\)", path):
-                canonical_by_basename[basename] = path
-
-    if not canonical_by_basename:
-        return response
-
-    media_files, _ = BasePlatformAdapter.extract_media(response)
-    repaired = response
-    for emitted_path, _is_voice in media_files:
-        canonical = canonical_by_basename.get(
-            _computer_use_capture_basename(emitted_path)
-        )
-        if canonical and emitted_path != canonical:
-            repaired = repaired.replace(emitted_path, canonical)
-    return repaired
 
 
 def _collect_auto_append_media_tags(
@@ -1994,16 +1866,7 @@ def _collect_auto_append_media_tags(
     else:
         new_messages = messages
 
-    tool_name_by_call_id: Dict[str, str] = {}
-    for msg in new_messages:
-        if msg.get("role") != "assistant":
-            continue
-        for call in msg.get("tool_calls") or []:
-            call_id = call.get("id") or call.get("call_id")
-            fn = call.get("function") or {}
-            name = str(fn.get("name") or call.get("name") or "")
-            if call_id and name:
-                tool_name_by_call_id[str(call_id)] = name
+    tool_name_by_call_id = _tool_name_by_call_id(new_messages)
 
     media_tags: List[str] = []
     has_voice_directive = False
@@ -2058,7 +1921,7 @@ def _collect_history_media_paths(agent_history: List[Dict[str, Any]]) -> set:
     shape caused repeated delivery when the model echoed a previous MEDIA tag.
     """
     paths: set = set()
-    tool_name_by_call_id: Dict[str, str] = {}
+    tool_name_by_call_id = _tool_name_by_call_id(agent_history)
 
     def _add_text_media_paths(content: str) -> None:
         for match in _TOOL_MEDIA_RE.finditer(content):
@@ -2072,14 +1935,6 @@ def _collect_history_media_paths(agent_history: List[Dict[str, Any]]) -> set:
         media_files, _ = BasePlatformAdapter.extract_media(content)
         paths.update(path for path, _is_voice in media_files)
 
-    for msg in agent_history:
-        if msg.get("role") == "assistant":
-            for call in msg.get("tool_calls") or []:
-                cid = call.get("id") or call.get("call_id")
-                fn = call.get("function") or {}
-                name = str(fn.get("name") or call.get("name") or "")
-                if cid and name:
-                    tool_name_by_call_id[str(cid)] = name
     for msg in agent_history:
         role = msg.get("role")
         if role == "assistant":
@@ -2523,6 +2378,7 @@ if _config_path.exists():
                 "docker_network": "TERMINAL_DOCKER_NETWORK",
                 "docker_run_as_host_user": "TERMINAL_DOCKER_RUN_AS_HOST_USER",
                 "docker_persist_across_processes": "TERMINAL_DOCKER_PERSIST_ACROSS_PROCESSES",
+                "docker_shared_container_key": "TERMINAL_DOCKER_SHARED_CONTAINER_KEY",
                 "docker_orphan_reaper": "TERMINAL_DOCKER_ORPHAN_REAPER",
                 "sandbox_dir": "TERMINAL_SANDBOX_DIR",
                 "persistent_shell": "TERMINAL_PERSISTENT_SHELL",
@@ -6577,7 +6433,7 @@ class TurnRunner:
         if isinstance(result, dict):
             _result_final = result.get("final_response")
             if isinstance(_result_final, str):
-                result["final_response"] = _repair_explicit_computer_use_media_paths(
+                result["final_response"] = repair_explicit_computer_use_media_paths(
                     _result_final,
                     result.get("messages", []),
                     history_offset=len(agent_history),
@@ -15762,9 +15618,15 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 else:
                     logger.warning("✗ %s failed to connect (profile: %s)", platform.value, profile_name)
                     await self._safe_adapter_disconnect(adapter, platform)
+                    self._schedule_secondary_profile_startup_reconnect(
+                        profile_name, platform, adapter
+                    )
             except Exception as e:
                 logger.error("✗ %s error (profile: %s): %s", platform.value, profile_name, e)
                 await self._safe_adapter_disconnect(adapter, platform)
+                self._schedule_secondary_profile_startup_reconnect(
+                    profile_name, platform, adapter
+                )
         return connected
 
     def _configure_profile_adapter(
@@ -15910,6 +15772,75 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         if not profile_pending:
                             pending.pop(profile_name, None)
 
+    def _schedule_secondary_profile_startup_reconnect(
+        self, profile_name: str, platform: Platform, adapter: BasePlatformAdapter
+    ) -> None:
+        """Queue a cold-start reconnect for a secondary adapter.
+
+        Startup failure branches run BEFORE ``self._running`` flips True
+        (``_start_secondary_profile_adapters()`` is called mid-``start()``,
+        while ``self._running`` is still False), so the regular scheduler's
+        ``not self._running`` guard would silently drop the request and the
+        runner's ``while self._running`` loop would exit immediately. This
+        bridge parks a background task across the remainder of startup and
+        hands off to the regular scheduler once the gateway is live (the
+        scheduler's own ``_profile_failed_platforms`` slot dedupes at
+        handoff); if shutdown begins first, the request is released.
+        Non-retryable failures are dropped here exactly as the regular
+        scheduler would.
+        """
+        if not getattr(adapter, "fatal_error_retryable", True):
+            return
+
+        async def _await_running_then_schedule() -> None:
+            if self._running:
+                try:
+                    self._schedule_secondary_profile_reconnect(
+                        profile_name, platform, adapter
+                    )
+                except Exception:
+                    # Same GC-time-exception hazard as the post-poll handoff
+                    # below; surface it in gateway.log instead.
+                    logger.exception(
+                        "secondary-startup-reconnect handoff failed "
+                        "(profile=%s platform=%s)",
+                        profile_name,
+                        platform.value,
+                    )
+                return
+            # Modest poll interval: startup completion has no dedicated event,
+            # and the reconnect runner's own backoff makes sub-100ms precision
+            # irrelevant. Bounded so a wedged startup cannot spin the loop.
+            while not self._running and not self._shutdown_event.is_set():
+                await asyncio.sleep(0.1)
+            if self._running and not self._shutdown_event.is_set():
+                try:
+                    self._schedule_secondary_profile_reconnect(
+                        profile_name, platform, adapter
+                    )
+                except Exception:
+                    # The handoff touches live registries; if it raises, the
+                    # parked task would otherwise die as an unretrieved-task
+                    # exception logged only at GC time. Surface it where
+                    # operators look.
+                    logger.exception(
+                        "secondary-startup-reconnect handoff failed "
+                        "(profile=%s platform=%s)",
+                        profile_name,
+                        platform.value,
+                    )
+
+        task = asyncio.create_task(
+            _await_running_then_schedule(),
+            name=f"secondary-startup-reconnect:{profile_name}:{platform.value}",
+        )
+        background_tasks = getattr(self, "_background_tasks", None)
+        if not isinstance(background_tasks, set):
+            background_tasks = set()
+            self._background_tasks = background_tasks
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
+
     def _schedule_secondary_profile_reconnect(
         self, profile_name: str, platform: Platform, adapter: BasePlatformAdapter
     ) -> None:
@@ -16023,10 +15954,48 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         return _handler
 
     def _make_default_profile_message_handler(self):
-        """Scope a multiplexed default-profile message from ingress onward."""
-        profile_home = Path(get_hermes_home())
+        """Scope primary-adapter messages to their routed multiplex profile.
+
+        Profile routes are normally stamped on ``event.source`` before this
+        handler runs. Resolve the home per event so session lookup and transcript
+        loading use the same profile store as the later agent run and persistence
+        path. Authorization still belongs to the primary transport profile: a
+        shared Discord/Telegram adapter can route the turn to a profile that
+        intentionally has no bot credential or platform allowlist. Preserve that
+        transport home on the live source so the auth gate does not re-check the
+        sender against the routed runtime's unrelated secret scope. Sources that
+        bypass adapter routing are resolved here; genuinely unrouted events retain
+        the gateway's launch/default home.
+        """
+        default_home = Path(get_hermes_home())
 
         async def _handler(event):
+            source = event.source
+            # In-process only (SessionSource serialization ignores dynamic attrs).
+            # The route selects agent/session state, not which bot admitted the
+            # message. Keep those two trust domains separate.
+            source._authorization_profile_home = default_home
+            if (
+                not getattr(source, "profile", None)
+                and getattr(source, "profile_route_rejected", False) is not True
+            ):
+                from gateway.profile_routing import ProfileRouteRejected
+
+                try:
+                    source.profile = self._profile_name_for_source(source)
+                except ProfileRouteRejected:
+                    # NOT write-only: ``_handle_message``'s ingress gate reads
+                    # this exact marker and drops the message fail-closed
+                    # ("explicit profile route targets an unserved profile").
+                    # Setting it here also stops that gate from re-running
+                    # routing for the same source.
+                    source.profile_route_rejected = True
+
+            profile_home = (
+                self._resolve_profile_home_for_source(source)
+                if getattr(source, "profile", None)
+                else default_home
+            )
             with _profile_runtime_scope(profile_home):
                 return await self._handle_message(event)
 
@@ -16045,7 +16014,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
             if not has_hook("gateway_platform_event"):
                 return
-            if not self._is_user_authorized(source):
+            if not self._is_user_authorized_for_source(source):
                 return
             invoke_hook("gateway_platform_event", **event)
         except Exception:
@@ -16073,12 +16042,45 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
     def _make_default_profile_platform_event_handler(self):
         """Scope primary-transport events to their routed multiplex profile."""
+        default_home = Path(get_hermes_home())
 
         async def _handler(event, source):
+            source._authorization_profile_home = default_home
             with _profile_runtime_scope(self._resolve_profile_home_for_source(source)):
                 return await self._handle_gateway_platform_event(event, source)
 
         return _handler
+
+    def _is_user_authorized_for_source(
+        self,
+        source: SessionSource,
+        *,
+        allow_adapter_delegation: bool = True,
+    ) -> bool:
+        """Authorize under the live transport's profile, not the routed runtime.
+
+        A primary adapter may route one chat into another profile's agent/session
+        namespace. That runtime profile need not (and normally should not) copy the
+        shared bot token or allowlist. The primary message/platform-event handlers
+        stamp the transport home as an in-process-only attribute before entering
+        the routed scope; consult it here for the narrow authorization read, then
+        restore the routed scope for the remainder of the turn.
+        """
+        def _check() -> bool:
+            # Preserve the historical one-argument seam used by plugins/tests;
+            # only pass the keyword for the explicit delegation-disabled path.
+            if allow_adapter_delegation:
+                return self._is_user_authorized(source)
+            return self._is_user_authorized(
+                source,
+                allow_adapter_delegation=False,
+            )
+
+        authorization_home = getattr(source, "_authorization_profile_home", None)
+        if authorization_home is not None:
+            with _profile_runtime_scope(Path(authorization_home)):
+                return _check()
+        return _check()
 
     def _primary_platform_event_handler(self):
         if getattr(self.config, "multiplex_profiles", False):
@@ -16993,10 +16995,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             # chat-scoped allowlist (e.g. TELEGRAM_GROUP_ALLOWED_CHATS
             # authorizes every member of the listed chat regardless of
             # sender). Defer to _is_user_authorized so that path runs.
-            if not self._is_user_authorized(source):
+            if not self._is_user_authorized_for_source(source):
                 logger.debug("Ignoring message with no user_id from %s", source.platform.value)
                 return None
-        elif not self._is_user_authorized(source):
+        elif not self._is_user_authorized_for_source(source):
             logger.warning("Unauthorized user: %s (%s) on %s", source.user_id, source.user_name, source.platform.value)
             # In DMs: offer pairing code. In groups: silently ignore.
             if (
@@ -19866,12 +19868,29 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                         exc_info=True,
                                     )
                                 _hyg_session_db = getattr(self._session_db, "_db", self._session_db)
+                                # Hygiene performs the same lossy rewrite as
+                                # normal compression. When the operator enabled
+                                # compression.checkpoint_required, the memory
+                                # provider must be loaded so the required
+                                # checkpoint is created before any transcript
+                                # mutation; otherwise keep the historical fast
+                                # path (no provider init, no best-effort hook)
+                                # for hygiene.
+                                from hermes_cli.config import load_config as _load_cfg
+                                from utils import is_truthy_value as _is_truthy
+
+                                _hyg_checkpoint_required = _is_truthy(
+                                    ((_load_cfg() or {}).get("compression") or {}).get(
+                                        "checkpoint_required"
+                                    ),
+                                    default=False,
+                                )
                                 _hyg_agent = AIAgent(
                                     **_hyg_runtime,
                                     model=_hyg_model,
                                     max_iterations=4,
                                     quiet_mode=True,
-                                    skip_memory=True,
+                                    skip_memory=not _hyg_checkpoint_required,
                                     enabled_toolsets=["memory"],
                                     session_id=session_entry.session_id,
                                     session_db=_hyg_session_db,
@@ -22933,6 +22952,15 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             response = result.get("final_response", "") if result else ""
             if not response and result and result.get("error"):
                 response = f"Error: {result['error']}"
+
+            # Background tasks start a fresh conversation (no prior history),
+            # so history_offset=0: every message in the run belongs to this
+            # turn. Mirrors the repair on the main turn path.
+            if response:
+                response = repair_explicit_computer_use_media_paths(
+                    response,
+                    result.get("messages", []),
+                )
 
             # Extract media files from the response
             if response:
