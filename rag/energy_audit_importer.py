@@ -10,10 +10,9 @@ import pymupdf
 
 from pathlib import Path
 
-# ── 配置 ──
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
-COLLECTION = os.getenv("QDRANT_COLLECTION", "energy_audit_reports")
+from rag.config import qdrant_client_kwargs, reports_collection
+
+COLLECTION = reports_collection()
 BATCH_SIZE = 10
 
 # ── 分类规则（共享模块） ──
@@ -408,10 +407,7 @@ def embed_and_store(chunks: list[dict], collection_name: str, progress_callback=
     from qdrant_client.models import PointStruct, VectorParams, Distance
     from rag.embedding import embed_texts
 
-    qdrant = QdrantClient(
-        host=QDRANT_HOST, port=QDRANT_PORT, prefer_grpc=True,
-        timeout=60, check_compatibility=False,
-    )
+    qdrant = QdrantClient(**qdrant_client_kwargs(timeout=60))
 
     # 确保集合存在（1024维）
     try:

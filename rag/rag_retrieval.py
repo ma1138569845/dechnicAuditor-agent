@@ -32,7 +32,14 @@ class RAGKnowledgeRetrieval:
         Args:
             collection_name: Qdrant集合名称
         """
-        self.collection_name = collection_name or DEFAULT_COLLECTION
+        self.collection_name = collection_name
+        if not self.collection_name:
+            try:
+                from rag.config import energy_audit_collection
+
+                self.collection_name = energy_audit_collection()
+            except Exception:
+                self.collection_name = DEFAULT_COLLECTION
         self.index = None
         self.query_engine = None
         self.initialized = False

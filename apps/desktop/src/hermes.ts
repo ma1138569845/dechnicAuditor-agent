@@ -17,6 +17,7 @@ export {
 } from './api/client'
 import { profileScoped } from './api/client'
 export type { ProfileScope } from './api/client'
+export * from './api/knowledge'
 export * from './api/config'
 export * from './api/cron'
 export * from './api/mcp'

@@ -31,6 +31,21 @@ describe('settings helpers', () => {
     expect(fieldCopyForSchemaKey(FIELD_DESCRIPTIONS, 'desktop.repo_scan_exclude_paths')).toBeTruthy()
   })
 
+  it('surfaces knowledge-base config in Settings with user-facing copy', () => {
+    const knowledge = SECTIONS.find(section => section.id === 'knowledge')
+
+    expect(knowledge?.keys).toEqual(
+      expect.arrayContaining([
+        'knowledge_base.qdrant_host',
+        'knowledge_base.qdrant_port',
+        'knowledge_base.embedding_model',
+        'knowledge_base.summary_model'
+      ])
+    )
+    expect(fieldCopyForSchemaKey(FIELD_LABELS, 'knowledge_base.qdrant_host')).toBe('Qdrant Host')
+    expect(fieldCopyForSchemaKey(FIELD_DESCRIPTIONS, 'knowledge_base.summary_model')).toBeTruthy()
+  })
+
   it('does not shadow the backend schema options for memory.provider', () => {
     // memory.provider options are discovery-driven and served by the backend
     // config schema (merged per-request); enumOptionsFor must return undefined

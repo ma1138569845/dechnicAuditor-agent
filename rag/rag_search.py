@@ -15,10 +15,9 @@ import os, json
 from typing import Dict, List, Optional
 from pathlib import Path
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-# Use gRPC 6334 to match rag.api.knowledge_base (HTTP 6333 was a mismatch).
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
-COLLECTION = "energy_audit_reports"
+from rag.config import qdrant_client_kwargs, reports_collection
+
+COLLECTION = reports_collection()
 
 # ============================================================
 # Layer 0: 标签直查（无需 embedding，适合精确匹配）
@@ -32,7 +31,7 @@ def search_by_tags(tags: Dict, limit: int = 10) -> List[dict]:
     from qdrant_client import QdrantClient
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    client = QdrantClient(**qdrant_client_kwargs())
 
     conditions = []
     for key, value in tags.items():
@@ -79,7 +78,7 @@ def search_qdrant(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> Li
     from qdrant_client import QdrantClient
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    client = QdrantClient(**qdrant_client_kwargs())
 
     # 构建过滤条件
     qdrant_filter = None

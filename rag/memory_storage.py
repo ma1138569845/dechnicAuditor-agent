@@ -19,9 +19,8 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-# Qdrant 配置
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
+from rag.config import qdrant_client_kwargs, qdrant_grpc_port
+
 MEMORY_COLLECTION = "hermes_long_term_memory"
 KNOWLEDGE_COLLECTION = "hermes_learned_knowledge"
 
@@ -30,20 +29,20 @@ VECTOR_SIZE = 1024
 
 def _get_client() -> QdrantClient:
     """模块级缓存的 QdrantClient (gRPC)."""
-    return QdrantClient(
-        host=QDRANT_HOST, port=QDRANT_PORT, prefer_grpc=True, timeout=60,
-        check_compatibility=False,
-    )
+    return QdrantClient(**qdrant_client_kwargs(timeout=60))
 
 
 class LongTermMemory:
     """长期记忆存储系统"""
 
-    def __init__(self, qdrant_host: str = QDRANT_HOST, qdrant_port: int = QDRANT_PORT):
-        self._client = QdrantClient(
-            host=qdrant_host, port=qdrant_port, prefer_grpc=True, timeout=60,
-            check_compatibility=False,
-        )
+    def __init__(self, qdrant_host: str | None = None, qdrant_port: int | None = None):
+        if qdrant_host:
+            self._client = QdrantClient(
+                host=qdrant_host, port=int(qdrant_port or qdrant_grpc_port()), prefer_grpc=True, timeout=60,
+                check_compatibility=False,
+            )
+        else:
+            self._client = QdrantClient(**qdrant_client_kwargs(timeout=60))
         self.memory_collection = MEMORY_COLLECTION
         self.knowledge_collection = KNOWLEDGE_COLLECTION
 

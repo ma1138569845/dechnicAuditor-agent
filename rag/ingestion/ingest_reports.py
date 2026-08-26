@@ -82,13 +82,11 @@ def ingest_to_qdrant(chunks: List[dict], tags: dict, filename: str):
     """将报告 chunks 写入 Qdrant"""
     from qdrant_client import QdrantClient
     from qdrant_client.models import PointStruct, VectorParams, Distance
+    from rag.config import qdrant_client_kwargs, reports_collection
     from rag.embedding import embed_query
 
-    client = QdrantClient(
-        host=os.getenv("QDRANT_HOST", "127.0.0.1"),
-        port=int(os.getenv("QDRANT_PORT", "6333")),
-    )
-    collection_name = "energy_audit_reports"
+    client = QdrantClient(**qdrant_client_kwargs())
+    collection_name = reports_collection()
 
     # 确保 collection 存在
     collections = [c.name for c in client.get_collections().collections]
@@ -146,6 +144,7 @@ def ingest_to_qdrant(chunks: List[dict], tags: dict, filename: str):
 # ============================================================
 
 def main():
+    from rag.config import qdrant_grpc_port, qdrant_host, reports_collection
     report_dirs = [
         "E:/工作目录/能源审计/省直能源审计报告0620（word版本）",
         "E:/工作目录/能源审计",
@@ -178,7 +177,7 @@ def main():
 
     print(f"\n{'='*50}")
     print(f"完成: {report_count} 份报告, {total_chunks} 个 chunk 入库")
-    print(f"Collection: energy_audit_reports @ {os.getenv('QDRANT_HOST', '127.0.0.1')}:{os.getenv('QDRANT_PORT', '6333')}")
+    print(f"Collection: {reports_collection()} @ {qdrant_host()}:{qdrant_grpc_port()}")
 
 
 if __name__ == '__main__':

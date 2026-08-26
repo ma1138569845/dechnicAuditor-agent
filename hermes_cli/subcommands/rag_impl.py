@@ -38,7 +38,7 @@ def configure_rag_interactive(args=None) -> None:
       4. Initialize local rag/data/ directories
       5. Initialize Qdrant collections
       6. Initialize SQLite metadata tables
-      7. Write/update rag/qdrant_config.yaml
+      7. Write ``knowledge_base:`` into Hermes config.yaml (secrets into .env)
     """
     from pathlib import Path
 
@@ -332,157 +332,47 @@ def configure_rag_interactive(args=None) -> None:
                 rprint(f"  ✗ {col_name} ({desc}): {e}")
 
     # ------------------------------------------------------------------
-    # Write qdrant_config.yaml
+    # Persist into Hermes config.yaml (the runtime source of truth)
     # ------------------------------------------------------------------
     rprint()
-    rprint("  ⏳ 更新 qdrant_config.yaml...")
+    rprint("  ⏳ 写入 Hermes config.yaml → knowledge_base ...")
     try:
-        _CONFIG_YAML.parent.mkdir(parents=True, exist_ok=True)
-        _CONFIG_YAML.write_text(
-            f"""# Qdrant 配置文件
-# 自动生成于 hermes rag 配置向导
+        from hermes_cli.config import load_config, save_config, save_env_value
 
-qdrant:
-  host: "{qdrant_host}"
-  port: {qdrant_port}
-  url: "http://{qdrant_host}:{qdrant_port}"
-  timeout: 60
-  prefer_grpc: false
-  api_key: "{'***' if qdrant_api_key else ''}"
+        cfg = load_config()
+        kb = cfg.get("knowledge_base")
+        if not isinstance(kb, dict):
+            kb = {}
+            cfg["knowledge_base"] = kb
+        kb["qdrant_host"] = str(qdrant_host)
+        kb["qdrant_port"] = int(qdrant_port)
+        kb["embedding_model"] = str(embedding_model)
+        kb["summary_model"] = str(llm_model)
+        kb["deepseek_api_base"] = str(deepseek_api_base)
+        save_config(cfg)
+        from rag.config import clear_cache
 
-# Embedding 配置
-embedding:
-  model: "{embedding_model}"
-  provider: "dashscope"
-
-# LLM 配置
-llm:
-  model: "{llm_model}"
-  provider: "deepseek"
-  api_base: "{deepseek_api_base}"
-
-# 集合配置
-collections:
-  energy_audit_reports:
-    name: "energy_audit_reports"
-    description: "能源审计报告文档知识库"
-    vector_size: 1024
-    distance: "Cosine"
-    use_for:
-      - "能耗报告检索"
-      - "RAG 问答系统"
-      - "语义搜索"
-
-  energy_quota_standards:
-    name: "energy_quota_standards"
-    description: "能源消耗定额标准知识库"
-    vector_size: 1024
-    distance: "Cosine"
-    use_for:
-      - "能耗指标对比"
-      - "定额合规检查"
-      - "标准文档检索"
-
-  energy_audit_technical_guidelines:
-    name: "energy_audit_technical_guidelines"
-    description: "能源审计技术规范和指南知识库"
-    vector_size: 1024
-    distance: "Cosine"
-    use_for:
-      - "审计流程查询"
-      - "技术规范检索"
-      - "指南文档搜索"
-
-  star_charts:
-    name: "star_charts"
-    description: "星图数据"
-    vector_size: 4
-    distance: "Dot"
-    use_for:
-      - "知识图谱"
-      - "数据关联"
-
-  long_term_memory:
-    name: "hermes_long_term_memory"
-    description: "对话历史和学习记忆"
-    vector_size: 1024
-    distance: "Cosine"
-    create_on_init: true
-    use_for:
-      - "对话历史存储"
-      - "学习记忆"
-      - "上下文保持"
-
-  learned_knowledge:
-    name: "hermes_learned_knowledge"
-    description: "学习到的知识"
-    vector_size: 1024
-    distance: "Cosine"
-    create_on_init: true
-    use_for:
-      - "知识存储"
-      - "经验积累"
-      - "最佳实践"
-
-# 记忆配置
-memory:
-  conversation:
-    store_all: false
-    store_important: true
-
-  knowledge:
-    auto_extract: true
-    categories:
-      - "energy_standard"
-      - "energy_formula"
-      - "building_info"
-      - "equipment_info"
-      - "best_practice"
-
-# 知识图谱配置
-knowledge_graph:
-  relations:
-    document_to_document: true
-    chunk_to_chunk: true
-
-# 使用场景配置
-use_cases:
-  rag_qa_system:
-    description: "RAG 问答系统"
-    collections: ["energy_audit_reports", "energy_quota_standards", "energy_audit_technical_guidelines"]
-    features:
-      - "语义搜索"
-      - "关键词搜索"
-      - "上下文检索"
-      - "文档关联"
-
-  long_term_memory:
-    description: "长期记忆存储"
-    collections: ["hermes_long_term_memory", "hermes_learned_knowledge"]
-    features:
-      - "对话历史"
-      - "知识积累"
-      - "经验存储"
-      - "上下文保持"
-
-  knowledge_graph:
-    description: "知识图谱查询"
-    collections: ["star_charts", "energy_audit_reports", "energy_quota_standards", "energy_audit_technical_guidelines"]
-    features:
-      - "跨集合搜索"
-      - "文档关联"
-      - "知识分类"
-      - "图谱构建"
-""",
-            encoding="utf-8",
-        )
-        rprint(f"  ✓ 配置文件已写入: {_CONFIG_YAML}")
+        clear_cache()
+        rprint(f"  ✓ 已写入 {_get_hermes_home() / 'config.yaml'} 的 knowledge_base 节")
+        if dashscope_api_key:
+            save_env_value("DASHSCOPE_API_KEY", dashscope_api_key)
+            rprint("  ✓ DashScope API Key 已写入 .env")
+        if deepseek_api_key:
+            save_env_value("DEEPSEEK_API_KEY", deepseek_api_key)
+            rprint("  ✓ DeepSeek API Key 已写入 .env")
+        if qdrant_api_key:
+            save_env_value("QDRANT_API_KEY", qdrant_api_key)
+            rprint("  ✓ Qdrant API Key 已写入 .env")
+        if _CONFIG_YAML.exists():
+            _CONFIG_YAML.write_text(
+                "# DEPRECATED. Runtime does not read this file.\n"
+                f"# Edit {_get_hermes_home() / 'config.yaml'} → knowledge_base: instead.\n",
+                encoding="utf-8",
+            )
+            rprint(f"  ℹ 旧文件 {_CONFIG_YAML} 已标记为废弃，不再作为配置源")
     except Exception as e:
-        rprint(f"  ✗ 配置文件写入失败: {e}")
+        rprint(f"  ✗ 写入 config.yaml 失败: {e}")
 
-    # ------------------------------------------------------------------
-    # Summary
-    # ------------------------------------------------------------------
     rprint()
     if _RICH and Table is not None:
         table = Table(title="RAG 配置摘要")
@@ -497,7 +387,7 @@ use_cases:
         table.add_row("DeepSeek Key", "已设置" if deepseek_api_key else "未设置")
         table.add_row("本地数据目录", str(_DATA_DIR))
         table.add_row("Wiki Vault", str(_HERMES_RAG / "wiki" / "generated"))
-        table.add_row("配置文件", str(_CONFIG_YAML))
+        table.add_row("配置文件", str(_get_hermes_home() / "config.yaml") + " → knowledge_base")
         table.add_row("SQLite 表", "9 张 (bases, folders, docs, chunks, vector_jobs, entities, relationships, wiki_pages, curation_jobs)")
         table.add_row("默认知识库", "3 个 × 3 集合 = 9 个 Qdrant 集合")
         rprint(table)
@@ -510,7 +400,7 @@ use_cases:
         rprint(f"  LLM:            {llm_model} @ {deepseek_api_base}")
         rprint(f"  本地数据:       {_DATA_DIR}")
         rprint(f"  Wiki Vault:     {_HERMES_RAG / 'wiki' / 'generated'}")
-        rprint(f"  配置文件:       {_CONFIG_YAML}")
+        rprint(f"  配置文件:       {_get_hermes_home() / 'config.yaml'} → knowledge_base")
         rprint(f"  SQLite 表:      9 张")
         rprint(f"  Qdrant 集合:    9 个 (3 KB × 主文档+实体+Wiki)")
         rprint(f"  默认知识库:     3 个")
@@ -518,6 +408,6 @@ use_cases:
     rprint()
     rprint("[bold green]✓ RAG 配置完成！[/bold green]" if _RICH else "✓ RAG 配置完成！")
     rprint(f"  本地数据目录: {_DATA_DIR}")
-    rprint(f"  配置文件:     {_CONFIG_YAML}")
+    rprint(f"  配置文件:     {_get_hermes_home() / 'config.yaml'} → knowledge_base")
     rprint()
     rprint("  运行 hermes rag 可重新配置。")

@@ -40,77 +40,38 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Load Hermes .env so API keys are available to embedding pipelines.
-# This must run before any downstream module reads os.getenv().
-try:
-    from dotenv import load_dotenv
+# Shared resolver: config.yaml knowledge_base: → env → defaults.
+from rag.config import (
+    deepseek_api_base as _deepseek_api_base_fn,
+    deepseek_api_key as _deepseek_api_key_fn,
+    knowledge_root as _knowledge_root_fn,
+    qdrant_grpc_port as _qdrant_grpc_port_fn,
+    qdrant_host as _qdrant_host_fn,
+    summary_model as _summary_model_fn,
+    summary_provider as _summary_provider_fn,
+    wiki_vault as _wiki_vault_fn,
+)
 
-    _hermes_dotenv = Path.home() / ".hermes" / ".env"
-    if _hermes_dotenv.exists():
-        load_dotenv(_hermes_dotenv, override=False)
-except Exception:
-    pass
-
-# ── config (priority: config.yaml → env → hardcoded default) ──
-
-# sys.path manipulation removed. All imports now use the `rag.*` package namespace.
-
-
-def _get_rag_config(key: str, env_var: str, default: str) -> str:
-    """Read config from Hermes config.yaml, falling back to env var then default.
-
-    Priority:
-    1. config.yaml → knowledge_base.{key}
-    2. Environment variable {env_var}
-    3. Hardcoded default
-    """
-    try:
-        from hermes_cli.webui.api.config import get_config as _hermes_config
-        cfg = _hermes_config()
-        kb_cfg = cfg.get("knowledge_base", {}) or {}
-        val = kb_cfg.get(key)
-        if val is not None and str(val).strip():
-            return str(val).strip()
-    except Exception:
-        pass
-    return os.environ.get(env_var, default)
-
-
-# Resolve the default data root via Hermes home (like skills, config, sessions).
-# Env var / config.yaml overrides take priority; this is the platform-native default.
 try:
     from hermes_constants import get_hermes_home as _get_hermes_home
 except ImportError:
-    # Fallback when running outside a full Hermes install (tests, standalone scripts)
     from pathlib import Path as _Path
 
     def _get_hermes_home() -> _Path:
         return _Path.home() / ".hermes"
 
-_RAG_DATA_ROOT = _get_hermes_home() / "rag" / "data"
-
-_DEFAULT_KNOWLEDGE_ROOT = Path(
-    _get_rag_config("knowledge_root", "HERMES_KNOWLEDGE_ROOT", str(_RAG_DATA_ROOT))
-)
-# Default to localhost; production deployments must override via
-# QDRANT_HOST/QDRANT_PORT env vars or config.yaml (never hardcode LAN IPs).
-_QDRANT_HOST = _get_rag_config("qdrant_host", "QDRANT_HOST", "127.0.0.1")
-_QDRANT_PORT = int(
-    _get_rag_config("qdrant_port", "QDRANT_PORT", "6334")
-)
-
-# llm-wiki vault root (Karpathy-style markdown wiki, Obsidian-compatible).
-# Auto-generated wiki pages are exported under {vault}/generated/{kb_slug}/.
-_DEFAULT_WIKI_VAULT = _get_rag_config(
-    "wiki_vault", "HERMES_WIKI_VAULT", str(_get_hermes_home() / "rag" / "wiki")
-)
-
-# Embedding & LLM keys (sensitive — env only, never in config.yaml)
+# Module-level aliases kept so tests can monkeypatch them. Values are a snapshot
+# at import; _qdrant_client() / LLM helpers re-read rag.config unless patched.
+_RAG_DATA_ROOT = _knowledge_root_fn()
+_DEFAULT_KNOWLEDGE_ROOT = _RAG_DATA_ROOT
+_QDRANT_HOST = _qdrant_host_fn()
+_QDRANT_PORT = _qdrant_grpc_port_fn()
+_DEFAULT_WIKI_VAULT = _wiki_vault_fn()
 _DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-_DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
-_DEEPSEEK_API_BASE = os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
-_SUMMARY_PROVIDER = os.environ.get("SUMMARY_PROVIDER", "deepseek")
-_SUMMARY_MODEL = os.environ.get("SUMMARY_MODEL", "deepseek-v4-flash")
+_DEEPSEEK_API_KEY = _deepseek_api_key_fn()
+_DEEPSEEK_API_BASE = _deepseek_api_base_fn()
+_SUMMARY_PROVIDER = _summary_provider_fn()
+_SUMMARY_MODEL = _summary_model_fn()
 
 # Legacy alias kept for backwards compatibility
 _KNOWLEDGE_BASE_ROOT = _DEFAULT_KNOWLEDGE_ROOT
@@ -1707,10 +1668,12 @@ def _call_llm_with_fallback(
     try:
         from agent.auxiliary_client import call_llm
 
+        from rag.config import summary_model, summary_provider
+
         resp = call_llm(
             task=task,
-            provider=_SUMMARY_PROVIDER,
-            model=_SUMMARY_MODEL,
+            provider=summary_provider(),
+            model=summary_model(),
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -1721,15 +1684,17 @@ def _call_llm_with_fallback(
         logger.exception("Hermes auxiliary LLM call failed; falling back to direct DeepSeek")
 
     # Fallback: direct DeepSeek-compatible call.
-    api_key = _DEEPSEEK_API_KEY
+    from rag.config import deepseek_api_base, deepseek_api_key, summary_model
+
+    api_key = deepseek_api_key()
     if not api_key:
         return None
     try:
         from openai import OpenAI
 
-        client = OpenAI(api_key=api_key, base_url=_DEEPSEEK_API_BASE)
+        client = OpenAI(api_key=api_key, base_url=deepseek_api_base())
         resp = client.chat.completions.create(
-            model=_SUMMARY_MODEL,
+            model=summary_model(),
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -1807,16 +1772,19 @@ def _qdrant_upsert(collection_name: str, points: list) -> None:
 
 
 _qdrant_client_cache = None
+_qdrant_client_key = None
 
 def _qdrant_client():
-    """Return a module-level cached QdrantClient (gRPC, singleton)."""
-    global _qdrant_client_cache
-    if _qdrant_client_cache is not None:
+    """Return a cached QdrantClient, rebuilt when host/port/key change."""
+    global _qdrant_client_cache, _qdrant_client_key
+    from rag.config import qdrant_api_key, qdrant_client_kwargs, qdrant_grpc_port, qdrant_host
+
+    key = (qdrant_host(), qdrant_grpc_port(), qdrant_api_key())
+    if _qdrant_client_cache is not None and _qdrant_client_key == key:
         return _qdrant_client_cache
     from qdrant_client import QdrantClient
-    _qdrant_client_cache = QdrantClient(
-        host=_QDRANT_HOST, port=_QDRANT_PORT, prefer_grpc=True, check_compatibility=False
-    )
+    _qdrant_client_key = key
+    _qdrant_client_cache = QdrantClient(**qdrant_client_kwargs())
     return _qdrant_client_cache
 
 

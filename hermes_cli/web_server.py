@@ -1164,6 +1164,21 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Context window override (0 = auto-detect from model metadata)",
         "category": "general",
     },
+    "knowledge_base.qdrant_host": {
+        "type": "string",
+        "description": "Qdrant host for the Knowledge page, rag/*, and energy-audit retrieval",
+        "category": "knowledge_base",
+    },
+    "knowledge_base.qdrant_port": {
+        "type": "number",
+        "description": "Qdrant gRPC port (default 6334)",
+        "category": "knowledge_base",
+    },
+    "knowledge_base.qdrant_http_port": {
+        "type": "number",
+        "description": "Qdrant REST port (default 6333)",
+        "category": "knowledge_base",
+    },
     "terminal.backend": {
         "type": "select",
         "description": "Terminal execution backend",
@@ -1361,7 +1376,7 @@ _CATEGORY_MERGE: Dict[str, str] = {
 # Display order for tabs — unlisted categories sort alphabetically after these.
 _CATEGORY_ORDER = [
     "general", "agent", "terminal", "display", "delegation",
-    "memory", "compression", "security", "browser", "voice",
+    "memory", "knowledge_base", "compression", "security", "browser", "voice",
     "tts", "stt", "logging", "discord", "auxiliary",
 ]
 

@@ -231,8 +231,7 @@ class EnergyAuditPipeline:
 
 
 # 配置示例（凭据从环境变量读取，切勿在此写入）
-#   DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_SSLMODE
-#   QDRANT_URL, QDRANT_COLLECTION
+# RAG 连接信息走 rag.config → config.yaml knowledge_base:（与 Desktop 知识库同一套）
 DEFAULT_CONFIG = {
     'database': {
         'host': os.environ.get('DB_HOST', '10.10.1.165'),
@@ -241,10 +240,6 @@ DEFAULT_CONFIG = {
         'user': os.environ.get('DB_USER', 'postgres'),
         'password': os.environ.get('DB_PASSWORD', ''),
         'sslmode': os.environ.get('DB_SSLMODE', 'prefer'),
-    },
-    'rag': {
-        'collection_name': os.environ.get('QDRANT_COLLECTION', 'knowledge_segment_qwen'),
-        'qdrant_url': os.environ.get('QDRANT_URL', 'http://127.0.0.1:6333'),
     },
     'output': {
         'format': 'markdown',

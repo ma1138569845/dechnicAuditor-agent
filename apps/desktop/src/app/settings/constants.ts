@@ -1,4 +1,5 @@
 import {
+  Book,
   Box,
   Brain,
   type IconComponent,
@@ -518,6 +519,19 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     userCharLimit: 'Profile Budget',
     provider: 'Memory Provider'
   },
+  knowledgeBase: {
+    qdrantHost: 'Qdrant Host',
+    qdrantPort: 'Qdrant gRPC Port',
+    qdrantHttpPort: 'Qdrant HTTP Port',
+    embeddingModel: 'Embedding Model',
+    summaryProvider: 'Wiki / Summary Provider',
+    summaryModel: 'Wiki / Summary Model',
+    deepseekApiBase: 'Summary API Base URL',
+    energyAuditCollection: 'Energy-audit Collection',
+    reportsCollection: 'Reports Collection',
+    knowledgeRoot: 'Document Storage Root',
+    wikiVault: 'Wiki Export Folder'
+  },
   context: {
     engine: 'Context Engine'
   },
@@ -615,6 +629,19 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
       languageCode: 'Optional ISO-639-3 language code. Blank lets ElevenLabs auto-detect.'
     }
   },
+  knowledgeBase: {
+    qdrantHost: 'Vector database host used by the Knowledge page, rag/*, and energy-audit retrieval.',
+    qdrantPort: 'gRPC port (Desktop knowledge and rag/*). Qdrant default is 6334.',
+    qdrantHttpPort: 'REST port (LlamaIndex / HTTP clients). Qdrant default is 6333.',
+    embeddingModel: 'Embedding model id. DashScope API key is set under Settings → API keys.',
+    summaryProvider: 'Provider id for wiki, summary, and graph generation.',
+    summaryModel: 'Model used for wiki, summary, graph, and quality evaluation.',
+    deepseekApiBase: 'OpenAI-compatible base URL when falling back to a direct DeepSeek call.',
+    energyAuditCollection: 'Qdrant collection used by the energy-audit RAG retriever.',
+    reportsCollection: 'Qdrant collection for energy-audit report chunks.',
+    knowledgeRoot: 'Folder for uploaded knowledge documents. Blank uses {HERMES_HOME}/rag/data.',
+    wikiVault: 'Folder for exported wiki markdown. Blank uses {HERMES_HOME}/rag/wiki.'
+  },
   updates: {
     nonInteractiveLocalChanges:
       'When Hermes updates itself from the app (no terminal prompt), keep local source edits (stash) or throw them away (discard). Terminal updates always ask.'
@@ -687,6 +714,24 @@ export const SECTIONS: DesktopConfigSection[] = [
       'compression.threshold',
       'compression.target_ratio',
       'compression.protect_last_n'
+    ]
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge',
+    icon: Book,
+    keys: [
+      'knowledge_base.qdrant_host',
+      'knowledge_base.qdrant_port',
+      'knowledge_base.qdrant_http_port',
+      'knowledge_base.embedding_model',
+      'knowledge_base.summary_provider',
+      'knowledge_base.summary_model',
+      'knowledge_base.deepseek_api_base',
+      'knowledge_base.energy_audit_collection',
+      'knowledge_base.reports_collection',
+      'knowledge_base.knowledge_root',
+      'knowledge_base.wiki_vault'
     ]
   },
   {

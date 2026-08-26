@@ -26,6 +26,7 @@ import {
   AppWindow,
   Archive,
   BarChart3,
+  Book,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -93,6 +94,7 @@ import {
   ARTIFACTS_ROUTE,
   COMMAND_CENTER_ROUTE,
   CRON_ROUTE,
+  KNOWLEDGE_ROUTE,
   MESSAGING_ROUTE,
   navigateToWorkspacePage,
   NEW_CHAT_ROUTE,
@@ -834,6 +836,14 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             keywords: ['skills', 'tools', 'toolsets', 'mcp', 'capabilities'],
             label: cc.nav.skills.title,
             run: go(SKILLS_ROUTE)
+          },
+          {
+            action: 'nav.knowledge',
+            icon: Book,
+            id: 'nav-knowledge',
+            keywords: ['knowledge', 'kb', 'rag', 'wiki', 'documents', '知识库'],
+            label: cc.nav.knowledge.title,
+            run: go(KNOWLEDGE_ROUTE)
           },
           {
             action: 'nav.messaging',

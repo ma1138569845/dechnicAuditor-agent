@@ -1356,7 +1356,7 @@ export interface Translations {
     archivedChats: string
     sections: Record<'maintenance' | 'sessions' | 'system' | 'usage', string>
     sectionDescriptions: Record<'maintenance' | 'sessions' | 'system' | 'usage', string>
-    nav: Record<'newChat' | 'settings' | 'skills' | 'messaging' | 'artifacts', { title: string; detail: string }>
+    nav: Record<'newChat' | 'settings' | 'skills' | 'knowledge' | 'messaging' | 'artifacts', { title: string; detail: string }>
     sectionEntries: Record<'sessions' | 'system' | 'usage', { title: string; detail: string }>
     providerNavigate: string
     providerSessions: string
@@ -1820,6 +1820,130 @@ export interface Translations {
     chat: string
     copyUrl: string
     copyPath: string
+  }
+
+  knowledge: {
+    title: string
+    create: string
+    createTitle: string
+    createDesc: string
+    nameLabel: string
+    namePlaceholder: string
+    descLabel: string
+    descPlaceholder: string
+    systemBases: string
+    userBases: string
+    system: string
+    noDescription: string
+    emptyTitle: string
+    emptyDesc: string
+    searchPlaceholder: string
+    deleteConfirm: (name: string) => string
+    deleteDocConfirm: (name: string) => string
+    deleteFolderConfirm: (name: string) => string
+    created: string
+    deleted: string
+    failedLoad: string
+    failedCreate: string
+    failedDelete: string
+    failedUpload: string
+    uploadSuccess: string
+    upload: string
+    uploading: string
+    folders: string
+    newFolder: string
+    folderHint: string
+    folderNamePlaceholder: string
+    allDocuments: string
+    fileName: string
+    fileType: string
+    fileSize: string
+    status: string
+    chunks: string
+    createdAt: string
+    preview: string
+    actions: string
+    noDocumentsTitle: string
+    noDocumentsDesc: string
+    noChunks: string
+    tabDocuments: string
+    tabSearch: string
+    tabWiki: string
+    tabGraph: string
+    tabJobs: string
+    tabStats: string
+    filterDocuments: string
+    searchHint: string
+    searchEmpty: string
+    searchNoResults: string
+    searchAction: string
+    searching: string
+    score: string
+    untitled: string
+    noWikiTitle: string
+    noWikiDesc: string
+    statsTotal: string
+    statsCompleted: string
+    statsProcessing: string
+    statsFailed: string
+    statsOrphaned: string
+    statsSize: string
+    statusPending: string
+    statusProcessing: string
+    statusCompleted: string
+    statusFailed: string
+    docsCount: (count: string) => string
+    backToList: string
+    notFound: string
+    nextPage: string
+    rangeOf: (start: number, end: number, total: number) => string
+    generate: string
+    rebuild: string
+    rebuildConfirm: string
+    rebuildQueued: string
+    folderWiki: string
+    bulkWiki: string
+    hierarchicalWiki: string
+    curateApproved: string
+    llmConfirmTitle: string
+    llmConfirmBody: string
+    actionStarted: string
+    actionFailed: string
+    wikiSkipped: string
+    qualityUpdated: string
+    vectorize: string
+    revectorize: string
+    summary: string
+    graph: string
+    wiki: string
+    wikiOnly: string
+    wikiAndCurate: string
+    openPipeline: string
+    noPreview: string
+    searchModeVector: string
+    searchModeWiki: string
+    searchModeGraph: string
+    searchModeUnified: string
+    reviewAll: string
+    reviewPending: string
+    reviewApproved: string
+    reviewRejected: string
+    approve: string
+    reject: string
+    evaluateQuality: string
+    quality: string
+    entities: string
+    relationships: string
+    noGraphTitle: string
+    noGraphDesc: string
+    noJobsTitle: string
+    noJobsDesc: string
+    jobTypeVectorize: string
+    jobTypeCurate: string
+    selectedCount: (n: number) => string
+    bulkDeleteConfirm: string
+    deleteChunkConfirm: string
+    editChunk: string
   }
 
   artifactCard: {

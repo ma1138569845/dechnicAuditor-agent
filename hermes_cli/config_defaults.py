@@ -3761,6 +3761,23 @@ DEFAULT_CONFIG = {
         "region": "global",
     },
 
+    # Knowledge-base / RAG (Desktop page, rag/*, energy-audit retrieval).
+    # Secrets (DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, QDRANT_API_KEY) stay in .env.
+    # Keep keys in sync with rag.config.DEFAULTS.
+    "knowledge_base": {
+        "knowledge_root": "",
+        "wiki_vault": "",
+        "qdrant_host": "127.0.0.1",
+        "qdrant_port": 6334,
+        "qdrant_http_port": 6333,
+        "embedding_model": "dashscope/text-embedding-v3",
+        "summary_provider": "deepseek",
+        "summary_model": "deepseek-v4-flash",
+        "deepseek_api_base": "https://api.deepseek.com/v1",
+        "energy_audit_collection": "knowledge_segment_qwen",
+        "reports_collection": "energy_audit_reports",
+    },
+
     # Config schema version - bump this when adding new required fields
     "_config_version": 38,
 }
@@ -4044,11 +4061,18 @@ OPTIONAL_ENV_VARS = {
         "category": "provider",
     },
     "DASHSCOPE_API_KEY": {
-        "description": "Alibaba Cloud DashScope API key (Qwen + multi-provider models)",
+        "description": "Alibaba Cloud DashScope API key (Qwen embeddings + multi-provider models)",
         "prompt": "DashScope API Key",
         "url": "https://modelstudio.console.alibabacloud.com/",
         "password": True,
         "category": "provider",
+    },
+    "QDRANT_API_KEY": {
+        "description": "Optional Qdrant API key for the knowledge-base vector store",
+        "prompt": "Qdrant API Key",
+        "url": "",
+        "password": True,
+        "category": "tool",
     },
     "DASHSCOPE_BASE_URL": {
         "description": "Custom DashScope base URL (default: coding-intl OpenAI-compat endpoint)",

@@ -59,4 +59,12 @@ describe('Checkbox', () => {
 
     expect(shownGlyphs(container)).toEqual([])
   })
+
+  it('uses a readable stroke token when unchecked, not the input hairline', () => {
+    const { container } = render(<Checkbox checked={false} />)
+    const root = container.querySelector('[data-slot="checkbox"]')
+
+    expect(root?.className).toContain('border-(--ui-text-tertiary)')
+    expect(root?.className).not.toContain('border-input')
+  })
 })

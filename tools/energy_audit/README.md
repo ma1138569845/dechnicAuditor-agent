@@ -151,15 +151,19 @@ database:
 ```
 
 ### RAG系统配置
-配置Qdrant和DeepSeek/Qwen模型：
+
+与 Desktop 知识库共用 `{HERMES_HOME}/config.yaml` 的 `knowledge_base:`（不要再配一份 `rag.qdrant_url`）：
 
 ```yaml
-rag:
-  collection_name: "knowledge_segment_qwen"
-  qdrant_url: "http://10.10.2.55:6333"
-  deepseek_model: "deepseek-v4-flash"
-  qwen_embed_model: "text-embedding-v3"
+knowledge_base:
+  qdrant_host: "10.10.2.55"
+  qdrant_port: 6334
+  qdrant_http_port: 6333
+  summary_model: "deepseek-v4-flash"
+  energy_audit_collection: "knowledge_segment_qwen"
 ```
+
+密钥放 `{HERMES_HOME}/.env`：`DASHSCOPE_API_KEY`、`DEEPSEEK_API_KEY`。
 
 ## 报告结构
 

@@ -109,6 +109,7 @@ export const KEYBIND_ACTIONS: readonly KeybindActionMeta[] = [
   { id: 'nav.settings', category: 'navigation', defaults: ['mod+,'] },
   { id: 'nav.profiles', category: 'navigation', defaults: [] },
   { id: 'nav.skills', category: 'navigation', defaults: [] },
+  { id: 'nav.knowledge', category: 'navigation', defaults: [] },
   { id: 'nav.messaging', category: 'navigation', defaults: [] },
   { id: 'nav.artifacts', category: 'navigation', defaults: [] },
   { id: 'nav.cron', category: 'navigation', defaults: [] },

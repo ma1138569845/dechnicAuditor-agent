@@ -52,8 +52,30 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 
 
 # ============ 配置 ============
-QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
-DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", "knowledge_segment_qwen")  # Qwen 1024 维
+# Runtime values come from rag.config (config.yaml knowledge_base: / .env).
+# Module-level names remain for callers that imported them historically.
+
+
+def _qdrant_url() -> str:
+    try:
+        from rag.config import qdrant_http_url
+
+        return qdrant_http_url()
+    except Exception:
+        return os.getenv("QDRANT_URL", "http://127.0.0.1:6333")
+
+
+def _default_collection() -> str:
+    try:
+        from rag.config import energy_audit_collection
+
+        return energy_audit_collection()
+    except Exception:
+        return os.getenv("QDRANT_COLLECTION", "knowledge_segment_qwen")
+
+
+QDRANT_URL = _qdrant_url()
+DEFAULT_COLLECTION = _default_collection()
 DOCS_DIR = "./docs"
 
 # DeepSeek LLM 配置
@@ -184,11 +206,18 @@ def get_qdrant_client() -> QdrantClient:
     故默认走 gRPC。如需强制 REST, 设环境变量 QDRANT_USE_GRPC=0。
     """
     use_grpc = os.getenv("QDRANT_USE_GRPC", "1") != "0"
+    try:
+        from rag.config import qdrant_grpc_port, qdrant_http_port
+
+        grpc_port = qdrant_grpc_port()
+        http_port = qdrant_http_port()
+    except Exception:
+        grpc_port, http_port = 6334, 6333
     return QdrantClient(
-        url=QDRANT_URL,
+        url=_qdrant_url(),
         prefer_grpc=use_grpc,
-        port=6334 if use_grpc else 6333,
-        grpc_port=6334,
+        port=grpc_port if use_grpc else http_port,
+        grpc_port=grpc_port,
         timeout=60,
         check_compatibility=False,
     )

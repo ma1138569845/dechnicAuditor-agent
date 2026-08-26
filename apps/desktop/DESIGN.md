@@ -168,6 +168,9 @@ Sizes: `default`, `xs`, `overlay` (titlebar glyph counts).
   (color mode, tool-call display, usage period). Replaces radio piles and
   pill rows.
 - **`Switch`** (`size="xs"`) — bare, with `aria-label`. No bordered text wrapper.
+- **`Checkbox`** — unchecked outline is `--ui-text-tertiary` (not the `--input`
+  hairline) so the empty box reads on light table surfaces; checked and
+  indeterminate fill `primary`.
 
 ## Layout
 

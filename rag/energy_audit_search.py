@@ -10,17 +10,14 @@
 import os, re, sys
 from collections import Counter
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
-COLLECTION = os.getenv("QDRANT_COLLECTION", "energy_audit_reports")
+from rag.config import qdrant_client_kwargs, reports_collection
+
+COLLECTION = reports_collection()
 
 
 def get_client():
     from qdrant_client import QdrantClient
-    return QdrantClient(
-        host=QDRANT_HOST, port=QDRANT_PORT, prefer_grpc=True,
-        timeout=30, check_compatibility=False,
-    )
+    return QdrantClient(**qdrant_client_kwargs(timeout=30))
 
 
 def embed_query(text: str) -> list[float]:

@@ -8,10 +8,9 @@ from typing import Dict, List
 
 from qdrant_client import QdrantClient
 
-# Qdrant 配置
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
-COLLECTION_NAME = "knowledge_segment"
+from rag.config import energy_audit_collection, qdrant_client_kwargs, qdrant_grpc_port, qdrant_host
+
+COLLECTION_NAME = energy_audit_collection()
 
 
 def _scroll_all(client: QdrantClient, collection_name: str) -> List:
@@ -36,11 +35,14 @@ def _scroll_all(client: QdrantClient, collection_name: str) -> List:
 class EnergyRAGSystem:
     """能耗文档 RAG 问答系统"""
 
-    def __init__(self, qdrant_host: str = QDRANT_HOST, qdrant_port: int = QDRANT_PORT):
-        self._client = QdrantClient(
-            host=qdrant_host, port=qdrant_port, prefer_grpc=True, timeout=60,
-            check_compatibility=False,
-        )
+    def __init__(self, qdrant_host: str | None = None, qdrant_port: int | None = None):
+        if qdrant_host:
+            self._client = QdrantClient(
+                host=qdrant_host, port=int(qdrant_port or qdrant_grpc_port()), prefer_grpc=True, timeout=60,
+                check_compatibility=False,
+            )
+        else:
+            self._client = QdrantClient(**qdrant_client_kwargs(timeout=60))
         self.collection_name = COLLECTION_NAME
 
     def search_by_keyword(self, keyword: str, limit: int = 5) -> List[Dict]:

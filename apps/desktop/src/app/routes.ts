@@ -11,6 +11,7 @@ export const NEW_CHAT_ROUTE = '/'
 export const SETTINGS_ROUTE = '/settings'
 export const COMMAND_CENTER_ROUTE = '/command-center'
 export const SKILLS_ROUTE = '/skills'
+export const KNOWLEDGE_ROUTE = '/knowledge'
 export const MESSAGING_ROUTE = '/messaging'
 export const WEBHOOKS_ROUTE = '/webhooks'
 export const ARTIFACTS_ROUTE = '/artifacts'
@@ -30,6 +31,7 @@ export type AppView =
   // so the sidebar kept a session highlighted and the titlebar kept the
   // session-title dropdown while a plugin page was showing.
   | 'extension'
+  | 'knowledge'
   | 'messaging'
   | 'profiles'
   | 'settings'
@@ -42,6 +44,7 @@ export type AppRouteId =
   | 'artifacts'
   | 'command-center'
   | 'cron'
+  | 'knowledge'
   | 'messaging'
   | 'new'
   | 'profiles'
@@ -61,6 +64,7 @@ export const APP_ROUTES = [
   { id: 'settings', path: SETTINGS_ROUTE, view: 'settings' },
   { id: 'command-center', path: COMMAND_CENTER_ROUTE, view: 'command-center' },
   { id: 'skills', path: SKILLS_ROUTE, view: 'skills' },
+  { id: 'knowledge', path: KNOWLEDGE_ROUTE, view: 'knowledge' },
   { id: 'messaging', path: MESSAGING_ROUTE, view: 'messaging' },
   { id: 'webhooks', path: WEBHOOKS_ROUTE, view: 'webhooks' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
@@ -194,6 +198,10 @@ export function appViewForPath(pathname: string): AppView {
 
   if (isContributedPath(path)) {
     return 'extension'
+  }
+
+  if (path === KNOWLEDGE_ROUTE || path.startsWith(`${KNOWLEDGE_ROUTE}/`)) {
+    return 'knowledge'
   }
 
   return APP_VIEW_BY_PATH.get(path) ?? 'chat'

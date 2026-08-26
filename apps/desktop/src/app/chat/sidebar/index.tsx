@@ -137,6 +137,7 @@ import {
   type AppView,
   ARTIFACTS_ROUTE,
   CRON_ROUTE,
+  KNOWLEDGE_ROUTE,
   MESSAGING_ROUTE,
   SIDEBAR_NAV_AREA,
   type SidebarNavContribution,
@@ -200,6 +201,13 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     icon: props => <Codicon name="symbol-misc" {...props} />,
     route: SKILLS_ROUTE,
     keybindActionId: 'nav.skills'
+  },
+  {
+    id: 'knowledge',
+    label: '',
+    icon: props => <Codicon name="book" {...props} />,
+    route: KNOWLEDGE_ROUTE,
+    keybindActionId: 'nav.knowledge'
   },
   {
     id: 'messaging',
@@ -1475,6 +1483,7 @@ export function ChatSidebar({
 
                 const active =
                   (item.id === 'skills' && currentView === 'skills') ||
+                  (item.id === 'knowledge' && currentView === 'knowledge') ||
                   (item.id === 'messaging' && currentView === 'messaging') ||
                   (item.id === 'artifacts' && currentView === 'artifacts') ||
                   (item.id === 'cron' && currentView === 'cron') ||

@@ -25,10 +25,12 @@ file:
   host: ""     # 留空 → 复用 database.host (10.10.1.165)
   port: ""     # 文件服务器端口，例如 80 / 8080 / 9000
 
-# RAG系统配置
+# RAG：与 Desktop 知识库共用 Hermes config.yaml → knowledge_base:
+#   qdrant_host / qdrant_port / summary_model / energy_audit_collection
+# 本段仅在没有 Hermes 环境、独立跑审计工具时作为最后兜底（不要写局域网 IP）。
 rag:
   collection_name: "knowledge_segment_qwen"
-  qdrant_url: "http://10.10.2.55:6333"
+  qdrant_url: "http://127.0.0.1:6333"
   deepseek_model: "deepseek-v4-flash"
 
 # 报告输出配置

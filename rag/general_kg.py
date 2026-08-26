@@ -9,11 +9,10 @@ from typing import Dict, List, Optional, Set
 
 from qdrant_client import QdrantClient
 
-# Qdrant 配置
-QDRANT_HOST = os.getenv("QDRANT_HOST", "127.0.0.1")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6334"))
+from rag.config import energy_audit_collection, qdrant_client_kwargs, qdrant_grpc_port
+
 STAR_CHARTS_COLLECTION = "star_charts"
-KNOWLEDGE_SEGMENT_COLLECTION = "knowledge_segment"
+KNOWLEDGE_SEGMENT_COLLECTION = energy_audit_collection()
 
 
 def _scroll_all(
@@ -40,11 +39,14 @@ def _scroll_all(
 class KnowledgeGraph:
     """知识图谱查询系统"""
 
-    def __init__(self, qdrant_host: str = QDRANT_HOST, qdrant_port: int = QDRANT_PORT):
-        self._client = QdrantClient(
-            host=qdrant_host, port=qdrant_port, prefer_grpc=True, timeout=60,
-            check_compatibility=False,
-        )
+    def __init__(self, qdrant_host: str | None = None, qdrant_port: int | None = None):
+        if qdrant_host:
+            self._client = QdrantClient(
+                host=qdrant_host, port=int(qdrant_port or qdrant_grpc_port()), prefer_grpc=True, timeout=60,
+                check_compatibility=False,
+            )
+        else:
+            self._client = QdrantClient(**qdrant_client_kwargs(timeout=60))
         self.star_charts_collection = STAR_CHARTS_COLLECTION
         self.knowledge_segment_collection = KNOWLEDGE_SEGMENT_COLLECTION
 

@@ -19,6 +19,7 @@ import {
   appViewForPath,
   ARTIFACTS_ROUTE,
   CRON_ROUTE,
+  KNOWLEDGE_ROUTE,
   MESSAGING_ROUTE,
   navigateToWorkspacePage,
   NEW_CHAT_ROUTE,
@@ -89,6 +90,9 @@ describe('classification of targets carrying a query', () => {
     [`${SKILLS_ROUTE}?tab=skills`, 'skills'],
     [`${SKILLS_ROUTE}?tab=toolsets`, 'skills'],
     [`${SKILLS_ROUTE}?tab=mcp&server=ctx7`, 'skills'],
+    [`${KNOWLEDGE_ROUTE}?tab=search`, 'knowledge'],
+    [`${KNOWLEDGE_ROUTE}/kb-1`, 'knowledge'],
+    [`${KNOWLEDGE_ROUTE}/kb-1?tab=wiki`, 'knowledge'],
     [`${SETTINGS_ROUTE}?tab=keys`, 'settings']
   ])('%s is not a session route', (to, view) => {
     expect(routeSessionId(to)).toBeNull()

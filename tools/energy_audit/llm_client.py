@@ -1,7 +1,7 @@
 """轻量 LLM 客户端：管理制度提炼、参考报告段落仿写。
 
 复用 rag 的 DeepSeek 直连模式（环境变量 DEEPSEEK_API_KEY / DEEPSEEK_API_BASE），
-模型取 energy_audit config.yaml 的 rag.deepseek_model（默认 deepseek-v4-flash）。
+模型取 Hermes ``config.yaml`` ``knowledge_base.summary_model``（默认 deepseek-v4-flash）。
 无 key / 调用失败时返回 None，调用方降级到兜底文案，不阻塞报告生成。
 """
 
@@ -12,6 +12,12 @@ _DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 def _model() -> str:
+    try:
+        from rag.config import summary_model
+
+        return summary_model()
+    except Exception:
+        pass
     m = os.environ.get("DEEPSEEK_MODEL") or os.environ.get("SUMMARY_MODEL")
     if not m:
         try:
@@ -23,11 +29,21 @@ def _model() -> str:
 
 
 def _api_key() -> str:
-    return os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+    try:
+        from rag.config import deepseek_api_key
+
+        return deepseek_api_key()
+    except Exception:
+        return os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
 
 
 def _api_base() -> str:
-    return os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
+    try:
+        from rag.config import deepseek_api_base
+
+        return deepseek_api_base()
+    except Exception:
+        return os.environ.get("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1")
 
 
 def _chat(messages, temperature=0.3, max_tokens=1200, task="energy_audit_management") -> Optional[str]:

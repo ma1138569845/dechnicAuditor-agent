@@ -82,9 +82,39 @@ def delete_base(kb_id: str):
 # ── Folders ────────────────────────────────────────────────────────────
 
 
+def _folder_id(raw: str | None) -> str | None:
+    if not raw or raw == "root":
+        return None
+    return raw
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        data = await request.json()
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 @router.get("/bases/{kb_id}/folders")
-def list_folders(kb_id: str, parent_id: str | None = Query(default=None)):
-    return {"folders": _kb().list_knowledge_folders(kb_id, parent_id)}
+def list_folders(
+    kb_id: str,
+    parent_id: str | None = Query(default=None),
+    include_all: bool = Query(default=False, alias="all"),
+):
+    kb = _kb()
+    if include_all:
+        collected: list = []
+
+        def walk(pid: str | None) -> None:
+            kids = kb.list_knowledge_folders(kb_id, pid)
+            for folder in kids:
+                collected.append(folder)
+                walk(folder["id"])
+
+        walk(None)
+        return {"folders": collected}
+    return {"folders": kb.list_knowledge_folders(kb_id, parent_id)}
 
 
 @router.post("/bases/{kb_id}/folders", status_code=201)
@@ -198,8 +228,14 @@ async def search(kb_id: str, request: Request):
 
 
 @router.get("/bases/{kb_id}/wiki")
-def list_wiki(kb_id: str, top_k: int = Query(default=100)):
-    return {"pages": _kb().list_kb_wiki_pages(kb_id, top_k).get("pages", [])}
+def list_wiki(
+    kb_id: str,
+    top_k: int = Query(default=100),
+    review_status: str | None = Query(default=None),
+):
+    return {
+        "pages": _kb().list_kb_wiki_pages(kb_id, top_k, review_status=review_status).get("pages", []),
+    }
 
 
 @router.get("/wiki/{wiki_id}")
@@ -230,5 +266,200 @@ def list_relationships(kb_id: str, top_k: int = Query(default=200)):
 def get_stats(kb_id: str):
     try:
         return _kb()._get_kb_stats(kb_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Document pipeline (vectorize / summary / wiki / graph) ───────────
+
+
+@router.get("/docs/{doc_id}/preview")
+def preview_doc(doc_id: str, max_chars: int = Query(default=120_000)):
+    try:
+        return _kb().get_knowledge_file_preview_v2(doc_id, max_chars=max_chars)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/docs/{doc_id}/vectorize")
+@router.post("/docs/{doc_id}/reparse")
+def vectorize_doc(doc_id: str):
+    try:
+        return _kb().start_vectorization_v2(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/docs/{doc_id}/summary")
+def summarize_doc(doc_id: str):
+    try:
+        return _kb().generate_document_summary(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/docs/{doc_id}/graph")
+def graph_doc(doc_id: str):
+    try:
+        return _kb().build_document_graph(doc_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/docs/{doc_id}/wiki")
+async def wiki_doc(doc_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().generate_document_wiki(doc_id, curate=bool(body.get("curate")))
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    try:
+        return _kb().get_vectorization_job(job_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/bases/{kb_id}/vectorization-jobs")
+def list_vec_jobs(kb_id: str, status: str | None = Query(default=None)):
+    return {"jobs": _kb().list_vectorization_jobs(kb_id, status=status)}
+
+
+@router.post("/bases/{kb_id}/rebuild")
+async def rebuild_base(kb_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().rebuild_knowledge_base(kb_id, body.get("targets"))
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Wiki / curation jobs ─────────────────────────────────────────────
+
+
+@router.post("/bases/{kb_id}/folders/{folder_id}/wiki")
+async def wiki_folder(kb_id: str, folder_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().generate_folder_wiki(
+            kb_id,
+            _folder_id(folder_id),
+            title=body.get("title") or "",
+            curate=bool(body.get("curate")),
+        )
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/bases/{kb_id}/hierarchical-wiki")
+@router.post("/bases/{kb_id}/folders/{folder_id}/hierarchical-wiki")
+async def hierarchical_wiki(kb_id: str, request: Request, folder_id: str | None = None):
+    body = await _json_body(request)
+    try:
+        return _kb().generate_hierarchical_folder_wiki(
+            kb_id,
+            folder_id=_folder_id(folder_id),
+            curate=bool(body.get("curate")),
+        )
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/bases/{kb_id}/curate")
+@router.post("/bases/{kb_id}/folders/{folder_id}/curate")
+async def curate_wiki(kb_id: str, request: Request, folder_id: str | None = None):
+    body = await _json_body(request)
+    try:
+        return _kb().start_global_curation(
+            kb_id,
+            folder_id=_folder_id(folder_id),
+            page_ids=body.get("page_ids") or None,
+            review_status=body.get("review_status") or None,
+        )
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/bases/{kb_id}/bulk-wiki")
+@router.post("/bases/{kb_id}/folders/{folder_id}/bulk-wiki")
+async def bulk_wiki(kb_id: str, request: Request, folder_id: str | None = None):
+    body = await _json_body(request)
+    try:
+        return _kb().start_bulk_wiki_generation(
+            kb_id,
+            folder_id=_folder_id(folder_id),
+            doc_ids=body.get("doc_ids") or None,
+        )
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/bases/{kb_id}/bulk-delete")
+async def bulk_delete(kb_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().batch_delete_knowledge_documents(kb_id, body.get("doc_ids") or [])
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/bases/{kb_id}/curation-jobs")
+def list_curation(kb_id: str, status: str | None = Query(default=None), limit: int = Query(default=50)):
+    try:
+        return {"jobs": _kb().list_curation_jobs(kb_id, status=status, limit=limit)}
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/bases/{kb_id}/curation-jobs/{job_id}")
+def get_curation(kb_id: str, job_id: str):
+    job = _kb().get_curation_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job": job}
+
+
+@router.patch("/wiki/{wiki_id}/review")
+async def review_wiki(wiki_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().update_wiki_review_status(wiki_id, body.get("review_status") or "")
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/wiki/{wiki_id}/evaluate-quality")
+@router.patch("/wiki/{wiki_id}/evaluate-quality")
+def evaluate_wiki(wiki_id: str):
+    try:
+        return _kb().evaluate_wiki_quality(wiki_id)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+# ── Chunks ───────────────────────────────────────────────────────────
+
+
+@router.put("/chunks/{chunk_id}")
+@router.patch("/chunks/{chunk_id}")
+async def update_chunk(chunk_id: str, request: Request):
+    body = await _json_body(request)
+    try:
+        return _kb().update_knowledge_chunk(
+            chunk_id,
+            content=body.get("content"),
+            is_enabled=body.get("is_enabled"),
+        )
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.delete("/chunks/{chunk_id}")
+def delete_chunk(chunk_id: str):
+    try:
+        return _kb().delete_knowledge_chunk(chunk_id)
     except ValueError as exc:
         raise _http_error(exc)

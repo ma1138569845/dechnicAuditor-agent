@@ -9,43 +9,39 @@
 hermes rag
 ```
 
-交互式引导完成全部初始化配置。非交互模式：`hermes rag --non-interactive`。
+交互式引导会把 Qdrant / 模型写入 **`{HERMES_HOME}/config.yaml` 的 `knowledge_base:`**，密钥写入 `.env`。
+运行时由 `rag/config.py` 统一读取。`rag/qdrant_config.yaml` 不再作为配置源。
 
 ---
 
 ## 一、配置方式
 
-### 方式 A：通过 config.yaml（推荐 — 像配置模型一样）
+### 方式 A：通过 config.yaml（唯一行为配置）
 
-在 `~/.hermes/config.yaml` 中添加 `knowledge_base:` 节：
+在 `{HERMES_HOME}/config.yaml`（Windows Desktop 一般为 `%LOCALAPPDATA%\hermes\config.yaml`）中：
 
 ```yaml
-# ~/.hermes/config.yaml
 knowledge_base:
-  knowledge_root: "rag/data"                            # 文档存储根目录
-  qdrant_host: "10.10.2.55"                            # Qdrant 地址
-  qdrant_port: "6334"                                  # Qdrant gRPC 端口
-  wiki_vault: "rag/wiki"                               # Wiki 导出目录
+  qdrant_host: "10.10.2.55"
+  qdrant_port: 6334          # gRPC（Desktop 知识库 / rag/*）
+  qdrant_http_port: 6333     # REST（LlamaIndex 等）
+  summary_model: "deepseek-v4-flash"
+  energy_audit_collection: "knowledge_segment_qwen"
 ```
 
-> **优先级**：config.yaml `knowledge_base` 节 → 环境变量 → 硬编码默认值
+> **优先级**：环境变量 → `knowledge_base:` → 遗留 `energy_audit.rag` → 包内 `tools/energy_audit/config.yaml` 兜底 → 本机默认值
 
-### 方式 B：通过环境变量
+### 方式 B：密钥通过 .env
 
 ```bash
-# ~/.hermes/.env 或系统环境变量
-export HERMES_KNOWLEDGE_ROOT="rag/data"
-export HERMES_WIKI_VAULT="rag/wiki"
-export QDRANT_HOST="10.10.2.55"
-export QDRANT_PORT="6334"
-export QDRANT_KNOWLEDGE_COLLECTION="energy_audit_reports"
+# {HERMES_HOME}/.env
+DASHSCOPE_API_KEY=...
+DEEPSEEK_API_KEY=...
 ```
 
-> API 密钥（`DASHSCOPE_API_KEY` / `DEEPSEEK_API_KEY`）**只能走环境变量**，不要写在 config.yaml 中。
+可选覆盖（运维临时用，日常请写 config.yaml）：`QDRANT_HOST`、`QDRANT_PORT`。
 
-### 方式 C：WebUI 设置面板（未来）
-
-计划在 Settings 页面的知识库设置中直接可视化配置。
+API 密钥不要写在 config.yaml 中。
 
 ---
 

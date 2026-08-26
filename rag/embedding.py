@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from pathlib import Path
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -35,23 +34,10 @@ _client = None
 
 
 def _load_api_key() -> str:
-    """Resolve DASHSCOPE_API_KEY from env, falling back to ~/.hermes/.env."""
-    key = os.environ.get("DASHSCOPE_API_KEY", "")
-    if key:
-        return key
-    env_path = Path.home() / ".hermes" / ".env"
-    if env_path.exists():
-        try:
-            with open(env_path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if "=" in line and not line.startswith("#"):
-                        k, v = line.split("=", 1)
-                        if k.strip() == "DASHSCOPE_API_KEY":
-                            return v.strip().strip('"').strip("'")
-        except Exception:
-            pass
-    return ""
+    """Resolve DASHSCOPE_API_KEY from the unified RAG config (.env under HERMES_HOME)."""
+    from rag.config import dashscope_api_key
+
+    return dashscope_api_key()
 
 
 def get_embedding_client():
