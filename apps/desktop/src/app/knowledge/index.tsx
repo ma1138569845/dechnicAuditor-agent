@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import {
@@ -35,13 +35,14 @@ import { KNOWLEDGE_ROUTE } from '../routes'
 
 import { DocumentsTab } from './documents'
 import { formatBytes, isActiveJobStatus } from './format'
-import { GraphTab } from './graph'
 import { JobsTab } from './jobs'
 import { knowledgeKeys } from './keys'
 import { KnowledgeList } from './list'
 import { KnowledgeLlmConfirm } from './llm-confirm'
 import { SearchTab } from './search'
 import { WikiTab } from './wiki'
+
+const GraphTab = lazy(() => import('./graph').then(module => ({ default: module.GraphTab })))
 
 export function KnowledgeView() {
   const { kbId } = useParams()
@@ -262,7 +263,11 @@ export function KnowledgeDetail() {
           ) : null}
           {tab === 'search' ? <SearchTab kbId={kbId} /> : null}
           {tab === 'wiki' ? <WikiTab kbId={kbId} /> : null}
-          {tab === 'graph' ? <GraphTab kbId={kbId} /> : null}
+          {tab === 'graph' ? (
+            <Suspense fallback={<PageLoader label={t.common.loading} />}>
+              <GraphTab kbId={kbId} />
+            </Suspense>
+          ) : null}
           {tab === 'jobs' ? <JobsTab kbId={kbId} /> : null}
           {tab === 'stats' ? <StatsTab kbId={kbId} /> : null}
         </div>

@@ -171,6 +171,14 @@ Sizes: `default`, `xs`, `overlay` (titlebar glyph counts).
 - **`Checkbox`** — unchecked outline is `--ui-text-tertiary` (not the `--input`
   hairline) so the empty box reads on light table surfaces; checked and
   indeterminate fill `primary`.
+- **Knowledge document inspector** — in-page split beside the document table
+  (not a modal sheet). Tabs are Preview / Summary / Chunks. Generate actions
+  (vectorize, summary, wiki, graph) live in the ⋯ menu; wiki confirm offers an
+  optional “curate after generating” checkbox.
+- **Knowledge graph** — Canvas 2D force layout of entities and relationships
+  (not Starmap rings). Pan, wheel-zoom, drag-to-pin; the inspector shows the
+  selected node's 1-hop neighborhood. Canvas stays transparent (page chrome
+  shows through); the inspector width is drag-resizable at the column sash.
 
 ## Layout
 

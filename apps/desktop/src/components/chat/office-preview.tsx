@@ -52,7 +52,7 @@ export interface OfficeAiEditSelection {
   mouseUp?: boolean
 }
 
-interface OfficePreviewProps {
+interface OfficePreviewBaseProps {
   /** When true (the AI-edit prompt box is open), non-interaction empty
    *  selection reports (a no-selection poll) are suppressed so the toolbar and
    *  the typed prompt stay anchored while the user composes. A mouseUp-driven
@@ -60,7 +60,6 @@ interface OfficePreviewProps {
    *  renderer can dismiss the prompt box. When the pill is merely collapsed
    *  this is false and any empty report dismisses it. */
   aiPrompting?: boolean
-  filePath: string
   officeKind: OfficeKind
   /** Called when the user selects text in the HTML fallback preview. Pass
    *  `null` to clear a previous selection. */
@@ -71,6 +70,12 @@ interface OfficePreviewProps {
    *  reloads when clean (banner on conflict), editor_sdk remounts. */
   reloadKey?: number
 }
+
+export type OfficePreviewProps = OfficePreviewBaseProps &
+  (
+    | { arrayBuffer: ArrayBuffer; filePath?: string }
+    | { arrayBuffer?: undefined; filePath: string }
+  )
 
 type HtmlState =
   | { error: null; html: string; kind: 'ready' }
@@ -240,13 +245,15 @@ function installMessageForError(office: Translations['preview']['office'], code?
 
 export const OfficePreview = memo(function OfficePreview({
   aiPrompting = false,
+  arrayBuffer,
   filePath,
   officeKind,
   onAiEditSelection,
   reloadKey = 0
 }: OfficePreviewProps) {
   const { t } = useI18n()
-  const [mode, setMode] = useState<PreviewMode>('iframe')
+  const bytesOnly = Boolean(arrayBuffer) && !filePath
+  const [mode, setMode] = useState<PreviewMode>(bytesOnly ? 'html' : 'iframe')
   const [htmlState, setHtmlState] = useState<HtmlState>({ kind: 'loading' })
   const [iframeState, setIframeState] = useState<IframeState>({ kind: 'loading' })
   // Bumping this remounts the <iframe> element (editor_sdk/officecli refresh).
@@ -268,13 +275,14 @@ export const OfficePreview = memo(function OfficePreview({
       setHtmlState({ kind: 'loading' })
 
       try {
-        const dataUrl = await readDesktopFileDataUrl(filePath)
+        const buffer = arrayBuffer
+          ? arrayBuffer
+          : dataUrlToArrayBuffer(await readDesktopFileDataUrl(filePath ?? ''))
 
         if (!active) {
           return
         }
 
-        const buffer = dataUrlToArrayBuffer(dataUrl)
         const html = await RENDERERS[officeKind](buffer, {
           slidePage: slideNumber => t.preview.office.slidePage(slideNumber),
           noTextContent: t.preview.office.noTextContent
@@ -304,11 +312,18 @@ export const OfficePreview = memo(function OfficePreview({
     }
     // reloadKey: re-render from the updated bytes after an external (agent)
     // write. The HTML view is read-only, so re-rendering is always safe.
-  }, [filePath, officeKind, reloadKey, t])
+  }, [arrayBuffer, filePath, officeKind, reloadKey, t])
 
   // editor_sdk iframe: primary preview/edit mode. The backend opens the file
   // in editor_sdk and returns the live WYSIWYG editor's iframe URL.
+  // Knowledge-base files arrive as bytes from the backend, so skip the SDK
+  // (it needs a renderer-local path) and stay on the HTML conversion.
   useEffect(() => {
+    if (!filePath) {
+      return
+    }
+
+    const path = filePath
     let cancelled = false
     let currentUrl: string | null = null
 
@@ -316,7 +331,7 @@ export const OfficePreview = memo(function OfficePreview({
       setIframeState({ kind: 'loading' })
 
       try {
-        const result = await startOfficePreview(filePath)
+        const result = await startOfficePreview(path)
 
         if (cancelled) {
           // Do NOT stop by path here. open_office_preview dedupes by path and
@@ -368,7 +383,7 @@ export const OfficePreview = memo(function OfficePreview({
       cancelled = true
 
       if (currentUrl) {
-        void stopOfficePreview(filePath)
+        void stopOfficePreview(path)
       }
     }
   }, [filePath, mode])
@@ -636,9 +651,11 @@ export const OfficePreview = memo(function OfficePreview({
   }, [handleExternalChange, iframeState, mode, reloadKey])
 
   const showHtmlFallback = mode === 'html' || iframeState.kind === 'error'
+  const showChrome = Boolean(filePath)
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {showChrome ? (
       <div className="flex h-7 shrink-0 items-center justify-end gap-2 border-b border-border/40 px-3">
         {iframeState.kind !== 'error' && mode === 'html' && (
           <button
@@ -666,6 +683,7 @@ export const OfficePreview = memo(function OfficePreview({
           {t.preview.office.openWithLocalApp}
         </button>
       </div>
+      ) : null}
       <div ref={wrapperRef} className="relative min-h-0 flex-1 overflow-hidden">
         {reloadConflict && (
           <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-2 border-b border-border/60 bg-amber-500/10 px-3 py-1.5">
@@ -713,7 +731,7 @@ export const OfficePreview = memo(function OfficePreview({
 })
 
 interface HtmlPreviewProps {
-  filePath: string
+  filePath?: string
   htmlState: HtmlState
   officeKind: OfficeKind
   onAiEditSelection?: (selection: OfficeAiEditSelection | null) => void
@@ -792,13 +810,15 @@ function HtmlPreview({ filePath, htmlState, officeKind, onAiEditSelection }: Htm
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-sm text-muted-foreground">{t.preview.office.cannotPreview(htmlState.error)}</p>
-        <button
-          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-          onClick={() => void openExternal(`file:///${filePath}`)}
-          type="button"
-        >
-          {t.preview.office.openWithSystemApp}
-        </button>
+        {filePath ? (
+          <button
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            onClick={() => void openExternal(`file:///${filePath}`)}
+            type="button"
+          >
+            {t.preview.office.openWithSystemApp}
+          </button>
+        ) : null}
       </div>
     )
   }

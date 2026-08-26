@@ -10,6 +10,7 @@ export const knowledgeKeys = {
   entities: (kbId: string) => ['knowledge', 'entities', kbId] as const,
   folders: (kbId: string) => ['knowledge', 'folders', kbId] as const,
   preview: (docId: string) => ['knowledge', 'preview', docId] as const,
+  file: (docId: string) => ['knowledge', 'file', docId] as const,
   relationships: (kbId: string) => ['knowledge', 'relationships', kbId] as const,
   search: (kbId: string, query: string, mode: string) => ['knowledge', 'search', kbId, query, mode] as const,
   stats: (kbId: string) => ['knowledge', 'stats', kbId] as const,

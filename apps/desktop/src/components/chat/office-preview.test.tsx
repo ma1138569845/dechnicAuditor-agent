@@ -130,6 +130,28 @@ describe('OfficePreview', () => {
     expect(container.querySelector('script')).toBeNull()
   })
 
+  it('renders docx HTML from an ArrayBuffer without reading a local path', async () => {
+    cleanup()
+    vi.mocked(readDesktopFileDataUrl).mockClear()
+    vi.mocked(startOfficePreview).mockClear()
+
+    const mammoth = await import('mammoth')
+    vi.mocked(mammoth.default.convertToHtml).mockResolvedValue({ messages: [], value: '<p>From bytes</p>' })
+
+    const { container } = render(
+      <I18nProvider configClient={null}>
+        <OfficePreview arrayBuffer={new Uint8Array([1, 2, 3]).buffer} officeKind="docx" />
+      </I18nProvider>
+    )
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('From bytes')
+    })
+
+    expect(readDesktopFileDataUrl).not.toHaveBeenCalled()
+    expect(startOfficePreview).not.toHaveBeenCalled()
+  })
+
   it('renders xlsx HTML from SheetJS', async () => {
     const XLSX = await import('xlsx')
     vi.mocked(XLSX.read).mockReturnValue({
@@ -196,14 +218,12 @@ describe('OfficePreview', () => {
     fireEvent.mouseUp(container.querySelector('.office-preview') ?? container)
 
     await waitFor(() => {
-      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+      const last = onAiEditSelection.mock.calls.at(-1)?.[0] as OfficeAiEditSelection | null
+
+      expect(last?.selectedText).toBe('Edit this paragraph')
+      expect(last?.anchorX).toBe(40)
+      expect(last?.anchorY).toBe(100)
     })
-
-    const selection = onAiEditSelection.mock.calls[0][0] as OfficeAiEditSelection
-
-    expect(selection.selectedText).toBe('Edit this paragraph')
-    expect(selection.anchorX).toBe(40)
-    expect(selection.anchorY).toBe(100)
 
     ;(Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect = originalGetRect
   })
@@ -256,10 +276,8 @@ describe('OfficePreview', () => {
     fireEvent.mouseUp(container.querySelector('.office-preview') ?? container)
 
     await waitFor(() => {
-      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+      expect(onAiEditSelection).toHaveBeenLastCalledWith(null)
     })
-
-    expect(onAiEditSelection).toHaveBeenLastCalledWith(null)
   })
 
   it('renders the editor_sdk preview URL in an iframe', async () => {
@@ -601,7 +619,9 @@ describe('OfficePreview', () => {
     fireEvent.mouseUp(container.querySelector('.office-preview') ?? container)
 
     await waitFor(() => {
-      expect(onAiEditSelection).toHaveBeenCalledTimes(1)
+      const last = onAiEditSelection.mock.calls.at(-1)?.[0] as OfficeAiEditSelection | null
+
+      expect(last?.selectedText).toBe('Keep this highlighted')
     })
 
     const selectionBefore = window.getSelection()

@@ -20,6 +20,7 @@ The legacy path-based endpoints in routes.py continue to operate against the
 from __future__ import annotations
 
 import atexit
+import base64
 import hashlib
 import json
 import logging
@@ -1937,6 +1938,40 @@ def get_document_file(doc_id: str) -> tuple[Path, str, str]:
     target = _resolve_path(doc["kb_id"], doc["file_path"], must_exist=True)
     mime = mimetypes.guess_type(doc["file_name"])[0] or "application/octet-stream"
     return target, mime, doc["file_name"]
+
+
+_IMAGE_SUFFIXES = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
+_FILE_PAYLOAD_MAX_BYTES = 15 * 1024 * 1024
+
+
+def get_document_file_payload(doc_id: str, max_bytes: int = _FILE_PAYLOAD_MAX_BYTES) -> dict:
+    """JSON envelope for desktop IPC, which cannot stream FileResponse bytes."""
+    path, mime, name = get_document_file(doc_id)
+    size = path.stat().st_size
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        kind = "pdf"
+    elif suffix in _IMAGE_SUFFIXES:
+        kind = "image"
+    else:
+        kind = "binary"
+    cap = max(_FILE_PAYLOAD_MAX_BYTES if max_bytes <= 0 else min(max_bytes, 50 * 1024 * 1024), 1)
+    if size > cap:
+        return {
+            "filename": name,
+            "kind": kind,
+            "mime": mime,
+            "size": size,
+            "too_large": True,
+        }
+    return {
+        "data": base64.b64encode(path.read_bytes()).decode("ascii"),
+        "filename": name,
+        "kind": kind,
+        "mime": mime,
+        "size": size,
+        "too_large": False,
+    }
 
 
 def generate_document_summary(doc_id: str) -> dict:

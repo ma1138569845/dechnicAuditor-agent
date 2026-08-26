@@ -1916,8 +1916,19 @@ export interface Translations {
     summary: string
     graph: string
     wiki: string
-    wikiOnly: string
-    wikiAndCurate: string
+    generateWiki: string
+    generateSummary: string
+    buildGraph: string
+    moreActions: string
+    wikiConfirmTitle: string
+    wikiConfirmBody: string
+    wikiCurateAfter: string
+    wikiCurateAfterHint: string
+    textExcerpt: string
+    noSummary: string
+    noSummaryDesc: string
+    chunkOff: string
+    previewTooLarge: string
     openPipeline: string
     noPreview: string
     searchModeVector: string
@@ -1936,6 +1947,14 @@ export interface Translations {
     relationships: string
     noGraphTitle: string
     noGraphDesc: string
+    graphSearch: string
+    graphFit: string
+    graphHint: string
+    graphNeighbors: string
+    graphNoSelection: string
+    graphOrphan: string
+    graphCanvas: string
+    graphResize: string
     noJobsTitle: string
     noJobsDesc: string
     jobTypeVectorize: string

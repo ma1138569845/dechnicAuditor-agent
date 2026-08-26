@@ -110,6 +110,17 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
     assert preview.status_code == 200
     assert "Steam boiler" in preview.json()["content"]
 
+    raw_file = client.get(f"/api/knowledge/docs/{doc_id}/file")
+    assert raw_file.status_code == 200
+    assert b"Steam boiler" in raw_file.content
+
+    payload = client.get(f"/api/knowledge/docs/{doc_id}/file-payload")
+    assert payload.status_code == 200
+    envelope = payload.json()
+    assert envelope["filename"] == "note.md"
+    assert envelope["too_large"] is False
+    assert envelope["data"]
+
     vect = client.post(f"/api/knowledge/docs/{doc_id}/vectorize")
     assert vect.status_code == 200, vect.text
     assert vect.json().get("status") in {"processing", "pending", "completed"}

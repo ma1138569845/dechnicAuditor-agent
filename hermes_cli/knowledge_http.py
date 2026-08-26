@@ -13,6 +13,7 @@ proxy; response envelopes (``bases`` / ``folders`` / ``documents`` / ``pages`` /
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/api/knowledge")
 
@@ -277,6 +278,23 @@ def get_stats(kb_id: str):
 def preview_doc(doc_id: str, max_chars: int = Query(default=120_000)):
     try:
         return _kb().get_knowledge_file_preview_v2(doc_id, max_chars=max_chars)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/docs/{doc_id}/file")
+def download_doc(doc_id: str):
+    try:
+        path, mime, name = _kb().get_document_file(doc_id)
+        return FileResponse(path, media_type=mime, filename=name)
+    except ValueError as exc:
+        raise _http_error(exc)
+
+
+@router.get("/docs/{doc_id}/file-payload")
+def file_payload(doc_id: str, max_bytes: int = Query(default=15_000_000, ge=1, le=50_000_000)):
+    try:
+        return _kb().get_document_file_payload(doc_id, max_bytes=max_bytes)
     except ValueError as exc:
         raise _http_error(exc)
 

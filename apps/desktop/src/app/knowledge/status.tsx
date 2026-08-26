@@ -23,12 +23,22 @@ export function ParseStatusBadge({ status }: { status: string }) {
 }
 
 export function ReviewStatusBadge({ status }: { status: string | undefined }) {
+  const { t } = useI18n()
+  const k = t.knowledge
+  const label =
+    status === 'approved'
+      ? k.reviewApproved
+      : status === 'rejected'
+        ? k.reviewRejected
+        : status === 'pending'
+          ? k.reviewPending
+          : status || '—'
   const variant: 'default' | 'destructive' | 'muted' | 'warn' =
     status === 'approved' ? 'default' : status === 'rejected' ? 'destructive' : status === 'pending' ? 'warn' : 'muted'
 
   return (
     <Badge size="xs" variant={variant}>
-      {status || '—'}
+      {label}
     </Badge>
   )
 }

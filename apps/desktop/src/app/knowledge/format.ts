@@ -88,3 +88,107 @@ export function jobProgressFraction(progress: number | undefined): number {
 export function ackWasSkipped(result: unknown): boolean {
   return Boolean(result && typeof result === 'object' && 'skipped' in result && (result as { skipped?: boolean }).skipped)
 }
+
+export type KnowledgeOfficeKind = 'docx' | 'pptx' | 'xlsx'
+export type KnowledgePreviewKind = 'excerpt' | 'image' | 'markdown' | 'office' | 'pdf' | 'text'
+
+const IMAGE_EXT = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'])
+const MARKDOWN_EXT = new Set(['markdown', 'md', 'mdown', 'mkd'])
+const OFFICE_EXT: Record<string, KnowledgeOfficeKind> = {
+  docx: 'docx',
+  pptx: 'pptx',
+  xlsx: 'xlsx'
+}
+const TEXT_EXT = new Set(['csv', 'htm', 'html', 'json', 'txt', 'xml'])
+
+export function officeKindForFile(fileName: string | undefined): KnowledgeOfficeKind | null {
+  const ext = fileName?.split('.').pop()?.toLowerCase() ?? ''
+
+  return OFFICE_EXT[ext] ?? null
+}
+
+export function previewKindForFile(fileName: string | undefined): KnowledgePreviewKind {
+  const ext = fileName?.split('.').pop()?.toLowerCase() ?? ''
+
+  if (ext === 'pdf') {
+    return 'pdf'
+  }
+
+  if (IMAGE_EXT.has(ext)) {
+    return 'image'
+  }
+
+  if (MARKDOWN_EXT.has(ext)) {
+    return 'markdown'
+  }
+
+  if (OFFICE_EXT[ext]) {
+    return 'office'
+  }
+
+  if (TEXT_EXT.has(ext)) {
+    return 'text'
+  }
+
+  return 'excerpt'
+}
+
+/** PDF / Office need a bounded pane so the viewer can fill remaining height. */
+export function previewFillsPane(kind: KnowledgePreviewKind): boolean {
+  return kind === 'office' || kind === 'pdf'
+}
+
+export function decodeBase64Bytes(data: string): Uint8Array {
+  const binary = atob(data)
+  const bytes = new Uint8Array(binary.length)
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+
+  return bytes
+}
+
+export function looksLikePdf(bytes: Uint8Array): boolean {
+  return bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46
+}
+
+const WIKI_SECTION = /^(?:[一二三四五六七八九十百]+[、.．]|第[一二三四五六七八九十百\d]+[章节部分篇]|\d+[、.．])\s*\S/
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Turn LLM wiki conventions (numbered lines, bold-only titles) into headings. */
+export function wikiArticleMarkdown(content: string, title?: string): string {
+  const lines = content.split('\n').map(line => {
+    const trimmed = line.trim()
+
+    if (!trimmed || trimmed.startsWith('#')) {
+      return line
+    }
+
+    const unbolded = trimmed.replace(/^\*\*(.+)\*\*$/, '$1').trim()
+
+    if (WIKI_SECTION.test(unbolded)) {
+      return `## ${unbolded}`
+    }
+
+    return line
+  })
+
+  let markdown = lines.join('\n')
+
+  if (title) {
+    markdown = markdown.replace(new RegExp(`^(?:#\\s+)?${escapeRegExp(title)}\\s*\\n+`), '')
+  }
+
+  return markdown
+}
+
+export function chunkHeading(content: string, index: number): string {
+  const line = content.trim().split(/\r?\n/, 1)[0] ?? ''
+  const stripped = line.replace(/^#{1,6}\s+/, '').trim()
+
+  return stripped || `#${index + 1}`
+}

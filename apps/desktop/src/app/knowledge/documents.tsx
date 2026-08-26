@@ -102,6 +102,7 @@ export function DocumentsTab({
 
   useEffect(() => {
     setSelected(new Set())
+    setDrawerDoc(null)
   }, [folderId, keyword, page])
 
   async function handleUpload(files: FileList | null) {
@@ -203,7 +204,8 @@ export function DocumentsTab({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex items-center justify-end gap-2 px-4 py-2">
           <input
             className="hidden"
@@ -260,10 +262,14 @@ export function DocumentsTab({
               <tbody>
                 {documents.map(doc => (
                   <tr
-                    className="border-t border-(--ui-stroke-tertiary) hover:bg-(--ui-control-hover-background)"
+                    className={cn(
+                      'cursor-pointer border-t border-(--ui-stroke-tertiary) hover:bg-(--ui-control-hover-background)',
+                      drawerDoc?.id === doc.id && 'bg-(--ui-control-active-background)'
+                    )}
                     key={doc.id}
+                    onClick={() => setDrawerDoc(doc)}
                   >
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-2" onClick={event => event.stopPropagation()}>
                       <Checkbox
                         checked={selected.has(doc.id)}
                         onCheckedChange={value => toggleOne(doc.id, value === true)}
@@ -279,30 +285,10 @@ export function DocumentsTab({
                     </td>
                     <td className="px-2 py-2 text-center tabular-nums">{doc.chunk_count}</td>
                     <td className="px-2 py-2 text-muted-foreground">{formatKbDate(doc.created_at)}</td>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          disabled={doc.parse_status === 'processing'}
-                          onClick={() => {
-                            void startVectorize(doc.id)
-                              .then(async () => {
-                                await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all })
-                                notify({ kind: 'success', message: k.actionStarted })
-                              })
-                              .catch(err => notifyError(err, k.actionFailed))
-                          }}
-                          size="xs"
-                          variant="text"
-                        >
-                          {doc.parse_status === 'completed' ? k.revectorize : k.vectorize}
-                        </Button>
-                        <Button onClick={() => setDrawerDoc(doc)} size="xs" variant="text">
-                          {k.openPipeline}
-                        </Button>
-                        <Button onClick={() => setPendingDoc(doc)} size="xs" variant="text">
-                          {t.common.delete}
-                        </Button>
-                      </div>
+                    <td className="px-2 py-2" onClick={event => event.stopPropagation()}>
+                      <Button onClick={() => setPendingDoc(doc)} size="xs" variant="text">
+                        {t.common.delete}
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -326,6 +312,11 @@ export function DocumentsTab({
         ) : null}
       </div>
 
+      {drawerDoc ? (
+        <KnowledgePipelineDrawer doc={drawerDoc} kbId={kbId} onClose={() => setDrawerDoc(null)} />
+      ) : null}
+      </div>
+
       <CreateFolderDialog
         kbId={kbId}
         onClose={() => setFolderOpen(false)}
@@ -344,6 +335,9 @@ export function DocumentsTab({
           }
 
           await deleteKnowledgeDocument(kbId, pendingDoc.id)
+          if (drawerDoc?.id === pendingDoc.id) {
+            setDrawerDoc(null)
+          }
           setSelected(prev => {
             const next = new Set(prev)
             next.delete(pendingDoc.id)
@@ -393,6 +387,9 @@ export function DocumentsTab({
           }
 
           await bulkDeleteDocuments(kbId, ids)
+          if (drawerDoc && ids.includes(drawerDoc.id)) {
+            setDrawerDoc(null)
+          }
           setSelected(new Set())
           await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all })
           notify({ kind: 'success', message: k.deleted })
@@ -426,13 +423,6 @@ export function DocumentsTab({
           }
         }}
         open={batchWikiOpen}
-      />
-
-      <KnowledgePipelineDrawer
-        doc={drawerDoc}
-        kbId={kbId}
-        onClose={() => setDrawerDoc(null)}
-        open={Boolean(drawerDoc)}
       />
     </div>
   )

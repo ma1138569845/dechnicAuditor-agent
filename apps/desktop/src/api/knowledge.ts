@@ -160,6 +160,15 @@ export interface DocPreview {
   summary: string
 }
 
+export interface DocFilePayload {
+  data?: string
+  filename: string
+  kind: 'binary' | 'image' | 'pdf'
+  mime: string
+  size: number
+  too_large: boolean
+}
+
 export interface PipelineJobAck {
   doc_id?: string
   job_id?: null | string
@@ -306,6 +315,13 @@ export function getDocumentPreview(docId: string): Promise<DocPreview> {
   return hermesApi({
     ...profileScoped(),
     path: `/api/knowledge/docs/${encodeURIComponent(docId)}/preview`
+  })
+}
+
+export function getDocumentFilePayload(docId: string): Promise<DocFilePayload> {
+  return hermesApi({
+    ...profileScoped(),
+    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/file-payload`
   })
 }
 
@@ -565,17 +581,24 @@ export function evaluateWikiQuality(
   })
 }
 
-export function listEntities(kbId: string): Promise<{ entities: KnowledgeEntity[] }> {
+export function listEntities(kbId: string, topK = 100): Promise<{ entities: KnowledgeEntity[] }> {
+  const limit = Math.max(1, Math.floor(topK))
+
   return hermesApi({
     ...profileScoped(),
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/entities`
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/entities?top_k=${limit}`
   })
 }
 
-export function listRelationships(kbId: string): Promise<{ relationships: KnowledgeRelationship[] }> {
+export function listRelationships(
+  kbId: string,
+  topK = 200
+): Promise<{ relationships: KnowledgeRelationship[] }> {
+  const limit = Math.max(1, Math.floor(topK))
+
   return hermesApi({
     ...profileScoped(),
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/relationships`
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/relationships?top_k=${limit}`
   })
 }
 
