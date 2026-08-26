@@ -59,7 +59,9 @@ export function GraphCanvas({
   selectedRef.current = selectedId
 
   useEffect(() => {
-    const canvas = canvasRef.current
+    // Non-null assertion: the effect returns early when the canvas is missing,
+    // so every listener closure below is only ever registered with a live node.
+    const canvas = canvasRef.current!
 
     if (!canvas) {
       return

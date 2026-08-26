@@ -138,7 +138,7 @@ export function previewFillsPane(kind: KnowledgePreviewKind): boolean {
   return kind === 'office' || kind === 'pdf'
 }
 
-export function decodeBase64Bytes(data: string): Uint8Array {
+export function decodeBase64Bytes(data: string): Uint8Array<ArrayBuffer> {
   const binary = atob(data)
   const bytes = new Uint8Array(binary.length)
 

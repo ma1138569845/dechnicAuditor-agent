@@ -500,11 +500,12 @@ export const OfficePreview = memo(function OfficePreview({
 
     let pollTimer: number | null = null
 
-    if (onAiEditSelection && iframeState.engine === 'editor_sdk' && officeKind === 'xlsx') {
+    if (onAiEditSelection && iframeState.engine === 'editor_sdk' && officeKind === 'xlsx' && filePath) {
+      const path = filePath
       const pollSelection = async () => {
         try {
           const res = await fetch(
-            `${iframeState.previewBaseUrl}/api/office-selection?file_path=${encodeURIComponent(filePath)}`
+            `${iframeState.previewBaseUrl}/api/office-selection?file_path=${encodeURIComponent(path)}`
           )
 
           if (!res.ok) {
@@ -551,12 +552,14 @@ export const OfficePreview = memo(function OfficePreview({
       // Close + reopen: the backend drops the registry entry, so the next
       // open registers a fresh file_id/key and the DS re-downloads the
       // current on-disk bytes instead of resuming its cached session.
+      // The onlyoffice ready state is only ever reached with a file path.
+      const path = filePath!
       setReloadConflict(false)
       setIframeState({ kind: 'loading' })
 
       try {
-        await stopOfficePreview(filePath)
-        const result = await startOfficePreview(filePath)
+        await stopOfficePreview(path)
+        const result = await startOfficePreview(path)
 
         if ('error' in result) {
           setIframeState({
