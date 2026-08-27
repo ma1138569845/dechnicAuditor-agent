@@ -27,25 +27,31 @@ def _client(tmp_path, monkeypatch) -> TestClient:
     kbmod._db_global_conn = None
     kbmod._qdrant_client_cache = None
 
-    class _DummyExec:
+    class _NoopExec:
         def submit(self, *_args, **_kwargs):
             return None
 
-    monkeypatch.setattr(kbmod, "_get_executor", lambda: _DummyExec())
+    class _InlineExec:
+        def submit(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+            return None
+
+    monkeypatch.setattr(kbmod, "_get_executor", lambda: _NoopExec())
+    monkeypatch.setattr(kbmod, "_get_postprocess_executor", lambda: _InlineExec())
 
     def fake_llm(_messages, **kwargs):
         task = str(kwargs.get("task") or "")
+        if "quality" in task or "eval" in task:
+            return (
+                '{"completeness": 80, "accuracy": 80, "structure": 80,'
+                ' "readability": 80, "overall": 80, "suggestions": "ok"}'
+            )
         if "wiki" in task:
             return '{"title": "Test Wiki", "content": "# Test\\n\\nPipeline body."}'
         if "graph" in task:
             return (
                 '{"entities": [{"name": "Boiler", "type": "equipment", "description": "x"}],'
                 ' "relationships": [{"source": "Boiler", "target": "Steam", "type": "produces", "description": "y"}]}'
-            )
-        if "quality" in task or "eval" in task:
-            return (
-                '{"completeness": 80, "accuracy": 80, "structure": 80,'
-                ' "readability": 80, "overall": 80, "suggestions": "ok"}'
             )
         return "这是一段测试摘要，覆盖文档核心内容。"
 
@@ -131,7 +137,7 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
 
     summary = client.post(f"/api/knowledge/docs/{doc_id}/summary")
     assert summary.status_code == 200, summary.text
-    assert summary.json().get("status") in {"completed", "completed_no_llm", "skipped"}
+    assert summary.json().get("status") == "processing"
 
     db = kbmod._get_db()
     now = kbmod._now_iso()
@@ -155,6 +161,10 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
 
     graph = client.post(f"/api/knowledge/docs/{doc_id}/graph")
     assert graph.status_code == 200, graph.text
+    assert graph.json().get("status") == "processing"
+
+    missing = client.post("/api/knowledge/docs/does-not-exist/graph")
+    assert missing.status_code == 404
 
     db.execute(
         "UPDATE knowledge_documents SET parse_status = ? WHERE id = ?",
@@ -164,12 +174,12 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
 
     wiki = client.post(f"/api/knowledge/docs/{doc_id}/wiki", json={"curate": False})
     assert wiki.status_code == 200, wiki.text
-    wiki_id = wiki.json().get("wiki_id") or wiki.json().get("id")
-    assert wiki_id
+    assert wiki.json().get("status") == "processing"
 
     pages = client.get(f"/api/knowledge/bases/{kb_id}/wiki")
     assert pages.status_code == 200
     assert pages.json()["pages"]
+    wiki_id = pages.json()["pages"][0]["id"]
 
     pending = client.get(f"/api/knowledge/bases/{kb_id}/wiki?review_status=pending")
     assert pending.status_code == 200
@@ -184,7 +194,10 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
 
     quality = client.post(f"/api/knowledge/wiki/{wiki_id}/evaluate-quality")
     assert quality.status_code == 200, quality.text
-    assert "quality_score" in quality.json()
+    assert quality.json().get("status") == "processing"
+    scored = client.get(f"/api/knowledge/wiki/{wiki_id}")
+    assert scored.status_code == 200
+    assert scored.json().get("quality_score") is not None
 
     entities = client.get(f"/api/knowledge/bases/{kb_id}/entities")
     assert entities.status_code == 200
@@ -204,6 +217,7 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
         json={"title": "", "curate": False},
     )
     assert folder_wiki.status_code == 200, folder_wiki.text
+    assert folder_wiki.json().get("status") == "processing"
 
     bulk = client.post(f"/api/knowledge/bases/{kb_id}/bulk-wiki", json={"doc_ids": [doc_id]})
     assert bulk.status_code == 200, bulk.text
@@ -213,7 +227,8 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
         f"/api/knowledge/bases/{kb_id}/folders/{folder_id}/hierarchical-wiki",
         json={"curate": False},
     )
-    assert hierarchical.status_code in {200, 400}, hierarchical.text
+    assert hierarchical.status_code == 200, hierarchical.text
+    assert hierarchical.json().get("status") == "processing"
 
     curate = client.post(
         f"/api/knowledge/bases/{kb_id}/curate",
@@ -242,6 +257,61 @@ def test_knowledge_desktop_surface_is_usable(tmp_path, monkeypatch):
 
     kb_del = client.delete(f"/api/knowledge/bases/{kb_id}")
     assert kb_del.status_code == 200
+
+    if kbmod._db_global_conn is not None:
+        kbmod._db_global_conn.close()
+        kbmod._db_global_conn = None
+
+
+def test_graph_job_creates_stub_entities_and_skips_duplicate(tmp_path, monkeypatch):
+    """Worker path must persist graph rows (including relationship stubs)
+    without waiting on HTTP, and a second in-flight run for the same doc
+    must skip instead of racing foreign keys."""
+    client = _client(tmp_path, monkeypatch)
+
+    created = client.post("/api/knowledge/bases", json={"name": "Graph KB", "description": "probe"})
+    assert created.status_code == 201, created.text
+    kb_id = created.json()["id"]
+
+    uploaded = client.post(
+        f"/api/knowledge/bases/{kb_id}/docs/upload",
+        files={"file": ("note.md", b"# Boiler\n\nSteam loop.\n", "text/markdown")},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    payload = uploaded.json()
+    doc = payload.get("document") or payload.get("existing") or payload
+    doc_id = doc["id"]
+
+    db = kbmod._get_db()
+    db.execute(
+        """
+        INSERT INTO knowledge_chunks
+        (id, doc_id, kb_id, chunk_index, chunk_type, content, char_count, is_enabled, created_at)
+        VALUES (?, ?, ?, 0, 'text', ?, ?, 1, ?)
+        """,
+        ("chunk-graph", doc_id, kb_id, "Boiler produces steam for heating.", 34, kbmod._now_iso()),
+    )
+    db.commit()
+
+    result = kbmod.build_document_graph(doc_id)
+    assert result["entities"] >= 2
+    assert result["relationships"] >= 1
+    names = {
+        row["name"]
+        for row in db.execute(
+            "SELECT name FROM knowledge_entities WHERE doc_id = ?",
+            (doc_id,),
+        ).fetchall()
+    }
+    assert "Boiler" in names
+    assert "Steam" in names
+
+    lock = kbmod._pipeline_lock_for("graph", doc_id)
+    lock.acquire()
+    try:
+        kbmod._run_graph_job(doc_id)
+    finally:
+        lock.release()
 
     if kbmod._db_global_conn is not None:
         kbmod._db_global_conn.close()

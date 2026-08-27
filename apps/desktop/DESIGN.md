@@ -186,6 +186,9 @@ Sizes: `default`, `xs`, `overlay` (titlebar glyph counts).
   (not Starmap rings). Pan, wheel-zoom, drag-to-pin; the inspector shows the
   selected node's 1-hop neighborhood. Canvas stays transparent (page chrome
   shows through); the inspector width is drag-resizable at the column sash.
+  Summary, graph, wiki, folder wiki, hierarchical wiki, and quality eval are
+  background jobs (same pattern as vectorize) so the HTTP request does not
+  wait on LLM calls.
 
 ## Layout
 

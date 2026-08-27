@@ -6,7 +6,7 @@
 
 import { hermesApi, profileScoped } from './client'
 
-const PIPELINE_TIMEOUT_MS = 180_000
+const UPLOAD_TIMEOUT_MS = 180_000
 
 export type DocStatus = 'completed' | 'failed' | 'pending' | 'processing'
 export type SearchMode = 'graph' | 'graph_wiki' | 'unified' | 'vector' | 'wiki'
@@ -358,7 +358,7 @@ export async function uploadKnowledgeDocument(
     path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/docs/upload${qs({
       folder_id: folderId || undefined
     })}`,
-    timeoutMs: PIPELINE_TIMEOUT_MS,
+    timeoutMs: UPLOAD_TIMEOUT_MS,
     upload: file
   })
 
@@ -410,21 +410,19 @@ export function startVectorize(docId: string): Promise<PipelineJobAck> {
   })
 }
 
-export function generateSummary(docId: string): Promise<{ id: string; status: string; summary: string }> {
+export function generateSummary(docId: string): Promise<PipelineJobAck> {
   return hermesApi({
     ...profileScoped(),
     method: 'POST',
-    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/summary`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/summary`
   })
 }
 
-export function buildGraph(docId: string): Promise<{ entities: number; id: string; relationships: number }> {
+export function buildGraph(docId: string): Promise<{ entities?: number; id: string; relationships?: number; status?: string }> {
   return hermesApi({
     ...profileScoped(),
     method: 'POST',
-    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/graph`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/graph`
   })
 }
 
@@ -433,8 +431,7 @@ export function generateDocWiki(docId: string, curate = false): Promise<Pipeline
     ...profileScoped(),
     body: { curate },
     method: 'POST',
-    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/wiki`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/docs/${encodeURIComponent(docId)}/wiki`
   })
 }
 
@@ -457,8 +454,7 @@ export function startBulkWiki(
     ...profileScoped(),
     body: { doc_ids: opts?.docIds || null },
     method: 'POST',
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/bulk-wiki`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/bulk-wiki`
   })
 }
 
@@ -470,8 +466,7 @@ export function startHierarchicalWiki(
     ...profileScoped(),
     body: { curate: Boolean(opts?.curate) },
     method: 'POST',
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/hierarchical-wiki`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/hierarchical-wiki`
   })
 }
 
@@ -486,8 +481,7 @@ export function startCuration(
       review_status: opts?.reviewStatus || null
     },
     method: 'POST',
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/curate`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}${folderSegment(opts?.folderId)}/curate`
   })
 }
 
@@ -500,8 +494,7 @@ export function generateFolderWiki(
     ...profileScoped(),
     body: { curate: Boolean(opts?.curate), title: opts?.title || '' },
     method: 'POST',
-    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/folders/${encodeURIComponent(folderId || 'root')}/wiki`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/bases/${encodeURIComponent(kbId)}/folders/${encodeURIComponent(folderId || 'root')}/wiki`
   })
 }
 
@@ -570,14 +563,11 @@ export function updateWikiReview(
   })
 }
 
-export function evaluateWikiQuality(
-  wikiId: string
-): Promise<{ id: string; quality_report: Record<string, unknown>; quality_score: number }> {
+export function evaluateWikiQuality(wikiId: string): Promise<PipelineJobAck> {
   return hermesApi({
     ...profileScoped(),
     method: 'POST',
-    path: `/api/knowledge/wiki/${encodeURIComponent(wikiId)}/evaluate-quality`,
-    timeoutMs: PIPELINE_TIMEOUT_MS
+    path: `/api/knowledge/wiki/${encodeURIComponent(wikiId)}/evaluate-quality`
   })
 }
 

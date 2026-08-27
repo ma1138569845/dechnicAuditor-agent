@@ -1974,6 +1974,45 @@ def get_document_file_payload(doc_id: str, max_bytes: int = _FILE_PAYLOAD_MAX_BY
     }
 
 
+_pipeline_locks: dict[tuple[str, str], threading.Lock] = {}
+_pipeline_locks_guard = threading.Lock()
+
+
+def _pipeline_lock_for(kind: str, key: str) -> threading.Lock:
+    with _pipeline_locks_guard:
+        lock = _pipeline_locks.get((kind, key))
+        if lock is None:
+            lock = threading.Lock()
+            _pipeline_locks[(kind, key)] = lock
+        return lock
+
+
+def _run_pipeline_job(kind: str, key: str, fn, *args, **kwargs) -> None:
+    """Run fn under a per-(kind, key) lock. Skip if that job is already in flight."""
+    lock = _pipeline_lock_for(kind, key)
+    if not lock.acquire(blocking=False):
+        logger.info("%s already running for %s; skip duplicate", kind, key)
+        return
+    try:
+        fn(*args, **kwargs)
+    except Exception:
+        logger.exception("%s failed for %s", kind, key)
+    finally:
+        lock.release()
+
+
+def _require_kb_folder(kb_id: str, folder_id: str | None) -> None:
+    get_knowledge_base(kb_id)
+    if not folder_id:
+        return
+    row = _get_db().execute(
+        "SELECT id FROM knowledge_folders WHERE id = ? AND kb_id = ?",
+        (folder_id, kb_id),
+    ).fetchone()
+    if not row:
+        raise ValueError("Folder not found")
+
+
 def generate_document_summary(doc_id: str) -> dict:
     """Generate a document summary using LLM if available."""
     doc = get_knowledge_document(doc_id)
@@ -2016,6 +2055,17 @@ def generate_document_summary(doc_id: str) -> dict:
             logger.exception("Failed to index summary for doc %s", doc_id)
 
     return {"id": doc_id, "summary": summary, "status": status}
+
+
+def _run_summary_job(doc_id: str) -> None:
+    _run_pipeline_job("summary", doc_id, generate_document_summary, doc_id)
+
+
+def start_summary_build(doc_id: str) -> dict:
+    """Enqueue document summarization and return immediately."""
+    get_knowledge_document(doc_id)
+    _get_postprocess_executor().submit(_run_summary_job, doc_id)
+    return {"id": doc_id, "status": "processing"}
 
 
 def _embed_doc_summary(doc: dict, summary: str) -> None:
@@ -2130,10 +2180,30 @@ def build_document_graph(doc_id: str) -> dict:
             rel_count += 1
         db.commit()
 
-    # Embed entities and upsert to Qdrant for semantic graph search
-    _embed_kb_entities(kb_id, doc_id)
+    # Embed entities and upsert to Qdrant for semantic graph search.
+    # SQLite graph rows are already committed; a down Qdrant must not
+    # roll the extraction back (or 500 a waiting HTTP client).
+    try:
+        _embed_kb_entities(kb_id, doc_id)
+    except Exception:
+        logger.exception("Failed to embed graph entities for doc %s", doc_id)
 
     return {"id": doc_id, "entities": len(entity_map), "relationships": rel_count}
+
+
+def _run_graph_job(doc_id: str) -> None:
+    _run_pipeline_job("graph", doc_id, build_document_graph, doc_id)
+
+
+def start_graph_build(doc_id: str) -> dict:
+    """Enqueue graph extraction and return immediately.
+
+    Per-chunk LLM calls routinely exceed the desktop's 180s pipeline
+    timeout when run on the HTTP request thread.
+    """
+    get_knowledge_document(doc_id)
+    _get_postprocess_executor().submit(_run_graph_job, doc_id)
+    return {"id": doc_id, "status": "processing"}
 
 
 def _embed_kb_entities(kb_id: str, doc_id: str) -> None:
@@ -2305,6 +2375,17 @@ def generate_document_wiki(doc_id: str, curate: bool = False) -> dict:
         result["curation"] = "started"
 
     return result
+
+
+def _run_doc_wiki_job(doc_id: str, curate: bool = False) -> None:
+    _run_pipeline_job("wiki", doc_id, generate_document_wiki, doc_id, curate)
+
+
+def start_wiki_build(doc_id: str, curate: bool = False) -> dict:
+    """Enqueue document wiki generation and return immediately."""
+    get_knowledge_document(doc_id)
+    _get_postprocess_executor().submit(_run_doc_wiki_job, doc_id, curate)
+    return {"id": doc_id, "status": "processing"}
 
 
 def generate_folder_wiki(kb_id: str, folder_id: str | None, title: str = "", curate: bool = False) -> dict:
@@ -2632,6 +2713,22 @@ def _generate_single_folder_wiki(
     return result
 
 
+def _run_folder_wiki_job(
+    kb_id: str, folder_id: str | None, title: str = "", curate: bool = False
+) -> None:
+    key = f"{kb_id}:{folder_id or 'root'}"
+    _run_pipeline_job("folder_wiki", key, generate_folder_wiki, kb_id, folder_id, title, curate)
+
+
+def start_folder_wiki_build(
+    kb_id: str, folder_id: str | None, title: str = "", curate: bool = False
+) -> dict:
+    """Enqueue folder wiki generation and return immediately."""
+    _require_kb_folder(kb_id, folder_id)
+    _get_postprocess_executor().submit(_run_folder_wiki_job, kb_id, folder_id, title, curate)
+    return {"kb_id": kb_id, "folder_id": folder_id, "status": "processing"}
+
+
 def generate_hierarchical_folder_wiki(
     kb_id: str,
     folder_id: str | None = None,
@@ -2686,6 +2783,27 @@ def generate_hierarchical_folder_wiki(
         "generated": generated,
         "total": len(generated),
     }
+
+
+def _run_hierarchical_wiki_job(kb_id: str, folder_id: str | None, curate: bool = False) -> None:
+    key = f"{kb_id}:{folder_id or 'root'}"
+    _run_pipeline_job(
+        "folder_wiki",
+        key,
+        generate_hierarchical_folder_wiki,
+        kb_id,
+        folder_id,
+        curate,
+    )
+
+
+def start_hierarchical_wiki_build(
+    kb_id: str, folder_id: str | None = None, curate: bool = False
+) -> dict:
+    """Enqueue hierarchical folder-wiki generation and return immediately."""
+    _require_kb_folder(kb_id, folder_id)
+    _get_postprocess_executor().submit(_run_hierarchical_wiki_job, kb_id, folder_id, curate)
+    return {"kb_id": kb_id, "folder_id": folder_id, "status": "processing"}
 
 
 def _embed_kb_wiki_page(kb_id: str, wiki_id: str, title: str, content: str, doc_id: str | None = None) -> None:
@@ -3613,22 +3731,13 @@ def _run_auto_postprocess(doc_id: str, indexing_strategy: dict) -> None:
     document's vectorization has completed. Runs on the dedicated post-process
     pool so slow LLM calls never occupy vectorization workers."""
     if indexing_strategy.get("summary"):
-        try:
-            generate_document_summary(doc_id)
-        except Exception:
-            logger.exception("Auto-summary failed for doc %s", doc_id)
+        _run_summary_job(doc_id)
 
     if indexing_strategy.get("graph"):
-        try:
-            build_document_graph(doc_id)
-        except Exception:
-            logger.exception("Auto-graph build failed for doc %s", doc_id)
+        _run_graph_job(doc_id)
 
     if indexing_strategy.get("wiki"):
-        try:
-            generate_document_wiki(doc_id, curate=bool(indexing_strategy.get("wiki_curate")))
-        except Exception:
-            logger.exception("Auto-wiki generation failed for doc %s", doc_id)
+        _run_doc_wiki_job(doc_id, curate=bool(indexing_strategy.get("wiki_curate")))
 
 
 def start_vectorization_v2(doc_id: str) -> dict:
@@ -4347,6 +4456,17 @@ def evaluate_wiki_quality(wiki_id: str) -> dict:
     )
     db.commit()
     return {"id": wiki_id, "quality_score": quality["score"], "quality_report": quality}
+
+
+def _run_wiki_quality_job(wiki_id: str) -> None:
+    _run_pipeline_job("wiki_quality", wiki_id, evaluate_wiki_quality, wiki_id)
+
+
+def start_wiki_quality_eval(wiki_id: str) -> dict:
+    """Enqueue wiki quality evaluation and return immediately."""
+    get_wiki_page(wiki_id)
+    _get_postprocess_executor().submit(_run_wiki_quality_job, wiki_id)
+    return {"id": wiki_id, "status": "processing"}
 
 
 def search_knowledge_v2(

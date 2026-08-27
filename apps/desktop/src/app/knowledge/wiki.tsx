@@ -226,7 +226,7 @@ function WikiArticlePane({
             await evaluateWikiQuality(page.id)
             await queryClient.invalidateQueries({ queryKey: knowledgeKeys.wikiPage(page.id) })
             await queryClient.invalidateQueries({ queryKey: ['knowledge', 'wiki', kbId] })
-            notify({ kind: 'success', message: k.qualityUpdated })
+            notify({ kind: 'success', message: k.actionStarted })
           } catch (err) {
             notifyError(err, k.actionFailed)
             throw err

@@ -311,7 +311,7 @@ def vectorize_doc(doc_id: str):
 @router.post("/docs/{doc_id}/summary")
 def summarize_doc(doc_id: str):
     try:
-        return _kb().generate_document_summary(doc_id)
+        return _kb().start_summary_build(doc_id)
     except ValueError as exc:
         raise _http_error(exc)
 
@@ -319,7 +319,7 @@ def summarize_doc(doc_id: str):
 @router.post("/docs/{doc_id}/graph")
 def graph_doc(doc_id: str):
     try:
-        return _kb().build_document_graph(doc_id)
+        return _kb().start_graph_build(doc_id)
     except ValueError as exc:
         raise _http_error(exc)
 
@@ -328,7 +328,7 @@ def graph_doc(doc_id: str):
 async def wiki_doc(doc_id: str, request: Request):
     body = await _json_body(request)
     try:
-        return _kb().generate_document_wiki(doc_id, curate=bool(body.get("curate")))
+        return _kb().start_wiki_build(doc_id, curate=bool(body.get("curate")))
     except ValueError as exc:
         raise _http_error(exc)
 
@@ -362,7 +362,7 @@ async def rebuild_base(kb_id: str, request: Request):
 async def wiki_folder(kb_id: str, folder_id: str, request: Request):
     body = await _json_body(request)
     try:
-        return _kb().generate_folder_wiki(
+        return _kb().start_folder_wiki_build(
             kb_id,
             _folder_id(folder_id),
             title=body.get("title") or "",
@@ -377,7 +377,7 @@ async def wiki_folder(kb_id: str, folder_id: str, request: Request):
 async def hierarchical_wiki(kb_id: str, request: Request, folder_id: str | None = None):
     body = await _json_body(request)
     try:
-        return _kb().generate_hierarchical_folder_wiki(
+        return _kb().start_hierarchical_wiki_build(
             kb_id,
             folder_id=_folder_id(folder_id),
             curate=bool(body.get("curate")),
@@ -453,7 +453,7 @@ async def review_wiki(wiki_id: str, request: Request):
 @router.patch("/wiki/{wiki_id}/evaluate-quality")
 def evaluate_wiki(wiki_id: str):
     try:
-        return _kb().evaluate_wiki_quality(wiki_id)
+        return _kb().start_wiki_quality_eval(wiki_id)
     except ValueError as exc:
         raise _http_error(exc)
 
