@@ -12,8 +12,10 @@
  * testable without booting Electron (main.ts requires('electron') at load).
  */
 
-const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/NousResearch/hermes-agent.git'
-const OFFICIAL_REPO_CANONICAL = 'github.com/nousresearch/hermes-agent'
+// FORK: DechnicAuditor — the product repo is OUR fork; passive update checks
+// treat it as official (SSH-avoidance swap + HTTPS substitute).
+const OFFICIAL_REPO_HTTPS_URL = 'https://github.com/ma1138569845/dechnicAuditor-agent.git'
+const OFFICIAL_REPO_CANONICAL = 'github.com/ma1138569845/dechnicauditor-agent'
 
 // Normalize common GitHub remote URL forms to `host/owner/repo` (lowercased,
 // no trailing slash, no .git suffix) so SSH and HTTPS forms of the same repo
