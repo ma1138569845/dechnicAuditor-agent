@@ -1591,6 +1591,14 @@ export interface Translations {
     switchConnectionFailed: (name: string) => string
     manageProfiles: string
     connectGateway: string
+    fleet: {
+      allOnGateway: string
+      gateway: (gateway: string) => string
+      gatewayUnreachable: (gateway: string) => string
+      onGateway: (name: string, gateway: string) => string
+      switchTo: (name: string, gateway: string) => string
+      deleteOn: (gateway: string) => string
+    }
     remoteOverride: {
       menuItem: string
       badge: (host: string) => string
@@ -1698,6 +1706,10 @@ export interface Translations {
       detailMore: (names: string, remaining: number) => string
       review: string
       saveFailed: string
+      confirmTitle: string
+      confirmDetail: string
+      confirmAction: string
+      declined: string
     }
     search: string
     loading: string
@@ -3149,6 +3161,7 @@ export interface Translations {
     cwdStagedTitle: string
     cwdStagedMessage: string
     modelSwitchFailed: string
+    hydrationSyncing: (profile: string) => string
     sessionExported: string
     sessionExportFailed: string
     imageSaved: string

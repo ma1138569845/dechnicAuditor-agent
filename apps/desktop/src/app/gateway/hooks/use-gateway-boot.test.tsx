@@ -652,6 +652,12 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($gatewaySwitching.get()).toBe(false)
     // The switch committed: the registry remembers the new source as last-used.
     expect(setLastUsed).toHaveBeenCalledWith('coder-remote')
+
+    // Publishing the secondary must not relabel the primary socket. Returning
+    // to its source should reuse that socket, not dial the secondary endpoint.
+    const socketsAfterSwitch = FakeWebSocket.instances.length
+    await expect(requestGatewayForAgent('primary-vps', 'default', 'ping')).resolves.toEqual({ pong: true })
+    expect(FakeWebSocket.instances).toHaveLength(socketsAfterSwitch)
   })
 
   it('a Settings switch superseded while reading its descriptor cannot publish over a newer Sessions switch', async () => {
@@ -1136,6 +1142,69 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
 
     expect(desktop.getConnection.mock.calls.length).toBeGreaterThan(callsBeforeDrop)
     expect($gatewayState.get()).toBe('open')
+  })
+
+  it('a getConnection() that hangs on INITIAL boot rejects on its own after the reconnect-attempt timeout, not only when main eventually gives up (#93454)', async () => {
+    // boot()'s getConnection() had no bound of its own — only main's own
+    // eventual timeout (e.g. waitForHermes, ~45s) ever settled it. A wedge
+    // that main never resolves (not even a rejection) must not hang
+    // "Starting Hermes…" forever; the renderer needs to own its own bound
+    // here too, same as attemptReconnect() and softSwitch().
+    const desktop = fakeDesktop()
+    desktop.getConnection = vi.fn(() => new Promise(() => undefined))
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+
+    expect($desktopBoot.get().error).toBeNull()
+
+    // Advance past the shared backend-boot budget (45s) — the
+    // stalled await must reject on its own so boot()'s catch runs instead of
+    // waiting indefinitely on main.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect($desktopBoot.get().error).toBeTruthy()
+  })
+
+  it('softSwitch(): a getConnection() that hangs on a connection-apply switch does not latch $gatewaySwitching forever (#93454)', async () => {
+    // Repro: main applies a new connection (onConnectionApplied), softSwitch()
+    // re-dials via getConnection(), and the IPC round-trip wedges. Without an
+    // internal timeout, the try block never settles, so the `finally` that
+    // clears $gatewaySwitching never runs — the switch UI stays frozen until
+    // the app is restarted.
+    const desktop = fakeDesktop()
+    const originalGetConnection = desktop.getConnection
+    let callCount = 0
+
+    desktop.getConnection = vi.fn((profile?: null | string) => {
+      callCount += 1
+
+      // Initial boot succeeds; the switch triggered below hangs indefinitely.
+      return callCount === 1 ? originalGetConnection(profile) : new Promise(() => undefined)
+    })
+    ;(window as { hermesDesktop?: unknown }).hermesDesktop = desktop
+
+    render(<Harness />)
+    await flushAsync()
+    expect($gatewayState.get()).toBe('open')
+    expect(connectionApplied).not.toBeNull()
+
+    act(() => connectionApplied?.())
+    await flushAsync()
+
+    expect($gatewaySwitching.get()).toBe(true)
+
+    // Advance past the shared backend-boot budget (45s) — the
+    // stalled await must reject so the `finally` clears $gatewaySwitching
+    // instead of latching the switch UI frozen forever.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_000)
+    })
+
+    expect($gatewaySwitching.get()).toBe(false)
   })
 
   it('rebinds Bot tabs owned by the restarted primary without touching another gateway', async () => {

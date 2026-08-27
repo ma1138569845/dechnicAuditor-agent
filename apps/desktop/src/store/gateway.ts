@@ -261,6 +261,17 @@ export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'defa
 }
 
 export function setPrimaryGatewayConnectionId(connectionId: null | string | undefined): void {
+  // Hardening for #95628: while the active route is a secondary scope, the
+  // window is looking at a NON-primary socket — any connection id flowing
+  // through presentation-layer code at that moment describes the secondary,
+  // not the primary. Accepting it would relabel the primary socket, so every
+  // ambient API/WebSocket helper (and new-session routing) silently lands on
+  // the wrong backend. The primary's own identity is (re)published by its
+  // boot/reconnect path, which runs with the primary route active.
+  if (!isActivePrimary()) {
+    return
+  }
+
   g.primaryConnectionId = (connectionId ?? '').trim() || null
 
   if (g.activeKey === g.primaryProfile) {
@@ -460,6 +471,19 @@ async function openSecondary(entry: Secondary): Promise<void> {
         // Best effort for partial test/HMR graphs. Production always loads the
         // real store; a failed import must not make the transport unrecoverable.
       }
+
+      // Runtime re-mint also invalidates the status-stack gone-latch: ids
+      // the dead runtime 4001'd may be live again once tiles re-resume.
+      // Fire-and-forget: composer-status imports from this module, so the
+      // import must stay dynamic (cycle), and it must NOT sit on the timed
+      // redial path — awaiting the module load here pushed cold-start
+      // redials past test/waitFor budgets. The reset needs no ordering
+      // guarantee relative to the dial.
+      void import('@/store/composer-status')
+        .then(({ resetBackgroundPollingGuard }) => resetBackgroundPollingGuard())
+        .catch(() => {
+          // Best effort for partial test/HMR graphs, same as above.
+        })
     }
 
     // Registry-scoped entries dial through getConnectionFor when the bridge has

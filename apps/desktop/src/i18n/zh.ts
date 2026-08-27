@@ -2062,6 +2062,14 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
     switchConnectionFailed: name => `无法连接到 ${name}`,
     manageProfiles: '管理配置档案…',
     connectGateway: '管理网关…',
+    fleet: {
+      allOnGateway: '此网关上的全部配置档案',
+      gateway: gateway => `${gateway} 上的配置档案`,
+      gatewayUnreachable: gateway => `${gateway} · 无法连接`,
+      onGateway: (name, gateway) => `${name} · ${gateway}`,
+      switchTo: (name, gateway) => `切换到 ${gateway} 上的 ${name}`,
+      deleteOn: gateway => `（位于 ${gateway}）`
+    },
     remoteOverride: {
       menuItem: '连接到远程主机…',
       badge: (host: string) => `运行于 ${host}`,
@@ -2170,7 +2178,11 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
       message: count => `在您检查模型设置之前，${count} 个定时任务将被跳过。`,
       detailMore: (names, remaining) => `${names}，以及另外 ${remaining} 个`,
       review: '检查定时任务',
-      saveFailed: 'Hermes 未保存该模型更改。'
+      saveFailed: 'Hermes 未保存该模型更改。',
+      confirmTitle: '模型选择警告',
+      confirmDetail: '仅在你接受此权衡时确认。',
+      confirmAction: '确认',
+      declined: '已取消模型更改 — 你拒绝了数据训练层级警告。'
     },
     search: '搜索定时任务…',
     loading: '正在加载定时任务…',
@@ -3775,6 +3787,7 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
     cwdStagedTitle: '工作目录已暂存',
     cwdStagedMessage: '重启桌面后端后，工作目录更改才会应用到当前活跃会话。',
     modelSwitchFailed: '模型切换失败',
+    hydrationSyncing: (profile: string) => `正在同步 ${profile}\u2026`,
     sessionExported: '会话已导出',
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',
