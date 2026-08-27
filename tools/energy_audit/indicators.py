@@ -33,12 +33,12 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 COEFFICIENTS = {
-    'electricity': 0.1229,   # kgce/kWh（等效电折标系数 0.31 用于非供暖能耗计算）
+    'electricity': 0.31,   # kgce/kWh（等效电折标系数 0.31 用于非供暖能耗计算）
     'water':       0.2571,   # kgce/t
     'natural_gas': 1.3300,   # kgce/m³
-    'heat':        0.03412,  # tce/GJ = 34.12 kgce/GJ（供暖用）
-    'diesel':      1.4571,   # tce/t
-    'gasoline':    1.4714,   # tce/t
+    'heat':        0.03412,  # kgce/MJ （供暖用）
+    'diesel':      1.4571,   # kgce/kg
+    'gasoline':    1.4714,   # kgce/kg
 }
 
 # 非供暖能耗计算使用等效电折标系数（区别于发电煤耗 0.1229）
@@ -65,10 +65,30 @@ _DEFAULT_BENCHMARKS = {
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
     'education': {
-        'unit_area_non_heating': (10.0, 7.0, 5.0),
+        'unit_area_non_heating': (11.5, 7.0, 4.0),
         'unit_area_elec': (35.0, 25.0, 18.0),
         'per_capita_energy': (400, 300, 200),
         'standard_name': 'DB37/T 2674-2019《教育机构能源消耗定额标准》',
+    },
+    'venue': {  # DB37/T 3780-2019, 场馆机构（体育场馆、文化场馆、科技场馆）
+        # 场馆机构能耗特点：大型空间照明、空调需求高，但人员密度波动大
+        'unit_area_non_heating': (18.0, 12.0, 7.5),
+        'unit_area_elec': (55.0, 40.0, 28.0),
+        'per_capita_energy': (650, 450, 300),
+        # 用水: DB37/T 4452-2021, 场馆类
+        'water_per_person': (8, 18, 0),          # 先进值, 通用值（约束值）, — m³/(人·a)
+        'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
+        'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
+    },
+    'service': {  # DB37/T 3781-2019, 政务服务中心
+        # 政务服务中心特点：窗口服务、大厅照明空调、人流密集
+        'unit_area_non_heating': (14.0, 9.5, 6.5),
+        'unit_area_elec': (48.0, 36.0, 26.0),
+        'per_capita_energy': (850, 620, 420),
+        # 用水: DB37/T 4452-2021, 政务服务
+        'water_per_person': (9, 22, 0),          # 先进值, 通用值（约束值）, — m³/(人·a)
+        'standard_name': 'DB37/T 3781-2019《政务服务中心能源消耗定额标准》',
+        'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
 }
 
@@ -244,7 +264,9 @@ def institution_category_to_type(institution_category: str) -> str:
     映射规则（按优先级）：
       医疗/医院/卫生/床 → medical
       教育/学校/大学/中学/小学/幼儿园 → education
-      党政/政府/机关/政务/场馆/体育/法院/公安 等 → government
+      场馆/体育/文化/科技/展览 → venue
+      政务/服务/行政/审批 → service
+      党政/政府/机关/法院/公安 等 → government
     """
     if not institution_category:
         return 'government'
@@ -253,6 +275,10 @@ def institution_category_to_type(institution_category: str) -> str:
         return 'medical'
     if any(k in cat for k in ('教育', '学校', '大学', '中学', '小学', '幼儿园')):
         return 'education'
+    if any(k in cat for k in ('场馆', '体育', '文化', '科技', '展览', '博物馆', '图书馆', '体育馆')):
+        return 'venue'
+    if any(k in cat for k in ('政务', '服务', '行政', '审批', '便民', '窗口')):
+        return 'service'
     # 其余公共机构统一按党政机关处理
     return 'government'
 
