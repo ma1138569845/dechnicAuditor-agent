@@ -308,8 +308,11 @@ const $selectedRosterHydrated = atom(false)
 const $rosterHydrated = atom(false)
 /** Mirrors host.paneVisibility('hermes-bots:pane') — wired in register(). */
 const $botsPaneVisible = atom(false)
-/** An explicit open landed: {key, openedRegistryId}. This transient view
- *  observation is empty only for the legacy newChat draft fallback. */
+/** An explicit open landed: {key, openedRegistryId, openedSessionId}. The
+ *  registry id is empty for the legacy newChat draft fallback and for a click
+ *  that came back to the bot's already-open tabs (only openedSessionId set —
+ *  no canonical chat was resolved). This transient view observation is what
+ *  releases the home; it is never an identity preference. */
 const $openBotChat = atom(null)
 /** A session owns the main workspace. The roster highlight and the home /
  *  Cronjobs lifecycles all key off this rather than reading host.state
@@ -5648,6 +5651,24 @@ const canonicalCreations = new Map()
  *  adoption, stored-session lookups). */
 const PROFILE_SESSION_LIST_LIMIT = 200
 let botOpenGeneration = 0
+let botOpenInFlight = 0
+
+function beginBotOpen() {
+  const generation = ++botOpenGeneration
+  botOpenInFlight = generation
+  return generation
+}
+
+function finishBotOpen(generation) {
+  if (botOpenInFlight === generation) {
+    botOpenInFlight = 0
+  }
+}
+
+function cancelBotOpen() {
+  botOpenGeneration += 1
+  botOpenInFlight = 0
+}
 
 /** The one canonical title. (profile, CANONICAL_CHAT_TITLE) IS the bot's
  *  forever-chat identity — see the header above. */
@@ -6045,12 +6066,40 @@ async function ensureBotMetadata(bot) {
   return botRosterMeta(bot, $botMeta.get()) || {}
 }
 
+/** The tab this bot's workspace already has open, fronted — or null when it
+ *  has none. A roster click consults this BEFORE the canonical registry so a
+ *  bot with open tabs simply comes back to the one the user left. It is what
+ *  lets a closed Bot Chat STAY closed: the click path used to re-open the
+ *  forever-chat beside every newer thread on every bot switch, and nothing
+ *  records a close (this plugin keeps no closed set; core's tile bucket only
+ *  forgets), so the only honest signal is the open set itself. Feature-
+ *  detected — older shells fall through to the canonical open. */
+function focusExistingBotTab(bot) {
+  if (typeof host.focusOpenWorkspaceSession !== 'function') {
+    return null
+  }
+
+  try {
+    const focused = host.focusOpenWorkspaceSession(botWorkspaceOwnerKey(bot))
+
+    return typeof focused === 'string' && focused ? focused : null
+  } catch {
+    return null
+  }
+}
+
 /** Select one exact roster owner, then open its named canonical chat only when
  *  the current Desktop can route that owner without guessing. The workspace
  *  remembers only this transient opened-view observation; it never stores or
- *  resolves a canonical-chat id. */
-async function openRosterBot(bot) {
-  const generation = ++botOpenGeneration
+ *  resolves a canonical-chat id.
+ *
+ *  `canonical`: the user asked for the forever-chat itself (Bots home "Open
+ *  chat", the row menu's "Open Bot Chat"). A plain row click is "go to this
+ *  bot": when its workspace already holds tabs, the one the user last had
+ *  active is fronted and no chat is resolved or opened — see
+ *  focusExistingBotTab. */
+async function openRosterBot(bot, { canonical = false } = {}) {
+  const generation = beginBotOpen()
   const key = botRosterKey(bot)
   const meta = botRosterMeta(bot, $botMeta.get())
   // Keep the currently visible group as a fallback until this explicit action
@@ -6097,12 +6146,30 @@ async function openRosterBot(bot) {
     $botUnread.set(next)
   }
 
+  if (!canonical) {
+    const focused = focusExistingBotTab(bot)
+
+    if (focused) {
+      // Open tabs win: no source activation, no registry consult, no open.
+      // The claim carries only the fronted tab so the focus edge it fires
+      // keeps it (releaseStaleOpenBotChat) and the home yields.
+      // The handoff is complete the moment the tab fronts — release the
+      // bot-open guard (#95917) so passive home reconciliation resumes.
+      finishBotOpen(generation)
+      $openBotChat.set({ key, openedRegistryId: '', openedSessionId: focused })
+      closeBotsHomeWorkspace()
+
+      return true
+    }
+  }
+
   try {
     // Activation selects this row's source only. Canonical identity is resolved
     // after that by the owner profile's "Bot Chat" title registry.
     await prepareBotSource(bot)
   } catch (error) {
     if (generation === botOpenGeneration) {
+      finishBotOpen(generation)
       $openBotChat.set(null)
       restorePreviousGroup()
       syncBotsHomeWorkspace()
@@ -6114,6 +6181,7 @@ async function openRosterBot(bot) {
   }
 
   if (generation !== botOpenGeneration) {
+    finishBotOpen(generation)
     return false
   }
 
@@ -6121,6 +6189,7 @@ async function openRosterBot(bot) {
     const opened = await openBotCanonicalChat(bot, () => generation === botOpenGeneration)
 
     if (generation !== botOpenGeneration) {
+      finishBotOpen(generation)
       return false
     }
 
@@ -6138,11 +6207,13 @@ async function openRosterBot(bot) {
         openedRegistryId: opened.registryId,
         openedSessionId: opened.openedId
       })
+      finishBotOpen(generation)
       closeBotsHomeWorkspace()
       return true
     }
   } catch (error) {
     if (generation === botOpenGeneration) {
+      finishBotOpen(generation)
       $openBotChat.set(null)
       restorePreviousGroup()
       syncBotsHomeWorkspace()
@@ -6156,6 +6227,7 @@ async function openRosterBot(bot) {
   // An older Desktop without the profile-scoped draft API has no safe fallback:
   // do not navigate the current workspace or create a draft on the wrong owner.
   if (typeof host.newChat !== 'function') {
+    finishBotOpen(generation)
     $openBotChat.set(null)
     restorePreviousGroup()
     syncBotsHomeWorkspace()
@@ -6163,6 +6235,7 @@ async function openRosterBot(bot) {
   }
 
   $openBotChat.set({ key, openedRegistryId: '' })
+  finishBotOpen(generation)
   closeBotsHomeWorkspace()
   newBotChat(bot)
   return true
@@ -9206,6 +9279,13 @@ function BotRow({ bot, onDelete, onEdit, onGroup, showHandle }) {
             children: 'Duplicate'
           }),
           jsx(ContextMenuSeparator, {}),
+          jsx(ContextMenuItem, {
+            // The explicit ask for the forever-chat: a plain row click only
+            // comes back to the tabs already open (a closed Bot Chat stays
+            // closed), so this is how it is re-opened on purpose.
+            onSelect: () => void openRosterBot(bot, { canonical: true }),
+            children: 'Open Bot Chat'
+          }),
           jsx(ContextMenuItem, {
             onSelect: () => {
               saveSelectedRosterBot(bot)
@@ -14347,7 +14427,9 @@ function BotsHomeView() {
                   variant: 'secondary',
                   size: 'sm',
                   className: 'mt-5',
-                  onClick: () => void openRosterBot(bot),
+                  // The home's button names the continuous chat itself — an
+                  // explicit ask, unlike a row click that returns to open tabs.
+                  onClick: () => void openRosterBot(bot, { canonical: true }),
                   children: 'Open chat'
                 })
           ]
@@ -14436,6 +14518,7 @@ function botsHomeMayOpen(explicit) {
     $botsPaneVisible.get() &&
     !$groupChatWorkspace.get() &&
     !$openBotChat.get() &&
+    !botOpenInFlight &&
     (explicit || !sessionOwnsWorkspace())
   )
 }
@@ -14604,7 +14687,7 @@ function openGroupChat(group) {
   // A room selection supersedes any bot-open transition still hydrating.
   // The in-flight host navigation may complete underneath this workspace,
   // but it may not later close or visually steal the room the user chose.
-  botOpenGeneration += 1
+  cancelBotOpen()
   $groupNeedsYou.set({ ...$groupNeedsYou.get(), [group]: false })
   const ownerKey = groupWorkspaceOwnerKey(group)
   setBotsWorkspaceOwner(ownerKey, null, 'New group conversations start in the group composer.')
@@ -15958,7 +16041,7 @@ export default {
           // workspace token too; this plugin generation prevents that expected
           // cancellation from repainting Bots home or showing an error after
           // the user deliberately returned to Sessions.
-          botOpenGeneration += 1
+          cancelBotOpen()
           host.setWorkspaceScope?.('sessions')
         }
         // A generic composer has no stored-session owner, so passive sync
@@ -16031,6 +16114,14 @@ export default {
               const owned = [claim.openedSessionId, claim.openedRegistryId].filter(Boolean)
 
               if (!owned.includes(stored)) {
+                return
+              }
+
+              // A claim without a registry id is a fronted non-canonical tab
+              // (focusExistingBotTab / the draft fallback): re-resolving the
+              // canonical chat here would open the Bot Chat the user has
+              // closed. Its tile recovers on the next send like any tab.
+              if (!claim.openedRegistryId) {
                 return
               }
 

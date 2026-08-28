@@ -3270,8 +3270,26 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
             pconfig = transport.config
             runtime_adapter = transport.adapter
         else:
-            # No live transport: preserve the existing standalone delivery path,
-            # which uses the logical platform's configured credential.
+            # No live transport. A relay-fronted platform's ONLY sender is the
+            # gateway's live relay adapter — there is no standalone fallback
+            # (the connector owns the credential). A manual in-process run
+            # (`hermes cron run`) has no live relay adapter, so surface the
+            # accurate remediation instead of the native configured/enabled
+            # gate, which misdiagnoses relay-fronted deployments.
+            from gateway.relay import relay_fronted_platforms
+
+            if platform_name in relay_fronted_platforms():
+                msg = (
+                    f"platform '{platform_name}' is relay-fronted and has no "
+                    "live gateway transport; start the gateway (its ticker "
+                    "owns relay-fronted delivery and will fire the job on "
+                    "schedule)"
+                )
+                logger.warning("Job '%s': %s", job["id"], msg)
+                delivery_errors.append(msg)
+                continue
+            # Preserve the existing standalone delivery path, which uses the
+            # logical platform's configured credential.
             pconfig = config.platforms.get(platform)
             runtime_adapter = None
 
@@ -7044,6 +7062,15 @@ def run_one_job(
     run cooperatively — agent interruption AND script process-tree kill —
     through the single fenced completion path.
     """
+    if extra_prompt is None:
+        # A gateway-forwarded manual run (`hermes cron run --prompt` /
+        # cronjob(action='run', prompt=...) on a relay-fronted target) stamps
+        # its transient context on the job via trigger_job; the ticker/Chronos
+        # fire that consumes the manual occurrence carries it here. Single-fire:
+        # mark_job_run clears the field after the run.
+        _stamped = job.get("manual_run_prompt")
+        if _stamped and job.get("manual_run_at"):
+            extra_prompt = str(_stamped)
     claim = job.get("fire_claim")
     fire_owner = str(claim.get("by") or "") if isinstance(claim, dict) else ""
     execution_token = object()

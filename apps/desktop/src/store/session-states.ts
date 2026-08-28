@@ -29,7 +29,7 @@ import {
   noteActiveTreeGroup,
   revealTreePane
 } from '@/components/pane-shell/tree/store'
-import { $workspaceMode } from '@/components/pane-shell/workspace-scope'
+import { $workspaceMode, resolveRememberedActivePane, workspaceScopeKey } from '@/components/pane-shell/workspace-scope'
 import type { WorkspaceMode } from '@/contrib/types'
 import { stableArray } from '@/lib/stable-array'
 import { readJson, writeJson } from '@/lib/storage'
@@ -1216,8 +1216,11 @@ export interface SessionTileDelegate {
    *  right pane" bug). Bindings re-record from live post-reconnect events. */
   invalidateRuntimeBindings?(preserveStoredSessionIds?: ReadonlySet<string>): void
   /** Bind a live runtime id for a stored session (resume without touching
-   *  the main view). Returns the runtime id, or throws. */
-  resumeTile(storedSessionId: string): Promise<string>
+   *  the main view). Returns the runtime id, or throws.
+   *  `refreshTranscript` forces a REST merge even when a warm cached
+   *  transcript already exists — reopen-after-idle must not paint the
+   *  snapshot that was current when the panel last had a socket. */
+  resumeTile(storedSessionId: string, options?: { refreshTranscript?: boolean }): Promise<string>
   /** Retire one runtime's busy/awaiting claim through the wiring cache
    *  (updateSessionState), so cache, focused view, busyRef, and tile mirrors
    *  settle together. Returns false when the cache holds no busy state for
@@ -1439,6 +1442,34 @@ export function focusOpenSession(
   }
 
   return null
+}
+
+/** Front the tab a Bot Mode owner already has open and report its stored id:
+ *  the tile the zone last had active for `workspaceOwnerKey` (the same
+ *  window-local memory the strip restores on a scope switch), else the most
+ *  recently opened one. `null` when that owner has no open tile — the caller
+ *  decides what to open then. A roster click consults this FIRST so a bot
+ *  with open tabs comes back to the one the user left, instead of re-opening
+ *  its canonical Bot Chat beside them: nothing records a tab close except the
+ *  tile bucket forgetting it, so any open path that ignores the open set
+ *  resurrects closed chats on every bot switch. */
+export function focusWorkspaceOwnerSessionTile(workspaceOwnerKey: string): null | string {
+  const owned = $sessionTiles
+    .get()
+    .filter(tile => tile.workspaceMode === 'bots' && tile.workspaceOwnerKey === workspaceOwnerKey)
+
+  if (owned.length === 0) {
+    return null
+  }
+
+  // Most recent first, so the fallback (no remembered pane) is the newest tab.
+  const paneIds = owned.map(tile => `${TILE_PANE_PREFIX}${tile.storedSessionId}`).reverse()
+  const paneId = resolveRememberedActivePane(workspaceScopeKey('bots', workspaceOwnerKey), paneIds) ?? paneIds[0]
+  const storedSessionId = paneId.slice(TILE_PANE_PREFIX.length)
+
+  focusOpenSession(storedSessionId, { workspaceMode: 'bots', workspaceOwnerKey })
+
+  return storedSessionId
 }
 
 /** Does a sidebar click still need to navigate after `focusOpenSession`? A miss
