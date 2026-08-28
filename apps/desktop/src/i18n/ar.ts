@@ -1806,6 +1806,79 @@ reactionsDesc: 'تفاعلات إيموجي بأسلوب iMessage — تفاعل
     editChunk: 'تحرير'
   },
 
+  office: {
+    title: 'المكتب',
+    refresh: 'تحديث',
+    stats: {
+      online: 'متصل',
+      busy: 'مشغول',
+      openTasks: 'مهام مفتوحة',
+      doneToday: 'منجز اليوم'
+    },
+    status: {
+      online: 'متصل',
+      busy: 'مشغول',
+      offline: 'غير متصل',
+      working: 'يعمل',
+      thinking: 'يفكر'
+    },
+    ledger: {
+      title: 'سجل المهام',
+      filterAll: 'الكل',
+      filterOpen: 'جارية',
+      filterDone: 'مكتملة',
+      empty: 'لا توجد مهام'
+    },
+    toolbar: {
+      pauseAll: 'إيقاف الكل',
+      resumeAll: 'استئناف الكل',
+      newTask: 'مهمة جديدة',
+      exportReport: 'تصدير التقرير',
+      paused: 'متوقف مؤقتًا',
+      resumed: 'تم الاستئناف'
+    },
+    rightPanel: {
+      taskFlow: 'سجل المهام',
+      quickTools: 'أدوات سريعة',
+      files: 'الملفات',
+      browser: 'المتصفح',
+      activity: 'النشاط',
+      activityEmpty: 'لا نشاط حديث'
+    },
+    agentModal: {
+      config: 'الإعدادات',
+      skills: 'المهارات',
+      memory: 'الذاكرة',
+      tasks: 'المهام',
+      chat: 'الدردشة',
+      soul: 'الجوهر',
+      notes: 'ملاحظات',
+      userProfile: 'الملف الشخصي',
+      memoryEmpty: 'لا توجد بيانات ذاكرة (غير موصول بعد في سطح المكتب)',
+      skillsEmpty: 'لا مهارات',
+      tasksEmpty: 'لا مهام',
+      chatHint: 'افتح هذا الوكيل في الدردشة',
+      openChat: 'فتح الدردشة'
+    },
+    actions: {
+      interact: 'تفاعل',
+      viewProfile: 'عرض الملف',
+      setState: 'تعيين الحالة'
+    },
+    newTask: {
+      title: 'مهمة جديدة',
+      name: 'الاسم',
+      namePlaceholder: 'اسم المهمة',
+      schedule: 'الجدولة',
+      schedulePlaceholder: 'مثال: 0 9 * * 1-5',
+      confirm: 'إنشاء',
+      cancel: 'إلغاء'
+    },
+    sceneFallback: {
+      title: 'المشهد ثلاثي الأبعاد غير متاح',
+      description: 'تعذر بدء مشهد Pixi؛ سيتم عرض شبكة المكاتب بدلاً منه.'
+    }
+  },
   artifactCard: {
     kind: { code: 'كود', html: 'صفحة تفاعلية', svg: 'رسم' },
     generating: lines => `جارٍ الإنشاء… ${lines} سطرًا`,

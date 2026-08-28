@@ -2511,6 +2511,79 @@ reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回�
     editChunk: '编辑'
   },
 
+  office: {
+    title: '办公室',
+    refresh: '刷新',
+    stats: {
+      online: '在线',
+      busy: '忙碌',
+      openTasks: '待办任务',
+      doneToday: '今日完成'
+    },
+    status: {
+      online: '在线',
+      busy: '忙碌',
+      offline: '离线',
+      working: '工作中',
+      thinking: '思考中'
+    },
+    ledger: {
+      title: '任务流水',
+      filterAll: '全部',
+      filterOpen: '进行中',
+      filterDone: '已完成',
+      empty: '暂无任务'
+    },
+    toolbar: {
+      pauseAll: '全部暂停',
+      resumeAll: '全部恢复',
+      newTask: '新建任务',
+      exportReport: '导出报告',
+      paused: '已暂停',
+      resumed: '已恢复'
+    },
+    rightPanel: {
+      taskFlow: '任务流水',
+      quickTools: '快捷工具',
+      files: '文件',
+      browser: '浏览器',
+      activity: '动态',
+      activityEmpty: '暂无动态'
+    },
+    agentModal: {
+      config: '配置',
+      skills: '技能',
+      memory: '记忆',
+      tasks: '任务',
+      chat: '聊天',
+      soul: '灵魂',
+      notes: '笔记',
+      userProfile: '用户档案',
+      memoryEmpty: '暂无记忆数据（桌面端暂未接入）',
+      skillsEmpty: '暂无技能',
+      tasksEmpty: '暂无任务',
+      chatHint: '在聊天中打开该 Agent',
+      openChat: '打开聊天'
+    },
+    actions: {
+      interact: '互动',
+      viewProfile: '查看资料',
+      setState: '设置状态'
+    },
+    newTask: {
+      title: '新建任务',
+      name: '名称',
+      namePlaceholder: '任务名称',
+      schedule: '调度',
+      schedulePlaceholder: '如 0 9 * * 1-5',
+      confirm: '创建',
+      cancel: '取消'
+    },
+    sceneFallback: {
+      title: '3D 场景不可用',
+      description: 'Pixi 场景启动失败，已切换为工位网格视图。'
+    }
+  },
   artifactCard: {
     kind: { code: '代码', html: '交互页面', svg: '图形' },
     generating: lines => `生成中… ${lines} 行`,

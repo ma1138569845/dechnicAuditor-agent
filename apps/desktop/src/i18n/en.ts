@@ -2332,6 +2332,79 @@ reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Dechnic
     editChunk: 'Edit'
   },
 
+  office: {
+    title: 'Office',
+    refresh: 'Refresh',
+    stats: {
+      online: 'Online',
+      busy: 'Busy',
+      openTasks: 'Open tasks',
+      doneToday: 'Done today'
+    },
+    status: {
+      online: 'online',
+      busy: 'busy',
+      offline: 'offline',
+      working: 'working',
+      thinking: 'thinking'
+    },
+    ledger: {
+      title: 'Task flow',
+      filterAll: 'All',
+      filterOpen: 'Open',
+      filterDone: 'Done',
+      empty: 'No tasks yet'
+    },
+    toolbar: {
+      pauseAll: 'Pause all',
+      resumeAll: 'Resume all',
+      newTask: 'New task',
+      exportReport: 'Export report',
+      paused: 'Paused',
+      resumed: 'Resumed'
+    },
+    rightPanel: {
+      taskFlow: 'Task flow',
+      quickTools: 'Quick tools',
+      files: 'Files',
+      browser: 'Browser',
+      activity: 'Activity',
+      activityEmpty: 'No recent activity'
+    },
+    agentModal: {
+      config: 'Config',
+      skills: 'Skills',
+      memory: 'Memory',
+      tasks: 'Tasks',
+      chat: 'Chat',
+      soul: 'Soul',
+      notes: 'Notes',
+      userProfile: 'User profile',
+      memoryEmpty: 'No memory data (not yet wired in desktop)',
+      skillsEmpty: 'No skills',
+      tasksEmpty: 'No tasks',
+      chatHint: 'Open this agent in chat',
+      openChat: 'Open chat'
+    },
+    actions: {
+      interact: 'Interact',
+      viewProfile: 'View profile',
+      setState: 'Set state'
+    },
+    newTask: {
+      title: 'New task',
+      name: 'Name',
+      namePlaceholder: 'Task name',
+      schedule: 'Schedule',
+      schedulePlaceholder: 'e.g. 0 9 * * 1-5',
+      confirm: 'Create',
+      cancel: 'Cancel'
+    },
+    sceneFallback: {
+      title: '3D scene unavailable',
+      description: 'The Pixi scene could not start; showing the desk grid instead.'
+    }
+  },
   artifactCard: {
     kind: { code: 'Code', html: 'Interactive page', svg: 'Graphic' },
     generating: lines => `Generating… ${lines} lines`,

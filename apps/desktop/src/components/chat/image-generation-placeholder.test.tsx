@@ -72,9 +72,11 @@ describe('DiffusionCanvas scheduling', () => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     windowState = installWindowStateBridge()
+    // pixi v8 augments HTMLCanvasElement.getContext with a webgpu overload
+    // (returns GPUCanvasContext), so the mock must be widened via `never`.
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       setTransform: vi.fn()
-    } as unknown as CanvasRenderingContext2D)
+    } as never)
   })
 
   afterEach(() => {
@@ -145,7 +147,7 @@ function installDrawableContext() {
     }
   )
 
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as never)
 
   return { clearRect }
 }

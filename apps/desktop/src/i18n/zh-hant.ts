@@ -1915,6 +1915,79 @@ reactionsDesc: 'iMessage 風格的表情回應 — 你可以對訊息做出回�
     }
   },
 
+  office: {
+    title: '辦公室',
+    refresh: '重新整理',
+    stats: {
+      online: '在線',
+      busy: '忙碌',
+      openTasks: '待辦任務',
+      doneToday: '今日完成'
+    },
+    status: {
+      online: '在線',
+      busy: '忙碌',
+      offline: '離線',
+      working: '工作中',
+      thinking: '思考中'
+    },
+    ledger: {
+      title: '任務流水',
+      filterAll: '全部',
+      filterOpen: '進行中',
+      filterDone: '已完成',
+      empty: '暫無任務'
+    },
+    toolbar: {
+      pauseAll: '全部暫停',
+      resumeAll: '全部恢復',
+      newTask: '新增任務',
+      exportReport: '匯出報告',
+      paused: '已暫停',
+      resumed: '已恢復'
+    },
+    rightPanel: {
+      taskFlow: '任務流水',
+      quickTools: '快速工具',
+      files: '檔案',
+      browser: '瀏覽器',
+      activity: '動態',
+      activityEmpty: '暫無動態'
+    },
+    agentModal: {
+      config: '設定',
+      skills: '技能',
+      memory: '記憶',
+      tasks: '任務',
+      chat: '聊天',
+      soul: '靈魂',
+      notes: '筆記',
+      userProfile: '使用者檔案',
+      memoryEmpty: '暫無記憶資料（桌面端暫未接入）',
+      skillsEmpty: '暫無技能',
+      tasksEmpty: '暫無任務',
+      chatHint: '在聊天中開啟該 Agent',
+      openChat: '開啟聊天'
+    },
+    actions: {
+      interact: '互動',
+      viewProfile: '檢視資料',
+      setState: '設定狀態'
+    },
+    newTask: {
+      title: '新增任務',
+      name: '名稱',
+      namePlaceholder: '任務名稱',
+      schedule: '排程',
+      schedulePlaceholder: '如 0 9 * * 1-5',
+      confirm: '建立',
+      cancel: '取消'
+    },
+    sceneFallback: {
+      title: '3D 場景不可用',
+      description: 'Pixi 場景啟動失敗，已切換為工位網格檢視。'
+    }
+  },
   artifactCard: {
     kind: { code: '程式碼', html: '互動頁面', svg: '圖形' },
     generating: lines => `產生中… ${lines} 行`,

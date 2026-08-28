@@ -1997,6 +1997,79 @@ export interface Translations {
     editChunk: string
   }
 
+  office: {
+    title: string
+    refresh: string
+    stats: {
+      online: string
+      busy: string
+      openTasks: string
+      doneToday: string
+    }
+    status: {
+      online: string
+      busy: string
+      offline: string
+      working: string
+      thinking: string
+    }
+    ledger: {
+      title: string
+      filterAll: string
+      filterOpen: string
+      filterDone: string
+      empty: string
+    }
+    toolbar: {
+      pauseAll: string
+      resumeAll: string
+      newTask: string
+      exportReport: string
+      paused: string
+      resumed: string
+    }
+    rightPanel: {
+      taskFlow: string
+      quickTools: string
+      files: string
+      browser: string
+      activity: string
+      activityEmpty: string
+    }
+    agentModal: {
+      config: string
+      skills: string
+      memory: string
+      tasks: string
+      chat: string
+      soul: string
+      notes: string
+      userProfile: string
+      memoryEmpty: string
+      skillsEmpty: string
+      tasksEmpty: string
+      chatHint: string
+      openChat: string
+    }
+    actions: {
+      interact: string
+      viewProfile: string
+      setState: string
+    }
+    newTask: {
+      title: string
+      name: string
+      namePlaceholder: string
+      schedule: string
+      schedulePlaceholder: string
+      confirm: string
+      cancel: string
+    }
+    sceneFallback: {
+      title: string
+      description: string
+    }
+  },
   artifactCard: {
     kind: Record<'code' | 'html' | 'svg', string>
     generating: (lines: number) => string

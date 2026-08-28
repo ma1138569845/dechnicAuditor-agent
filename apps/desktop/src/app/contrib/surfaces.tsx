@@ -37,6 +37,7 @@ import type { SidebarActions, WiringActions } from './types'
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
 const KnowledgeView = lazy(async () => ({ default: (await import('../knowledge')).KnowledgeView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
+const OfficeView = lazy(async () => ({ default: (await import('../office')).OfficeView }))
 const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
 
 export function LegacySessionRedirect() {
@@ -168,6 +169,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
       <Route element={page(<KnowledgeView />)} path="knowledge/:kbId" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />
+      <Route element={page(<OfficeView />)} path="office" />
       <Route element={null} path="agents" />
       <Route element={null} path="command-center" />
       <Route element={null} path="cron" />

@@ -82,13 +82,15 @@ describe('PixelEggSprite scheduling', () => {
         }
       } as unknown as typeof Image
     )
+    // pixi v8 augments HTMLCanvasElement.getContext with a webgpu overload
+    // (returns GPUCanvasContext), so the mock must be widened via `never`.
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       clearRect: vi.fn(),
       drawImage: vi.fn(),
       getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(32 * 32 * 4) })),
       imageSmoothingEnabled: false,
       putImageData: vi.fn()
-    } as unknown as CanvasRenderingContext2D)
+    } as never)
   })
 
   afterEach(() => {

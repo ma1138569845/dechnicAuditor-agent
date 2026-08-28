@@ -1979,6 +1979,79 @@ export const ja = defineLocale({
     }
   },
 
+  office: {
+    title: 'オフィス',
+    refresh: '更新',
+    stats: {
+      online: 'オンライン',
+      busy: 'ビジー',
+      openTasks: '未完了タスク',
+      doneToday: '今日完了'
+    },
+    status: {
+      online: 'オンライン',
+      busy: 'ビジー',
+      offline: 'オフライン',
+      working: '作業中',
+      thinking: '思考中'
+    },
+    ledger: {
+      title: 'タスク履歴',
+      filterAll: 'すべて',
+      filterOpen: '進行中',
+      filterDone: '完了',
+      empty: 'タスクはありません'
+    },
+    toolbar: {
+      pauseAll: 'すべて一時停止',
+      resumeAll: 'すべて再開',
+      newTask: '新規タスク',
+      exportReport: 'レポートをエクスポート',
+      paused: '一時停止しました',
+      resumed: '再開しました'
+    },
+    rightPanel: {
+      taskFlow: 'タスク履歴',
+      quickTools: 'クイックツール',
+      files: 'ファイル',
+      browser: 'ブラウザ',
+      activity: 'アクティビティ',
+      activityEmpty: '最近のアクティビティはありません'
+    },
+    agentModal: {
+      config: '設定',
+      skills: 'スキル',
+      memory: 'メモリ',
+      tasks: 'タスク',
+      chat: 'チャット',
+      soul: 'ソウル',
+      notes: 'ノート',
+      userProfile: 'ユーザープロフィール',
+      memoryEmpty: 'メモリデータはありません（デスクトップ未接続）',
+      skillsEmpty: 'スキルはありません',
+      tasksEmpty: 'タスクはありません',
+      chatHint: 'このエージェントをチャットで開く',
+      openChat: 'チャットを開く'
+    },
+    actions: {
+      interact: 'インタラクト',
+      viewProfile: 'プロフィールを見る',
+      setState: '状態を設定'
+    },
+    newTask: {
+      title: '新規タスク',
+      name: '名前',
+      namePlaceholder: 'タスク名',
+      schedule: 'スケジュール',
+      schedulePlaceholder: '例: 0 9 * * 1-5',
+      confirm: '作成',
+      cancel: 'キャンセル'
+    },
+    sceneFallback: {
+      title: '3D シーンを利用できません',
+      description: 'Pixi シーンの起動に失敗しました。デスクグリッド表示に切り替えます。'
+    }
+  },
   artifactCard: {
     kind: { code: 'コード', html: 'インタラクティブページ', svg: 'グラフィック' },
     generating: lines => `生成中… ${lines} 行`,

@@ -139,6 +139,7 @@ import {
   CRON_ROUTE,
   KNOWLEDGE_ROUTE,
   MESSAGING_ROUTE,
+  OFFICE_ROUTE,
   SIDEBAR_NAV_AREA,
   type SidebarNavContribution,
   SKILLS_ROUTE
@@ -229,6 +230,13 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     icon: props => <Codicon name="watch" {...props} />,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron'
+  },
+  {
+    id: 'office',
+    label: '',
+    icon: props => <Codicon name="building" {...props} />,
+    route: OFFICE_ROUTE,
+    keybindActionId: 'nav.office'
   }
 ]
 
