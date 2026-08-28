@@ -329,14 +329,124 @@ def _snapshot_compressor_attempt_state(compressor: Any) -> dict[str, Any]:
     return copy.deepcopy(selected)
 
 
+# ---------------------------------------------------------------------------
+# Attempt ownership (#96634 follow-up).
+#
+# The stall-fallback path deliberately DETACHES a timed-out primary worker
+# (fence cancel wins; the future stays on the shared pool) and immediately
+# starts a fallback attempt against the SAME ContextCompressor. Two races
+# follow from that overlap:
+#
+#   1. The late primary's unwind still calls _restore_compressor_attempt_state
+#      with the PRIMARY's pre-attempt snapshot. Landing after the fallback's
+#      commit, it rolls _previous_summary / cooldown / provenance / telemetry
+#      back to pre-primary values — silently discarding fallback-owned state.
+#   2. _compression_cancelled_check is one shared attribute: the late
+#      primary's ``finally`` clears the callback the fallback just installed,
+#      so the fallback's F4 cancellation consult reads None.
+#
+# Both are fixed with a monotonic per-compressor attempt generation, claimed
+# under one module lock. Restores and callback set/clear are keyed to the
+# claiming generation and no-op when a newer attempt owns the compressor.
+# The commit fence still owns COMMIT admission; the generation owns
+# compressor-ATTRIBUTE writes — two different boundaries.
+# ---------------------------------------------------------------------------
+
+_COMPRESSOR_ATTEMPT_LOCK = threading.Lock()
+
+
+def _claim_compressor_attempt(compressor: Any) -> int:
+    """Claim the compressor for a new attempt; returns its generation id.
+
+    Monotonic per compressor instance. Any restore or cancelled-check
+    mutation stamped with an OLDER generation becomes a no-op, so a
+    detached, late-unwinding attempt cannot clobber its successor's state.
+    """
+    with _COMPRESSOR_ATTEMPT_LOCK:
+        generation = int(getattr(compressor, "_compression_attempt_generation", 0) or 0) + 1
+        try:
+            compressor._compression_attempt_generation = generation
+        except Exception:
+            # Slotted/frozen third-party compressor: ownership tracking is
+            # unavailable; generation 0 disables the guard (legacy behavior).
+            # Per-compressor all-or-nothing, NOT per-attempt: a compressor
+            # that rejects the setattr rejects it for EVERY claim, so gen-0
+            # and gen>0 attempts can never coexist on one instance.
+            return 0
+        return generation
+
+
+def _compressor_attempt_is_current(compressor: Any, generation: int) -> bool:
+    """True when *generation* still owns the compressor (or guard disabled)."""
+    if not generation:
+        return True
+    with _COMPRESSOR_ATTEMPT_LOCK:
+        return (
+            int(getattr(compressor, "_compression_attempt_generation", 0) or 0)
+            == generation
+        )
+
+
+def _install_compression_cancelled_check(
+    compressor: Any, check: Any, generation: int
+) -> None:
+    """Install the F4 cancellation consult, stamped with its owner attempt."""
+    with _COMPRESSOR_ATTEMPT_LOCK:
+        try:
+            compressor._compression_cancelled_check = check
+            compressor._compression_cancelled_check_owner = generation
+        except Exception:
+            pass
+
+
+def _clear_compression_cancelled_check_if_owner(
+    compressor: Any, generation: int
+) -> bool:
+    """Clear the cancellation consult only when *generation* installed it.
+
+    A detached late primary's ``finally`` must not tear down the callback a
+    newer fallback attempt just installed. Returns True when cleared.
+    """
+    with _COMPRESSOR_ATTEMPT_LOCK:
+        owner = getattr(compressor, "_compression_cancelled_check_owner", None)
+        if owner is not None and generation and owner != generation:
+            return False
+        try:
+            compressor._compression_cancelled_check = None
+            compressor._compression_cancelled_check_owner = None
+        except Exception:
+            pass
+        return True
+
+
 def _restore_compressor_attempt_state(
     compressor: Any,
     snapshot: dict[str, Any],
     *,
     durable_cooldown_authoritative: Optional[bool] = None,
     durable_cooldown_state: Optional[dict[str, Any]] = None,
+    attempt_generation: Optional[int] = None,
 ) -> None:
-    """Restore the safe per-attempt snapshot after a pre-commit hard cancel."""
+    """Restore the safe per-attempt snapshot after a pre-commit hard cancel.
+
+    ``attempt_generation`` (when provided) is the claim the calling attempt
+    took via :func:`_claim_compressor_attempt`. A restore stamped with a
+    stale generation no-ops: the stall-fallback path detaches a timed-out
+    primary and hands the compressor to a fallback attempt, and the late
+    primary's unwind must not roll fallback-owned state back to the
+    primary's pre-attempt snapshot (#96634 post-merge review, claim 1).
+    """
+    if attempt_generation is not None and not _compressor_attempt_is_current(
+        compressor, attempt_generation
+    ):
+        logger.warning(
+            "Skipping stale compressor attempt-state restore: attempt "
+            "generation %s no longer owns the compressor (current: %s). A "
+            "newer (stall-fallback) attempt's state is preserved.",
+            attempt_generation,
+            getattr(compressor, "_compression_attempt_generation", None),
+        )
+        return
     # A successful summary clears the durable cooldown before the outer commit
     # boundary. Recreate (or clear) that row before restoring exact in-memory
     # values, otherwise the next refresh would overwrite this rollback. Unknown
@@ -407,8 +517,27 @@ def _restore_compressor_attempt_state(
                         exc_info=True,
                     )
     restored = copy.deepcopy(snapshot)
-    for name, value in restored.items():
-        setattr(compressor, name, value)
+    # Close the check-then-act window: the entry check above runs before the
+    # (potentially slow) durable-cooldown rollback, so a fallback attempt can
+    # claim the compressor in between. Re-validate and write the in-memory
+    # fields under the SAME lock claims are taken under — a stale attempt can
+    # never interleave its setattr loop with a newer attempt's writes. The
+    # durable rollback above is safe either way: the dangerous direction
+    # (restore landing AFTER the fallback's writes) requires the fallback to
+    # have claimed first, which the entry check already rejects.
+    with _COMPRESSOR_ATTEMPT_LOCK:
+        if attempt_generation is not None and attempt_generation and (
+            int(getattr(compressor, "_compression_attempt_generation", 0) or 0)
+            != attempt_generation
+        ):
+            logger.warning(
+                "Skipping stale compressor attempt-state restore at write "
+                "time: attempt generation %s lost the compressor mid-restore.",
+                attempt_generation,
+            )
+            return
+        for name, value in restored.items():
+            setattr(compressor, name, value)
 
 
 def _capture_authoritative_cooldown_under_lease(
@@ -930,6 +1059,13 @@ def _retry_compression_on_fallback_chain(
     entry's own ``timeout`` (when declared) sets that idle window, so a
     fallback tuned for a slower-but-healthy backend is not held to a deadline
     the stalled primary defined (#62452 semantics, applied to the stall path).
+
+    Known limitation (accepted, #96634 review): the retry re-runs the COMPLETE
+    worker, which repeats memory/plugin pre-compression callbacks. Built-in
+    callbacks are idempotent (re-reads and overwrites of attempt-scoped
+    state); third-party plugin callbacks are advised to be. Splitting the
+    worker to resume mid-pipeline would couple this path to every host's
+    callback ordering — deliberately out of scope.
     """
     # An explicit stop is not a stalled route. The retry worker would abort on
     # the same event anyway, but starting one at all makes /stop look ignored.
@@ -1393,6 +1529,7 @@ def _emit_compression_attempt_telemetry(
     commit_status: str,
     split_status: str,
     failure_class: str | None = None,
+    commit_started_at: float | None = None,
 ) -> None:
     """Emit one content-free JSON log line for a compression attempt."""
     try:
@@ -1406,6 +1543,10 @@ def _emit_compression_attempt_telemetry(
         payload["total_duration_ms"] = int((time.monotonic() - started_at) * 1000)
         payload["commit_status"] = commit_status
         payload["split_status"] = split_status
+        if commit_started_at is not None:
+            commit_ms = max(0, int((time.monotonic() - commit_started_at) * 1000))
+            telemetry["commit_ms"] = commit_ms
+            payload["commit_ms"] = commit_ms
         if failure_class:
             payload["failure_class"] = failure_class
         payload.setdefault("chunking", False)
@@ -2575,6 +2716,10 @@ def compress_context(
     _compressor_attempt_snapshot = _snapshot_compressor_attempt_state(
         agent.context_compressor
     )
+    # Claim attempt ownership: a detached, late-unwinding sibling attempt
+    # (stall-fallback overlap) must not restore its snapshot over ours or
+    # clear our cancellation consult (#96634 post-merge review).
+    _attempt_generation = _claim_compressor_attempt(agent.context_compressor)
     _durable_cooldown_authoritative: Optional[bool] = None
     _durable_cooldown_state: Optional[dict[str, Any]] = None
     if (
@@ -2638,7 +2783,8 @@ def compress_context(
             )
             if not _codex_fence_entered:
                 _restore_compressor_attempt_state(
-                    agent.context_compressor, _compressor_attempt_snapshot
+                    agent.context_compressor, _compressor_attempt_snapshot,
+                    attempt_generation=_attempt_generation,
                 )
                 existing_prompt = getattr(agent, "_cached_system_prompt", None)
                 if not existing_prompt:
@@ -3376,12 +3522,11 @@ def compress_context(
         # removed in the finally below so it cannot leak into later attempts
         # (e.g. a manual /compress force-clear).
         if commit_fence is not None:
-            try:
-                agent.context_compressor._compression_cancelled_check = (
-                    lambda: commit_fence.is_cancelled
-                )
-            except Exception:
-                pass
+            _install_compression_cancelled_check(
+                agent.context_compressor,
+                lambda: commit_fence.is_cancelled,
+                _attempt_generation,
+            )
         # Incoming-message interrupts and active-turn redirects must not tear an
         # atomic summary in half (#23975). Explicit stop surfaces set a separate
         # Event atomically; never infer cause from the racy message fields.
@@ -3411,10 +3556,9 @@ def compress_context(
                         raise AuxiliaryExplicitCancellation()
         finally:
             if commit_fence is not None:
-                try:
-                    agent.context_compressor._compression_cancelled_check = None
-                except Exception:
-                    pass
+                _clear_compression_cancelled_check_if_owner(
+                    agent.context_compressor, _attempt_generation
+                )
     except AuxiliaryExplicitCancellation:
         try:
             _restore_compressor_attempt_state(
@@ -3422,6 +3566,7 @@ def compress_context(
                 _compressor_attempt_snapshot,
                 durable_cooldown_authoritative=_durable_cooldown_authoritative,
                 durable_cooldown_state=_durable_cooldown_state,
+                attempt_generation=_attempt_generation,
             )
         except BaseException as _rollback_exc:
             # Compensation failure must surface, but it must not strand the
@@ -3589,6 +3734,7 @@ def compress_context(
                     _compressor_attempt_snapshot,
                     durable_cooldown_authoritative=_durable_cooldown_authoritative,
                     durable_cooldown_state=_durable_cooldown_state,
+                    attempt_generation=_attempt_generation,
                 )
                 if (
                     messages_before_compression is not None
@@ -3742,6 +3888,7 @@ def compress_context(
             agent._cached_system_prompt = new_system_prompt
 
         _session_commit_succeeded = False
+        _commit_started_at = time.monotonic()
         split_status = "not_applicable"
         if agent._session_db:
             split_status = "pending"
@@ -4483,6 +4630,7 @@ def compress_context(
                 if split_status in {"failed_not_indexed", "aborted"}
                 else None
             ),
+            commit_started_at=_commit_started_at,
         )
         return compressed, new_system_prompt
     finally:
