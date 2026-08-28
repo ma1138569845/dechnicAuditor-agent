@@ -68,6 +68,9 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_non_heating': (11.5, 7.0, 4.0),
         'unit_area_elec': (35.0, 25.0, 18.0),
         'per_capita_energy': (400, 300, 200),
+        # 用水: DB37/T 4452-2021, 教育业单位取水量 m³/(p·a)
+        'water_per_person': (8, 14, 0),          # 先进值, 通用值（约束值）, —
+        'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
         'standard_name': 'DB37/T 2674-2019《教育机构能源消耗定额标准》',
     },
     'venue': {  # DB37/T 3780-2019, 场馆机构（体育场馆、文化场馆、科技场馆）
@@ -247,9 +250,13 @@ def resolve_benchmark(institution_type: str = 'government',
     # Layer 3
     defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
     vals = defaults.get(metric, (0, 0, 0))
+    # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
+    std_name = defaults.get('standard_name', '')
+    if metric.startswith('water'):
+        std_name = defaults.get('water_standard', std_name)
     return {
         '约束值': vals[0], '基准值': vals[1], '引导值': vals[2],
-        '标准': defaults['standard_name'],
+        '标准': std_name,
         '来源': 'Default',
     }
 
@@ -576,6 +583,9 @@ def calc_per_capita_water(
         'medical': 'water_per_bed_day',
         'government': 'water_per_person',
         'education': 'water_per_person',
+        # FORK: venue/service 显式映射，避免依赖 .get 默认值的隐式兜底
+        'venue': 'water_per_person',
+        'service': 'water_per_person',
     }
     metric = metric_map.get(institution_type, 'water_per_person')
 
@@ -584,11 +594,10 @@ def calc_per_capita_water(
         water_total = data.water_m3
         L_per_bed_day = round(water_total * 1000 / (bed_count * 365), 2)  # m³→L, year→day
         benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark)
-        benchmark_vals = (benchmark['约束值'], benchmark['基准值'], benchmark['引导值'])
-        # 对于医院用水：约束值=通用值=540, 引导值=先进值=340（字段复用）
-        if L_per_bed_day <= benchmark['引导值'] or L_per_bed_day <= benchmark['基准值']:
+        # 水三元组字段语义与能耗相反：约束值=先进值(340), 基准值=通用值(540), 引导值=0
+        if L_per_bed_day <= benchmark['约束值']:
             evaluation = '低于先进值'
-        elif L_per_bed_day <= benchmark['约束值']:
+        elif L_per_bed_day <= benchmark['基准值']:
             evaluation = '低于通用值'
         else:
             evaluation = '高于通用值（需整改）'
@@ -612,9 +621,10 @@ def calc_per_capita_water(
     benchmark = resolve_benchmark(institution_type, 'water_per_person', user_benchmark)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         evaluation = '暂无定额标准可对标'
-    elif per_person <= benchmark['引导值'] or per_person <= benchmark['基准值']:
-        evaluation = '低于先进值'
     elif per_person <= benchmark['约束值']:
+        # 水三元组字段语义与能耗相反：约束值=先进值, 基准值=通用值, 引导值=0
+        evaluation = '低于先进值'
+    elif per_person <= benchmark['基准值']:
         evaluation = '低于通用值'
     else:
         evaluation = '高于通用值（需整改）'
