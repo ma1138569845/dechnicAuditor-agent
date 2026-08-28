@@ -12,9 +12,9 @@ function renderGrid() {
       <DeskGrid
         onAgentClick={vi.fn()}
         profiles={[
-          { name: 'Alice', online: true, busy: false },
-          { name: 'Bob', online: true, busy: true },
-          { name: 'Carol', online: false, busy: false }
+          { name: 'alice', label: 'Alice', online: true, busy: false },
+          { name: 'bob', label: 'Bob', online: true, busy: true, currentWork: 'Energy audit' },
+          { name: 'carol', label: 'Carol', online: false, busy: false }
         ]}
       />
     </I18nProvider>
@@ -29,11 +29,17 @@ describe('DeskGrid', () => {
     expect(screen.getByText('Carol')).toBeTruthy()
   })
 
-  it('renders busy/offline status labels', () => {
+  it('renders work-centric badges and a gateway-off chip when needed', () => {
     renderGrid()
-    expect(screen.getAllByText('busy').length).toBe(1)
-    expect(screen.getAllByText('offline').length).toBe(1)
-    expect(screen.getAllByText('online').length).toBe(1)
+    expect(screen.getAllByText('Idle').length).toBe(2)
+    expect(screen.getByText('Busy')).toBeTruthy()
+    expect(screen.getByText('Energy audit')).toBeTruthy()
+    expect(screen.getByTestId('office-gateway-chip').textContent).toMatch(/Gateway off/i)
+    expect(screen.getAllByTestId('office-status-badge').map(el => el.getAttribute('data-state'))).toEqual([
+      'idle',
+      'busy',
+      'idle'
+    ])
   })
 
   it('calls onAgentClick with the profile name', () => {

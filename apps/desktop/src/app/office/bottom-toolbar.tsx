@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { useI18n } from '@/i18n'
 import { notify, notifyError } from '@/store/notifications'
 
+import { OFFICE_GLASS } from './chrome'
 import { $cronJobs } from './store'
 
 /**
@@ -71,11 +72,23 @@ export function BottomToolbar() {
   })
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-t border-(--ui-stroke-tertiary) bg-(--ui-bg-secondary) px-4 py-2">
-      <Button disabled={pauseAll.isPending} onClick={() => pauseAll.mutate()} size="sm" variant="secondary">
+    <div className={`inline-flex w-max max-w-full items-center gap-2 rounded-2xl px-3 py-1.5 ${OFFICE_GLASS}`}>
+      <Button
+        className="border-transparent bg-[color-mix(in_srgb,var(--ui-bg-elevated)_28%,transparent)] hover:bg-[color-mix(in_srgb,var(--ui-bg-elevated)_48%,transparent)]"
+        disabled={pauseAll.isPending}
+        onClick={() => pauseAll.mutate()}
+        size="sm"
+        variant="secondary"
+      >
         {o.toolbar.pauseAll}
       </Button>
-      <Button disabled={resumeAll.isPending} onClick={() => resumeAll.mutate()} size="sm" variant="secondary">
+      <Button
+        className="border-transparent bg-[color-mix(in_srgb,var(--ui-bg-elevated)_28%,transparent)] hover:bg-[color-mix(in_srgb,var(--ui-bg-elevated)_48%,transparent)]"
+        disabled={resumeAll.isPending}
+        onClick={() => resumeAll.mutate()}
+        size="sm"
+        variant="secondary"
+      >
         {o.toolbar.resumeAll}
       </Button>
       <div className="flex-1" />

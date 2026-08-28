@@ -1989,17 +1989,23 @@ export const ja = defineLocale({
     title: 'オフィス',
     refresh: '更新',
     stats: {
-      online: 'オンライン',
-      busy: 'ビジー',
+      online: '待機',
+      busy: '対応中',
       openTasks: '未完了タスク',
       doneToday: '今日完了'
     },
     status: {
+      idle: '待機',
       online: 'オンライン',
-      busy: 'ビジー',
+      busy: '対応中',
       offline: 'オフライン',
       working: '作業中',
-      thinking: '思考中'
+      thinking: '思考中',
+      gatewayOff: 'GW停止',
+      hintIdle: '進行中の Kanban / cron タスクはありません',
+      hintBusy: 'Kanban または cron タスク処理中',
+      hintOffline: 'このプロファイルの messaging ゲートウェイは停止中',
+      hintGatewayOff: 'Messaging ゲートウェイ停止中（デスクトップチャットは可能）'
     },
     ledger: {
       title: 'タスク履歴',
@@ -2024,26 +2030,65 @@ export const ja = defineLocale({
       activity: 'アクティビティ',
       activityEmpty: '最近のアクティビティはありません'
     },
+    activity: {
+      visit: (visitor, host) => `${visitor} が ${host} を訪問`,
+      tour: (visitor, count) => `${visitor} が ${count} 席を巡回`,
+      setState: (profile, state) => `${profile} → ${state}`,
+      celebrate: target => `${target} がタスクを完了`,
+      broadcast: message => `放送: ${message}`,
+      emote: profile => `${profile} がエモートしました`,
+      refreshed: 'オフィス状態を更新しました',
+      unknown: 'シーンイベント'
+    },
     agentModal: {
       config: '設定',
       skills: 'スキル',
       memory: 'メモリ',
       tasks: 'タスク',
+      archive: 'アーカイブ',
       chat: 'チャット',
       soul: 'ソウル',
       notes: 'ノート',
       userProfile: 'ユーザープロフィール',
-      memoryEmpty: 'メモリデータはありません（デスクトップ未接続）',
+      memoryEmpty: 'メモリノートはありません（デスクトップ未接続 MEMORY.md）',
+      userEmpty: 'ユーザープロフィールはありません（デスクトップ未接続 USER.md）',
+      soulEmpty: 'SOUL はまだありません',
+      soulLoadFailed: 'SOUL.md を読み込めませんでした',
       skillsEmpty: 'スキルはありません',
       tasksEmpty: 'タスクはありません',
+      archiveEmpty: 'アーカイブされたタスクはありません',
       chatHint: 'このエージェントをチャットで開く',
-      openChat: 'チャットを開く'
+      openChat: 'チャットを開く',
+      workingOn: '作業中'
     },
     actions: {
       interact: 'インタラクト',
+      interactHint: 'このエージェントを他のオンラインエージェントに派遣する',
+      interactWith: name => `${name} とインタラクト`,
+      noOnlineTargets: '他にオンラインのエージェントがいません',
+      state: '状態',
+      stateHint: 'このエージェントの現在の状態を切り替えます（シーン内で一時的）',
+      working: '作業中',
+      workingTask: 'タスク処理中…',
+      thinking: '思考中',
+      thinkingTask: '思考中…',
+      online: 'オンライン',
+      offline: 'オフライン',
       viewProfile: 'プロフィールを見る',
-      setState: '状態を設定'
+      setState: '状態を設定',
+      emote: 'エモート',
+      emoteHint: '短いキャラクターアニメを再生',
+      emoteWave: '手を振る',
+      emoteDetermined: 'やる気',
+      emoteThinking: '考える',
+      emoteExcited: 'わくわく'
     },
+    visitFallback: 'ちょっと同期したいことがあります。',
+    newTaskPrefix: '新しいタスク',
+    ambient1: 'ちょっと挨拶に寄りました。',
+    ambient2: '進捗を共有しませんか。',
+    ambient3: 'コーヒーでもどうです？',
+    ambient4: '思いついたことがあって、共有します。',
     newTask: {
       title: '新規タスク',
       name: '名前',
@@ -2085,7 +2130,8 @@ export const ja = defineLocale({
       knowledge: '知識ベース',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
-      cron: 'スケジュール済みジョブ'
+      cron: 'スケジュール済みジョブ',
+      office: 'オフィス'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',

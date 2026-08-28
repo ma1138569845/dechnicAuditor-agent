@@ -3,16 +3,19 @@ import { useStore } from '@nanostores/react'
 
 import { PageLoader } from '@/components/page-loader'
 import { useI18n } from '@/i18n'
-import { PanelEmpty } from '../overlays/panel'
 
+import { AgentActionMenu } from './agent-action-menu'
 import { AgentModal } from './agent-modal'
 import { BottomToolbar } from './bottom-toolbar'
+import { DeskGrid } from './desk-grid'
 import { HeaderStats } from './header-stats'
 import { RightPanel } from './right-panel'
 import type { OfficeSceneHandle } from './scene'
 import {
   attachSceneEnqueue,
   detachSceneEnqueue,
+  dispatchDeskVisit,
+  refreshOfficeStore,
   startOfficeStore,
   stopOfficeStore,
   $activeAgent,
@@ -22,17 +25,26 @@ import {
 
 const OfficeScene = lazy(async () => ({ default: (await import('./scene')).OfficeScene }))
 
+interface ActionMenuState {
+  name: string
+  x: number
+  y: number
+}
+
 /**
  * 虚拟办公室页面（从 hermes-studio-vue 移植）。
  *
- * 页面挂载时启动 store 刷新 + 把场景 enqueue 桥接给 store（同进程直调）；
- * 卸载时停止刷新（场景由 OfficeScene 自身卸载销毁）。
+ * 场景全幅铺底；顶栏 / 右栏 / 底栏以贴边的轻量玻璃卡片叠在场景上，
+ * 不拉满高度/宽度，避免遮住工位展示区。
  */
 export function OfficeView() {
   const { t } = useI18n()
   const o = t.office
   const sceneRef = useRef<OfficeSceneHandle | null>(null)
   const [sceneFailed, setSceneFailed] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
+  const [actionMenu, setActionMenu] = useState<ActionMenuState | null>(null)
   const profiles = useStore($officeProfiles)
   const stats = useStore($stats)
   const activeAgent = useStore($activeAgent)
@@ -46,28 +58,84 @@ export function OfficeView() {
     }
   }, [])
 
+  const menuProfile = actionMenu ? profiles.find(p => p.name === actionMenu.name) : null
+  const onlineTargets = actionMenu
+    ? profiles.filter(p => p.name !== actionMenu.name).map(p => p.name)
+    : []
+
+  const handleAgentClick = (payload: { name: string; clientX: number; clientY: number }) => {
+    setActionMenu({ name: payload.name, x: payload.clientX, y: payload.clientY })
+  }
+
+  const gridProfiles = profiles.map(p => ({
+    name: p.name,
+    label: p.label,
+    online: p.online,
+    busy: p.busy,
+    currentWork: p.currentWork
+  }))
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <HeaderStats stats={stats} />
-      <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 flex-1">
-          <Suspense fallback={<PageLoader label={o.title} />}>
-            {sceneFailed ? (
-              <PanelEmpty description={o.sceneFallback.description} icon="building" title={o.sceneFallback.title} />
-            ) : (
-              <OfficeScene
-                onAgentClick={payload => $activeAgent.set(payload.name)}
-                onFailed={() => setSceneFailed(true)}
-                profiles={profiles}
-                sceneRef={sceneRef}
-              />
-            )}
-          </Suspense>
-        </div>
-        <RightPanel />
+    <div className="relative h-full min-h-0 overflow-hidden bg-(--ui-bg)">
+      {/* Full-bleed scene — primary content */}
+      <div className="absolute inset-0 overflow-hidden">
+        <Suspense fallback={<PageLoader label={o.title} />}>
+          {sceneFailed ? (
+            <DeskGrid onAgentClick={handleAgentClick} profiles={gridProfiles} />
+          ) : (
+            <OfficeScene
+              onAgentClick={handleAgentClick}
+              onFailed={() => setSceneFailed(true)}
+              profiles={profiles}
+              sceneRef={sceneRef}
+            />
+          )}
+        </Suspense>
       </div>
-      <BottomToolbar />
+
+      {/* Top-left stats pill — hug content, leave center clear */}
+      <div className="pointer-events-none absolute start-0 top-0 z-10 max-w-[min(36rem,calc(100%-1.5rem))] p-3">
+        <div className="pointer-events-auto">
+          <HeaderStats
+            onRefresh={() => {
+              setRefreshing(true)
+              void refreshOfficeStore({ manual: true }).finally(() => setRefreshing(false))
+            }}
+            refreshing={refreshing}
+            stats={stats}
+          />
+        </div>
+      </div>
+
+      {/* Top-right: collapsed by default; expands into a compact card */}
+      <div className="pointer-events-none absolute end-0 top-0 z-10 max-h-[min(28rem,calc(100%-5.5rem))] p-3 ps-2">
+        <div className="pointer-events-auto h-full max-h-full">
+          <RightPanel onOpenChange={setRightPanelOpen} open={rightPanelOpen} />
+        </div>
+      </div>
+
+      {/* Bottom-left toolbar — hug content */}
+      <div className="pointer-events-none absolute bottom-0 start-0 z-10 max-w-[min(32rem,calc(100%-1.5rem))] p-3">
+        <div className="pointer-events-auto">
+          <BottomToolbar />
+        </div>
+      </div>
+
       <AgentModal name={activeAgent} onClose={() => $activeAgent.set(null)} />
+      {actionMenu ? (
+        <AgentActionMenu
+          agentLabel={menuProfile?.label}
+          agentName={actionMenu.name}
+          onlineTargets={onlineTargets}
+          onClose={() => setActionMenu(null)}
+          onInteract={target => {
+            dispatchDeskVisit(actionMenu.name, target, o.visitFallback)
+          }}
+          onOpenProfile={name => $activeAgent.set(name)}
+          x={actionMenu.x}
+          y={actionMenu.y}
+        />
+      ) : null}
     </div>
   )
 }

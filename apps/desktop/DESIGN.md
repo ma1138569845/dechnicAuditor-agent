@@ -189,6 +189,36 @@ Sizes: `default`, `xs`, `overlay` (titlebar glyph counts).
   Summary, graph, wiki, folder wiki, hierarchical wiki, and quality eval are
   background jobs (same pattern as vectorize) so the HTTP request does not
   wait on LLM calls.
+- **Virtual office** (`/office`) — Pixi scene of profile desks. Desk labels use
+  `profileLabel()` (display_name), not the canonical slug. The camera fits the
+  desk cluster, not the full 1600×900 artboard. Sidebar nav must include
+  `sidebar.nav.office` and highlight when `currentView === 'office'`.
+  Agent status is **work-centric**: primary presence is **空闲 / 忙碌**
+  (`busy` = active Kanban assignee or enabled cron mentioning the profile).
+  Scene baseState is busy → working, else → online. Busy desks show a
+  truncated current-work subtitle under the name (Kanban title preferred,
+  else enabled cron name); the profile modal and DOM desk-grid fallback
+  show the same line. Messaging `gateway_running` is a **secondary**
+  “网关未开” chip only — it must not dim the desk or read as “offline
+  employee”. Header “空闲” counts non-busy agents. New active Kanban cards also drive a desk-visit narrative. Refresh
+  every 15s while the page is visible. Clicking an agent
+  opens a floating action menu (visit desk / view profile) before the
+  profile modal (tabs: soul / skills / memory placeholder / kanban tasks /
+  archive; open-chat stays a footer action). Manual scene-only state/emote
+  controls are not in the menu.
+  Cron diffs drive scene narrative: new enabled jobs → `desk_visit`, advanced
+  `last_run_at` → `celebrate`. Ambient/visit bubbles use i18n strings. Pixi
+  init failure keeps a clickable DOM desk grid (not an empty error panel).
+  Scene actions append to a short activity feed in the right panel; the header
+  refresh button reloads profiles/cron manually. The Pixi scene must re-`sync`
+  whenever `$officeProfiles` changes (roster is empty on first paint); stage
+  wrappers use `overflow-hidden` so the canvas cannot expand the page into a
+  scrollable double background. Chrome (stats / ledger / toolbar) floats as
+  compact glass cards at the corners over the full-bleed scene (`OFFICE_GLASS`
+  in `app/office/chrome.ts`) — hug content, capped height. The right ledger
+  panel starts collapsed (icon button) and expands on demand so desks stay
+  visible. Sidebar nav icon for office is a real Codicon (`organization`),
+  not `building`.
 
 ## Layout
 

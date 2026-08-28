@@ -277,6 +277,7 @@ export const zh: Translations = {
       'nav.messaging': '打开消息',
       'nav.artifacts': '打开制品',
       'nav.cron': '打开定时任务',
+      'nav.office': '打开办公室',
       'nav.agents': '打开智能体',
       'session.new': '新建会话',
       'session.newTab': '新建会话标签',
@@ -2520,17 +2521,23 @@ export const zh: Translations = {
     title: '办公室',
     refresh: '刷新',
     stats: {
-      online: '在线',
+      online: '空闲',
       busy: '忙碌',
       openTasks: '待办任务',
       doneToday: '今日完成'
     },
     status: {
+      idle: '空闲',
       online: '在线',
       busy: '忙碌',
       offline: '离线',
       working: '工作中',
-      thinking: '思考中'
+      thinking: '思考中',
+      gatewayOff: '网关未开',
+      hintIdle: '当前没有进行中的看板或定时任务',
+      hintBusy: '正在处理看板或定时任务',
+      hintOffline: '该档案的 messaging 网关未运行',
+      hintGatewayOff: 'Messaging 网关未运行（不影响桌面聊天，但消息平台收不到）'
     },
     ledger: {
       title: '任务流水',
@@ -2555,26 +2562,65 @@ export const zh: Translations = {
       activity: '动态',
       activityEmpty: '暂无动态'
     },
+    activity: {
+      visit: (visitor, host) => `${visitor} 拜访了 ${host}`,
+      tour: (visitor, count) => `${visitor} 巡访了 ${count} 个工位`,
+      setState: (profile, state) => `${profile} → ${state}`,
+      celebrate: target => `${target} 完成了任务`,
+      broadcast: message => `广播：${message}`,
+      emote: profile => `${profile} 做了个表情`,
+      refreshed: '已刷新办公室状态',
+      unknown: '场景事件'
+    },
     agentModal: {
       config: '配置',
       skills: '技能',
       memory: '记忆',
       tasks: '任务',
+      archive: '归档',
       chat: '聊天',
       soul: '灵魂',
       notes: '笔记',
       userProfile: '用户档案',
-      memoryEmpty: '暂无记忆数据（桌面端暂未接入）',
+      memoryEmpty: '暂无记忆数据（桌面端暂未接入 MEMORY.md）',
+      userEmpty: '暂无用户档案（桌面端暂未接入 USER.md）',
+      soulEmpty: '暂无 SOUL 内容',
+      soulLoadFailed: '无法加载 SOUL.md',
       skillsEmpty: '暂无技能',
       tasksEmpty: '暂无任务',
+      archiveEmpty: '暂无归档任务',
       chatHint: '在聊天中打开该 Agent',
-      openChat: '打开聊天'
+      openChat: '打开聊天',
+      workingOn: '正在处理'
     },
     actions: {
       interact: '互动',
+      interactHint: '派遣该 Agent 去拜访另一位在线 Agent',
+      interactWith: name => `和 ${name} 互动`,
+      noOnlineTargets: '没有其他在线 Agent',
+      state: '状态',
+      stateHint: '切换该 Agent 的当前状态（场景内临时生效）',
+      working: '工作中',
+      workingTask: '正在处理任务…',
+      thinking: '思考中',
+      thinkingTask: '思考中…',
+      online: '在线',
+      offline: '离线',
       viewProfile: '查看资料',
-      setState: '设置状态'
+      setState: '设置状态',
+      emote: '表情',
+      emoteHint: '播放一段短表情动画',
+      emoteWave: '挥手',
+      emoteDetermined: '加油',
+      emoteThinking: '思考',
+      emoteExcited: '兴奋'
     },
+    visitFallback: '有件事想跟你同步一下。',
+    newTaskPrefix: '新任务',
+    ambient1: '路过打个招呼～',
+    ambient2: '来对一下进度。',
+    ambient3: '咖啡机那会儿见？',
+    ambient4: '刚想到一个点子，跟你说一声。',
     newTask: {
       title: '新建任务',
       name: '名称',
@@ -2616,7 +2662,8 @@ export const zh: Translations = {
       knowledge: '知识库',
       messaging: '消息平台',
       artifacts: '产物',
-      cron: '定时任务'
+      cron: '定时任务',
+      office: '办公室'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',

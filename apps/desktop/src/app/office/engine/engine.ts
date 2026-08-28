@@ -4,21 +4,28 @@
  * ticker 循环、fit-stage 缩放、深度排序、ambient 自动拜访），适配 TypeScript + 动态 roster。
  */
 import { Application, Container, FederatedPointerEvent, Graphics, Sprite } from 'pixi.js'
-import { SCENE_WIDTH, SCENE_HEIGHT, computeDesks } from './layout'
+
+import { loadOfficeTextures, getOfficeBackgroundTexture } from './assets'
 import { DeskActor, AgentActor } from './characters'
 import type { AgentRecord } from './characters'
+import { SCENE_WIDTH, SCENE_HEIGHT, computeDesks, deskContentBounds } from './layout'
+import type { SceneBounds } from './layout'
 import { MissionRunner } from './missions'
 import { resolveSceneTheme } from './theme'
-import { loadOfficeTextures, getOfficeBackgroundTexture } from './assets'
 import type { OfficeAction } from './types'
 
 const AUTO_WORKFLOW_IDLE_SEC = 8
 
 export interface OfficeAgentProfile {
+  /** Canonical profile id — used for identity, clicks, cron matching. */
   name: string
+  /** Presentation label (display_name when set). */
+  label: string
   color: number
   online: boolean
   busy: boolean
+  /** Short label of what the agent is working on (desk subtitle). */
+  currentWork?: string | null
 }
 
 export interface OfficeSceneStrings {
@@ -29,6 +36,8 @@ export interface OfficeSceneStrings {
 export class OfficeSceneImpl {
   private app: Application | null = null
   private world: Container | null = null
+  private mount: HTMLElement | null = null
+  private contentBounds: SceneBounds = { x: 0, y: 0, w: SCENE_WIDTH, h: SCENE_HEIGHT }
   private readonly agents = new Map<string, AgentRecord>()
   private readonly runner: MissionRunner
   private strings: OfficeSceneStrings
@@ -55,13 +64,14 @@ export class OfficeSceneImpl {
       return true
     }
 
+    this.mount = mount
     const app = new Application()
     await app.init({
       background: resolveSceneTheme().floor,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
-      resizeTo: mount,
+      resizeTo: mount
     })
     this.app = app
     mount.appendChild(app.canvas)
@@ -76,12 +86,12 @@ export class OfficeSceneImpl {
     app.stage.addChild(world)
 
     this.drawFloor()
-    this.fitStage(mount)
+    this.fitStage()
 
-    this.resizeObserver = new ResizeObserver(() => this.fitStage(mount))
+    this.resizeObserver = new ResizeObserver(() => this.fitStage())
     this.resizeObserver.observe(mount)
 
-    app.ticker.add((ticker) => this.onTick(Math.min(ticker.deltaTime / 60, 0.05)))
+    app.ticker.add(ticker => this.onTick(Math.min(ticker.deltaTime / 60, 0.05)))
     return true
   }
 
@@ -111,14 +121,29 @@ export class OfficeSceneImpl {
     }
   }
 
-  /** 固定尺寸场景缩放到挂载点大小并居中（fitStage 的移植）。 */
-  private fitStage(mount: HTMLElement): void {
-    if (!this.app || !this.world) return
-    const w = mount.clientWidth || SCENE_WIDTH
-    const h = mount.clientHeight || SCENE_HEIGHT
-    const scale = Math.min(w / SCENE_WIDTH, h / SCENE_HEIGHT)
+  /**
+   * Zoom the world so the active desk cluster fills the mount (with padding),
+   * instead of letterboxing the entire 1600×900 artboard and leaving a huge
+   * empty ceiling. Caps scale so a single desk doesn't blow past the artboard.
+   */
+  private fitStage(): void {
+    if (!this.app || !this.world || !this.mount) return
+    const w = Math.max(1, this.mount.clientWidth || SCENE_WIDTH)
+    const h = Math.max(1, this.mount.clientHeight || SCENE_HEIGHT)
+    const bounds = this.contentBounds
+    const letterbox = Math.min(w / SCENE_WIDTH, h / SCENE_HEIGHT)
+    const cluster = Math.min(w / bounds.w, h / bounds.h)
+    // Prefer the desk cluster crop, but never zoom in past ~1.35× letterbox —
+    // extreme zoom makes the PNG background look tiled when the canvas overflows.
+    const scale = Math.min(cluster, letterbox * 1.35)
     this.world.scale.set(scale)
-    this.world.position.set((w - SCENE_WIDTH * scale) / 2, (h - SCENE_HEIGHT * scale) / 2)
+    this.world.position.set(
+      w / 2 - (bounds.x + bounds.w / 2) * scale,
+      h / 2 - (bounds.y + bounds.h / 2) * scale
+    )
+    this.app.canvas.style.width = `${w}px`
+    this.app.canvas.style.height = `${h}px`
+    this.app.canvas.style.display = 'block'
   }
 
   /**
@@ -131,6 +156,8 @@ export class OfficeSceneImpl {
 
     // 布局取决于 roster 大小 — 重新计算并重新入座。
     const desks = computeDesks(profiles.length)
+    this.contentBounds = deskContentBounds(desks)
+    this.fitStage()
 
     profiles.forEach((p, index) => {
       seen.add(p.name)
@@ -141,12 +168,20 @@ export class OfficeSceneImpl {
         agent = this.createAgent(p, desk)
         this.agents.set(p.name, agent)
       }
+      if (agent.label !== p.label) {
+        agent.label = p.label
+        agent.deskActor.setLabel(p.label)
+        agent.actor.setLabel(p.label)
+      }
       agent.desk = desk
       agent.deskActor.desk = desk
       agent.deskActor.position.set(desk.x, desk.y)
-      const base: AgentRecord['baseState'] = p.busy ? 'working' : p.online ? 'online' : 'offline'
+      // Work-centric: busy → working, else idle-online (gateway is not desk presence).
+      const base: AgentRecord['baseState'] = p.busy ? 'working' : 'online'
       agent.baseState = base
       agent.deskActor.setStatus(base)
+      agent.deskActor.setTaskLabel(p.busy ? p.currentWork ?? null : null)
+      agent.baseTask = p.busy ? p.currentWork ?? undefined : undefined
       if (!agent.mission && agent.state !== 'walking') {
         // 重新入座空闲 agent（覆盖 roster 变化后的工位移动）。
         agent.x = desk.seatX
@@ -176,25 +211,27 @@ export class OfficeSceneImpl {
 
   private createAgent(profile: OfficeAgentProfile, desk: ReturnType<typeof computeDesks>[number]): AgentRecord {
     const world = this.world!
-    const deskActor = new DeskActor(desk, profile.name)
+    const label = profile.label || profile.name
+    const deskActor = new DeskActor(desk, label)
     deskActor.position.set(desk.x, desk.y)
     deskActor.zIndex = desk.seatY - 20
     world.addChild(deskActor)
 
-    const actor = new AgentActor(profile.name, profile.color)
+    const actor = new AgentActor(profile.name, profile.color, label)
     actor.position.set(desk.seatX, desk.seatY)
     actor.on('pointertap', (event: FederatedPointerEvent) => {
       this.onAgentClick?.({
         name: profile.name,
         clientX: event.clientX,
-        clientY: event.clientY,
+        clientY: event.clientY
       })
     })
     world.addChild(actor)
 
-    const base: AgentRecord['baseState'] = profile.busy ? 'working' : profile.online ? 'online' : 'offline'
+    const base: AgentRecord['baseState'] = profile.busy ? 'working' : 'online'
     const agent: AgentRecord = {
       name: profile.name,
+      label,
       actor,
       deskActor,
       desk,
@@ -206,9 +243,11 @@ export class OfficeSceneImpl {
       targetY: undefined,
       walkPath: undefined,
       walkPathIndex: undefined,
-      mission: undefined,
+      mission: undefined
     }
     actor.setState(base)
+    deskActor.setTaskLabel(profile.busy ? profile.currentWork ?? null : null)
+    agent.baseTask = profile.busy ? profile.currentWork ?? undefined : undefined
     return agent
   }
 
@@ -243,10 +282,20 @@ export class OfficeSceneImpl {
   destroy(): void {
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
+    const mount = this.mount
+    const canvas = this.app?.canvas
     this.app?.destroy(true, { children: true })
     this.app = null
     this.world = null
+    this.mount = null
     this.agents.clear()
+    // Pixi destroy should detach the canvas; remove orphans if a raced init left extras.
+    if (canvas?.parentNode) canvas.parentNode.removeChild(canvas)
+    if (mount) {
+      for (const child of [...mount.querySelectorAll('canvas')]) {
+        child.remove()
+      }
+    }
   }
 
   private onTick(dt: number): void {
@@ -256,6 +305,7 @@ export class OfficeSceneImpl {
 
     for (const agent of this.agents.values()) {
       agent.actor.update(dt, this.reducedMotion)
+      agent.deskActor.update(dt, this.reducedMotion)
       agent.actor.zIndex = agent.y
     }
     this.world.sortChildren()

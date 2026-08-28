@@ -104,7 +104,10 @@ export class MissionRunner {
         const agent = this.agents.get(action.profile)
         if (!agent) return
         agent.baseState = action.state === 'thinking' ? 'thinking' : action.state
-        if (action.task) agent.baseTask = action.task
+        if (action.task) {
+          agent.baseTask = action.task
+          agent.deskActor.setTaskLabel(action.task)
+        }
         if (!agent.mission) this.applyActorState(agent)
         break
       }

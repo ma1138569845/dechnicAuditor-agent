@@ -234,7 +234,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'office',
     label: '',
-    icon: props => <Codicon name="building" {...props} />,
+    icon: props => <Codicon name="organization" {...props} />,
     route: OFFICE_ROUTE,
     keybindActionId: 'nav.office'
   }
@@ -1497,6 +1497,7 @@ export function ChatSidebar({
                   (item.id === 'messaging' && currentView === 'messaging') ||
                   (item.id === 'artifacts' && currentView === 'artifacts') ||
                   (item.id === 'cron' && currentView === 'cron') ||
+                  (item.id === 'office' && currentView === 'office') ||
                   // Contributed rows light up at their own route.
                   (Boolean(item.route) && pathname === item.route)
 

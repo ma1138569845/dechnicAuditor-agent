@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { useI18n } from '@/i18n'
-
 import { DeskGrid, type OfficeGridProfile } from './desk-grid'
 import { OfficeSceneImpl, type OfficeAgentProfile } from './engine/engine'
 import type { OfficeAction } from './engine/types'
+import { officeSceneStrings } from './scene-strings'
 
 /**
  * React 壳：挂载移植的 Pixi 办公室场景；Pixi 启动失败时回退 DOM 工位网格。
@@ -14,6 +13,7 @@ import type { OfficeAction } from './engine/types'
 export interface OfficeSceneHandle {
   sync: (profiles: OfficeAgentProfile[]) => void
   enqueueAction: (action: OfficeAction) => boolean
+  playEmote: (name: string, animation: string) => boolean
   pause: () => void
   resume: () => void
 }
@@ -29,83 +29,108 @@ export function OfficeScene({
   profiles: OfficeAgentProfile[]
   sceneRef: React.RefObject<OfficeSceneHandle | null>
 }) {
-  const { t } = useI18n()
-  const o = t.office
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const implRef = useRef<OfficeSceneImpl | null>(null)
+  const profilesRef = useRef(profiles)
+  const onAgentClickRef = useRef(onAgentClick)
   const [ready, setReady] = useState(false)
+
+  profilesRef.current = profiles
+  onAgentClickRef.current = onAgentClick
 
   useEffect(() => {
     const mount = mountRef.current
     if (!mount) return
     let cancelled = false
-    let impl: OfficeSceneImpl | null = new OfficeSceneImpl({
-      visitFallback: host => `${host}`,
-      ambientMessage: (visitor, host) => `${visitor} → ${host}`
-    })
+    let themeTimer: ReturnType<typeof setTimeout> | null = null
 
-    const handle: OfficeSceneHandle = {
-      sync: profiles => impl?.sync(profiles),
-      enqueueAction: action => (impl ? impl.enqueueAction(action) : false),
-      pause: () => impl?.pause(),
-      resume: () => impl?.resume()
+    const bindHandle = (impl: OfficeSceneImpl | null) => {
+      if (!impl) {
+        sceneRef.current = null
+        return
+      }
+      sceneRef.current = {
+        sync: list => impl.sync(list),
+        enqueueAction: action => impl.enqueueAction(action),
+        playEmote: (name, animation) => impl.playEmote(name, animation),
+        pause: () => impl.pause(),
+        resume: () => impl.resume()
+      }
     }
-    sceneRef.current = handle
 
-    void impl.init(mount, onAgentClick).then(ok => {
-      const current = impl
-      if (cancelled || !current) {
-        impl?.destroy()
+    const start = async () => {
+      const impl = new OfficeSceneImpl(officeSceneStrings())
+      implRef.current = impl
+      bindHandle(impl)
+      const ok = await impl.init(mount, payload => onAgentClickRef.current(payload))
+      if (cancelled) {
+        impl.destroy()
+        if (implRef.current === impl) implRef.current = null
         return
       }
       if (!ok) {
+        impl.destroy()
+        implRef.current = null
+        bindHandle(null)
         setReady(false)
         onFailed?.()
         return
       }
-      current.sync(profiles)
-      current.resume()
+      impl.sync(profilesRef.current)
+      impl.resume()
       setReady(true)
-    })
+    }
 
-    // 主题切换时重建场景（引擎颜色在 init 时读取 CSS 变量，跟随主题）。
-    const target = document.documentElement
+    void start()
+
+    // Theme class churn is noisy — debounce rebuilds and always sync the latest roster.
     const observer = new MutationObserver(() => {
-      if (cancelled || !impl) return
-      impl.destroy()
-      const fresh = new OfficeSceneImpl({
-        visitFallback: host => `${host}`,
-        ambientMessage: (visitor, host) => `${visitor} → ${host}`
-      })
-      impl = fresh
-      void fresh.init(mount, onAgentClick).then(ok => {
-        if (!cancelled && ok) {
-          fresh.sync(profiles)
-          fresh.resume()
-          setReady(true)
-        }
-      })
+      if (cancelled) return
+      if (themeTimer) clearTimeout(themeTimer)
+      themeTimer = setTimeout(() => {
+        if (cancelled) return
+        implRef.current?.destroy()
+        implRef.current = null
+        // Drop any orphaned canvases left by a raced destroy.
+        mount.replaceChildren()
+        void start()
+      }, 80)
     })
-    observer.observe(target, { attributes: true, attributeFilter: ['class', 'data-theme'] })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme']
+    })
 
     return () => {
       cancelled = true
+      if (themeTimer) clearTimeout(themeTimer)
       observer.disconnect()
-      impl?.destroy()
-      impl = null
-      sceneRef.current = null
+      implRef.current?.destroy()
+      implRef.current = null
+      mount.replaceChildren()
+      bindHandle(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // mount 容器常驻（effect 依赖它的尺寸）；Pixi 未就绪时 fallback 网格以
-  // overlay 方式盖在其上，init 成功后移除。
-  const grid: OfficeGridProfile[] = profiles.map(p => ({ name: p.name, online: p.online, busy: p.busy }))
+  // Match Vue's watch(profiles) — roster arrives after the first async refresh.
+  useEffect(() => {
+    if (!ready) return
+    implRef.current?.sync(profiles)
+  }, [profiles, ready])
+
+  const grid: OfficeGridProfile[] = profiles.map(p => ({
+    name: p.name,
+    label: p.label,
+    online: p.online,
+    busy: p.busy
+  }))
 
   return (
-    <div className="relative h-full min-h-0 w-full">
-      <div className="absolute inset-0" ref={mountRef} />
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden" ref={mountRef} />
       {!ready ? (
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 overflow-hidden">
           <DeskGrid onAgentClick={onAgentClick} profiles={grid} />
         </div>
       ) : null}

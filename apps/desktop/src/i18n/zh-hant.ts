@@ -1924,17 +1924,23 @@ export const zhHant = defineLocale({
     title: '辦公室',
     refresh: '重新整理',
     stats: {
-      online: '在線',
+      online: '空閒',
       busy: '忙碌',
       openTasks: '待辦任務',
       doneToday: '今日完成'
     },
     status: {
+      idle: '空閒',
       online: '在線',
       busy: '忙碌',
       offline: '離線',
       working: '工作中',
-      thinking: '思考中'
+      thinking: '思考中',
+      gatewayOff: '閘道未開',
+      hintIdle: '目前沒有進行中的看板或定時任務',
+      hintBusy: '正在處理看板或定時任務',
+      hintOffline: '此設定檔的 messaging 閘道未運行',
+      hintGatewayOff: 'Messaging 閘道未運行（不影響桌面聊天，但訊息平台收不到）'
     },
     ledger: {
       title: '任務流水',
@@ -1959,26 +1965,65 @@ export const zhHant = defineLocale({
       activity: '動態',
       activityEmpty: '暫無動態'
     },
+    activity: {
+      visit: (visitor, host) => `${visitor} 拜訪了 ${host}`,
+      tour: (visitor, count) => `${visitor} 巡訪了 ${count} 個工位`,
+      setState: (profile, state) => `${profile} → ${state}`,
+      celebrate: target => `${target} 完成了任務`,
+      broadcast: message => `廣播：${message}`,
+      emote: profile => `${profile} 做了個表情`,
+      refreshed: '已重新整理辦公室狀態',
+      unknown: '場景事件'
+    },
     agentModal: {
       config: '設定',
       skills: '技能',
       memory: '記憶',
       tasks: '任務',
+      archive: '歸檔',
       chat: '聊天',
       soul: '靈魂',
       notes: '筆記',
       userProfile: '使用者檔案',
-      memoryEmpty: '暫無記憶資料（桌面端暫未接入）',
+      memoryEmpty: '暫無記憶資料（桌面端暫未接入 MEMORY.md）',
+      userEmpty: '暫無使用者檔案（桌面端暫未接入 USER.md）',
+      soulEmpty: '暫無 SOUL 內容',
+      soulLoadFailed: '無法載入 SOUL.md',
       skillsEmpty: '暫無技能',
       tasksEmpty: '暫無任務',
+      archiveEmpty: '暫無歸檔任務',
       chatHint: '在聊天中開啟該 Agent',
-      openChat: '開啟聊天'
+      openChat: '開啟聊天',
+      workingOn: '正在處理'
     },
     actions: {
       interact: '互動',
+      interactHint: '派遣該 Agent 去拜訪另一位線上 Agent',
+      interactWith: name => `和 ${name} 互動`,
+      noOnlineTargets: '沒有其他線上 Agent',
+      state: '狀態',
+      stateHint: '切換該 Agent 的目前狀態（場景內暫時生效）',
+      working: '工作中',
+      workingTask: '正在處理任務…',
+      thinking: '思考中',
+      thinkingTask: '思考中…',
+      online: '線上',
+      offline: '離線',
       viewProfile: '檢視資料',
-      setState: '設定狀態'
+      setState: '設定狀態',
+      emote: '表情',
+      emoteHint: '播放一段短表情動畫',
+      emoteWave: '揮手',
+      emoteDetermined: '加油',
+      emoteThinking: '思考',
+      emoteExcited: '興奮'
     },
+    visitFallback: '有件事想跟你同步一下。',
+    newTaskPrefix: '新任務',
+    ambient1: '路過打個招呼～',
+    ambient2: '來對一下進度。',
+    ambient3: '咖啡機那會兒見？',
+    ambient4: '剛想到一個點子，跟你說一聲。',
     newTask: {
       title: '新增任務',
       name: '名稱',
@@ -2020,7 +2065,8 @@ export const zhHant = defineLocale({
       knowledge: '知識庫',
       messaging: '訊息平台',
       artifacts: '成品',
-      cron: '排程工作'
+      cron: '排程工作',
+      office: '辦公室'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',

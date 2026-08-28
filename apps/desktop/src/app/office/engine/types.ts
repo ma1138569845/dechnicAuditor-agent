@@ -40,3 +40,13 @@ export type OfficeAction =
   | SetStateAction
   | BroadcastAction
   | CelebrateAction
+
+/** Built-in chibi emotes supported by AgentActor.applyCustomAnimation. */
+export const OFFICE_EMOTES = [
+  { id: 'wave', animation: 'emotes/wave' },
+  { id: 'determined', animation: 'emotes/determined' },
+  { id: 'thinking', animation: 'emotes/thinking' },
+  { id: 'excited', animation: 'emotes/excited' }
+] as const
+
+export type OfficeEmoteId = (typeof OFFICE_EMOTES)[number]['id']

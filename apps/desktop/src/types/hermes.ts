@@ -938,6 +938,11 @@ export interface ProfileCreatePayload {
 export interface ProfileInfo {
   /** Presentation-only label override (profile.yaml display_name). */
   display_name?: string
+  /**
+   * Whether this profile's messaging gateway process is live.
+   * From GET `/api/profiles` (`_profile_to_dict`); optional for older backends.
+   */
+  gateway_running?: boolean
   has_env: boolean
   is_default: boolean
   model: null | string

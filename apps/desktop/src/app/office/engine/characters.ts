@@ -5,11 +5,14 @@
  */
 import { Container, Graphics, Sprite, Text } from 'pixi.js'
 import type { TextStyleOptions } from 'pixi.js'
+
+import { avatarInitial } from '../avatar-initial'
+
+import { getOfficeDeskTexture, getOfficeChairTexture } from './assets'
 import { Bubble } from './bubbles'
-import { resolveSceneTheme, contrastingTextColor } from './theme'
 import { DESK_W, DESK_H } from './layout'
 import type { DeskLayout, Point } from './layout'
-import { getOfficeDeskTexture, getOfficeChairTexture } from './assets'
+import { resolveSceneTheme, contrastingTextColor } from './theme'
 
 export type DeskStatus = 'working' | 'online' | 'offline'
 export type BaseState = 'working' | 'online' | 'offline' | 'thinking'
@@ -32,6 +35,7 @@ export interface Mission {
 
 export interface AgentRecord {
   name: string
+  label: string
   actor: AgentActor
   deskActor: DeskActor
   desk: DeskLayout
@@ -53,6 +57,12 @@ const LABEL_STYLE: TextStyleOptions = {
   fontWeight: '600',
 }
 
+const TASK_STYLE: TextStyleOptions = {
+  fontFamily: 'system-ui, -apple-system, sans-serif',
+  fontSize: 11,
+  fontWeight: '500',
+}
+
 const INITIAL_STYLE: TextStyleOptions = {
   fontFamily: 'system-ui, -apple-system, sans-serif',
   fontSize: 15,
@@ -65,15 +75,26 @@ export class DeskActor extends Container {
 
   private readonly theme = resolveSceneTheme()
   private readonly screenGlow = new Graphics()
+  private readonly statusHalo = new Graphics()
   private readonly statusDot = new Graphics()
+  private readonly nameLabel: Text
+  private readonly taskLabel: Text
+  private readonly statusDotX: number
+  private readonly statusDotY: number
+  private deskStatus: DeskStatus = 'offline'
+  private pulsePhase = 0
 
-  constructor(desk: DeskLayout, name: string) {
+  constructor(desk: DeskLayout, label: string) {
     super()
     this.desk = desk
 
     const deskTexture = getOfficeDeskTexture()
     const chairTexture = getOfficeChairTexture()
     const hasTextures = !!(deskTexture && chairTexture)
+    // PNG desks sit lower than the vector card; pin the status chip to the
+    // visible top-right of whichever desk art is active.
+    this.statusDotX = hasTextures ? 70 : 72
+    this.statusDotY = hasTextures ? -42 : -18
 
     const g = new Graphics()
     // 阴影
@@ -110,27 +131,76 @@ export class DeskActor extends Container {
     this.screenGlow.roundRect(-21, -57, 42, 24, 2).fill({ color: this.theme.screenGlow, alpha: 0 })
     this.addChild(this.screenGlow)
 
+    this.addChild(this.statusHalo)
     this.addChild(this.statusDot)
 
-    const label = new Text({ text: name, style: { ...LABEL_STYLE, fill: this.theme.label } })
-    label.anchor.set(0.5, 0)
-    label.position.set(0, 72)
-    this.addChild(label)
+    this.nameLabel = new Text({ text: label, style: { ...LABEL_STYLE, fill: this.theme.label } })
+    this.nameLabel.anchor.set(0.5, 0)
+    this.nameLabel.position.set(0, 72)
+    this.addChild(this.nameLabel)
+
+    this.taskLabel = new Text({
+      text: '',
+      style: { ...TASK_STYLE, fill: this.theme.statusBusy }
+    })
+    this.taskLabel.anchor.set(0.5, 0)
+    this.taskLabel.position.set(0, 90)
+    this.taskLabel.visible = false
+    this.addChild(this.taskLabel)
 
     this.setStatus('offline')
   }
 
+  setLabel(label: string): void {
+    this.nameLabel.text = label
+  }
+
+  /** Show / hide the “currently working on” subtitle under the desk name. */
+  setTaskLabel(task: string | null | undefined): void {
+    const text = (task ?? '').trim()
+    if (!text) {
+      this.taskLabel.text = ''
+      this.taskLabel.visible = false
+      return
+    }
+    this.taskLabel.text = text
+    this.taskLabel.visible = true
+    this.taskLabel.style.fill = this.theme.statusBusy
+  }
+
   setStatus(status: DeskStatus): void {
-    const dotColor = status === 'working' ? this.theme.statusBusy : status === 'online' ? this.theme.statusOnline : this.theme.statusOffline
+    this.deskStatus = status
+    const dotColor =
+      status === 'working'
+        ? this.theme.statusBusy
+        : status === 'online'
+          ? this.theme.statusOnline
+          : this.theme.statusOffline
+    this.statusHalo.clear()
     this.statusDot.clear()
     if (status === 'offline') {
-      // 离线：空心灰点
-      this.statusDot.circle(72, -18, 5).stroke({ color: dotColor, width: 1.5 })
+      // 离线：更大的空心灰点 + 淡晕
+      this.statusHalo.circle(this.statusDotX, this.statusDotY, 11).fill({ color: dotColor, alpha: 0.12 })
+      this.statusDot.circle(this.statusDotX, this.statusDotY, 7).stroke({ color: dotColor, width: 2 })
     } else {
-      this.statusDot.circle(72, -18, 5).fill(dotColor).stroke({ color: 0xffffff, width: 1.5 })
+      this.statusHalo.circle(this.statusDotX, this.statusDotY, 12).fill({ color: dotColor, alpha: 0.22 })
+      this.statusDot
+        .circle(this.statusDotX, this.statusDotY, 7)
+        .fill(dotColor)
+        .stroke({ color: 0xffffff, width: 2 })
     }
     this.screenGlow.alpha = status === 'working' ? 0.85 : 0
-    this.alpha = status === 'offline' ? 0.6 : 1
+    this.alpha = status === 'offline' ? 0.62 : 1
+  }
+
+  /** Busy desks get a soft pulse on the status halo. */
+  update(dt: number, reducedMotion: boolean): void {
+    if (this.deskStatus !== 'working' || reducedMotion) {
+      this.statusHalo.alpha = 1
+      return
+    }
+    this.pulsePhase += dt * 3.2
+    this.statusHalo.alpha = 0.55 + Math.sin(this.pulsePhase) * 0.45
   }
 }
 
@@ -147,6 +217,7 @@ export class AgentActor extends Container {
   private readonly shadow: Graphics
   private readonly bubble: Bubble
   private readonly head: Container
+  private readonly initial: Text
   private readonly torso: Graphics
   private readonly leftArm: Graphics
   private readonly rightArm: Graphics
@@ -158,7 +229,7 @@ export class AgentActor extends Container {
   private customAnimation: string | null = null
   private customAnimTimer = 0
 
-  constructor(name: string, color: number) {
+  constructor(name: string, color: number, label?: string) {
     super()
     this.agentName = name
 
@@ -198,12 +269,12 @@ export class AgentActor extends Container {
     skull.circle(0, 0, 16).fill(color)
     skull.circle(-5, -6, 5).fill({ color: 0xffffff, alpha: 0.25 })
     this.head.addChild(skull)
-    const initial = new Text({
-      text: (name || '?').trim().charAt(0).toUpperCase() || '?',
-      style: { ...INITIAL_STYLE, fill: contrastingTextColor(color) },
+    this.initial = new Text({
+      text: avatarInitial(label || name),
+      style: { ...INITIAL_STYLE, fill: contrastingTextColor(color) }
     })
-    initial.anchor.set(0.5, 0.5)
-    this.head.addChild(initial)
+    this.initial.anchor.set(0.5, 0.5)
+    this.head.addChild(this.initial)
     this.head.position.set(0, -62)
     this.body.addChild(this.head)
 
@@ -223,6 +294,10 @@ export class AgentActor extends Container {
 
     this.eventMode = 'static'
     this.cursor = 'pointer'
+  }
+
+  setLabel(label: string): void {
+    this.initial.text = avatarInitial(label)
   }
 
   setState(state: AgentState): void {

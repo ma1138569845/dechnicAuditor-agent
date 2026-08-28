@@ -2014,11 +2014,20 @@ export interface Translations {
       doneToday: string
     }
     status: {
+      /** No open work — primary desk presence. */
+      idle: string
+      /** Legacy / scene synonym for idle-online. */
       online: string
       busy: string
       offline: string
       working: string
       thinking: string
+      /** Secondary chip when messaging gateway is down. */
+      gatewayOff: string
+      hintIdle: string
+      hintBusy: string
+      hintOffline: string
+      hintGatewayOff: string
     }
     ledger: {
       title: string
@@ -2043,26 +2052,65 @@ export interface Translations {
       activity: string
       activityEmpty: string
     }
+    activity: {
+      visit: (visitor: string, host: string) => string
+      tour: (visitor: string, count: string) => string
+      setState: (profile: string, state: string) => string
+      celebrate: (target: string) => string
+      broadcast: (message: string) => string
+      emote: (profile: string) => string
+      refreshed: string
+      unknown: string
+    }
     agentModal: {
       config: string
       skills: string
       memory: string
       tasks: string
+      archive: string
       chat: string
       soul: string
       notes: string
       userProfile: string
       memoryEmpty: string
+      userEmpty: string
+      soulEmpty: string
+      soulLoadFailed: string
       skillsEmpty: string
       tasksEmpty: string
+      archiveEmpty: string
       chatHint: string
       openChat: string
+      workingOn: string
     }
     actions: {
       interact: string
+      interactHint: string
+      interactWith: (name: string) => string
+      noOnlineTargets: string
+      state: string
+      stateHint: string
+      working: string
+      workingTask: string
+      thinking: string
+      thinkingTask: string
+      online: string
+      offline: string
       viewProfile: string
       setState: string
+      emote: string
+      emoteHint: string
+      emoteWave: string
+      emoteDetermined: string
+      emoteThinking: string
+      emoteExcited: string
     }
+    visitFallback: string
+    newTaskPrefix: string
+    ambient1: string
+    ambient2: string
+    ambient3: string
+    ambient4: string
     newTask: {
       title: string
       name: string
