@@ -120,18 +120,72 @@ def _assemble_stdout_result(
 
 
 def _truncate_stdout_text(stdout_text: str) -> Tuple[str, Dict[str, Any]]:
-    """Cap a complete stdout string by bytes using the same head/tail policy."""
+    """Cap a complete stdout string by bytes using the same head/tail policy.
+
+    When the full text is in hand (this function's callers, unlike the
+    streaming per-call reader), the omitted middle is not discarded: the
+    complete output is spilled to cache/exec and the result carries the
+    path — the same recover-don't-rerun pattern as web_extract's
+    cache/web full-text store.
+    """
     stdout_bytes = stdout_text.encode("utf-8", errors="replace")
     if len(stdout_bytes) <= MAX_STDOUT_BYTES:
         return _assemble_stdout_result(stdout_bytes)
 
     head_bytes = int(MAX_STDOUT_BYTES * 0.4)
     tail_bytes = MAX_STDOUT_BYTES - head_bytes
-    return _assemble_stdout_result(
+    text, metadata = _assemble_stdout_result(
         stdout_bytes[:head_bytes],
         stdout_bytes[-tail_bytes:],
         total_bytes=len(stdout_bytes),
     )
+    spill_path = _spill_full_stdout(stdout_text)
+    if spill_path:
+        metadata["stdout_spill_path"] = spill_path
+        metadata["warning"] = (
+            "execute_code stdout was truncated (head/tail shown); the "
+            f"script did run. FULL output saved to {spill_path} — page it "
+            f'with read_file(path="{spill_path}", offset=...) instead of '
+            "re-running."
+        )
+    return text, metadata
+
+
+# Hard ceiling on the spilled file, mirroring web_tools' MAX_STORED_TEXT_CHARS
+# rationale: a runaway print loop must not write unbounded bytes to disk.
+MAX_SPILLED_STDOUT_BYTES = 5_000_000
+
+
+def _spill_full_stdout(stdout_text: str) -> Optional[str]:
+    """Write full stdout to cache/exec; return its path (None on failure).
+
+    Best-effort by design — truncated inline output is still returned when
+    storage fails. Files are keyed by content digest so identical reruns
+    coalesce; the directory rides the same remote bind-mount list as
+    cache/web (credential_files._CACHE_DIRS) if present there.
+    """
+    try:
+        import hashlib
+        from hermes_constants import get_hermes_dir
+
+        if len(stdout_text) > MAX_SPILLED_STDOUT_BYTES:
+            stdout_text = (
+                stdout_text[:MAX_SPILLED_STDOUT_BYTES]
+                + f"\n\n[... spill capped at {MAX_SPILLED_STDOUT_BYTES:,} bytes ...]"
+            )
+        cache_dir = get_hermes_dir("cache/exec", "exec_spill")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(
+            stdout_text.encode("utf-8", errors="replace")
+        ).hexdigest()[:12]
+        path = cache_dir / f"stdout-{digest}.txt"
+        from tools.spill_safety import write_text_exclusive
+
+        write_text_exclusive(path, stdout_text, private=False, overwrite=True)
+        return str(path)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to spill execute_code stdout: %s", exc)
+        return None
 
 # Environment variable scrubbing rules (shared between the local + remote
 # backends).  Secret-substring block is applied first; anything left must
@@ -349,7 +403,7 @@ _TOOL_STUBS = {
     "write_file": (
         "write_file",
         "path: str, content: str, cross_profile: bool = False",
-        '"""Write content to a file (always overwrites). Returns dict with status. cross_profile=True opts out of the cross-Hermes-profile soft guard."""',
+        '"""Write content to a file (always overwrites). Returns dict with status."""',
         '{"path": path, "content": content, "cross_profile": cross_profile}',
     ),
     "search_files": (
@@ -361,7 +415,7 @@ _TOOL_STUBS = {
     "patch": (
         "patch",
         'path: str = None, old_string: str = None, new_string: str = None, replace_all: bool = False, mode: str = "replace", patch: str = None, cross_profile: bool = False',
-        '"""Targeted find-and-replace (mode="replace") or V4A multi-file patches (mode="patch"). Returns dict with status. cross_profile=True opts out of the cross-Hermes-profile soft guard."""',
+        '"""Targeted find-and-replace (mode="replace") or V4A multi-file patches (mode="patch"). Returns dict with status."""',
         '{"path": path, "old_string": old_string, "new_string": new_string, "replace_all": replace_all, "mode": mode, "patch": patch, "cross_profile": cross_profile}',
     ),
     "terminal": (
@@ -2314,36 +2368,39 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
         )
     else:
         cwd_note = (
-            "Scripts run in the session's working directory with the active venv's python, "
-            "so project deps (pandas, etc.) and relative paths work like in terminal()."
+            "Scripts run in the session's working directory. Interpreter: "
+            "the project's activated venv/conda python when one is active "
+            "(VIRTUAL_ENV/CONDA_PREFIX — matches terminal()); otherwise "
+            "Hermes's own python (the common case — stdlib plus Hermes's "
+            "deps; check `import x` before relying on project packages)."
         )
 
-    kernel_note = ""
-    if _get_kernel_mode() == "session":
-        kernel_note = (
-            "\n\nSession kernel is active: variables, imports, and loaded "
-            "data persist across execute_code calls in this session. Pass "
-            "reset=true to discard that state. A timed-out or interrupted "
-            "cell kills the kernel and loses its state."
-        )
+    # Session kernels are always on (kernel_mode retired in #96787):
+    # persistence is part of the tool's one description, not a bolt-on
+    # paragraph behind a dead conditional. Remote hosts that cannot sustain
+    # a kernel fail open to per-call silently — not worth schema words;
+    # the result's `kernel` field tells the truth per call.
     description = (
-        "Run a Python script that calls Hermes tools programmatically. "
-        "Use when you need 3+ tool calls with logic between them: "
-        "filtering/reducing large outputs before they enter context, "
-        "conditional branching, or loops (N pages/files, retry on failure). "
-        "Use normal tool calls for single calls, results you must reason "
-        "over in full, or anything needing user interaction.\n\n"
+        "Run Python that calls Hermes tools programmatically. Use when you "
+        "need 3+ tool calls with logic between them: filtering/reducing "
+        "large outputs before they enter context, branching, or loops "
+        "(N pages/files, retry on failure). Use normal tool calls for "
+        "single calls, results you must reason over in full, or anything "
+        "needing user interaction.\n\n"
+        "Calls run in a persistent session kernel: variables, imports, and "
+        "loaded data survive across execute_code calls, so build on earlier "
+        "work instead of re-loading it. A timed-out or interrupted call "
+        "loses that state.\n\n"
         f"Available via `from hermes_tools import ...`:\n\n"
         f"{tool_lines}\n\n"
-        "Limits: 5-minute timeout, 50KB stdout cap, max 50 tool calls per script. "
-        "terminal() is foreground-only (no background or pty).\n\n"
+        "Limits: 5-minute timeout, max 50 tool calls per call. Stdout over "
+        "50KB shows head/tail inline; the FULL text is auto-saved to a file "
+        "whose path rides in the result.\n\n"
         f"{cwd_note}\n\n"
-        "Print your final result to stdout; stdlib (json, re, csv, datetime, ...) "
-        "is available for processing.\n\n"
-        "Built-in helpers (no import): json_parse(text) — tolerant json.loads for "
-        "terminal() output; shell_quote(s) — shlex.quote for dynamic shell args; "
-        "retry(fn, max_attempts=3, delay=2) — exponential backoff for transient failures."
-        + kernel_note
+        "Built-in helpers (no import): json_parse(text) — tolerant "
+        "json.loads for terminal() output; shell_quote(s) — shlex.quote for "
+        "dynamic shell args; retry(fn, max_attempts=3, delay=2) — "
+        "exponential backoff."
     )
 
     return {
@@ -2363,9 +2420,8 @@ def build_execute_code_schema(enabled_sandbox_tools: set = None,
                 "reset": {
                     "type": "boolean",
                     "description": (
-                        "Session-kernel mode only: discard the persistent "
-                        "kernel's state and start fresh before running this "
-                        "code. Ignored in per-call mode."
+                        "Discard the kernel's persistent state and start "
+                        "fresh before running this code."
                     ),
                 },
             },

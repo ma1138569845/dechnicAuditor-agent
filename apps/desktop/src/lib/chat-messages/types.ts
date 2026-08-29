@@ -125,6 +125,9 @@ export type GatewayEventPayload = {
   count?: number
   // status.update (kind=process → background process completion/watch-match)
   kind?: string
+  // status.update (kind=kanban → Kanban wake artifact paths, stamped onto the
+  // settled assistant reply so artifact cards don't depend on MEDIA links)
+  artifacts?: unknown
   // pane.reveal (agent focusing a desktop pane via the focus_pane tool)
   pane?: string
   // layout.apply (agent applying a layout preset via the apply_layout tool)
