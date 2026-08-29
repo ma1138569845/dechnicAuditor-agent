@@ -113,12 +113,36 @@ describe('deriveChangedFiles', () => {
     ])
   })
 
+  it('keeps raw MEDIA lines from a Kanban wake user prompt via extraTexts', () => {
+    const docx = 'C:/Users/Dechnic/out/报告.docx'
+    const json = '/tmp/report_review.json'
+    const wake = `✔ Kanban t_abc done — ship report\nMEDIA: ${docx}\nMEDIA: ${json}`
+
+    expect(deriveChangedFiles([{ type: 'text', text: '全景汇总如下…' }], [wake])).toEqual([
+      { added: 0, byteSize: undefined, name: '报告.docx', path: docx, removed: 0 },
+      { added: 0, byteSize: undefined, name: 'report_review.json', path: json, removed: 0 }
+    ])
+  })
+
+  it('keeps structured Kanban artifact paths via extraPaths (plan B)', () => {
+    const docx = 'C:/Users/Dechnic/out/报告.docx'
+    const json = '/tmp/report_review.json'
+
+    expect(
+      deriveChangedFiles([{ type: 'text', text: '全景汇总如下…' }], [], [docx, json, docx, '/tmp/shot.png'])
+    ).toEqual([
+      { added: 0, byteSize: undefined, name: '报告.docx', path: docx, removed: 0 },
+      { added: 0, byteSize: undefined, name: 'report_review.json', path: json, removed: 0 }
+    ])
+  })
+
   it('does not treat inline MEDIA images as file artifacts', () => {
     expect(
       deriveChangedFiles([
         { type: 'text', text: `[Image: shot.png](${mediaMarkdownHref('/tmp/shot.png')})` }
       ])
     ).toEqual([])
+    expect(deriveChangedFiles([], ['✔ done\nMEDIA: /tmp/shot.png'])).toEqual([])
   })
 
   it('sums repeated edits to the same path and prefers the latest byte size', () => {

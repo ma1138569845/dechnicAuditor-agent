@@ -27,6 +27,13 @@ def _session(key: str = SESSION_KEY) -> dict:
     return {"session_key": key}
 
 
+def _note_text(note) -> str:
+    """``_collect_kanban_notifications`` returns structured dicts."""
+    if isinstance(note, dict):
+        return str(note.get("text") or "")
+    return str(note)
+
+
 def _create_subscribed_task(*, chat_id: str = SESSION_KEY, platform: str = "tui"):
     conn = kb.connect()
     try:
@@ -72,9 +79,11 @@ class TestCollectKanbanNotifications:
         first = _collect_kanban_notifications(_session())
 
         assert len(first) == 1
-        assert tid in first[0]
-        assert "done" in first[0]
-        assert "shipped the fix" in first[0]
+        assert tid in _note_text(first[0])
+        assert "done" in _note_text(first[0])
+        assert "shipped the fix" in _note_text(first[0])
+        assert first[0]["kind"] == "completed"
+        assert first[0]["task_id"] == tid
         rows = _sub_rows(tid)
         assert len(rows) == 1, "done must retain the originating session"
         first_cursor = rows[0]["last_event_id"]
@@ -96,8 +105,8 @@ class TestCollectKanbanNotifications:
         reopened = _collect_kanban_notifications(_session())
 
         assert len(reopened) == 2
-        assert "ready" in reopened[0]
-        assert "review corrections" in reopened[1]
+        assert "ready" in _note_text(reopened[0])
+        assert "review corrections" in _note_text(reopened[1])
         rows = _sub_rows(tid)
         assert len(rows) == 1
         assert rows[0]["chat_id"] == SESSION_KEY
@@ -114,6 +123,35 @@ class TestCollectKanbanNotifications:
         assert _collect_kanban_notifications(_session()) == []
         assert _sub_rows(tid) == []
 
+    def test_completed_with_artifacts_delivers_media_lines(self):
+        tid = _create_subscribed_task()
+        conn = kb.connect()
+        try:
+            assert kb.complete_task(
+                conn,
+                tid,
+                summary="report ready",
+                metadata={
+                    "artifacts": [
+                        "/tmp/kanban-notify-report.docx",
+                        "/tmp/kanban-notify-review.json",
+                    ]
+                },
+            )
+        finally:
+            conn.close()
+
+        notes = _collect_kanban_notifications(_session())
+
+        assert len(notes) == 1
+        assert "MEDIA: /tmp/kanban-notify-report.docx" in _note_text(notes[0])
+        assert "MEDIA: /tmp/kanban-notify-review.json" in _note_text(notes[0])
+        assert "report ready" in _note_text(notes[0])
+        assert notes[0]["artifacts"] == [
+            "/tmp/kanban-notify-report.docx",
+            "/tmp/kanban-notify-review.json",
+        ]
+
     def test_matching_tui_sub_delivers_and_advances_cursor(self):
         tid = _create_subscribed_task()
         pre_cursor = _sub_rows(tid)[0]["last_event_id"]
@@ -128,8 +166,9 @@ class TestCollectKanbanNotifications:
             second = _collect_kanban_notifications(_session())
 
         assert len(first) == 1
-        assert "blocked" in first[0]
-        assert "waiting on review" in first[0]
+        assert "blocked" in _note_text(first[0])
+        assert "waiting on review" in _note_text(first[0])
+        assert first[0]["artifacts"] == []
         assert second == []
         assert spy_connect.called
         # Blocked is not a final status -> subscription stays alive so a
@@ -177,10 +216,10 @@ class TestCollectKanbanNotifications:
 
         monkeypatch.setattr(kb, "count_notify_subs", fail_probe)
         with patch.object(kb, "connect", wraps=kb.connect) as spy_connect:
-            texts = _collect_kanban_notifications(_session())
+            notes = _collect_kanban_notifications(_session())
 
-        assert len(texts) == 1
-        assert tid in texts[0]
+        assert len(notes) == 1
+        assert tid in _note_text(notes[0])
         spy_connect.assert_called_once()
 
     def test_no_session_key_is_a_noop(self):
@@ -218,13 +257,13 @@ class TestCollectKanbanNotifications:
         # active while the poller collects (as a profile-bound RPC would set).
         token = set_hermes_home_override(str(other_profile_home))
         try:
-            texts = _collect_kanban_notifications(session)
+            notes = _collect_kanban_notifications(session)
         finally:
             reset_hermes_home_override(token)
 
-        assert len(texts) == 1
-        assert tid in texts[0]
-        assert "cross-profile delivery" in texts[0]
+        assert len(notes) == 1
+        assert tid in _note_text(notes[0])
+        assert "cross-profile delivery" in _note_text(notes[0])
         # Completion is reversible, so the shared-board subscription remains
         # owned by this exact Desktop session until the task is archived.
         rows = _sub_rows(tid)
@@ -256,6 +295,31 @@ class TestFormatKanbanEventText:
         assert "done" in text
         assert "first line" in text
         assert "second" not in text
+
+    def test_completed_appends_explicit_artifact_media_lines(self):
+        ev = SimpleNamespace(
+            kind="completed",
+            payload={
+                "summary": "shipped the report",
+                "artifacts": [
+                    r"C:\Users\Dechnic\out\报告.docx",
+                    "/tmp/report_review.json",
+                    "",
+                    "  ",
+                    "/tmp/report_review.json",  # dedupe
+                ],
+            },
+        )
+        text = _format_kanban_event_text(self.SUB, self.TASK, ev, "")
+        assert "shipped the report" in text
+        assert "MEDIA: C:\\Users\\Dechnic\\out\\报告.docx" in text
+        assert "MEDIA: /tmp/report_review.json" in text
+        assert text.count("MEDIA:") == 2
+
+    def test_completed_without_artifacts_has_no_media_lines(self):
+        ev = SimpleNamespace(kind="completed", payload={"summary": "no files"})
+        text = _format_kanban_event_text(self.SUB, self.TASK, ev, "")
+        assert "MEDIA:" not in text
 
     def test_timed_out_with_bad_payload_does_not_raise(self):
         ev = SimpleNamespace(kind="timed_out", payload={"limit_seconds": "not-a-number"})
@@ -327,12 +391,46 @@ class TestNotificationPollerLoopKanbanWiring:
             stop.set()
             thread.join(timeout=5)
 
-        status_texts = [p["text"] for e, p in emits if e == "status.update" and p]
-        assert any(tid in t for t in status_texts), status_texts
+        kanban_updates = [
+            p for e, p in emits if e == "status.update" and isinstance(p, dict) and p.get("kind") == "kanban"
+        ]
+        assert kanban_updates, emits
+        assert any(tid in (p.get("text") or "") for p in kanban_updates), kanban_updates
         assert any(e == "message.start" for e, _ in emits)
         assert any(tid in text for text in submits), submits
         assert session["running"] is True  # poller claimed the turn
         assert not session.get("_kanban_pending")
+
+    def test_idle_session_emits_structured_artifacts_on_kanban_status(self, monkeypatch):
+        tid = _create_subscribed_task()
+        conn = kb.connect()
+        try:
+            assert kb.complete_task(
+                conn,
+                tid,
+                summary="with files",
+                metadata={"artifacts": ["/tmp/poller-artifact.docx"]},
+            )
+        finally:
+            conn.close()
+        session = self._poller_session(running=False)
+
+        stop, thread, emits, submits = self._start_poller(session, monkeypatch)
+        try:
+            assert self._wait_for(lambda: submits), "agent turn was never dispatched"
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+        kanban_updates = [
+            p for e, p in emits if e == "status.update" and isinstance(p, dict) and p.get("kind") == "kanban"
+        ]
+        assert len(kanban_updates) == 1
+        assert kanban_updates[0]["artifacts"] == ["/tmp/poller-artifact.docx"]
+        assert kanban_updates[0]["task_id"] == tid
+        assert kanban_updates[0]["event"] == "completed"
+        assert "MEDIA: /tmp/poller-artifact.docx" in (kanban_updates[0].get("text") or "")
+        assert any("/tmp/poller-artifact.docx" in text for text in submits)
 
     def test_busy_session_buffers_then_flushes_when_idle(self, monkeypatch):
         tid = _create_subscribed_task()

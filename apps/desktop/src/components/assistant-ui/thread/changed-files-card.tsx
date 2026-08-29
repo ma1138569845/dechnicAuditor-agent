@@ -34,10 +34,19 @@ const EXPANDED_MAX_HEIGHT = '18rem'
  * Wears the shared `WIDGET_SHELL_CLASS` per card so each tile matches the
  * transcript's other inline widgets rather than inventing its own chrome.
  */
-export const ChangedFilesCard: FC<{ parts: readonly unknown[] }> = ({ parts }) => {
+export const ChangedFilesCard: FC<{
+  /** Structured Kanban artifact paths stamped on the assistant message. */
+  extraPaths?: readonly string[]
+  /** Optional preceding-user-message text (Kanban wake MEDIA lines). */
+  extraTexts?: readonly string[]
+  parts: readonly unknown[]
+}> = ({ extraPaths, extraTexts, parts }) => {
   const { t } = useI18n()
   const copy = t.assistant.thread
-  const files = useMemo(() => deriveChangedFiles(parts), [parts])
+  const files = useMemo(
+    () => deriveChangedFiles(parts, extraTexts, extraPaths),
+    [extraPaths, extraTexts, parts]
+  )
   const [expanded, setExpanded] = useState(false)
   const navigate = useNavigate()
   // Review THIS surface's repo: a tile transcript pins the pane to the tile's

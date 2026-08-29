@@ -38,6 +38,13 @@ export type ChatMessage = {
   durationS?: number
   /** Composer attachment ref strings (`@file:...`, `@image:...`) sent with this user message. */
   attachmentRefs?: string[]
+  /**
+   * Absolute file paths from a Kanban wake (`status.update kind=kanban`).
+   * Stamped onto the settled assistant reply so artifact cards don't depend
+   * on the model re-emitting MEDIA links. Live-session only — rehydrate
+   * falls back to MEDIA lines on the preceding user wake prompt.
+   */
+  kanbanArtifacts?: string[]
   /** Durable backend `messages.id`. Absent until the row is persisted. */
   rowId?: number
   /** Emoji reactions on this message — one per author (see MessageReaction). */

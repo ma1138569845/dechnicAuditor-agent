@@ -7,6 +7,7 @@ import { clearClarifyRequest } from '@/store/clarify'
 import { reconcileSessionCompacting, setSessionCompacting } from '@/store/compaction'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { applyGoalStatusText } from '@/store/goals'
+import { queueKanbanArtifacts } from '@/store/kanban-artifacts'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import { isDiskFullErrorMessage, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
@@ -34,6 +35,13 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
       // The gateway's notification poller announces background process
       // completions / watch matches here — re-sync the status stack.
       void refreshBackgroundProcesses(sessionId)
+    } else if (sessionId && payload?.kind === 'kanban') {
+      // Structured Kanban wake (plan B): queue artifact paths so the next
+      // message.start → message.complete cycle can stamp them onto the
+      // settled assistant bubble. Text still carries MEDIA lines (plan A).
+      const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts : []
+
+      queueKanbanArtifacts(sessionId, artifacts)
     } else if (sessionId && payload?.kind === 'goal') {
       applyGoalStatusText(sessionId, coerceGatewayText(payload?.text))
     }

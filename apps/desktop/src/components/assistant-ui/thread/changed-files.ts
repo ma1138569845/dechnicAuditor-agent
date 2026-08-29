@@ -36,6 +36,9 @@ interface ChangedFilePart {
 
 const HTML_PATH_RE = /\.html?$/i
 const MARKDOWN_LINK_RE = /\[[^\]]*\]\(([^)\s]+)\)/g
+// Same shape as `parts.ts` MEDIA tags — Kanban wake prompts land raw
+// `MEDIA: path` on the preceding user message (user parts skip renderMediaTags).
+const RAW_MEDIA_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)/g
 const utf8 = new TextEncoder()
 
 /** Office documents land via the office_editor toolset, not write_file
@@ -143,6 +146,25 @@ function artifactPathFromMarkdownHref(href: string): string | null {
   return path
 }
 
+function unquoteMediaPath(value: string): string {
+  const trimmed = value.trim()
+  const quote = trimmed[0]
+
+  return quote && quote === trimmed.at(-1) && ['"', "'", '`'].includes(quote)
+    ? trimmed.slice(1, -1)
+    : trimmed
+}
+
+function rememberFileArtifactPath(path: string, byPath: Map<string, ChangedFile>) {
+  const cleaned = path.trim()
+
+  if (!cleaned || mediaKind(cleaned) !== 'file' || !isLikelyFsPath(cleaned)) {
+    return
+  }
+
+  rememberArtifact(byPath, cleaned)
+}
+
 function collectTextArtifactFiles(text: string, byPath: Map<string, ChangedFile>) {
   for (const match of text.matchAll(MARKDOWN_LINK_RE)) {
     const path = artifactPathFromMarkdownHref(match[1] ?? '')
@@ -150,6 +172,10 @@ function collectTextArtifactFiles(text: string, byPath: Map<string, ChangedFile>
     if (path) {
       rememberArtifact(byPath, path)
     }
+  }
+
+  for (const match of text.matchAll(RAW_MEDIA_RE)) {
+    rememberFileArtifactPath(unquoteMediaPath(match[1] ?? ''), byPath)
   }
 }
 
@@ -174,10 +200,30 @@ function fileEditByteSize(args: Record<string, unknown>, result: Record<string, 
  * every edit to that file summed. Landed writes count even without a persisted
  * diff (`write_file` creates rehydrate that way). Office files the agent built
  * via python-docx / terminal show up as MEDIA links in the text — those count
- * too. A call still running has no result, and a failed one changed nothing.
+ * too. `extraTexts` is for the preceding user message (Kanban wake prompts
+ * carry `MEDIA:` artifact lines the assistant reply itself never rewrites).
+ * `extraPaths` is the structured `status.update kind=kanban` list stamped
+ * onto the settled assistant bubble (plan B) — same cards, no model rewrite.
+ * A call still running has no result, and a failed one changed nothing.
  */
-export function deriveChangedFiles(parts: readonly unknown[]): ChangedFile[] {
+export function deriveChangedFiles(
+  parts: readonly unknown[],
+  extraTexts: readonly string[] = [],
+  extraPaths: readonly string[] = []
+): ChangedFile[] {
   const byPath = new Map<string, ChangedFile>()
+
+  for (const path of extraPaths) {
+    if (typeof path === 'string') {
+      rememberFileArtifactPath(path, byPath)
+    }
+  }
+
+  for (const text of extraTexts) {
+    if (typeof text === 'string' && text) {
+      collectTextArtifactFiles(text, byPath)
+    }
+  }
 
   for (const raw of parts) {
     const part = (raw ?? {}) as ChangedFilePart

@@ -11608,11 +11608,45 @@ def _maybe_fire_tui_loop_tick(sid: str, session: dict) -> None:
             pass
 
 
+def _kanban_artifact_paths(payload: Optional[dict]) -> list[str]:
+    """Deduped absolute paths from ``kanban_complete(artifacts=[...])``."""
+    if not isinstance(payload, dict):
+        return []
+    raw = payload.get("artifacts")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    paths: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        path = item.strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        paths.append(path)
+    return paths
+
+
+def _format_kanban_artifact_media_lines(payload: dict) -> list[str]:
+    """Turn ``kanban_complete(artifacts=[...])`` paths into MEDIA tags.
+
+    Messaging platforms upload these via ``_deliver_kanban_artifacts``; the
+    TUI/Desktop wake path also keeps MEDIA lines on the wake prompt (plan A)
+    and emits the same list as structured ``status.update kind=kanban``
+    artifacts (plan B) so Desktop can stamp file cards on the wake reply
+    without relying on the model to re-emit paths.
+    """
+    return [f"MEDIA: {path}" for path in _kanban_artifact_paths(payload)]
+
+
 def _format_kanban_event_text(sub: dict, task, ev, board_slug: str) -> Optional[str]:
     """Single-line notification text for one kanban event.
 
     Wording mirrors the gateway notifier (gateway/kanban_watchers.py) so a
     task completion reads the same in the TUI as it does on Telegram.
+    Completed events also append ``MEDIA:`` lines for explicit
+    ``artifacts`` so Desktop can render file cards on the wake turn.
     Returns None for kinds that are claimed but intentionally silent.
     """
     kind = getattr(ev, "kind", "")
@@ -11633,7 +11667,15 @@ def _format_kanban_event_text(sub: dict, task, ev, board_slug: str) -> Optional[
         elif getattr(task, "result", None):
             lines = str(task.result).strip().splitlines()
             handoff = f"\n{lines[0][:160]}" if lines else ""
-        return f"✔ {board_tag}{tag}Kanban {task_id} done — {title}{handoff}"
+        text = f"✔ {board_tag}{tag}Kanban {task_id} done — {title}{handoff}"
+        media_lines = (
+            _format_kanban_artifact_media_lines(payload)
+            if isinstance(payload, dict)
+            else []
+        )
+        if media_lines:
+            text = f"{text}\n" + "\n".join(media_lines)
+        return text
     if kind == "blocked":
         reason = f": {str(payload.get('reason'))[:160]}" if payload.get("reason") else ""
         return f"⏸ {board_tag}{tag}Kanban {task_id} blocked{reason}"
@@ -11666,7 +11708,9 @@ def _collect_kanban_notifications(session: dict) -> list:
     notifier, so a subscription is delivered exactly once even if a gateway
     and a TUI poll the same board DB.
 
-    Returns the list of formatted notification texts (may be empty).
+    Returns a list of dicts ``{text, kind, task_id, artifacts}`` (may be
+    empty). ``text`` is the wake-prompt body; ``artifacts`` is the explicit
+    ``kanban_complete`` path list for Desktop's structured file cards.
     """
     session_key = str(session.get("session_key") or "")
     if not session_key or session.get("_finalized"):
@@ -11675,7 +11719,7 @@ def _collect_kanban_notifications(session: dict) -> list:
         from hermes_cli import kanban_db as _kb
     except Exception:
         return []
-    texts: list = []
+    notes: list = []
     try:
         boards = _kb.list_boards(include_archived=False)
     except Exception:
@@ -11741,8 +11785,22 @@ def _collect_kanban_notifications(session: dict) -> list:
                 task = _kb.get_task(conn, sub["task_id"])
                 for ev in events:
                     text = _format_kanban_event_text(sub, task, ev, slug)
-                    if text:
-                        texts.append(text)
+                    if not text:
+                        continue
+                    ev_kind = getattr(ev, "kind", "") or ""
+                    payload = getattr(ev, "payload", None) or {}
+                    notes.append(
+                        {
+                            "text": text,
+                            "kind": ev_kind,
+                            "task_id": sub.get("task_id") or "",
+                            "artifacts": (
+                                _kanban_artifact_paths(payload)
+                                if ev_kind == "completed"
+                                else []
+                            ),
+                        }
+                    )
                 # Unsubscribe only on archive. ``done`` is reversible in
                 # review/controller flows, so retaining the subscription lets
                 # a later reopen notify the same originating TUI/Desktop
@@ -11760,7 +11818,7 @@ def _collect_kanban_notifications(session: dict) -> list:
                         pass
         finally:
             conn.close()
-    return texts
+    return notes
 
 
 def _notification_poller_loop(
@@ -11805,20 +11863,46 @@ def _notification_poller_loop(
         if _now - _last_kanban_poll >= _KANBAN_POLL_SECONDS:
             _last_kanban_poll = _now
             try:
-                _kanban_texts = _collect_kanban_notifications(session)
+                _kanban_notes = _collect_kanban_notifications(session)
             except Exception as _kb_exc:
                 print(
                     f"[tui_gateway] kanban notification poll failed: "
                     f"{type(_kb_exc).__name__}: {_kb_exc}",
                     file=sys.stderr,
                 )
-                _kanban_texts = []
-            if _kanban_texts:
-                for _kb_text in _kanban_texts:
-                    _emit("status.update", sid, {"kind": "process", "text": _kb_text})
+                _kanban_notes = []
+            if _kanban_notes:
+                for _note in _kanban_notes:
+                    # Structured delivery for Desktop file cards (plan B).
+                    # ``kind: kanban`` carries artifacts; wake text still
+                    # includes MEDIA lines (plan A) for rehydrate/harvesters.
+                    if isinstance(_note, dict):
+                        _kb_text = str(_note.get("text") or "")
+                        _payload = {"kind": "kanban", "text": _kb_text}
+                        _arts = [
+                            p
+                            for p in (_note.get("artifacts") or [])
+                            if isinstance(p, str) and p.strip()
+                        ]
+                        if _arts:
+                            _payload["artifacts"] = _arts
+                        if _note.get("task_id"):
+                            _payload["task_id"] = _note["task_id"]
+                        if _note.get("kind"):
+                            _payload["event"] = _note["kind"]
+                    else:
+                        _kb_text = str(_note)
+                        _payload = {"kind": "kanban", "text": _kb_text}
+                    if _kb_text:
+                        _emit("status.update", sid, _payload)
                 # Events are cursor-claimed (never re-queued), so buffer them
                 # until the session is idle instead of dropping the agent turn.
-                session.setdefault("_kanban_pending", []).extend(_kanban_texts)
+                _pending_texts = [
+                    (str(n.get("text") or "") if isinstance(n, dict) else str(n))
+                    for n in _kanban_notes
+                ]
+                _pending_texts = [t for t in _pending_texts if t]
+                session.setdefault("_kanban_pending", []).extend(_pending_texts)
             _pending = session.get("_kanban_pending") or []
             if _pending:
                 _batch: list = []

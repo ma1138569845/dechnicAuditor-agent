@@ -24,6 +24,7 @@ import {
   stripGeneratedImageEchoes
 } from '@/lib/generated-images'
 import { parseTodos } from '@/lib/todos'
+import { queueKanbanArtifacts, takeTurnBoundKanbanArtifacts } from '@/store/kanban-artifacts'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import { isDiskFullErrorMessage, notifyError } from '@/store/notifications'
 import { broadcastSessionsChanged } from '@/store/session-sync'
@@ -566,6 +567,9 @@ export function useMessageStream({
       occurredAt = Date.now() / 1000
     ) => {
       let shouldHydrate = false
+      // Drain Kanban artifacts bound at message.start; stamp onto this reply.
+      const kanbanArtifacts = takeTurnBoundKanbanArtifacts(sessionId)
+      const kanbanStamp = kanbanArtifacts.length > 0 ? { kanbanArtifacts } : {}
 
       const completedState = updateSessionState(sessionId, state => {
         // Late completion from an already-cancelled turn: cancelRun has
@@ -573,6 +577,11 @@ export function useMessageStream({
         // empty). Re-running the dedupe below would replace the partial with
         // the just-cancelled full text, so we settle and bail instead.
         if (state.interrupted) {
+          // Put artifacts back so a retry wake can still claim them.
+          if (kanbanArtifacts.length > 0) {
+            queueKanbanArtifacts(sessionId, kanbanArtifacts)
+          }
+
           return {
             ...state,
             awaitingResponse: false,
@@ -618,7 +627,8 @@ export function useMessageStream({
             pending: false,
             interim: false,
             ...(durationS !== undefined ? { durationS } : {}),
-            ...(completionError && failure?.surface ? { errorSurface: failure.surface } : {})
+            ...(completionError && failure?.surface ? { errorSurface: failure.surface } : {}),
+            ...kanbanStamp
           }
 
           if (completionError && !keepFailedPartialText) {
@@ -644,7 +654,8 @@ export function useMessageStream({
           branchGroupId: state.pendingBranchGroup ?? undefined,
           ...(durationS !== undefined ? { durationS } : {}),
           ...(completionError && { error: completionError }),
-          ...(completionError && failure?.surface ? { errorSurface: failure.surface } : {})
+          ...(completionError && failure?.surface ? { errorSurface: failure.surface } : {}),
+          ...kanbanStamp
         })
 
         const prev = state.messages

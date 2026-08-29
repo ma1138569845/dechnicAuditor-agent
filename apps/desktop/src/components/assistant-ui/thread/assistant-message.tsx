@@ -391,10 +391,61 @@ const AssistantPreviewEmbeds: FC = () => {
  * right preview rail, so a historical write must remain findable after the
  * next message — retiring the grid on send would hide the artifacts.
  */
+const EMPTY_KANBAN_PATHS: string[] = []
+
 const SettledChangedFiles: FC = () => {
   const settledParts = useAuiState(s => (s.message.status?.type === 'running' ? EMPTY_PARTS : s.message.parts))
+  // Plan B: structured paths from `status.update kind=kanban`, stamped onto
+  // this assistant bubble at message.complete.
+  const kanbanPaths = useAuiState(s => {
+    if (s.message.status?.type === 'running') {
+      return EMPTY_KANBAN_PATHS
+    }
 
-  return <ChangedFilesCard parts={settledParts} />
+    const raw = s.message.metadata?.custom?.kanbanArtifacts
+
+    // Prefer the stamped array reference so this selector stays stable.
+    return Array.isArray(raw) && raw.length > 0 ? (raw as string[]) : EMPTY_KANBAN_PATHS
+  })
+  // Plan A fallback / rehydrate: Kanban wake prompts land as the preceding
+  // user message with raw `MEDIA: path` lines.
+  const triggerText = useAuiState(s => {
+    if (s.message.status?.type === 'running') {
+      return ''
+    }
+
+    const messages = s.thread.messages
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].id !== s.message.id) {
+        continue
+      }
+
+      for (let j = i - 1; j >= 0; j--) {
+        const prev = messages[j] as { content?: unknown; role?: string }
+
+        if (prev.role === 'assistant') {
+          return ''
+        }
+
+        if (prev.role === 'user') {
+          return messageContentText(prev.content as never)
+        }
+      }
+
+      return ''
+    }
+
+    return ''
+  })
+
+  return (
+    <ChangedFilesCard
+      extraPaths={kanbanPaths.length > 0 ? kanbanPaths : undefined}
+      extraTexts={triggerText ? [triggerText] : undefined}
+      parts={settledParts}
+    />
+  )
 }
 
 /**

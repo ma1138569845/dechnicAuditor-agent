@@ -9,6 +9,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { billingCtaLabel, clearBillingBlock, runBillingRecovery, setBillingBlock } from '@/store/billing-block'
 import { clearClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
+import { bindKanbanArtifactsForTurn } from '@/store/kanban-artifacts'
 import { notify } from '@/store/notifications'
 import { flashPetActivity, markPetUnread, setPetActivity } from '@/store/pet'
 import { clearAllPrompts } from '@/store/prompts'
@@ -90,6 +91,9 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
     setSessionCompacting(sessionId, false)
     compactedTurnRef.current.delete(sessionId)
     nativeSubagentSessionsRef.current.delete(sessionId)
+    // Bind any Kanban artifacts queued before this turn so a mid-turn
+    // second completion can't land on the wrong wake reply.
+    bindKanbanArtifactsForTurn(sessionId)
     // A fresh turn on this session optimistically clears its billing wall;
     // if credits are still exhausted the next failure re-raises it.
     clearBillingBlock(sessionId)
