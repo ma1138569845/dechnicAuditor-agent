@@ -1,5 +1,6 @@
 import { RowButton } from '@/components/ui/row-button'
 import { useI18n } from '@/i18n'
+import { assetPath } from '@/lib/asset-path'
 import { Check, ChevronRight, Terminal } from '@/lib/icons'
 import type { OAuthProvider } from '@/types/hermes'
 
@@ -14,8 +15,6 @@ const PROVIDER_DISPLAY: Record<string, { order: number; title: string }> = {
   anthropic: { order: 5, title: 'Anthropic API Key' },
   'claude-code': { order: 6, title: 'Anthropic OAuth: Required Extra Usage Credits to Use Subscription' }
 }
-
-const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
 export const providerTitle = (p: OAuthProvider) => PROVIDER_DISPLAY[p.id]?.title ?? p.name
 const orderOf = (p: OAuthProvider) => PROVIDER_DISPLAY[p.id]?.order ?? 99

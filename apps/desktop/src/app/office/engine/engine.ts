@@ -5,7 +5,7 @@
  */
 import { Application, Container, FederatedPointerEvent, Graphics, Sprite } from 'pixi.js'
 
-import { loadOfficeTextures, getOfficeBackgroundTexture } from './assets'
+import { loadOfficeTextures, type OfficeTextures } from './assets'
 import { DeskActor, AgentActor } from './characters'
 import type { AgentRecord } from './characters'
 import { SCENE_WIDTH, SCENE_HEIGHT, computeDesks, deskContentBounds } from './layout'
@@ -38,6 +38,7 @@ export class OfficeSceneImpl {
   private world: Container | null = null
   private mount: HTMLElement | null = null
   private contentBounds: SceneBounds = { x: 0, y: 0, w: SCENE_WIDTH, h: SCENE_HEIGHT }
+  private textures: OfficeTextures | null = null
   private readonly agents = new Map<string, AgentRecord>()
   private readonly runner: MissionRunner
   private strings: OfficeSceneStrings
@@ -79,7 +80,7 @@ export class OfficeSceneImpl {
 
     this.onAgentClick = onAgentClick || null
 
-    await loadOfficeTextures()
+    this.textures = await loadOfficeTextures()
 
     const world = new Container()
     this.world = world
@@ -99,7 +100,7 @@ export class OfficeSceneImpl {
     const theme = resolveSceneTheme()
     const world = this.world!
 
-    const bgTexture = getOfficeBackgroundTexture()
+    const bgTexture = this.textures?.background ?? null
     if (bgTexture) {
       const bg = new Sprite(bgTexture)
       const scale = Math.max(SCENE_WIDTH / bgTexture.width, SCENE_HEIGHT / bgTexture.height)
@@ -212,7 +213,7 @@ export class OfficeSceneImpl {
   private createAgent(profile: OfficeAgentProfile, desk: ReturnType<typeof computeDesks>[number]): AgentRecord {
     const world = this.world!
     const label = profile.label || profile.name
-    const deskActor = new DeskActor(desk, label)
+    const deskActor = new DeskActor(desk, label, this.textures?.desk ?? null, this.textures?.chair ?? null)
     deskActor.position.set(desk.x, desk.y)
     deskActor.zIndex = desk.seatY - 20
     world.addChild(deskActor)

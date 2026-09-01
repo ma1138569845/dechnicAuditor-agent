@@ -1,8 +1,7 @@
 import { useStore } from '@nanostores/react'
 
+import { assetPath } from '@/lib/asset-path'
 import { $backdrop } from '@/store/backdrop'
-
-const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
 export function Backdrop() {
   const on = useStore($backdrop)

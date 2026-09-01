@@ -1,6 +1,5 @@
+import { assetPath } from '@/lib/asset-path'
 import { cn } from '@/lib/utils'
-
-const assetPath = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`
 
 // Brand badge: nous-girl mark on a white tile, identical in light/dark.
 // Fills the tile (softly rounded); size via className (default size-14).

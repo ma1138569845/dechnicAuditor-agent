@@ -4,11 +4,10 @@
  * 参考项目的 Spine/chibi 资源刻意不用（版权 + 专有运行时）。
  */
 import { Container, Graphics, Sprite, Text } from 'pixi.js'
-import type { TextStyleOptions } from 'pixi.js'
+import type { Texture, TextStyleOptions } from 'pixi.js'
 
 import { avatarInitial } from '../avatar-initial'
 
-import { getOfficeDeskTexture, getOfficeChairTexture } from './assets'
 import { Bubble } from './bubbles'
 import { DESK_W, DESK_H } from './layout'
 import type { DeskLayout, Point } from './layout'
@@ -84,12 +83,10 @@ export class DeskActor extends Container {
   private deskStatus: DeskStatus = 'offline'
   private pulsePhase = 0
 
-  constructor(desk: DeskLayout, label: string) {
+  constructor(desk: DeskLayout, label: string, deskTexture: Texture | null, chairTexture: Texture | null) {
     super()
     this.desk = desk
 
-    const deskTexture = getOfficeDeskTexture()
-    const chairTexture = getOfficeChairTexture()
     const hasTextures = !!(deskTexture && chairTexture)
     // PNG desks sit lower than the vector card; pin the status chip to the
     // visible top-right of whichever desk art is active.

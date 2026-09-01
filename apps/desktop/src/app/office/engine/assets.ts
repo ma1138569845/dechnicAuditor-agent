@@ -1,43 +1,34 @@
-// Ported from hermes-studio-vue `packages/client/src/components/hermes/office/office-scene/assets.ts`.
-// Asset paths already match the desktop app's `public/assets/office/` layout.
-import { Assets, Texture } from 'pixi.js'
+// Office scene textures. Paths live under `public/assets/office/` and are
+// copied into `dist/assets/office/` at build time. MUST go through
+// `assetPath()` — root-absolute `/assets/...` breaks under Electron
+// `file://` (resolves to the OS root, not the install dir).
+import { Assets, type Texture } from 'pixi.js'
 
-const BACKGROUND_URL = '/assets/office/office.png'
-const DESK_URL = '/assets/office/desk.png'
-const CHAIR_URL = '/assets/office/chair.png'
+import { assetPath } from '@/lib/asset-path'
 
-let backgroundTexture: Texture | null = null
-let deskTexture: Texture | null = null
-let chairTexture: Texture | null = null
+const BACKGROUND_URL = assetPath('assets/office/office.png')
+const DESK_URL = assetPath('assets/office/desk.png')
+const CHAIR_URL = assetPath('assets/office/chair.png')
 
-export async function loadOfficeTextures(): Promise<boolean> {
+export interface OfficeTextures {
+  background: Texture | null
+  desk: Texture | null
+  chair: Texture | null
+}
+
+/**
+ * Attempt to load the office PNG assets. Returns null textures on failure
+ * so the engine can fall back to vector placeholders.
+ */
+export async function loadOfficeTextures(): Promise<OfficeTextures> {
   try {
-    Assets.add({ alias: 'office-bg', src: BACKGROUND_URL })
-    Assets.add({ alias: 'office-desk', src: DESK_URL })
-    Assets.add({ alias: 'office-chair', src: CHAIR_URL })
-    const [bg, desk, chair] = await Promise.all([
-      Assets.load<Texture>('office-bg'),
-      Assets.load<Texture>('office-desk'),
-      Assets.load<Texture>('office-chair'),
+    const [background, desk, chair] = await Promise.all([
+      Assets.load<Texture>(BACKGROUND_URL),
+      Assets.load<Texture>(DESK_URL),
+      Assets.load<Texture>(CHAIR_URL),
     ])
-    backgroundTexture = bg ?? null
-    deskTexture = desk ?? null
-    chairTexture = chair ?? null
-    return !!(deskTexture && chairTexture)
-  } catch (err) {
-    console.warn('[OfficeScene] failed to load PNG textures', err)
-    return false
+    return { background, desk, chair }
+  } catch {
+    return { background: null, desk: null, chair: null }
   }
-}
-
-export function getOfficeBackgroundTexture(): Texture | null {
-  return backgroundTexture
-}
-
-export function getOfficeDeskTexture(): Texture | null {
-  return deskTexture
-}
-
-export function getOfficeChairTexture(): Texture | null {
-  return chairTexture
 }
