@@ -667,6 +667,14 @@ OFFICE_RENDER_SCHEMA = {
                 "default": 150,
                 "description": "Render resolution in DPI. Default: 150.",
             },
+            "seal_text": {
+                "type": "string",
+                "description": (
+                    "Optional: audit organization name to stamp a default seal "
+                    "onto the first page (cover) of the PDF output. Only applies "
+                    "when format='pdf'. Omit to skip stamping."
+                ),
+            },
         },
         "required": ["file_id", "doc_type"],
     },
@@ -690,6 +698,7 @@ def _handle_office_render(args: dict, **kwargs) -> str:
     doc_type = args.get("doc_type", "doc")
     fmt = args.get("format", "png")
     dpi = args.get("dpi", 150)
+    seal_text = (args.get("seal_text") or "").strip() or None
 
     if not file_id:
         return tool_error("file_id is required")
@@ -734,7 +743,11 @@ def _handle_office_render(args: dict, **kwargs) -> str:
     try:
         # Office → PDF via OnlyOffice ConvertService, COM automation fallback.
         from tools.office_pdf_convert import office_to_pdf
-        pdf_path = office_to_pdf(file_path, doc_type)
+        pdf_path = office_to_pdf(
+            file_path,
+            doc_type,
+            seal_text=seal_text if fmt == "pdf" else None,
+        )
     except Exception as exc:
         return tool_error(f"Rendering failed: {exc}")
 

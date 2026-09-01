@@ -71,20 +71,31 @@ def com_to_pdf(file_path: str, doc_type: str) -> str:
     return out_path
 
 
-def office_to_pdf(file_path: str, doc_type: str) -> str:
+def office_to_pdf(file_path: str, doc_type: str, seal_text: str | None = None) -> str:
     """Office -> PDF via OnlyOffice ConvertService first, COM automation fallback.
+
+    When ``seal_text`` is provided, a default seal is stamped onto the first
+    page (cover) after conversion.
 
     Raises RuntimeError when both paths are unavailable or fail.
     """
+    pdf_path = None
+
     # 1. OnlyOffice ConvertService (lazy import keeps import side effects low).
     try:
         from tools.office_onlyoffice import convert_to_pdf as _onlyoffice_convert
         pdf_path = _onlyoffice_convert(file_path, doc_type)
-        if pdf_path and os.path.isfile(pdf_path):
-            return pdf_path
     except Exception:
         # OnlyOffice disabled/unreachable/conversion failed — fall through to COM.
-        pass
+        pdf_path = None
 
-    # 2. COM automation fallback.
-    return com_to_pdf(file_path, doc_type)
+    if not pdf_path or not os.path.isfile(pdf_path):
+        # 2. COM automation fallback.
+        pdf_path = com_to_pdf(file_path, doc_type)
+
+    # 3. Optional default-seal stamp on the cover page.
+    if seal_text:
+        from tools.office_seal import stamp_pdf_with_default_seal
+        pdf_path = stamp_pdf_with_default_seal(pdf_path, seal_text)
+
+    return pdf_path
