@@ -14,6 +14,7 @@ act/
 .vscode/
 .idea/
 .omc/
+.omo/
 .env
 .op.env
 .env.local
@@ -237,3 +238,22 @@ reports/
 
 # Stray empty temp file (unexpanded `$tmp` shell variable left in the repo root)
 $tmp
+
+# Desktop energy-audit dev scratch (regenerated every run, never source)
+/apps/desktop/dev.log
+/apps/desktop/dev-run.log
+/apps/desktop/dev-run2.log
+/apps/desktop/dev-run.err.log
+/apps/desktop/launch-dev.bat
+
+# Raw input data + generated chart images + reference dumps
+/apps/desktop/yantai_raw.json
+/apps/desktop/ref_report_full.txt
+/apps/desktop/charts/
+
+# Generated per-project audit reports (烟台…能源审计报告.docx/.md etc.)
+/apps/desktop/*能源审计报告.docx
+/apps/desktop/*能源审计报告.md
+
+# Per-project energy-audit runtime config (Yantai court, etc.)
+/configs/
