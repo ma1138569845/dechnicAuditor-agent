@@ -2405,9 +2405,22 @@ export interface Translations {
       searching: string
       unitRequired: string
       auditType: string
+      generateMode: string
+      generateModeTemplate: string
+      generateModeImitate: string
+      generateModeImitateHint: string
+      executionMethod: string
+      executionMethodScript: string
+      executionMethodAgent: string
+      executionMethodAgentHint: string
       generate: string
       generating: string
+      generatingImitate: string
+      startAgentTask: string
+      submittingAgentTask: string
       generateFailed: string
+      generateTimeout: string
+      agentSubmitFailed: string
     }
     mcpSuggestions: {
       label: (server: string) => string

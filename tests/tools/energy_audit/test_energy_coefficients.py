@@ -156,6 +156,37 @@ def test_pg_collector_admin_affiliation_from_district_id():
     pg.get_province_name_by_district_id.assert_called_once_with('370611')
 
 
+@pytest.mark.parametrize('district_id,expected', [
+    ('370611', '370600'),
+    ('370000', '370000'),
+    ('11', ''),
+    ('', ''),
+    (None, ''),
+])
+def test_district_id_to_city_code(district_id, expected):
+    from tools.energy_audit.pg_query import PgDataQuery
+    assert PgDataQuery.district_id_to_city_code(district_id) == expected
+
+
+def test_pg_collector_fills_city_district_from_division():
+    pg = _make_pg_instance([])
+    pg.get_customer_info.return_value = [{'district_id': '370611'}]
+    pg.get_admin_division_by_district_id.return_value = {
+        'province': '山东',
+        'city': '烟台',
+        'district': '福山',
+        'province_full': '山东省',
+        'city_full': '烟台市',
+        'district_full': '福山区',
+    }
+    result = pgc._collect_from_pg_impl(pg, '测试项目')
+    customer = result['found']['customer_info']
+    assert customer['province'] == '山东'
+    assert customer['city'] == '烟台'
+    assert customer['district'] == '福山'
+    assert customer['admin_affiliation'] == '山东省'
+
+
 @pytest.mark.parametrize('raw,expected', [
     ('2023~2024', ('2023-01-01', '2024-12-31')),
     ('2022-5~2022-10', ('2022-05-01', '2022-10-31')),

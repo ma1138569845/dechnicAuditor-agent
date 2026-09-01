@@ -2342,9 +2342,22 @@ export const zhHant = defineLocale({
       searching: '搜尋中…',
       unitRequired: '請輸入單位/專案名稱',
       auditType: '審計類型',
+      generateMode: '產生方式',
+      generateModeTemplate: '標準範本',
+      generateModeImitate: '同類報告仿寫',
+      generateModeImitateHint: '先依區縣、地市、省份，再依審計類型，從 Hermes 主目錄 rag/report 選取同類報告，結合資料庫資料仿寫產生 Word。',
+      executionMethod: '執行方式',
+      executionMethodScript: '腳本實作',
+      executionMethodAgent: '智慧體任務',
+      executionMethodAgentHint: '關閉對話框後，在目前對話載入「能源審計報告仿寫」技能並開始寫作。',
       generate: '產生報告',
       generating: '產生中…',
-      generateFailed: '產生報告失敗'
+      generatingImitate: '仿寫產生中，約需數分鐘…',
+      startAgentTask: '開始任務',
+      submittingAgentTask: '提交中…',
+      generateFailed: '產生報告失敗',
+      generateTimeout: '產生逾時：仿寫需逐章呼叫模型，請確認後端在線後重試，或先改用「標準範本」。',
+      agentSubmitFailed: '未能把仿寫任務送到目前對話。'
     },
     snippets: {
       codeReview: {

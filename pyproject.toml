@@ -262,14 +262,16 @@ rag = [
   "networkx>=3.5,<4",
   "graphviz>=0.21,<1",
 ]
-# 能源审计工具栈（tools/energy_audit：PG 采集 + Excel 导入）。
+# 能源审计工具栈（tools/energy_audit：PG 采集 + Excel 导入 + Word 报告）。
 # Opt-in：energy_audit 采用懒导入（energy_audit/__init__.py），缺依赖时工具优雅降级；
 # pandas 用于 excel_processor（read_excel/DataFrame），openpyxl 是其读 .xlsx 的必需引擎，
-# psycopg2-binary 用于 pg_query 的 PG 连接。
+# psycopg2-binary 用于 pg_query 的 PG 连接，python-docx 用于 Word 报告生成与参考报告切章。
 energy = [
   "pandas==3.0.5",
   "openpyxl==3.1.5",
   "psycopg2-binary==2.9.10",
+  "python-docx==1.2.0",
+  "matplotlib>=3.9,<4",
 ]
 # CVE-2026-48710 (BadHost): Starlette is pulled transitively by mcp's
 # sse-starlette / HTTP-SSE stack (and by fastapi in the `web` extra). Before

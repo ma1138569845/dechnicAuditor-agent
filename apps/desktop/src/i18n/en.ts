@@ -2778,9 +2778,23 @@ export const en: Translations = {
       searching: 'Searching…',
       unitRequired: 'Enter a unit / project name',
       auditType: 'Audit type',
+      generateMode: 'Generation mode',
+      generateModeTemplate: 'Standard template',
+      generateModeImitate: 'Imitate similar reports',
+      generateModeImitateHint: 'Find reports by district, then city, then province in the Hermes rag/report folder, then write the Word report from project data.',
+      executionMethod: 'How to run',
+      executionMethodScript: 'Script',
+      executionMethodAgent: 'Agent task',
+      executionMethodAgentHint: 'Closes this dialog and loads the energy-audit imitation skill in the current chat.',
       generate: 'Generate report',
       generating: 'Generating…',
-      generateFailed: 'Failed to generate report'
+      generatingImitate: 'Imitating chapters — this can take a few minutes…',
+      startAgentTask: 'Start task',
+      submittingAgentTask: 'Submitting…',
+      generateFailed: 'Failed to generate report',
+      generateTimeout:
+        'Generation timed out. Imitation calls the model per chapter — check the backend is online, or try Standard template first.',
+      agentSubmitFailed: 'Could not send the imitation task to the current chat.'
     },
     mcpSuggestions: {
       label: server => `Add ${server}`,

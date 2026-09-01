@@ -107,25 +107,77 @@ class PgDataQuery:
         )
         return rows[0] if rows else None
 
+    @staticmethod
+    def district_id_to_city_code(district_id) -> str:
+        """行政区划代码 → 地市级代码。例：370611 → 370600。"""
+        digits = ''.join(ch for ch in str(district_id or '') if ch.isdigit())
+        if len(digits) < 4:
+            return ''
+        return f"{digits[:4]}00"
+
+    @staticmethod
+    def short_city_name(name: str) -> str:
+        text = (name or '').strip()
+        if not text:
+            return ''
+        for suffix in ('自治州', '地区', '盟', '市'):
+            if text.endswith(suffix) and len(text) > len(suffix):
+                return text[:-len(suffix)]
+        return text
+
+    @staticmethod
+    def short_district_name(name: str) -> str:
+        text = (name or '').strip()
+        if not text:
+            return ''
+        if any(token in text for token in ('开发区', '新区', '高新区', '保税区', '园区')):
+            return text
+        for suffix in ('区', '县', '旗'):
+            if text.endswith(suffix) and len(text) - len(suffix) >= 2:
+                return text[:-len(suffix)]
+        return text
+
+    def get_admin_division_by_district_id(self, district_id) -> dict:
+        """district_id → 省/地市/区县简称与全称。查不到的层级为空字符串。"""
+        empty = {
+            "province": "",
+            "city": "",
+            "district": "",
+            "province_full": "",
+            "city_full": "",
+            "district_full": "",
+        }
+        digits = ''.join(ch for ch in str(district_id or '') if ch.isdigit())
+        if len(digits) < 2:
+            return empty
+
+        def _name(code: str) -> str:
+            area = self.get_area_by_code(code)
+            if not area:
+                return ''
+            return str(area.get('f_areaname') or '').strip()
+
+        province_full = _name(self.district_id_to_province_code(digits))
+        city_full = _name(self.district_id_to_city_code(digits))
+        district_code = digits[:6] if len(digits) >= 6 else digits
+        district_full = _name(district_code)
+        if district_full and district_full in {province_full, city_full}:
+            district_full = ''
+        if city_full and city_full == province_full:
+            # 直辖市：地市与省同名时仍保留市名，便于路径匹配。
+            pass
+        return {
+            "province_full": province_full,
+            "city_full": city_full,
+            "district_full": district_full,
+            "province": self.short_province_name(province_full),
+            "city": self.short_city_name(city_full),
+            "district": self.short_district_name(district_full) if district_full else '',
+        }
+
     def get_province_name_by_district_id(self, district_id) -> str:
         """ts_customer_info.district_id → 省级名称（如 山东省）。"""
-        province_code = self.district_id_to_province_code(district_id)
-        if province_code:
-            area = self.get_area_by_code(province_code)
-            if area and area.get('f_areaname'):
-                return str(area['f_areaname']).strip()
-        # 字典缺省级码时，沿父级走到 f_type=0
-        current = str(district_id or '').strip()
-        seen = set()
-        while current and current not in seen and current not in ('0', '00', '000000'):
-            seen.add(current)
-            area = self.get_area_by_code(current)
-            if not area:
-                break
-            if area.get('f_type') == 0:
-                return str(area.get('f_areaname') or '').strip()
-            current = str(area.get('f_areasupcode') or '').strip()
-        return ''
+        return self.get_admin_division_by_district_id(district_id).get("province_full") or ""
 
     # ========== 审计项目 ==========
 

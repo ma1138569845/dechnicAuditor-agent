@@ -12909,6 +12909,8 @@ class EnergyAuditGenerateRequest(BaseModel):
     project_name: str
     audit_type: str = "公共机构"
     output_dir: Optional[str] = None
+    mode: str = "template"
+    reference_dir: Optional[str] = None
 
 
 class EnergyAuditImitateRequest(BaseModel):
@@ -12956,6 +12958,8 @@ async def energy_audit_generate(body: EnergyAuditGenerateRequest):
         body.project_name,
         body.audit_type,
         body.output_dir,
+        body.mode,
+        body.reference_dir,
     )
 
 

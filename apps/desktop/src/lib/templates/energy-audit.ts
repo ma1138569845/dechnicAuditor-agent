@@ -6,6 +6,8 @@
  * agent's energy-audit workflow can pick up and execute end-to-end.
  */
 
+export type EnergyAuditType = '公共机构' | '公共建筑' | '工业企业'
+
 export interface EnergyAuditTemplate {
   /** Stable template identifier. */
   id: string
@@ -16,7 +18,21 @@ export interface EnergyAuditTemplate {
   /** Prompt text inserted into the composer when the chip is clicked. */
   prompt: string
   /** The audit type passed to the energy-audit backend workflow. */
-  auditType: '公共机构' | '公共建筑' | '工业企业'
+  auditType: EnergyAuditType
+}
+
+/** Slash command that loads the bundled energy-audit-imitate skill. */
+export const ENERGY_AUDIT_IMITATE_SKILL = 'energy-audit-imitate'
+
+/** Desktop 智能体任务: submit this into the current chat to invoke the skill. */
+export function energyAuditImitateSkillPrompt(unitName: string, auditType: string): string {
+  const name = unitName.trim()
+  const type = auditType.trim() || '公共机构'
+
+  return (
+    `/${ENERGY_AUDIT_IMITATE_SKILL} 请为「${name}」按「${type}」类型仿写一份能源审计报告。` +
+    '使用该单位在数据库中的项目数据，优先检索同区县、地市、省份的同类参考报告，按该类型八章结构逐章仿写，并生成 Word 文件。'
+  )
 }
 
 /** Keywords that trigger the energy-audit template chips. */

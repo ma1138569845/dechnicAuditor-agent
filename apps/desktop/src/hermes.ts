@@ -192,6 +192,12 @@ export function searchEnergyAuditProjects(keyword: string): Promise<EnergyAuditP
   })
 }
 
+/** Template fill is PG + Word assembly; imitate runs ~8 LLM chapter calls and
+ *  can take several minutes. The Electron default REST timeout is 30s, which
+ *  aborts long generates with a misleading "Timed out connecting" toast. */
+export const ENERGY_AUDIT_GENERATE_TIMEOUT_MS = 180_000
+export const ENERGY_AUDIT_IMITATE_TIMEOUT_MS = 900_000
+
 /** Generate an energy-audit report .docx from PG data for a project name.
  *  Returns the on-disk file path on success (for right-rail preview) or an
  *  {error, message} envelope on failure. */
@@ -199,11 +205,16 @@ export function generateEnergyAuditReport(params: {
   project_name: string
   audit_type: string
   output_dir?: string
+  mode?: 'template' | 'imitate'
+  reference_dir?: string
 }): Promise<EnergyAuditGenerateResponse> {
+  const imitate = params.mode === 'imitate'
+
   return window.hermesDesktop.api<EnergyAuditGenerateResponse>({
     ...profileScoped(),
     path: '/api/energy-audit/generate',
     method: 'POST',
-    body: params
+    body: params,
+    timeoutMs: imitate ? ENERGY_AUDIT_IMITATE_TIMEOUT_MS : ENERGY_AUDIT_GENERATE_TIMEOUT_MS
   })
 }

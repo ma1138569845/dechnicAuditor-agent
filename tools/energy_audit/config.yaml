@@ -39,6 +39,13 @@ output:
   directory: "./reports"
   filename_template: "{audit_type}能源审计报告_{date}"
 
+# 仿写：同类参考报告根目录。推荐 {省}/{市}/{区县}/{审计类型}/*.docx。
+# 检索先按区县 → 地市 → 省份，再按审计类型。文件名含地名时不必严格分层。
+# 也可用环境变量 EA_REFERENCE_DIR 或 Hermes config.yaml → energy_audit.imitate.reference_dir 覆盖。
+# 留空则使用 {HERMES_HOME}/rag/report（与 knowledge wiki/data 同级）。
+imitate:
+  reference_dir: ""
+
 # 审计类型配置
 audit_types:
   公共机构:

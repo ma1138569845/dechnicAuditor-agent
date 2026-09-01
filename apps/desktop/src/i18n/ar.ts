@@ -2204,9 +2204,23 @@ export const ar = defineLocale({
       searching: 'جارٍ البحث…',
       unitRequired: 'يرجى إدخال اسم الوحدة/المشروع',
       auditType: 'نوع التدقيق',
+      generateMode: 'طريقة الإنشاء',
+      generateModeTemplate: 'قالب قياسي',
+      generateModeImitate: 'محاكاة تقارير مماثلة',
+      generateModeImitateHint: 'ابحث أولاً حسب المنطقة ثم المدينة ثم المقاطعة في مجلد rag/report داخل Hermes ثم اكتب تقرير Word من بيانات المشروع.',
+      executionMethod: 'طريقة التنفيذ',
+      executionMethodScript: 'سكربت',
+      executionMethodAgent: 'مهمة الوكيل',
+      executionMethodAgentHint: 'يُغلق هذا الحوار ويحمّل مهارة محاكاة تقرير تدقيق الطاقة في الدردشة الحالية.',
       generate: 'إنشاء التقرير',
       generating: 'جارٍ الإنشاء…',
-      generateFailed: 'فشل إنشاء التقرير'
+      generatingImitate: 'جارٍ المحاكاة — قد يستغرق عدة دقائق…',
+      startAgentTask: 'بدء المهمة',
+      submittingAgentTask: 'جارٍ الإرسال…',
+      generateFailed: 'فشل إنشاء التقرير',
+      generateTimeout:
+        'انتهت مهلة الإنشاء. المحاكاة تستدعي النموذج لكل فصل — تحقق من الخادم أو جرّب القالب القياسي أولاً.',
+      agentSubmitFailed: 'تعذر إرسال مهمة المحاكاة إلى الدردشة الحالية.'
     },
     snippets: {
       codeReview: {

@@ -2954,9 +2954,22 @@ export const zh: Translations = {
       searching: '搜索中…',
       unitRequired: '请输入单位/项目名称',
       auditType: '审计类型',
+      generateMode: '生成方式',
+      generateModeTemplate: '标准模板',
+      generateModeImitate: '同类报告仿写',
+      generateModeImitateHint: '先按区县、地市、省份，再按审计类型，从 Hermes 主目录 rag/report 选取同类报告，结合数据库数据仿写生成 Word。',
+      executionMethod: '执行方式',
+      executionMethodScript: '脚本实现',
+      executionMethodAgent: '智能体任务',
+      executionMethodAgentHint: '关闭对话框后，在当前对话加载「能源审计报告仿写」技能并开始写作。',
       generate: '生成报告',
       generating: '生成中…',
-      generateFailed: '生成报告失败'
+      generatingImitate: '仿写生成中，约需数分钟…',
+      startAgentTask: '开始任务',
+      submittingAgentTask: '提交中…',
+      generateFailed: '生成报告失败',
+      generateTimeout: '生成超时：仿写需逐章调用模型，请确认后端在线后重试，或先改用「标准模板」。',
+      agentSubmitFailed: '未能把仿写任务发送到当前对话。'
     },
     mcpSuggestions: {
       label: server => `添加 ${server}`,

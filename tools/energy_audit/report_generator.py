@@ -2,18 +2,20 @@
 能源审计报告生成工具
 生成符合《能源审计报告编写格式规范标准》的 Word + Markdown 报告
 
-格式规范（基于19份省直能源审计报告分析）：
+格式规范（见 skills/productivity/energy-audit-imitate/references/report-format-spec.md）：
 - 封面：36pt/14pt 宋体 加粗 居中
 - 正文：12pt 宋体 + Times New Roman, 1.5倍行距, 首行缩进2字符, 两端对齐
-- 标题：18pt/14pt/12pt 黑体 加粗 左对齐（段前24/12磅，段后12/6磅）
-- 表格：10.5pt 宋体 单倍行距
+- 标题：15pt 宋体 居中 / 14pt 宋体 左对齐 / 12pt 宋体 左对齐
+- 目录：黑体 18pt 居中 + TOC 域；水印为被审计单位全称（DrawingML）
+- 表格：12pt 宋体，行高 1.01cm
 - 数字/单位：数字 + 空格 + 单位（如 1234 tce）
 """
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from datetime import datetime
-import json, os
+import json
+import re, os
 
 from tools.energy_audit.chart_utils import setup_chart_font, chart_text
 
@@ -376,28 +378,41 @@ class WordReportBuilder:
         run = para.add_run("● " + text)
         self._set_font(run, FMT.body_font_cn, FMT.body_font_en, FMT.body_size)
 
+    def _set_outline_level(self, para, level: int):
+        """Word 大纲级别（0=章），供目录域收录。"""
+        from lxml import etree
+        from docx.oxml.ns import qn as _qn
+        pPr = para._p.get_or_add_pPr()
+        el = pPr.find(_qn("w:outlineLvl"))
+        if el is None:
+            el = etree.SubElement(pPr, _qn("w:outlineLvl"))
+        el.set(_qn("w:val"), str(level))
+
     def _add_heading_1(self, text: str):
-        """一级标题：18pt 黑体 加粗 左对齐，段前24磅/段后12磅"""
+        """一级标题：小三号(15pt) 宋体 加粗 居中。"""
         para = self.doc.add_paragraph()
         self._set_paragraph_format(para, FMT.h1_line_spacing, FMT.h1_alignment,
                                    space_before=FMT.h1_space_before, space_after=FMT.h1_space_after)
         run = para.add_run(text)
         self._set_font(run, FMT.h1_font, FMT.body_font_en, FMT.h1_size, bold=FMT.h1_bold)
+        self._set_outline_level(para, 0)
 
     def _add_heading_2(self, text: str):
-        """二级标题：14pt 黑体 加粗 左对齐，段前12磅/段后6磅"""
+        """二级标题：四号(14pt) 宋体 加粗 左对齐。"""
         para = self.doc.add_paragraph()
         self._set_paragraph_format(para, FMT.h2_line_spacing, FMT.h2_alignment,
                                    space_before=FMT.h2_space_before, space_after=FMT.h2_space_after)
         run = para.add_run(text)
         self._set_font(run, FMT.h2_font, FMT.body_font_en, FMT.h2_size, bold=FMT.h2_bold)
+        self._set_outline_level(para, 1)
 
     def _add_heading_3(self, text: str):
-        """三级标题：12pt 黑体 加粗 左对齐"""
+        """三级标题：12pt 宋体 加粗 左对齐。"""
         para = self.doc.add_paragraph()
         self._set_paragraph_format(para, FMT.h3_line_spacing, FMT.h3_alignment)
         run = para.add_run(text)
         self._set_font(run, FMT.h3_font, FMT.body_font_en, FMT.h3_size, bold=FMT.h3_bold)
+        self._set_outline_level(para, 2)
 
     def _add_table(self, headers: List[str], rows: List[List[str]], title: str = None):
         """添加表格：标题12pt 宋体 加粗 居中，内容12pt 宋体 居中，行高 1.01cm，上下居中"""
@@ -568,15 +583,45 @@ class WordReportBuilder:
         self._add_page_break()
 
     def build_toc(self):
-        """目录标题：黑体 小二号(18pt) 加粗 居中"""
+        """目录：黑体 小二号(18pt) 加粗 居中 + Word TOC 域。"""
+        from lxml import etree
+        from docx.oxml.ns import qn as _qn
+
         para = self.doc.add_paragraph()
         para.alignment = self.WD_ALIGN.CENTER
+        para.paragraph_format.line_spacing = 1.2
         run = para.add_run("目  录")
         self._set_font(run, "黑体", FMT.body_font_en, 18, bold=True)
+
+        field = self.doc.add_paragraph()
+        field.paragraph_format.line_spacing = 1.2
+        r = field.add_run()._r
+        begin = etree.SubElement(r, _qn("w:fldChar"))
+        begin.set(_qn("w:fldCharType"), "begin")
+        instr_run = field.add_run()._r
+        instr = etree.SubElement(instr_run, _qn("w:instrText"))
+        instr.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        instr.text = ' TOC \\o "1-2" \\h \\z \\u '
+        sep_run = field.add_run()._r
+        separate = etree.SubElement(sep_run, _qn("w:fldChar"))
+        separate.set(_qn("w:fldCharType"), "separate")
+        hint = field.add_run("（目录将在 Word/WPS 打开时自动生成；若未显示请按 Ctrl+A 后 F9 更新域）")
+        self._set_font(hint, FMT.body_font_cn, FMT.body_font_en, FMT.body_size)
+        end_run = field.add_run()._r
+        end = etree.SubElement(end_run, _qn("w:fldChar"))
+        end.set(_qn("w:fldCharType"), "end")
+
         self._add_page_break()
 
     def build_all_chapters(self):
-        """生成第1章（模板）及其余章节（通用内容填充）"""
+        """生成第1章（模板）及其余章节（通用内容填充）。
+
+        仿写模式（report_data['imitated_chapters']）按 CHAPTER_STRUCTURES 标题写章，
+        有仿写正文的章节不再走公共机构硬编码模板。缺章时回退原 build_chapterN。
+        """
+        if self.report_data.get("generation_mode") == "imitate" or self.report_data.get("imitated_chapters"):
+            self._build_imitated_chapters()
+            return
         self.build_chapter1()
         self.build_chapter2()
         self.build_chapter3()
@@ -603,6 +648,180 @@ class WordReportBuilder:
                     self._add_body_text(str(content))
                 else:
                     self._add_body_text(f"[{sec_title}内容待补充]")
+
+    _IMITATED_H1 = re.compile(r"^第[1-8一二三四五六七八]章")
+    _IMITATED_H3 = re.compile(r"^\d+\.\d+\.\d+\s+\S")
+    _IMITATED_H2 = re.compile(r"^\d+\.\d+\s+\S")
+
+    def _imitated_chapter_text(self, chapter_key: str) -> str:
+        raw = (self.report_data.get("imitated_chapters") or {}).get(chapter_key)
+        if isinstance(raw, dict):
+            return (raw.get("text") or "").strip()
+        return (raw or "").strip()
+
+    def _write_imitated_body(self, text: str):
+        """把仿写正文写入 Word：识别 1.1 / 1.1.1 为标题，跳过重复的章标题。
+
+        支持 markdown 表格（`| a | b |` 行，首行为表头，分隔行 `|---|` 忽略），
+        以及表格标题行（以"表X.Y"开头的行）——渲染为规范表格（12pt 居中、行高 1.01cm）。
+        支持图表标记行 `[[图:类型|图注]]`：按 chart_data 渲染并嵌入图片。
+        """
+        lines = (text or "").replace("\r\n", "\n").split("\n")
+        pending_title = None  # 待绑定的表格标题
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if not line:
+                pending_title = None
+                i += 1
+                continue
+            # 图表标记：[[图:类型|图注]] —— 渲染图表并嵌入
+            if line.startswith("[[图:") and line.endswith("]]"):
+                img_path = self._render_imitated_chart(line)
+                if img_path:
+                    caption = line[line.find("|")+1:-2].strip() if "|" in line else ""
+                    self._add_image_with_caption(img_path, caption)
+                pending_title = None
+                i += 1
+                continue
+            # 表格标题行（表X.Y 开头）——预留给后续表格块
+            if re.match(r"^表\d+\.\d+", line) and len(line) < 80:
+                # 若该行后紧跟表格块则作为表格标题，否则作为正文（如"表5.1 所示"）
+                j = i + 1
+                while j < len(lines) and not lines[j].strip():
+                    j += 1
+                if j < len(lines) and lines[j].strip().startswith("|"):
+                    pending_title = line
+                    i += 1
+                    continue
+            # markdown 表格块：连续 | 行
+            if line.startswith("|") and line.endswith("|"):
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith("|") and lines[i].strip().endswith("|"):
+                    table_lines.append(lines[i].strip())
+                    i += 1
+                rows = []
+                for tl in table_lines:
+                    cells = [c.strip() for c in tl.strip("|").split("|")]
+                    if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                        continue  # markdown 分隔行
+                    rows.append(cells)
+                if rows:
+                    self._add_table(rows[0], rows[1:], title=pending_title)
+                    pending_title = None
+                continue
+            if self._IMITATED_H1.match(line) and len(line) < 80:
+                pending_title = None
+                i += 1
+                continue
+            if self._IMITATED_H3.match(line) and len(line) < 80:
+                pending_title = None
+                self._add_heading_3(line)
+            elif self._IMITATED_H2.match(line) and len(line) < 80:
+                pending_title = None
+                self._add_heading_2(line)
+            else:
+                pending_title = None
+                self._add_body_text(line)
+            i += 1
+
+    def _render_imitated_chart(self, marker: str):
+        """渲染仿写正文中的图表标记 [[图:类型|图注]]。
+
+        类型支持：trend（逐年趋势）、pie（能源结构饼图）、
+        monthly_电/monthly_水/monthly_气（逐月柱状图）、flow（能源流向图）。
+        数据来自 report_data['chart_data']，缺数据或渲染失败时返回 None（静默跳过）。
+        """
+        inner = marker[4:-2].strip()
+        chart_type = inner.split("|")[0].strip().lower()
+        chart_data = self.report_data.get("chart_data") or {}
+        years_data = chart_data.get("years") or []
+        if not years_data:
+            return None
+        output_dir = chart_data.get("output_dir") or os.path.join(os.getcwd(), "charts")
+        os.makedirs(output_dir, exist_ok=True)
+        try:
+            if chart_type in ("trend", "pie"):
+                from tools.energy_audit.indicators import YearlyEnergyData
+                yd_objects = []
+                for d in years_data:
+                    yd_objects.append(YearlyEnergyData(
+                        year=int(d.get("year", 0)),
+                        electricity_kwh=float(d.get("electricity_kwh", 0) or 0),
+                        water_m3=float(d.get("water_m3", 0) or 0),
+                        natural_gas_m3=float(d.get("natural_gas_m3", 0) or 0),
+                        heating_energy_heat=float(d.get("heating_energy_heat_gj", 0) or 0),
+                        transportation_petrol_kg=float(d.get("petrol_kg", 0) or 0),
+                        transportation_diesel_kg=float(d.get("diesel_kg", 0) or 0),
+                        building_area=float(chart_data.get("building_area", 0) or 0),
+                        people_count=float(chart_data.get("people_count", 0) or 0),
+                    ))
+                energy_types = chart_data.get("energy_types") or ["electricity_kwh", "water_m3", "natural_gas_m3"]
+                if chart_type == "trend":
+                    return self._generate_yearly_trend_chart(yd_objects, energy_types, output_dir)
+                return self._generate_energy_pie_chart(yd_objects, energy_types, output_dir)
+            if chart_type == "cost_pie":
+                return self._generate_cost_pie_chart(years_data, output_dir)
+            if chart_type.startswith("monthly_"):
+                et_key = chart_type.replace("monthly_", "")
+                monthly_attr = {"electricity_kwh": "monthly_electricity_kwh",
+                                "water_m3": "monthly_water_m3",
+                                "natural_gas_m3": "monthly_natural_gas_m3"}.get(et_key)
+                if not monthly_attr:
+                    return None
+                name_cn = self._ENERGY_TYPE_CN.get(et_key, et_key)
+                unit = {"electricity_kwh": "kWh", "water_m3": "m³", "natural_gas_m3": "m³"}.get(et_key, "")
+                return _generate_monthly_bar_chart(years_data, et_key, monthly_attr, name_cn, unit, output_dir)
+            if chart_type == "flow":
+                from tools.energy_audit.energy_flow_chart import draw_energy_flow_diagram
+                energy_types = chart_data.get("energy_types") or ["electricity_kwh", "water_m3", "natural_gas_m3"]
+                # 时间戳文件名：避免与用户已打开的旧图（文件锁）冲突
+                flow_path = os.path.join(output_dir, f"energy_flow_{int(__import__('time').time())}.png")
+                return draw_energy_flow_diagram(
+                    energy_types=energy_types,
+                    equipment=chart_data.get("equipment"),
+                    unit_name=chart_data.get("unit_name", ""),
+                    output_path=flow_path,
+                ) or (flow_path if os.path.exists(flow_path) else None)
+        except Exception as e:
+            self._chart_errors = getattr(self, "_chart_errors", []) + [f"{chart_type}: {e}"]
+            return None
+        return None
+
+    def _append_chapter_images(self, chapter_key: str):
+        mapping = {"第2章": "chapter2", "第3章": "chapter3"}
+        data_key = mapping.get(chapter_key)
+        if not data_key:
+            return
+        images = self.report_data.get(data_key, {}).get("images", []) or []
+        prefix = "图2" if chapter_key == "第2章" else "图3"
+        for idx, img_info in enumerate(images, 1):
+            path = img_info.get("path", "") if isinstance(img_info, dict) else ""
+            caption = (img_info.get("caption") if isinstance(img_info, dict) else None) or f"{prefix}-{idx}"
+            if path and os.path.exists(path):
+                self._add_image_with_caption(path, caption)
+
+    def _build_imitated_chapters(self):
+        builders = {
+            "第1章": self.build_chapter1,
+            "第2章": self.build_chapter2,
+            "第3章": self.build_chapter3,
+            "第4章": self.build_chapter4,
+            "第5章": self.build_chapter5,
+            "第6章": self.build_chapter6,
+            "第7章": self.build_chapter7,
+            "第8章": self.build_chapter8,
+        }
+        for ch_num, ch_title, _sub in self.chapters:
+            text = self._imitated_chapter_text(ch_num)
+            if text:
+                self._add_heading_1(f"{ch_num}  {ch_title}")
+                self._write_imitated_body(text)
+                self._append_chapter_images(ch_num)
+            else:
+                builder = builders.get(ch_num)
+                if builder:
+                    builder()
 
     # ============================================================
     # 第1章模板
@@ -2403,6 +2622,42 @@ class WordReportBuilder:
             sol_titles = [s['title'] for s in solutions[:6]]
             self._add_body_text(f"针对上述问题，提出可行节能改造建议共计{len(solutions)}条，主要包括：{'、'.join(sol_titles)}等。")
 
+    def _generate_cost_pie_chart(self, years_data, output_dir: str = './charts'):
+        """最新年能源费用占比饼图（电费/水费/天然气费/热力费，单位：万元）"""
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            setup_chart_font(plt)
+        except ImportError:
+            return None
+
+        os.makedirs(output_dir, exist_ok=True)
+        latest = years_data[-1]
+        cost_fields = [
+            ("electricity_cost_wan", "电费"),
+            ("water_cost_wan", "水费"),
+            ("natural_gas_cost_wan", "天然气费"),
+            ("heating_cost_wan", "热力费"),
+        ]
+        labels = []
+        values = []
+        for key, label in cost_fields:
+            v = float(latest.get(key, 0) or 0)
+            if v > 0:
+                labels.append(label)
+                values.append(v)
+        if not values:
+            return None
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90,
+               colors=['#4CAF50', '#2196F3', '#FF9800', '#F44336'])
+        ax.set_title(chart_text(f'{latest.get("year", "")}年能源费用占比'))
+        path = os.path.join(output_dir, 'chart_cost_structure.png')
+        fig.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.close(fig)
+        return path
+
     def _generate_energy_pie_chart(self, yd_objects, energy_types, output_dir: str = './charts'):
         """生成最新年能源结构的饼图"""
         try:
@@ -2564,7 +2819,7 @@ class WordReportBuilder:
             return f"[RAG参考检索失败: {e}]"
 
     def generate(self, output_path: str):
-        """生成 Word 报告"""
+        """生成 Word 报告（含目录自动更新与水印）"""
         self.doc = self.Document()
 
         # 页面设置
@@ -2583,12 +2838,99 @@ class WordReportBuilder:
         self.build_all_chapters()
 
         self.doc.save(output_path)
+
+        # 目录域自动更新：Word 打开时刷新 TOC/页码
+        self._set_update_fields_on_open(output_path)
+        # 页脚页码：第 X 页 共 Y 页
+        self._add_page_numbers(output_path)
         return output_path
 
+    def _add_page_numbers(self, output_path: str):
+        """向页脚写入居中页码域：第 X 页 共 Y 页（Word/WPS 打开时随 updateFields 自动刷新）。"""
+        from docx import Document as _Doc
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn as _qn
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# ============================================================
-# Markdown 报告生成器（快速预览用）
-# ============================================================
+        doc = _Doc(output_path)
+        sec = doc.sections[0]
+        footer = sec.footer
+        # 复用/清空默认页脚段落
+        if footer.paragraphs:
+            p = footer.paragraphs[0]
+            for r in list(p.runs):
+                r._r.getparent().remove(r._r)
+        else:
+            p = footer.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        def _set_font_run(run, size=10.5, bold=False):
+            run.font.name = "Times New Roman"
+            run.font.size = self.Pt(size)
+            run.font.bold = bold
+            rPr = run._r.get_or_add_rPr()
+            rFonts = rPr.find(_qn("w:rFonts"))
+            if rFonts is None:
+                from lxml import etree as _etree
+                rFonts = _etree.SubElement(rPr, _qn("w:rFonts"))
+            rFonts.set(_qn("w:eastAsia"), "宋体")
+
+        def _add_field(fld_type: str):
+            """插入 PAGE / NUMPAGES 域"""
+            run = p.add_run()
+            _set_font_run(run)
+            r = run._r
+            b = OxmlElement("w:fldChar"); b.set(_qn("w:fldCharType"), "begin")
+            instr = OxmlElement("w:instrText"); instr.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+            instr.text = f" {fld_type} "
+            s = OxmlElement("w:fldChar"); s.set(_qn("w:fldCharType"), "separate")
+            t = OxmlElement("w:t"); t.text = "1"
+            e = OxmlElement("w:fldChar"); e.set(_qn("w:fldCharType"), "end")
+            r.append(b); r.append(instr); r.append(s); r.append(t); r.append(e)
+
+        r1 = p.add_run("第 "); _set_font_run(r1)
+        _add_field("PAGE")
+        r2 = p.add_run(" 页 共 "); _set_font_run(r2)
+        _add_field("NUMPAGES")
+        r3 = p.add_run(" 页"); _set_font_run(r3)
+
+        doc.save(output_path)
+
+    def _set_update_fields_on_open(self, output_path: str):
+        """在 word/settings.xml 写入 <w:updateFields w:val="true"/>，使 Word 打开时自动刷新目录域。"""
+        import tempfile
+        import zipfile
+        import shutil
+        from pathlib import Path
+        from lxml import etree
+
+        W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        tmp = Path(tempfile.mkdtemp(prefix="ea_updatefields_"))
+        try:
+            with zipfile.ZipFile(output_path, "r") as z:
+                z.extractall(tmp)
+            settings = tmp / "word" / "settings.xml"
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            if settings.exists():
+                tree = etree.parse(str(settings))
+                root = tree.getroot()
+            else:
+                root = etree.Element(f"{{{W_NS}}}settings")
+                tree = etree.ElementTree(root)
+            uf = root.find(f"{{{W_NS}}}updateFields")
+            if uf is None:
+                uf = etree.Element(f"{{{W_NS}}}updateFields")
+                root.insert(0, uf)
+            uf.set(f"{{{W_NS}}}val", "true")
+            tree.write(str(settings), xml_declaration=True, encoding="UTF-8", standalone="yes")
+            with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+                for f in tmp.rglob("*"):
+                    if f.is_dir():
+                        continue
+                    z.write(f, f.relative_to(tmp).as_posix())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 class MarkdownReportBuilder:
     """生成 Markdown 格式报告（完整内容，结构对齐 Word 版）"""

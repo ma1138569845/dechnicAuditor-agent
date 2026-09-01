@@ -243,10 +243,32 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         cust = pg.get_customer_info(customer_id=customer_id)
         if cust:
             customer = dict(cust[0])
-            province_full = pg.get_province_name_by_district_id(customer.get('district_id'))
-            if isinstance(province_full, str) and province_full.strip():
-                customer['admin_affiliation'] = province_full.strip()
-                customer['province'] = PgDataQuery.short_province_name(province_full)
+            district_id = customer.get('district_id')
+            division = {}
+            getter = getattr(pg, 'get_admin_division_by_district_id', None)
+            if callable(getter):
+                try:
+                    raw = getter(district_id)
+                except Exception:
+                    raw = None
+                if isinstance(raw, dict):
+                    division = raw
+            province_full = str(division.get('province_full') or '').strip()
+            if not province_full:
+                try:
+                    province_full = str(pg.get_province_name_by_district_id(district_id) or '').strip()
+                except Exception:
+                    province_full = ''
+            if province_full:
+                customer['admin_affiliation'] = province_full
+                customer['province'] = (
+                    str(division.get('province') or '').strip()
+                    or PgDataQuery.short_province_name(province_full)
+                )
+            if str(division.get('city') or '').strip():
+                customer['city'] = str(division.get('city')).strip()
+            if str(division.get('district') or '').strip():
+                customer['district'] = str(division.get('district')).strip()
             result['found']['customer_info'] = customer
         else:
             result['missing'].append('客户信息（ts_customer_info 无记录）')
@@ -610,6 +632,14 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                 ('PG', pg_customer),
                                 ('Excel', excel_data),
                                 ('default', '山东')),
+            city=sr.resolve('city',
+                            ('PG', pg_customer),
+                            ('Excel', excel_data),
+                            ('default', '')),
+            district=sr.resolve('district',
+                                ('PG', pg_customer),
+                                ('Excel', excel_data),
+                                ('default', '')),
             audit_start=sr.resolve('audit_start',
                                    ('PG', pg_project),
                                    ('Excel', excel_data),

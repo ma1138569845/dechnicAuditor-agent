@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""章节段落仿写流水线（独立于 Word 报告生成）。
+"""章节段落仿写与整份 Word 报告仿写流水线。
 
-旧编排 run_pipeline.py → agent_xiaocheng(tags) → search_for_chapter() 仿写
-已从 rest_generate 管线移除。本模块把它收敛成一个可单独调用的新功能：
-
-  1. 按项目加载 AuditProject（本地 data.json，缺失则从 PG 采集）
-  2. 按章节 / 机构类型 / 具体类型检索同类参考报告
-  3. 分析参考文本的段落结构（标题、角色、修辞手法）
-  4. Agent 按该结构 + 本项目真实数据仿写
-  5. 输出仿写段落（不写入 .docx）
+单章：按项目加载数据 → 本地同类报告（缺则 RAG）→ 结构分析 → 仿写段落。
+整份：对 8 章重复上述步骤，注入 ReportGenerator 后生成 .docx。
 
 用法:
-    from tools.energy_audit.imitate_pipeline import run_imitate
-    result = run_imitate("莘县县政府", chapter="第3章", section="3.1 机构职责")
-
     python -m tools.energy_audit.imitate_pipeline --project 莘县县政府 --chapter 第3章
+    python -m tools.energy_audit.imitate_pipeline --project 莘县县政府 --full-report --audit-type 公共机构
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -133,12 +126,20 @@ def normalize_chapter(raw: str, section: str = "") -> Tuple[str, str]:
 # ============================================================
 
 def resolve_tags(project: AuditProject, overrides: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """检索标签：项目字段为底，调用方覆盖非空值。"""
+    """检索标签：项目字段为底，调用方覆盖非空值。含省/地市/区县。"""
+    from tools.energy_audit.reference_library import infer_places_from_text
+
     base = project.base
+    guessed = infer_places_from_text(" ".join(
+        p for p in (base.unit_name, base.address, base.name) if p
+    ))
     tags = {
         "audit_type": base.unit_type or "公共机构",
         "institution_category": base.institution_category or "",
         "specific_type": base.specific_type or "",
+        "province": base.province or "",
+        "city": base.city or guessed.get("city") or "",
+        "district": base.district or guessed.get("district") or "",
     }
     for key, value in (overrides or {}).items():
         if value and str(value).strip():
@@ -175,8 +176,33 @@ def retrieve_references(
     context: str = "",
     top_k: int = 5,
     search_fn: Optional[Callable[..., dict]] = None,
+    local_search_fn: Optional[Callable[..., dict]] = None,
+    reference_dir: str = "",
 ) -> dict:
-    """按章节 + 机构标签检索参考报告。先带 chapter 过滤，空结果再放宽。"""
+    """按章节 + 机构标签检索参考报告。
+
+    优先本地同类报告文件夹；空结果再走 RAG（或调用方传入的 search_fn）。
+    测试传入 search_fn 时跳过默认本地扫描，避免家目录报告干扰用例。
+    """
+    if local_search_fn is not None:
+        try:
+            local = local_search_fn(
+                chapter, tags, top_k=top_k, reference_dir=reference_dir or None,
+            )
+        except TypeError:
+            local = local_search_fn(chapter, tags, top_k)
+        except Exception as e:
+            local = {"results": [], "source": "local_folder", "count": 0, "error": str(e)}
+        if local and local.get("results"):
+            return local
+    elif search_fn is None:
+        from tools.energy_audit.reference_library import search_local_references
+        local = search_local_references(
+            chapter, tags, top_k=top_k, reference_dir=reference_dir or None,
+        )
+        if local and local.get("results"):
+            return local
+
     search = search_fn
     if search is None:
         from rag.rag_search import search_reports
@@ -184,6 +210,9 @@ def retrieve_references(
 
     query = " ".join(
         p for p in (
+            tags.get("province", ""),
+            tags.get("city", ""),
+            tags.get("district", ""),
             tags.get("audit_type", ""),
             tags.get("institution_category", ""),
             tags.get("specific_type", ""),
@@ -192,7 +221,10 @@ def retrieve_references(
         ) if p
     ).strip() or chapter
 
-    tagged = dict(tags)
+    # 省/地市/区县只进 query；Qdrant payload 没有这些键，must-filter 会空结果。
+    filter_keys = ("audit_type", "institution_category", "specific_type", "chapter")
+    type_tags = {k: v for k, v in tags.items() if k in filter_keys and v}
+    tagged = dict(type_tags)
     if chapter:
         tagged["chapter"] = chapter
 
@@ -205,9 +237,9 @@ def retrieve_references(
         return results
 
     try:
-        relaxed = search(query, tags, top_k)
+        relaxed = search(query, type_tags, top_k)
     except TypeError:
-        relaxed = search(query, tags)
+        relaxed = search(query, type_tags)
     return relaxed or {"results": [], "source": "none", "count": 0}
 
 
@@ -575,6 +607,8 @@ def run_imitate(
     refresh_from_pg: bool = False,
     project: Optional[AuditProject] = None,
     search_fn: Optional[Callable[..., dict]] = None,
+    local_search_fn: Optional[Callable[..., dict]] = None,
+    reference_dir: str = "",
     llm_fn: Optional[Callable[..., Optional[str]]] = None,
 ) -> Dict[str, Any]:
     """执行仿写流水线，返回结构化结果。"""
@@ -600,7 +634,15 @@ def run_imitate(
     ).strip()
 
     try:
-        rag = retrieve_references(chapter_key, tags, context=context, top_k=top_k, search_fn=search_fn)
+        rag = retrieve_references(
+            chapter_key,
+            tags,
+            context=context,
+            top_k=top_k,
+            search_fn=search_fn,
+            local_search_fn=local_search_fn,
+            reference_dir=reference_dir,
+        )
     except Exception as e:
         rag = {"results": [], "source": "error", "count": 0, "error": str(e)}
 
@@ -657,6 +699,126 @@ def run_imitate(
     }
 
 
+def run_imitate_report(
+    project_name: str,
+    *,
+    audit_type: str = "",
+    institution_category: str = "",
+    specific_type: str = "",
+    output_dir: str = "",
+    top_k: int = 3,
+    refresh_from_pg: bool = True,
+    reference_dir: str = "",
+    project: Optional[AuditProject] = None,
+    search_fn: Optional[Callable[..., dict]] = None,
+    local_search_fn: Optional[Callable[..., dict]] = None,
+    llm_fn: Optional[Callable[..., Optional[str]]] = None,
+    generate_word_fn: Optional[Callable[..., str]] = None,
+) -> Dict[str, Any]:
+    """整份报告仿写：本地同类报告 + 数据中心项目数据 + 章节模板 → Word。
+
+    数据默认从 PostgreSQL 采集（``refresh_from_pg=True``），与
+    ``energy_audit_*`` Hermes 工具同源。
+    """
+    name = (project_name or "").strip()
+    if not name:
+        return {"ok": False, "error": "project_name 不能为空", "file_path": ""}
+
+    try:
+        proj = project or load_project_data(name, refresh_from_pg=refresh_from_pg)
+    except ProjectNotFoundError as e:
+        return {"ok": False, "error": str(e), "file_path": ""}
+    except Exception as e:
+        return {"ok": False, "error": f"加载项目失败：{e}", "file_path": ""}
+
+    chosen_type = (audit_type or "").strip() or (proj.base.unit_type or "公共机构")
+    from tools.energy_audit.report_generator import CHAPTER_STRUCTURES, ReportGenerator
+
+    chapters = CHAPTER_STRUCTURES.get(chosen_type, CHAPTER_STRUCTURES["公共机构"])
+    imitated: Dict[str, str] = {}
+    chapter_meta: List[Dict[str, Any]] = []
+    all_sources: List[Dict[str, Any]] = []
+    writers = []
+
+    for ch_num, ch_title, _sections in chapters:
+        result = run_imitate(
+            name,
+            ch_num,
+            extra_context=ch_title,
+            institution_category=institution_category,
+            specific_type=specific_type,
+            audit_type=chosen_type,
+            top_k=top_k,
+            project=proj,
+            search_fn=search_fn,
+            local_search_fn=local_search_fn,
+            reference_dir=reference_dir,
+            llm_fn=llm_fn,
+        )
+        text = (result.get("paragraph") or "").strip()
+        imitated[ch_num] = text
+        writers.append(result.get("writer") or "fallback")
+        chapter_meta.append({
+            "chapter": ch_num,
+            "title": ch_title,
+            "ok": bool(result.get("ok")),
+            "writer": result.get("writer"),
+            "reference_source": result.get("reference_source"),
+            "reference_count": result.get("reference_count", 0),
+            "notice": result.get("notice"),
+        })
+        for src in result.get("sources") or []:
+            if src not in all_sources:
+                all_sources.append(src)
+
+    out_dir = output_dir or "./reports"
+    target_path = os.path.join(out_dir, f"{proj.base.unit_name or name}能源审计报告.docx")
+
+    try:
+        gen = ReportGenerator(chosen_type)
+        rd = gen.load_from_project(proj)
+        rd["imitated_chapters"] = imitated
+        rd["generation_mode"] = "imitate"
+        rd["tags"] = rd.get("tags") or {}
+        rd["tags"]["audit_type"] = chosen_type
+        gen.set_report_data(rd)
+        if generate_word_fn is not None:
+            try:
+                file_path = generate_word_fn(target_path, rd, chosen_type)
+            except TypeError:
+                file_path = generate_word_fn(target_path)
+        else:
+            os.makedirs(out_dir, exist_ok=True)
+            file_path = gen.generate_word(target_path)
+    except Exception as e:
+        return {"ok": False, "error": f"报告生成失败：{e}", "file_path": ""}
+
+    from tools.energy_audit.reference_library import describe_reference_dir, resolve_reference_dir
+
+    ref_info = describe_reference_dir(reference_dir or None)
+    used_llm = any(w == "llm" for w in writers)
+    return {
+        "ok": True,
+        "file_path": file_path,
+        "audit_type": chosen_type,
+        "generation_mode": "imitate",
+        "writer": "llm" if used_llm else "fallback",
+        "chapters": chapter_meta,
+        "sources": all_sources,
+        "reference_dir": ref_info.get("reference_dir") or str(resolve_reference_dir(reference_dir or None)),
+        "reference_file_count": ref_info.get("file_count", 0),
+        "project": {
+            "unit_name": proj.base.unit_name,
+            "institution_category": proj.base.institution_category,
+            "specific_type": proj.base.specific_type,
+        },
+        "notice": (
+            None if all_sources else
+            f"参考目录 {ref_info.get('reference_dir')} 未找到同类报告，已按章节结构与项目数据生成草稿。"
+        ),
+    }
+
+
 def result_to_jsonable(result: Dict[str, Any]) -> Dict[str, Any]:
     """确保返回值可 json.dumps（测试/REST 共用）。"""
     out = {}
@@ -669,9 +831,9 @@ def result_to_jsonable(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="按参考报告段落结构仿写指定章节")
+    parser = argparse.ArgumentParser(description="按参考报告段落结构仿写指定章节或整份 Word 报告")
     parser.add_argument("--project", required=True, help="被审计单位 / 项目名称")
-    parser.add_argument("--chapter", required=True, help="章节，如 第3章 / 3 / 3.1")
+    parser.add_argument("--chapter", default="", help="章节，如 第3章 / 3 / 3.1；与 --full-report 互斥")
     parser.add_argument("--section", default="", help="小节，如 3.1 机构职责")
     parser.add_argument("--institution-category", default="", help="覆盖机构大类，如 党政机关")
     parser.add_argument("--specific-type", default="", help="覆盖具体类型，如 法院")
@@ -679,27 +841,45 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--context", default="", help="额外检索上下文")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--refresh", action="store_true", help="强制从 PG 重新采集")
+    parser.add_argument("--full-report", action="store_true", help="仿写全部章节并生成 Word")
+    parser.add_argument("--output-dir", default="", help="Word 输出目录，默认 ./reports")
+    parser.add_argument("--reference-dir", default="", help="同类参考报告根目录")
     parser.add_argument("--json", action="store_true", help="输出完整 JSON")
     args = parser.parse_args(argv)
 
-    result = run_imitate(
-        args.project,
-        args.chapter,
-        section=args.section,
-        institution_category=args.institution_category,
-        specific_type=args.specific_type,
-        audit_type=args.audit_type,
-        extra_context=args.context,
-        top_k=args.top_k,
-        refresh_from_pg=args.refresh,
-    )
+    if args.full_report:
+        result = run_imitate_report(
+            args.project,
+            audit_type=args.audit_type,
+            institution_category=args.institution_category,
+            specific_type=args.specific_type,
+            output_dir=args.output_dir,
+            top_k=args.top_k,
+            refresh_from_pg=True,
+            reference_dir=args.reference_dir,
+        )
+    else:
+        if not args.chapter:
+            parser.error("请提供 --chapter，或使用 --full-report 生成整份报告")
+        result = run_imitate(
+            args.project,
+            args.chapter,
+            section=args.section,
+            institution_category=args.institution_category,
+            specific_type=args.specific_type,
+            audit_type=args.audit_type,
+            extra_context=args.context,
+            top_k=args.top_k,
+            refresh_from_pg=args.refresh,
+            reference_dir=args.reference_dir,
+        )
     if args.json:
         print(json.dumps(result_to_jsonable(result), ensure_ascii=False, indent=2))
     else:
         if not result.get("ok"):
             print(f"[错误] {result.get('error')}")
             return 1
-        print(result.get("paragraph") or "")
+        print(result.get("file_path") or result.get("paragraph") or "")
     return 0 if result.get("ok") else 1
 
 

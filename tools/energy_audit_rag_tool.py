@@ -37,7 +37,7 @@ ENERGY_AUDIT_RAG_SEARCH_SCHEMA = {
     "properties": {
         "query": {
             "type": "string",
-            "description": "检索问题。例如：医院单位建筑面积非供暖能耗偏高、中央空调 COP 偏低、照明系统节能措施等。",
+            "description": "检索问题。把省份/地市/区县写进 query（不要当 payload 过滤），再写章节主题。例如：山东 烟台 经济技术开发区 公共机构 能源资源管理状况。",
         },
         "institution_category": {
             "type": "string",
@@ -175,7 +175,7 @@ def _collect_references(results: Dict[str, Any]) -> List[str]:
 # Handler
 # ============================================================
 
-def _handle_energy_audit_rag_search(args: Dict[str, Any]) -> str:
+def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
     if not _RAG_AVAILABLE:
         return tool_error(
             f"能源审计 RAG 工具当前不可用。可能原因：{_RAG_IMPORT_ERROR or '依赖未安装或知识库未配置'}。"

@@ -26,6 +26,8 @@ EXCEL_SCHEMAS = {
         'unit_short': ['单位简称', '简称'],
         'address': ['地址', '单位地址'],
         'province': ['省份', '省'],
+        'city': ['地市', '市', '城市'],
+        'district': ['区县', '区', '县'],
         'unit_type': ['审计类型', '单位类型'],
         'institution_category': ['机构类别'],
         'specific_type': ['具体类型'],

@@ -2412,9 +2412,23 @@ export const ja = defineLocale({
       searching: '検索中…',
       unitRequired: '単位/プロジェクト名を入力してください',
       auditType: '監査タイプ',
+      generateMode: '生成方法',
+      generateModeTemplate: '標準テンプレート',
+      generateModeImitate: '同類報告書の模倣',
+      generateModeImitateHint: '区県→地市→省の順で Hermes の rag/report から同類報告書を選び、データベースの数値で Word を作成します。',
+      executionMethod: '実行方法',
+      executionMethodScript: 'スクリプト',
+      executionMethodAgent: 'エージェントタスク',
+      executionMethodAgentHint: 'ダイアログを閉じ、現在のチャットでエネルギー監査模倣スキルを読み込みます。',
       generate: '報告書を生成',
       generating: '生成中…',
-      generateFailed: '報告書の生成に失敗しました'
+      generatingImitate: '模倣生成中（数分かかることがあります）…',
+      startAgentTask: 'タスクを開始',
+      submittingAgentTask: '送信中…',
+      generateFailed: '報告書の生成に失敗しました',
+      generateTimeout:
+        '生成がタイムアウトしました。模倣は章ごとにモデルを呼びます。バックエンドを確認するか、標準テンプレートを試してください。',
+      agentSubmitFailed: '模倣タスクを現在のチャットに送れませんでした。'
     },
     snippets: {
       codeReview: {

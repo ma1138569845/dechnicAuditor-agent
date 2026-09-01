@@ -358,9 +358,8 @@ export function ChatBar({
   const showEnergyAuditTemplates = useAuiState(s => shouldShowEnergyAuditTemplates(s.composer.text))
 
   // Pending energy-audit template → the parameter dialog opens with its
-  // audit type preselected. Clicking a chip drives the real generation
-  // workflow (backend REST → .docx → right-rail preview) instead of
-  // dropping a prompt into the composer.
+  // audit type preselected. Script mode still hits REST → .docx → preview;
+  // agent mode submits `/energy-audit-imitate` into the current chat.
   const [selectedAuditTemplate, setSelectedAuditTemplate] = useState<EnergyAuditTemplate | null>(null)
 
   const openEnergyAuditDialog = useCallback((template: EnergyAuditTemplate) => {
@@ -1457,6 +1456,7 @@ export function ChatBar({
             closeEnergyAuditDialog()
           }
         }}
+        onSubmit={onSubmit}
         open={selectedAuditTemplate !== null}
       />
     </>

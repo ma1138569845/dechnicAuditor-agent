@@ -274,7 +274,7 @@ def _format_energy_meter(meters: list) -> str:
 # Handlers
 # ============================================================
 
-def _handle_search_projects(args: dict):
+def _handle_search_projects(args: dict, **kwargs):
     """按名称模糊搜索能源审计项目。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -304,7 +304,7 @@ def _handle_search_projects(args: dict):
         return tool_error(f"查询失败：{e}")
 
 
-def _handle_get_project(args: dict):
+def _handle_get_project(args: dict, **kwargs):
     """获取单个项目完整信息。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -320,7 +320,7 @@ def _handle_get_project(args: dict):
         return tool_error(f"查询失败：{e}")
 
 
-def _handle_get_equipment(args: dict):
+def _handle_get_equipment(args: dict, **kwargs):
     """获取项目设备清单。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -343,7 +343,7 @@ def _handle_get_equipment(args: dict):
         return tool_error(f"查询失败：{e}")
 
 
-def _handle_get_buildings(args: dict):
+def _handle_get_buildings(args: dict, **kwargs):
     """获取项目建筑信息。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -361,7 +361,7 @@ def _handle_get_buildings(args: dict):
         return tool_error(f"查询失败：{e}")
 
 
-def _handle_get_energy(args: dict):
+def _handle_get_energy(args: dict, **kwargs):
     """获取项目能耗数据。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -380,7 +380,7 @@ def _handle_get_energy(args: dict):
         return tool_error(f"查询失败：{e}")
 
 
-def _handle_get_energy_meter(args: dict):
+def _handle_get_energy_meter(args: dict, **kwargs):
     """获取项目用电/用水表具计量信息。"""
     if not _PG_AVAILABLE:
         return _pg_unavailable_result()
@@ -633,12 +633,46 @@ def rest_generate_energy_audit_report(
     project_name: str,
     audit_type: str = "公共机构",
     output_dir: str = None,
+    mode: str = "template",
+    reference_dir: str = None,
 ) -> dict:
     """从 PG 取数生成能源审计报告 .docx（REST 版本，返回 dict）。
 
-    管线：build_and_save_project（PG 取数 → AuditProject）
-          → ReportGenerator.load_from_project → generate_word → .docx
+    mode=template：固定章节模板填数。
+    mode=imitate：按类型从参考报告目录取同类报告仿写后生成 Word。
     """
+    try:
+        import docx  # noqa: F401
+    except ImportError:
+        return {
+            "error": "缺少 python-docx",
+            "message": "当前 Python 环境未安装 python-docx，无法生成 Word 报告。"
+            "请在后端环境执行：uv pip install 'python-docx==1.2.0' "
+            "或 uv sync --extra energy",
+        }
+
+    if (mode or "template").strip() == "imitate":
+        try:
+            from tools.energy_audit.imitate_pipeline import result_to_jsonable, run_imitate_report
+        except ImportError as e:
+            return {"error": "仿写流水线加载失败", "message": str(e)}
+        try:
+            result = run_imitate_report(
+                project_name,
+                audit_type=audit_type or "公共机构",
+                output_dir=output_dir or "",
+                reference_dir=reference_dir or "",
+                refresh_from_pg=True,
+            )
+        except Exception as e:
+            return {"error": "仿写生成失败", "message": str(e)}
+        if not result.get("ok"):
+            msg = result.get("error") or "仿写生成失败"
+            return {"error": msg, "message": msg}
+        payload = result_to_jsonable(result)
+        payload["ok"] = True
+        return payload
+
     if not _PG_AVAILABLE:
         return {"error": "能源审计数据库工具当前不可用", "message": _PG_IMPORT_ERROR or "PG 数据库未配置或无法连接"}
 

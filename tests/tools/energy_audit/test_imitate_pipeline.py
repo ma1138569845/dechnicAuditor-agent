@@ -10,8 +10,10 @@ from tools.energy_audit.imitate_pipeline import (
     extract_project_facts,
     load_project_data,
     normalize_chapter,
+    resolve_tags,
     retrieve_references,
     run_imitate,
+    run_imitate_report,
 )
 from tools.energy_audit.project_data import (
     AuditProject,
@@ -25,6 +27,7 @@ from tools.energy_audit.project_data import (
 )
 from tools.energy_audit_imitate_tool import (
     _handle_imitate_paragraph,
+    _handle_imitate_report,
     rest_imitate_energy_audit_paragraph,
 )
 
@@ -177,6 +180,63 @@ class TestRetrieveReferences:
         assert result["count"] == 1
         assert any("chapter" in c for c in calls)
         assert any("chapter" not in c for c in calls)
+
+    def test_local_folder_wins_over_rag(self):
+        def fake_local(chapter, tags, top_k=5, reference_dir=None):
+            return {
+                "results": [{"filename": "法院.md", "chapter": chapter, "text": "本地参考"}],
+                "source": "local_folder",
+                "count": 1,
+            }
+
+        def fake_search(*_a, **_k):
+            raise AssertionError("local hits should skip RAG")
+
+        result = retrieve_references(
+            "第3章",
+            {"audit_type": "公共机构"},
+            search_fn=fake_search,
+            local_search_fn=fake_local,
+        )
+        assert result["source"] == "local_folder"
+        assert result["results"][0]["text"] == "本地参考"
+
+    def test_geo_goes_into_query_not_qdrant_filters(self):
+        calls = []
+
+        def fake_search(query, tags, top_k=5):
+            calls.append((query, dict(tags)))
+            return {
+                "results": [{"filename": "a.docx", "chapter": "第3章", "text": "正文"}],
+                "source": "qdrant_vector",
+                "count": 1,
+            }
+
+        result = retrieve_references(
+            "第3章",
+            {
+                "audit_type": "公共机构",
+                "province": "山东",
+                "city": "烟台",
+                "district": "芝罘",
+            },
+            search_fn=fake_search,
+        )
+        assert result["count"] == 1
+        query, tagged = calls[0]
+        assert "山东" in query and "烟台" in query and "芝罘" in query
+        assert "province" not in tagged
+        assert "city" not in tagged
+        assert "district" not in tagged
+        assert tagged["audit_type"] == "公共机构"
+        assert tagged["chapter"] == "第3章"
+
+    def test_resolve_tags_fills_city_district_from_address(self):
+        tags = resolve_tags(_project())
+        assert tags["province"] == "山东"
+        assert tags["city"] == "聊城"
+        assert tags["district"] == "莘县"
+        assert tags["audit_type"] == "公共机构"
 
 
 class TestRunImitate:
@@ -359,3 +419,62 @@ class TestLlmImitatePrompt:
         assert "error" in out
         out = rest_imitate_energy_audit_paragraph("某单位", "")
         assert "error" in out
+
+
+class TestRunImitateReport:
+    def test_writes_all_chapters_into_word_payload(self):
+        captured = {}
+
+        def fake_local(chapter, tags, top_k=5, reference_dir=None):
+            return {
+                "results": [{
+                    "filename": "人民法院能源审计报告.md",
+                    "chapter": chapter,
+                    "text": f"{chapter} 参考：成立节能工作领导小组",
+                    "score": 4.0,
+                    "tags": {
+                        "audit_type": "公共机构",
+                        "institution_category": "党政机关",
+                        "specific_type": "法院",
+                    },
+                }],
+                "source": "local_folder",
+                "count": 1,
+            }
+
+        def fake_llm(**kwargs):
+            return f"{kwargs['chapter']} 仿写：{kwargs['unit_name']}"
+
+        def fake_word(path, data, atype):
+            captured["path"] = path
+            captured["data"] = data
+            captured["atype"] = atype
+            return path
+
+        result = run_imitate_report(
+            "莘县县政府",
+            audit_type="公共机构",
+            project=_project(),
+            local_search_fn=fake_local,
+            llm_fn=fake_llm,
+            generate_word_fn=fake_word,
+            refresh_from_pg=False,
+        )
+        assert result["ok"] is True
+        assert result["generation_mode"] == "imitate"
+        assert captured["atype"] == "公共机构"
+        imitated = captured["data"]["imitated_chapters"]
+        assert set(imitated) >= {f"第{i}章" for i in range(1, 9)}
+        assert "莘县县政府" in imitated["第3章"]
+        assert captured["path"].endswith("莘县县政府能源审计报告.docx")
+        assert result["writer"] == "llm"
+        assert result["sources"]
+
+    def test_missing_name(self):
+        result = run_imitate_report("")
+        assert result["ok"] is False
+        assert "project_name" in result["error"]
+
+    def test_report_handler_requires_project(self):
+        err = json.loads(_handle_imitate_report({}))
+        assert "project_name" in err["error"]

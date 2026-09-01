@@ -64,7 +64,9 @@ class ProjectBase:
     project_manager: str = ""          # 审计项目负责人
     auditor: str = ""                  # 审计机构名称
     report_date: str = ""              # 报告日期 ex: "2026年6月"
-    province: str = "山东"             # 所在省份（用于规章检索）
+    province: str = "山东"             # 所在省份（用于规章检索与同类报告匹配）
+    city: str = ""                     # 地市，如 烟台
+    district: str = ""                 # 区县，如 芝罘 / 经济技术开发区
 
 
 @dataclass

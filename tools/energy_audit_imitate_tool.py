@@ -3,15 +3,18 @@ from __future__ import annotations
 """
 能源审计章节仿写工具（Hermes Agent 入口）
 
-按项目加载数据 → 检索同类参考报告 → 分析段落结构 → Agent 仿写，
-输出可用于报告的段落正文。独立于 rest_generate 的 Word 管线。
+按项目加载数据 → 检索同类参考报告 → 分析段落结构 → Agent 仿写。
+支持单章段落，或仿写全部章节并生成 Word。
 
 discover_builtin_tools() 只扫描 tools/*.py，因此本文件必须放在 tools/ 根目录。
 """
 
 from typing import Any, Dict
 
+from hermes_constants import display_hermes_home
 from tools.registry import registry, tool_error, tool_result
+
+_DEFAULT_REFERENCE_DIR = f"{display_hermes_home()}/rag/report"
 
 
 ENERGY_AUDIT_IMITATE_SCHEMA = {
@@ -41,6 +44,10 @@ ENERGY_AUDIT_IMITATE_SCHEMA = {
             "type": "string",
             "description": "覆盖审计类型。例如：公共机构、公共建筑。",
         },
+        "reference_dir": {
+            "type": "string",
+            "description": f"同类参考报告根目录。缺省 {_DEFAULT_REFERENCE_DIR}/{{省}}/{{市}}/{{区县}}/{{审计类型}}。检索先匹配区县、再地市、再省份。",
+        },
         "extra_context": {
             "type": "string",
             "description": "额外检索上下文，写入 RAG 查询。",
@@ -60,7 +67,7 @@ ENERGY_AUDIT_IMITATE_SCHEMA = {
 }
 
 
-def _handle_imitate_paragraph(args: Dict[str, Any]) -> str:
+def _handle_imitate_paragraph(args: Dict[str, Any], **kwargs) -> str:
     project_name = str(args.get("project_name") or "").strip()
     chapter = str(args.get("chapter") or "").strip()
     if not project_name:
@@ -90,6 +97,7 @@ def _handle_imitate_paragraph(args: Dict[str, Any]) -> str:
             extra_context=str(args.get("extra_context") or "").strip(),
             top_k=top_k,
             refresh_from_pg=bool(args.get("refresh_from_pg", False)),
+            reference_dir=str(args.get("reference_dir") or "").strip(),
         )
     except Exception as e:
         return tool_error(f"仿写失败：{e}")
@@ -152,4 +160,83 @@ registry.register(
     schema=ENERGY_AUDIT_IMITATE_SCHEMA,
     handler=_handle_imitate_paragraph,
     emoji="✍️",
+)
+
+
+ENERGY_AUDIT_IMITATE_REPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "project_name": {
+            "type": "string",
+            "description": "被审计单位或项目名称。例如：烟台经济技术开发区人民法院。",
+        },
+        "audit_type": {
+            "type": "string",
+            "description": "审计类型：公共机构、公共建筑、工业企业。缺省用项目自身类型。",
+        },
+        "institution_category": {
+            "type": "string",
+            "description": "覆盖机构大类。例如：党政机关、医疗、教育。",
+        },
+        "specific_type": {
+            "type": "string",
+            "description": "覆盖具体类型。例如：法院、医院。",
+        },
+        "reference_dir": {
+            "type": "string",
+            "description": f"同类参考报告根目录。缺省 {_DEFAULT_REFERENCE_DIR}/{{省}}/{{市}}/{{区县}}/{{审计类型}}。检索先匹配区县、再地市、再省份。",
+        },
+        "output_dir": {
+            "type": "string",
+            "description": "Word 输出目录，默认 ./reports。",
+        },
+        "top_k": {
+            "type": "integer",
+            "description": "每章参考报告数量上限，默认 3，最大 8。",
+            "minimum": 1,
+            "maximum": 8,
+        },
+    },
+    "required": ["project_name"],
+}
+
+
+def _handle_imitate_report(args: Dict[str, Any], **kwargs) -> str:
+    project_name = str(args.get("project_name") or "").strip()
+    if not project_name:
+        return tool_error("project_name 不能为空，请提供被审计单位或项目名称。")
+    try:
+        top_k = int(args.get("top_k") or 3)
+    except (TypeError, ValueError):
+        top_k = 3
+    top_k = max(1, min(top_k, 8))
+    try:
+        from tools.energy_audit.imitate_pipeline import result_to_jsonable, run_imitate_report
+    except Exception as e:
+        return tool_error(f"仿写流水线加载失败：{e}")
+    try:
+        result = run_imitate_report(
+            project_name,
+            audit_type=str(args.get("audit_type") or "").strip(),
+            institution_category=str(args.get("institution_category") or "").strip(),
+            specific_type=str(args.get("specific_type") or "").strip(),
+            output_dir=str(args.get("output_dir") or "").strip(),
+            top_k=top_k,
+            refresh_from_pg=True,
+            reference_dir=str(args.get("reference_dir") or "").strip(),
+        )
+    except Exception as e:
+        return tool_error(f"仿写生成报告失败：{e}")
+    payload = result_to_jsonable(result)
+    if not payload.get("ok"):
+        return tool_error(payload.get("error") or "仿写生成报告失败")
+    return tool_result(payload)
+
+
+registry.register(
+    name="energy_audit_imitate_report",
+    toolset="energy_audit",
+    schema=ENERGY_AUDIT_IMITATE_REPORT_SCHEMA,
+    handler=_handle_imitate_report,
+    emoji="📄",
 )
