@@ -218,7 +218,6 @@ native/fts5_cjk/*.so
 # interrupted; consumed by launch-time recovery. Never commit it (was tracked
 # by accident via 3a69e34702, removed in the #72002 salvage).
 .lazy-refresh-incomplete
-
 # Binary editor engine — 185MB, never commit (was tracked by accident twice:
 # f1618be7d and 55f8fdba7). Downloaded/installed by the desktop bootstrap.
 *.exe
@@ -257,3 +256,7 @@ $tmp
 
 # Per-project energy-audit runtime config (Yantai court, etc.)
 /configs/
+.skills_prompt_snapshot.json
+
+# Disposable profile created by scripts/probe_active_session_exclusivity.py
+.probe-home/
