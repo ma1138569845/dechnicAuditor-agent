@@ -232,9 +232,12 @@ def _format_buildings(buildings: list) -> str:
         return "未找到建筑信息。"
     lines = [f"共 {len(buildings)} 栋建筑：\n"]
     for b in buildings:
+        up = b.get('up_floor')
+        down = b.get('down_floor')
+        floors = (f"地上{int(up)}层" if up else '') + (f"地下{int(down)}层" if down else '')
         lines.append(
-            f"- **{b.get('name', '未命名')}**：{b.get('area', 0)} m²，"
-            f"{b.get('floors', '')}，功能 {b.get('function', '')}"
+            f"- **{b.get('build_name', '未命名')}**：{b.get('build_area', 0)} m²，"
+            f"{floors or b.get('floors', '')}，功能 {b.get('build_func', '')}"
         )
     return "\n".join(lines)
 

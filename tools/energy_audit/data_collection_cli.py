@@ -97,6 +97,38 @@ def detect_anomalies(energy_yearly: List[dict]) -> List[dict]:
     return anomalies
 
 
+def detect_equipment_power_unit_issue(equipment: List[dict]) -> List[dict]:
+    """设备功率单位校验：kW/W 量级合理性检查。
+
+    历史事故：设备清单把 W 写成 kW（40.00 kW×224 面板灯、150 kW×105 电脑、
+    120 kW×20 打印机、120 kW×5 电梯、20 kW×163 云桌面），数值放大 1000 倍。
+    规则：设备类别/名称属于典型小功率设备且功率数值 > 100（kW 级）→ 疑似单位错误。
+    """
+    import re as _re
+    # 灯具/办公设备合理功率远小于 5 kW；电梯/电开水器可到几十 kW（上限 100）
+    TINY_CATS = {'照明', '办公'}
+    TINY_NAMES = ('灯', '电脑', '台式机', '云桌面', '打印机', '复印机', '电开水器')
+    MID_NAMES = ('电梯',)
+    issues = []
+    for eq in equipment or []:
+        name = str(eq.get('name') or '')
+        cat = str(eq.get('category') or '')
+        spec = str(eq.get('spec') or '')
+        m = _re.search(r'([\d.]+)\s*(?:kW|KW|千瓦)', spec + ' ' + name)
+        if not m:
+            continue
+        power = float(m.group(1))
+        is_tiny = (cat in TINY_CATS) or any(k in name for k in TINY_NAMES)
+        is_mid = any(k in name for k in MID_NAMES)
+        if (is_tiny and power > 5) or (is_mid and power > 100):
+            issues.append({
+                'type': '功率单位可疑', '等级': '警告',
+                '设备': name, '规格': spec,
+                '说明': f'功率 {power} kW 对"{name}"明显过大，疑似 W 误写为 kW（放大1000倍），请核对',
+            })
+    return issues
+
+
 def detect_area_mismatch(buildings: List[dict], declared_area: float) -> Optional[str]:
     """检测建筑面积合计 vs 声明总面积是否一致"""
     if not buildings:
@@ -221,6 +253,9 @@ if __name__ == "__main__":
     # 采集
     pg_result = collect_from_pg(project_name)
     anomalies = detect_anomalies(pg_result.get('found', {}).get('energy_yearly', []))
+    # 设备功率单位校验（W/kW 量级）
+    anomalies += detect_equipment_power_unit_issue(
+        pg_result.get('found', {}).get('equipment', []))
 
     # 报告
     report = format_collection_report(pg_result, anomalies)

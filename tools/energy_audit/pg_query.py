@@ -336,31 +336,55 @@ class PgDataQuery:
     # ========== 建筑信息 ==========
 
     def get_institution_build(self, customer_id: int = None) -> List[Dict]:
-        """获取 ts_institution_build 建筑信息。"""
+        """获取 ts_institution_build 建筑信息。
+
+        版本归一规则（与 get_institution_energy 一致）：建筑表同一 build_name
+        并存草稿（is_draft=1, version_code=NULL）+ 多个正式版本（is_draft=0,
+        version_code 非空）。同一 build_name 只返回一条：正式版本优先，
+        version_code 大者优先，无正式版本时草稿兜底。
+        """
         query = """SELECT
-            id, build_name, address, build_year, build_func, build_func_region,
-            other_build_func_region, up_floor, down_floor, build_height, build_face,
-            build_area, use_area, cold_area, heat_area,
-            stru_type, other_stru_type,
-            wallwin_type, other_wallwin_type,
-            wallwarm_type, other_wallwarm_type,
-            warm_material, other_warm,
-            warm_thickness, warm_state,
-            wallwarm_change,
-            cold_source, cold_time, cold_date, cold_terminal_area,
-            heat_source, heat_time, heart_date, heat_terminal_area,
-            air_type, heat_type,
-            water_supply, fire_water_supply, hot_water_supply,
-            energy_system, storey_metrology,
-            is_roomwarm, roomwarm_material, roomwarm_thickness, roomwarm_state, roomwarm_change,
-            build_sunshade, sunshade_thickness, sunshade_install,
-            build_run_time, use_begin_date, use_end_date, garage, garage_area,
-            wallbody_thickness, other_wallbody_thickness
-        FROM ts_institution_build
-        WHERE deleted = 0"""
+            b.id, b.build_name, b.address, b.build_year, b.build_func, b.build_func_region,
+            b.other_build_func_region, b.up_floor, b.down_floor, b.build_height, b.build_face,
+            b.build_area, b.use_area, b.cold_area, b.heat_area,
+            b.stru_type, b.other_stru_type,
+            b.wallwin_type, b.other_wallwin_type,
+            b.wallwarm_type, b.other_wallwarm_type,
+            b.warm_material, b.other_warm,
+            b.warm_thickness, b.warm_state,
+            b.wallwarm_change,
+            b.cold_source, b.cold_time, b.cold_date, b.cold_terminal_area,
+            b.heat_source, b.heat_time, b.heart_date, b.heat_terminal_area,
+            b.air_type, b.heat_type,
+            b.water_supply, b.fire_water_supply, b.hot_water_supply,
+            b.energy_system, b.storey_metrology,
+            b.is_roomwarm, b.roomwarm_material, b.roomwarm_thickness, b.roomwarm_state, b.roomwarm_change,
+            b.build_sunshade, b.sunshade_thickness, b.sunshade_install,
+            b.build_run_time, b.use_begin_date, b.use_end_date, b.garage, b.garage_area,
+            b.wallbody_thickness, b.other_wallbody_thickness, b.build_img
+        FROM ts_institution_build b
+        WHERE (b.deleted IS NULL OR b.deleted = 0)
+          AND b.id IN (
+              SELECT DISTINCT ON (bb.build_name) bb.id
+              FROM ts_institution_build bb
+              WHERE (bb.deleted IS NULL OR bb.deleted = 0)"""
         params = []
         if customer_id:
-            query += " AND customer_id = %s"; params.append(customer_id)
+            query += " AND b.customer_id = %s"; params.append(customer_id)
+        sub_filters = ""
+        sub_params = []
+        if customer_id:
+            sub_filters += " AND bb.customer_id = %s"; sub_params.append(customer_id)
+        query += sub_filters + (
+            # 版本归一：正式版本(is_draft=0)优先，version_code 大者优先，草稿兜底
+            " ORDER BY bb.build_name,"
+            " COALESCE(bb.is_draft, 0) ASC,"
+            " bb.version_code DESC NULLS LAST,"
+            " bb.id DESC"
+            ")"
+            " ORDER BY b.build_name"
+        )
+        params = params + sub_params
         return self._execute(query, tuple(params))
 
     # ========== 设备信息 ==========
@@ -545,18 +569,39 @@ class PgDataQuery:
     # ========== 用能场景 / 计量信息 ==========
 
     def get_institution_scene(self, customer_id: int = None) -> List[Dict]:
-        """ts_institution_scene — 用能场景、计量与供暖信息。"""
-        query = """SELECT id, year, mode, split_measure, split_payment,
-                    energy_metering, separate_meter, heat_area, heat_day, heat_price,
-                    heat_pay_type, work_staff,
-                    light_socket_meter, power_meter, aircon_meter, special_meter,
-                    other_special_meter, construction_elec_meter, construction_water_meter
-                 FROM ts_institution_scene
-                 WHERE deleted = 0"""
+        """ts_institution_scene — 用能场景、计量与供暖信息。
+
+        版本归一：同一 (year) 并存草稿/多个正式版本，正式版本优先、
+        version_code 大者优先、草稿兜底（与 energy/build 取数规则一致）。
+        """
+        query = """SELECT
+                    s.id, s.year, s.mode, s.split_measure, s.split_payment,
+                    s.energy_metering, s.separate_meter, s.heat_area, s.heat_day, s.heat_price,
+                    s.heat_pay_type, s.work_staff,
+                    s.light_socket_meter, s.power_meter, s.aircon_meter, s.special_meter,
+                    s.other_special_meter, s.construction_elec_meter, s.construction_water_meter
+                 FROM ts_institution_scene s
+                 WHERE (s.deleted IS NULL OR s.deleted = 0)
+                   AND s.id IN (
+                       SELECT DISTINCT ON (ss.year) ss.id
+                       FROM ts_institution_scene ss
+                       WHERE (ss.deleted IS NULL OR ss.deleted = 0)"""
         params = []
         if customer_id:
-            query += " AND customer_id = %s"; params.append(customer_id)
-        query += " ORDER BY year DESC"
+            query += " AND s.customer_id = %s"; params.append(customer_id)
+        sub_filters = ""
+        sub_params = []
+        if customer_id:
+            sub_filters += " AND ss.customer_id = %s"; sub_params.append(customer_id)
+        query += sub_filters + (
+            " ORDER BY ss.year,"
+            " COALESCE(ss.is_draft, 0) ASC,"
+            " ss.version_code DESC NULLS LAST,"
+            " ss.id DESC"
+            ")"
+            " ORDER BY s.year DESC"
+        )
+        params = params + sub_params
         return self._execute(query, tuple(params))
 
     def get_institution_scene_mode(self, customer_id: int = None,
@@ -615,23 +660,46 @@ class PgDataQuery:
             customer_id: 所属客户 ID。
             data_type: 1=电表，2=水表；不填则返回全部。
             year: 统计年份；不填则返回全部。
+
+        版本归一：同一 (data_type, statistical_year) 并存草稿/多个正式版本，
+        正式版本优先、version_code 大者优先、草稿兜底。
         """
-        query = """SELECT id, statistical_year, has_other_meter, meter_count,
-                    sub_metering, other_metering_scenario, other_situation,
-                    customer_id, data_type, measured_depth, month_measured,
-                    month_files, year_measured, year_files, device_img,
-                    kitchen_water, year_water, year_water_value,
-                    create_time, update_time
-                 FROM ts_institution_energy_meter
-                 WHERE deleted = 0"""
+        query = """SELECT m.id, m.statistical_year, m.has_other_meter, m.meter_count,
+                    m.sub_metering, m.other_metering_scenario, m.other_situation,
+                    m.customer_id, m.data_type, m.measured_depth, m.month_measured,
+                    m.month_files, m.year_measured, m.year_files, m.device_img,
+                    m.kitchen_water, m.year_water, m.year_water_value,
+                    m.create_time, m.update_time
+                 FROM ts_institution_energy_meter m
+                 WHERE (m.deleted IS NULL OR m.deleted = 0)
+                   AND m.id IN (
+                       SELECT DISTINCT ON (mm.data_type, mm.statistical_year) mm.id
+                       FROM ts_institution_energy_meter mm
+                       WHERE (mm.deleted IS NULL OR mm.deleted = 0)"""
         params = []
         if customer_id:
-            query += " AND customer_id = %s"; params.append(customer_id)
+            query += " AND m.customer_id = %s"; params.append(customer_id)
         if data_type is not None:
-            query += " AND data_type = %s"; params.append(data_type)
+            query += " AND m.data_type = %s"; params.append(data_type)
         if year is not None:
-            query += " AND statistical_year = %s"; params.append(year)
-        query += " ORDER BY statistical_year DESC, data_type, id"
+            query += " AND m.statistical_year = %s"; params.append(year)
+        sub_filters = ""
+        sub_params = []
+        if customer_id:
+            sub_filters += " AND mm.customer_id = %s"; sub_params.append(customer_id)
+        if data_type is not None:
+            sub_filters += " AND mm.data_type = %s"; sub_params.append(data_type)
+        if year is not None:
+            sub_filters += " AND mm.statistical_year = %s"; sub_params.append(year)
+        query += sub_filters + (
+            " ORDER BY mm.data_type, mm.statistical_year,"
+            " COALESCE(mm.is_draft, 0) ASC,"
+            " mm.version_code DESC NULLS LAST,"
+            " mm.id DESC"
+            ")"
+            " ORDER BY m.statistical_year DESC, m.data_type, m.id"
+        )
+        params = params + sub_params
         return self._execute(query, tuple(params))
 
     # ========== 节能管理信息 ==========

@@ -19,7 +19,7 @@ from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
     Equipment, MeteringInfo, ManagementInfo, EnergySaving, SharedOfficeUnit,
-    TeamMember, CoopMember,
+    TeamMember, CoopMember, ImageItem,
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
 )
@@ -28,6 +28,9 @@ from tools.energy_audit.institution_classifier import classify_institution
 from tools.energy_audit.file_resolver import (
     enrich_energy_saving_images,
     enrich_management_info,
+    parse_file_ids,
+    resolve_attachment_urls,
+    download_attachment_images,
 )
 
 # ts_customer_info.field_type → ProjectBase.unit_type（审计类型）
@@ -363,6 +366,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'end_date': _date(b.get('use_end_date')),
             'garage': _yn(b.get('garage')),
             'garage_area': _num(b.get('garage_area'), 0.0),
+            'build_img': b.get('build_img') or '',
         })
 
     if buildings:
@@ -599,6 +603,32 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     pg_institution_category = classified_cat if classified_cat != '未分类' else ''
     pg_specific_type = classified_spec if classified_spec != '其他' else ''
 
+    # ---- 图片采集：建筑外观（build_img）/ 计量器具照片（device_img）----
+    # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
+    # base_url 未配置时返回空列表，不阻塞采集（照片缺失由 photo_manager 检查提示）。
+    photo_items: List[ImageItem] = []
+    _photo_id_map = []  # [(file_id, category)]
+    for b in pg_result['found'].get('buildings', []) or []:
+        for fid in parse_file_ids(b.get('build_img') or ''):
+            _photo_id_map.append((fid, '建筑外观'))
+    for mr in pg_result['found'].get('energy_meter', []) or []:
+        for fid in parse_file_ids(mr.get('device_img') or ''):
+            _photo_id_map.append((fid, '计量器具'))
+    if _photo_id_map:
+        _atts = resolve_attachment_urls([fid for fid, _ in _photo_id_map])
+        _path_by_id = {}
+        for att in _atts:
+            for pth in download_attachment_images([att]):
+                _path_by_id[att['group_id']] = pth
+        for fid, cat in _photo_id_map:
+            pth = _path_by_id.get(fid)
+            if pth:
+                photo_items.append(ImageItem(path=pth, category=cat))
+    if photo_items:
+        print(f"[datacollection v2] 已采集照片 {len(photo_items)} 张（建筑外观/计量器具）")
+    elif _photo_id_map:
+        print("[datacollection v2] 照片未采集：file base_url 未配置或附件下载失败，缺失项由 photo_manager 检查提示")
+
     proj = AuditProject(
         base=ProjectBase(
             name=f"{project_name}能源审计",
@@ -720,6 +750,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                     for m in pg_result['found'].get('team_members', [])],
         cooperation=[_dataclass_from_dict(CoopMember, c)
                      for c in pg_result['found'].get('audited_users', [])],
+        images=photo_items,
     )
 
     # 解析节能管理信息中的附件文件 ID（management_files / award_certificate）
