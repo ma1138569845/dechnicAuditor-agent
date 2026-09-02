@@ -17,10 +17,21 @@ def check_completeness(report_data: dict) -> Tuple[bool, List[str]]:
     cover = report_data.get('cover', {})
     if not cover.get('title'): missing.append("封面 → 报告标题")
 
-    # 三张表
+    # 三张表（审计基本信息）
     tabs = report_data.get('audit_info_tables', {})
-    if not tabs.get('institution', {}).get('name'): missing.append("表1 → 被审计单位名称")
-    if not tabs.get('team_members'): missing.append("表2 → 审计组人员名单（当前显示【待补充】）")
+    inst = tabs.get('institution', {})
+    if not inst.get('name'): missing.append("表1 → 审计机构名称")
+    for field, label in (('address', '审计机构详细地址'), ('contact', '审计机构负责人'), ('phone', '审计机构联系方式')):
+        val = str(inst.get(field, '') or '').strip()
+        if not val or val in ('【待补充】', '待补充'):
+            missing.append(f"表1 → 审计机构信息表：{label}（缺失或占位）")
+    team = tabs.get('team_members') or []
+    # 逐人检查：名单为空或任一人姓名为空/占位，都视为未提供
+    if not team or not any(str(m.get('name', '') or '').strip() not in ('', '【待补充】', '待补充') for m in team):
+        missing.append("表2 → 审计组人员名单（当前显示【待补充】）")
+    coop = tabs.get('cooperation') or []
+    if not coop or not any(str(c.get('name', '') or '').strip() not in ('', '【待补充】', '待补充') for c in coop):
+        missing.append("表3 → 审计配合人员名单（当前显示【待补充】）")
 
     # 第1章
     ch1 = report_data.get('chapter1', {})

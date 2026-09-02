@@ -19,6 +19,7 @@ from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
     Equipment, MeteringInfo, ManagementInfo, EnergySaving, SharedOfficeUnit,
+    TeamMember, CoopMember,
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
 )
@@ -238,6 +239,27 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'audit_template': proj.get('audit_template', ''),
     })
 
+    # ---- 1.3 审计机构信息（能源审计机构信息表数据源: ts_register_info）----
+    # dept_name/address 表内有值直接用；缺失时由用户提问提供（不静默【待补充】）。
+    # contact/mobile 仅作提问预填参考（audit_org_contact_hint/audit_org_phone_hint）。
+    audit_org = {}
+    try:
+        regs = pg.get_register_info(dept_name=proj.get('audit_dept_name', '')) or []
+        if regs:
+            reg = regs[0]
+            audit_org = {
+                'audit_org_name': reg.get('dept_name', ''),
+                'audit_org_address': reg.get('address', ''),
+                'audit_org_contact_hint': reg.get('contact', ''),
+                'audit_org_phone_hint': reg.get('mobile', ''),
+            }
+    except Exception:
+        audit_org = {}
+    # 兜底：表内无注册记录时，机构名称取项目表的 audit_dept_name
+    if not audit_org.get('audit_org_name'):
+        audit_org['audit_org_name'] = proj.get('audit_dept_name', '')
+    result['found']['project'].update(audit_org)
+
     # ---- 1.5 客户信息 ----
     if customer_id:
         cust = pg.get_customer_info(customer_id=customer_id)
@@ -425,15 +447,20 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         result['found']['equipment'] = equipment
 
     # ---- 5. 人员 ----
-    audit_users = [{'name': r.get('name'), 'position': r.get('position'),
-                    'degree': r.get('degree'), 'qualification': r.get('qualifications'),
+    # 字段映射（对齐 report_generator 取值键 role/name/education/certification/major）：
+    # ts_project_audit_user: position(组内职务)→role, degree→education, qualifications→certification
+    audit_users = [{'role': r.get('position'), 'name': r.get('name'),
+                    'education': r.get('degree'), 'certification': r.get('qualifications'),
                     'major': r.get('major')}
                    for r in pg.get_project_audit_users(project_id=result['project_id'])]
     if audit_users:
         result['found']['team_members'] = audit_users
 
-    audited_users = [{'name': r.get('name'), 'position': r.get('position'),
-                      'department': r.get('department')}
+    # ts_project_audited_user: group_position(组内职务)→role, department→dept,
+    #                          sex→gender, position(职务)→position
+    audited_users = [{'role': r.get('group_position'), 'dept': r.get('department'),
+                      'name': r.get('name'), 'gender': r.get('sex'),
+                      'position': r.get('position')}
                      for r in pg.get_project_audited_users(project_id=result['project_id'])]
     if audited_users:
         result['found']['audited_users'] = audited_users
@@ -614,6 +641,28 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                ('PG', pg_project),
                                ('Excel', excel_data),
                                ('default', '同方德诚（山东）科技股份公司')),
+            # 审计机构信息（能源审计机构信息表）：name/address 来自 ts_register_info（PG），
+            # 负责人/联系方式由用户提问提供（Excel 中可预填），表内 contact/mobile 作预填参考。
+            audit_org_name=sr.resolve('audit_org_name',
+                                      ('PG', pg_project),
+                                      ('Excel', excel_data),
+                                      ('default', '')),
+            audit_org_address=sr.resolve('audit_org_address',
+                                         ('PG', pg_project),
+                                         ('Excel', excel_data),
+                                         ('default', '')),
+            audit_org_contact=sr.resolve('audit_org_contact',
+                                         ('Excel', excel_data),
+                                         ('default', '')),
+            audit_org_phone=sr.resolve('audit_org_phone',
+                                       ('Excel', excel_data),
+                                       ('default', '')),
+            audit_org_contact_hint=sr.resolve('audit_org_contact_hint',
+                                              ('PG', pg_project),
+                                              ('default', '')),
+            audit_org_phone_hint=sr.resolve('audit_org_phone_hint',
+                                            ('PG', pg_project),
+                                            ('default', '')),
             building_area=sr.resolve('building_area',
                                      ('PG', pg_building_area),
                                      ('Excel', excel_data),
@@ -667,6 +716,10 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
         energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
+        audit_team=[_dataclass_from_dict(TeamMember, m)
+                    for m in pg_result['found'].get('team_members', [])],
+        cooperation=[_dataclass_from_dict(CoopMember, c)
+                     for c in pg_result['found'].get('audited_users', [])],
     )
 
     # 解析节能管理信息中的附件文件 ID（management_files / award_certificate）

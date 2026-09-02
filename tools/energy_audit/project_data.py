@@ -63,6 +63,15 @@ class ProjectBase:
     department_count: str = ""         # 内设机构/科室 ex: "23个临床科室、7个医技科室"
     project_manager: str = ""          # 审计项目负责人
     auditor: str = ""                  # 审计机构名称
+    # ---- 审计机构信息（能源审计机构信息表数据源）----
+    # 来源: ts_register_info（dept_name/address）；负责人/联系方式由用户提问提供，
+    # 表内 contact/mobile 仅作提问预填参考（audit_org_*_hint）。
+    audit_org_name: str = ""           # 审计机构名称 — ts_register_info.dept_name
+    audit_org_address: str = ""        # 审计机构详细地址 — ts_register_info.address（缺失→向用户提问）
+    audit_org_contact: str = ""        # 审计机构负责人（用户提问提供，不静默【待补充】）
+    audit_org_phone: str = ""          # 审计机构联系方式（用户提问提供，不静默【待补充】）
+    audit_org_contact_hint: str = ""   # ts_register_info.contact（提问预填参考）
+    audit_org_phone_hint: str = ""     # ts_register_info.mobile（提问预填参考）
     report_date: str = ""              # 报告日期 ex: "2026年6月"
     province: str = "山东"             # 所在省份（用于规章检索与同类报告匹配）
     city: str = ""                     # 地市，如 烟台
@@ -330,6 +339,33 @@ class IndoorEnv:
 
 
 @dataclass
+class TeamMember:
+    """审计组人员（能源审计组人员名单）
+
+    对齐 ts_project_audit_user（position 在报告"组内职务"列展示，
+    存储审计负责人/审计联络人/成员等职务）。
+    """
+    role: str = ""                      # 组内职务 — position（审计负责人/审计联络人/成员）
+    name: str = ""                      # 姓名
+    education: str = ""                 # 学历 — degree
+    certification: str = ""             # 所获资质 — qualifications
+    major: str = ""                     # 专业
+
+
+@dataclass
+class CoopMember:
+    """被审计单位配合人员（能源审计配合人员名单）
+
+    对齐 ts_project_audited_user（group_position=组内职务，position=职务）。
+    """
+    role: str = ""                      # 组内职务 — group_position（组长/联系人等）
+    dept: str = ""                      # 部门 — department
+    name: str = ""                      # 姓名
+    gender: str = ""                    # 性别 — sex
+    position: str = ""                  # 职务 — position（主任/科长等）
+
+
+@dataclass
 class ImageItem:
     """项目照片（带分类，供报告章节路由与照片完整性校验）
 
@@ -358,6 +394,8 @@ class AuditProject:
     shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）
+    audit_team: List[TeamMember] = field(default_factory=list)      # 审计组人员（ts_project_audit_user）
+    cooperation: List[CoopMember] = field(default_factory=list)     # 配合人员（ts_project_audited_user）
     indoor_env: IndoorEnv = field(default_factory=IndoorEnv)
     images: List[ImageItem] = field(default_factory=list)  # 照片列表（带分类）
     data_sources: Dict[str, str] = field(default_factory=dict)  # 字段→来源追溯

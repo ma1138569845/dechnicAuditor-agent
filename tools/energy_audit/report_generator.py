@@ -3214,12 +3214,25 @@ class ReportGenerator:
                 'report_date': b.report_date or datetime.now().strftime('%Y年%m月'),
             },
             'audit_info_tables': {
+                # 能源审计机构信息表：机构名称/详细地址来自 ts_register_info（采集进 base），
+                # 负责人/联系方式由用户提问提供（base.audit_org_contact/audit_org_phone）；
+                # 表内 contact/mobile 仅作预填参考。缺失时保留空串，由 V1/V3 校验拦截提示。
                 'institution': {
-                    'name': b.unit_name, 'address': b.address,
-                    'contact': b.contact_person, 'phone': b.contact_phone,
+                    'name': b.audit_org_name or b.auditor,
+                    'address': b.audit_org_address,
+                    'contact': b.audit_org_contact,
+                    'phone': b.audit_org_phone,
                 },
-                'team_members': [{'role':'待补充','name':'待补充','education':'待补充','certification':'待补充','major':'待补充'}],
-                'cooperation': [{'role':'配合人员','dept':b.unit_name,'name':b.contact_person,'gender':'','position':'相关负责人'}],
+                'team_members': [
+                    {'role': m.role, 'name': m.name, 'education': m.education,
+                     'certification': m.certification, 'major': m.major}
+                    for m in project.audit_team
+                ],
+                'cooperation': [
+                    {'role': c.role, 'dept': c.dept, 'name': c.name,
+                     'gender': c.gender, 'position': c.position}
+                    for c in project.cooperation
+                ],
             },
             'chapter1': {
                 'audited_unit_short': b.unit_short or b.unit_name,

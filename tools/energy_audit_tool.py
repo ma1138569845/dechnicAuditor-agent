@@ -75,6 +75,18 @@ def _format_project_summary(result: dict) -> str:
         lines.append(f"- 联系人：{proj.get('contact_person', '')}")
         lines.append(f"- 联系电话：{proj.get('contact_phone', '')}")
         lines.append(f"- 审计部门：{proj.get('auditor', '')}")
+        if proj.get('audit_org_name'):
+            lines.append(f"- 审计机构名称：{proj.get('audit_org_name', '')}")
+        if proj.get('audit_org_address'):
+            lines.append(f"- 审计机构地址：{proj.get('audit_org_address', '')}")
+        if proj.get('audit_org_contact'):
+            lines.append(f"- 审计机构负责人：{proj.get('audit_org_contact', '')}")
+        if proj.get('audit_org_phone'):
+            lines.append(f"- 审计机构联系方式：{proj.get('audit_org_phone', '')}")
+        missing_org = [k for k in ('audit_org_address', 'audit_org_contact', 'audit_org_phone')
+                       if not proj.get(k)]
+        if missing_org:
+            lines.append(f"- ⚠️ 审计机构信息待用户提供：{('、'.join({'audit_org_address': '详细地址', 'audit_org_contact': '负责人', 'audit_org_phone': '联系方式'}[k] for k in missing_org))}")
         if proj.get('audit_year'):
             lines.append(f"- 审计年度：{proj.get('audit_year')}")
         if proj.get('data_year'):
@@ -161,7 +173,7 @@ def _format_project_summary(result: dict) -> str:
     if team:
         lines.append(f"## 审计组成员（{len(team)} 人）")
         for m in team[:10]:
-            lines.append(f"- {m.get('name', '')} / {m.get('position', '')} / {m.get('qualification', '')}")
+            lines.append(f"- {m.get('name', '')} / {m.get('role', '')} / {m.get('certification', '')}")
         if len(team) > 10:
             lines.append(f"- ... 等共 {len(team)} 人")
         lines.append("")
@@ -170,7 +182,7 @@ def _format_project_summary(result: dict) -> str:
     if audited:
         lines.append(f"## 被审计方配合人员（{len(audited)} 人）")
         for m in audited[:10]:
-            lines.append(f"- {m.get('name', '')} / {m.get('position', '')} / {m.get('department', '')}")
+            lines.append(f"- {m.get('name', '')} / {m.get('role', '')} / {m.get('dept', '')} / {m.get('position', '')}")
         if len(audited) > 10:
             lines.append(f"- ... 等共 {len(audited)} 人")
         lines.append("")

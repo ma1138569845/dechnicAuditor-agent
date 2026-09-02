@@ -45,8 +45,14 @@ def check_report(doc_path: str) -> dict:
     elif len(tables) >= 5:
         warnings.append(f"✅ 表格数量正常 ({len(tables)}张)")
 
-    # 3. 残留占位符
+    # 3. 残留占位符（段落 + 表格单元格都扫；表内【待补充】同样算残留）
     full_text = '\n'.join(paragraphs)
+    try:
+        _cell_texts = [cell.text for t in doc.tables for row in t.rows for cell in row.cells]
+        if _cell_texts:
+            full_text += '\n' + '\n'.join(_cell_texts)
+    except Exception:
+        pass
     placeholders = []
     for p in [
         ('【待补充】', '待补充'),

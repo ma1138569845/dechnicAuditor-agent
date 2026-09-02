@@ -499,6 +499,24 @@ class PgDataQuery:
             query += " AND project_id = %s"; params.append(project_id)
         return self._execute(query, tuple(params))
 
+    def get_register_info(self, credit_code: str = None, dept_name: str = None) -> List[Dict]:
+        """ts_register_info — 注册信息（审计机构信息源）。
+
+        按统一信用代码精确匹配或单位名称模糊匹配（ILIKE），
+        返回 dept_name/address/contact/mobile 供"能源审计机构信息表"使用：
+        - dept_name（单位名称）/ address（详细地址）：表内有值直接用，缺失由用户提问提供
+        - contact/mobile：仅作提问预填参考，不作为最终值
+        """
+        query = """SELECT id, credit_code, dept_name, address, contact, mobile, status
+                 FROM ts_register_info WHERE deleted = 0"""
+        params = []
+        if credit_code:
+            query += " AND credit_code = %s"; params.append(credit_code)
+        if dept_name:
+            query += " AND dept_name ILIKE %s"; params.append(f"%{dept_name}%")
+        query += " ORDER BY status ASC, update_time DESC"
+        return self._execute(query, tuple(params))
+
     # ========== 用能场景 / 计量信息 ==========
 
     def get_institution_scene(self, customer_id: int = None) -> List[Dict]:
