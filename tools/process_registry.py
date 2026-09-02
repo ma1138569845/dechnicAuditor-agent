@@ -43,6 +43,10 @@ import uuid
 from pathlib import Path
 
 _IS_WINDOWS = platform.system() == "Windows"
+# systemd transient scopes exist only on Linux. Gate every scope-path branch
+# on this constant (not merely "not Windows") so macOS and other POSIX
+# platforms provably never touch systemd code (#70716 cross-platform audit).
+_IS_LINUX = platform.system() == "Linux"
 from tools.environments.local import _find_shell, _resolve_safe_cwd, _sanitize_subprocess_env
 from hermes_cli._subprocess_compat import windows_hide_flags
 from dataclasses import dataclass, field
@@ -215,7 +219,7 @@ def _systemd_run_user_scope_available() -> bool:
             return False
 
         available = False
-        if not _IS_WINDOWS:
+        if _IS_LINUX:
             try:
                 import shutil
 
@@ -1098,7 +1102,7 @@ class ProcessRegistry:
                 # Wrap the PTY command in a systemd scope so interactive
                 # executors get their own cgroup, same as pipe mode.
                 pty_in_supervised_gateway = (
-                    not _IS_WINDOWS and _is_supervised_gateway_process()
+                    _IS_LINUX and _is_supervised_gateway_process()
                 )
                 pty_use_systemd_scope = (
                     pty_in_supervised_gateway and _systemd_run_user_scope_available()
@@ -1176,7 +1180,7 @@ class ProcessRegistry:
         # cgroup (and the messaging control plane with it). This applies to
         # both pipe mode and the PTY path above.
         shell_argv = [user_shell, "-lic", f"set +m; {safe_command}"]
-        in_supervised_gateway = not _IS_WINDOWS and _is_supervised_gateway_process()
+        in_supervised_gateway = _IS_LINUX and _is_supervised_gateway_process()
         use_systemd_scope = (
             in_supervised_gateway and _systemd_run_user_scope_available()
         )
@@ -3362,13 +3366,14 @@ def format_process_notification(evt: dict) -> "str | None":
 from tools.registry import registry, tool_error
 
 PROCESS_SCHEMA = {
-    "name": "process",
+    "name": "process_manage",
     # Dieted (#95681): the action enum names the verbs; the description
     # keeps only non-obvious semantics. write-vs-submit is the tool's one
     # real trap (a lone \n on a Windows PTY is not a line terminator) —
     # that teaching gains emphasis rather than losing it.
     "description": (
-        "Manage background processes started with terminal(background=true). "
+        "Poll, wait on, or kill background terminal processes (from "
+        "terminal(background=true)). "
         "poll: status + new output. log: full output, paged. wait: block "
         "until exit or timeout (partial output on timeout). write vs "
         "submit: submit appends Enter — use it to answer prompts; write "
@@ -3483,7 +3488,7 @@ def _handle_process(args, **kw):
 
 
 registry.register(
-    name="process",
+    name="process_manage",
     toolset="terminal",
     schema=PROCESS_SCHEMA,
     handler=_handle_process,
