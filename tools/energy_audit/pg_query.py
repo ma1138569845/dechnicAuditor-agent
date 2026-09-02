@@ -258,6 +258,10 @@ class PgDataQuery:
 
         返回每条主表记录 + 按粒度展开的 12 个月列表，字段与旧单表结构对齐：
         value1..value12 由 ts_institution_energy_data 按 period_code 展开生成。
+
+        版本归一规则：同一 (year, data_type, energy_code) 只返回一条 ——
+        优先取正式版本（is_draft=0 且 version_code 非空，version_code 最大者），
+        无正式版本时取草稿兜底；草稿与正式版本并存时不再重复返回。
         """
         query = """
             SELECT m.id, m.year, m.data_type, m.energy_code, m.energy_name,
@@ -268,7 +272,11 @@ class PgDataQuery:
                    d.period_code, d.energy_value
             FROM ts_institution_energy_main m
             LEFT JOIN ts_institution_energy_data d ON d.main_id = m.id
-            WHERE (m.deleted IS NULL OR m.deleted = 0)"""
+            WHERE (m.deleted IS NULL OR m.deleted = 0)
+              AND m.id IN (
+                  SELECT DISTINCT ON (mm.year, mm.data_type, mm.energy_code) mm.id
+                  FROM ts_institution_energy_main mm
+                  WHERE (mm.deleted IS NULL OR mm.deleted = 0)"""
         params = []
         if customer_id:
             query += " AND m.customer_id = %s"; params.append(customer_id)
@@ -276,7 +284,24 @@ class PgDataQuery:
             query += " AND m.year = %s"; params.append(year)
         if data_type is not None:
             query += " AND m.data_type = %s"; params.append(data_type)
-        query += " ORDER BY m.year, m.data_type, m.energy_code, d.period_code"
+        # 子查询镜像同样过滤条件（版本归一：正式版本优先，版本号大者优先，草稿兜底）
+        sub_filters = ""
+        sub_params = []
+        if customer_id:
+            sub_filters += " AND mm.customer_id = %s"; sub_params.append(customer_id)
+        if year:
+            sub_filters += " AND mm.year = %s"; sub_params.append(year)
+        if data_type is not None:
+            sub_filters += " AND mm.data_type = %s"; sub_params.append(data_type)
+        query += sub_filters + (
+            " ORDER BY mm.year, mm.data_type, mm.energy_code,"
+            " COALESCE(mm.is_draft, 0) ASC,"
+            " mm.version_code DESC NULLS LAST,"
+            " mm.id DESC"
+            ")"
+            " ORDER BY m.year, m.data_type, m.energy_code, d.period_code"
+        )
+        params = params + sub_params
 
         rows = self._execute(query, tuple(params))
 
