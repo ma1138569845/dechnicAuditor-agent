@@ -270,25 +270,45 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'audit_template': proj.get('audit_template', ''),
     })
 
-    # ---- 1.3 审计机构信息（能源审计机构信息表数据源: ts_register_info）----
-    # dept_name/address 表内有值直接用；缺失时由用户提问提供（不静默【待补充】）。
-    # contact/mobile 仅作提问预填参考（audit_org_contact_hint/audit_org_phone_hint）。
+    # ---- 1.3 审计机构信息（能源审计机构信息表数据源: ts_register_info + project 表）----
+    # 机构名称/地址：ts_register_info 表内有值直接用；名称含"测试"字样时过滤，
+    # 取 register_info 中同品牌（德诚）不含"测试"的最新记录。
+    # 负责人/联系方式：project 表 audit_dept_person/audit_dept_tel 直接采用（用户确认 DB 数据为准），
+    # register_info 的 contact/mobile 仅作提问预填参考（audit_org_contact_hint/audit_org_phone_hint）。
     audit_org = {}
     try:
         regs = pg.get_register_info(dept_name=proj.get('audit_dept_name', '')) or []
         if regs:
             reg = regs[0]
-            audit_org = {
-                'audit_org_name': reg.get('dept_name', ''),
-                'audit_org_address': reg.get('address', ''),
-                'audit_org_contact_hint': reg.get('contact', ''),
-                'audit_org_phone_hint': reg.get('mobile', ''),
-            }
+            if '测试' not in str(reg.get('dept_name', '')):
+                audit_org['audit_org_name'] = reg.get('dept_name', '')
+            audit_org['audit_org_address'] = reg.get('address', '')
+            audit_org['audit_org_contact_hint'] = reg.get('contact', '')
+            audit_org['audit_org_phone_hint'] = reg.get('mobile', '')
+        if not audit_org.get('audit_org_name'):
+            # 名称含"测试"或未查到：取 register_info 中同品牌（德诚）不含"测试"的最新记录
+            try:
+                regs_all = pg.get_register_info(dept_name='德诚') or []
+                for r in regs_all:
+                    if r.get('dept_name') and '测试' not in str(r.get('dept_name')):
+                        audit_org['audit_org_name'] = r.get('dept_name')
+                        if r.get('address'):
+                            audit_org['audit_org_address'] = r.get('address')
+                        if r.get('contact'):
+                            audit_org['audit_org_contact_hint'] = r.get('contact')
+                        if r.get('mobile'):
+                            audit_org['audit_org_phone_hint'] = r.get('mobile')
+                        break
+            except Exception:
+                pass
     except Exception:
         audit_org = {}
-    # 兜底：表内无注册记录时，机构名称取项目表的 audit_dept_name
+    # 兜底：仍无机构名时取项目表 audit_dept_name
     if not audit_org.get('audit_org_name'):
         audit_org['audit_org_name'] = proj.get('audit_dept_name', '')
+    # 审计机构负责人/联系方式：project 表 DB 值直接采用（用户确认）
+    audit_org['audit_org_contact'] = proj.get('audit_dept_person', '')
+    audit_org['audit_org_phone'] = proj.get('audit_dept_tel', '')
     result['found']['project'].update(audit_org)
 
     # ---- 1.5 客户信息 ----
@@ -444,17 +464,21 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             building_total = float(rec.get('building_total_value') or 0)
             unit_total = total
             building_value = building_total if building_total > unit_total else 0
+            # 折标煤系数（实物量记录 dt=1/4/5 统一记录；heat 单位归一 kgce/GJ → tce/GJ）
+            if dt in (1, 4, 5):
+                coeff = rec.get('standard_coal_coefficient')
+                if is_valid_coefficient(coeff):
+                    cval = float(coeff)
+                    if coeff_type == 'heat' and cval > 1:
+                        cval = cval / 1000  # DB 存 kgce/GJ（如 34.12），指标计算用 tce/GJ（0.03412）
+                    yearly_map[year].setdefault('coefficients', {})[coeff_type] = cval
+                    yearly_map[year].setdefault('coefficient_sources', {})[coeff_type] = 'PG'
             if dt == 1:
                 yearly_map[year][field] = total
                 if building_value:
                     yearly_map[year][f'building_{field}'] = building_value
                 if monthly_field and any(v > 0 for v in monthly):
                     yearly_map[year][monthly_field] = monthly
-                # 记录折标煤系数及其来源（仅保存有效值）
-                coeff = rec.get('standard_coal_coefficient')
-                if is_valid_coefficient(coeff):
-                    yearly_map[year].setdefault('coefficients', {})[coeff_type] = float(coeff)
-                    yearly_map[year].setdefault('coefficient_sources', {})[coeff_type] = 'PG'
             elif dt == 2:
                 cost_map = {
                     '电能': 'electricity_cost_wan', '45': 'electricity_cost_wan', '电': 'electricity_cost_wan',
@@ -480,6 +504,10 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             elif dt == 4 and field in ('heating_energy_heat_gj',):
                 # 供热能耗（GJ）：real_value 与 total_value 一致
                 yearly_map[year][field] = total
+            elif dt == 4 and field == 'electricity_kwh':
+                # 供热能耗的电部分：供暖电耗 kWh（供暖循环泵/风机），
+                # 计算非供暖能耗/常规电耗时须从总电量中剔除
+                yearly_map[year]['heating_energy_kwh'] = total
             elif dt == 5 and field == 'petrol_kg':
                 # 交通能耗：DB 存吨（t），统一换算为 kg
                 yearly_map[year][field] = round(total * 1000, 2)
@@ -549,8 +577,15 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             result['found']['shared_offices'] = shared_offices
         elif metering['has_shared_office']:
             result['missing'].append('合署办公明细（ts_institution_scene_mode 无记录）')
+        heat_missing = []
+        if not scene.get('heat_area'):
+            heat_missing.append('供热面积')
         if not scene.get('heat_day'):
-            result['missing'].append('供暖信息（供热面积/供热天数/热价未记录）')
+            heat_missing.append('供热天数')
+        if not scene.get('heat_price'):
+            heat_missing.append('热价')
+        if heat_missing:
+            result['missing'].append(f"供暖信息（{'/'.join(heat_missing)}未记录）")
 
     # ---- 6.5 表具计量信息 ----
     meters = pg.get_energy_meter(customer_id=customer_id)
@@ -731,9 +766,11 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                          ('Excel', excel_data),
                                          ('default', '')),
             audit_org_contact=sr.resolve('audit_org_contact',
+                                         ('PG', pg_project),
                                          ('Excel', excel_data),
                                          ('default', '')),
             audit_org_phone=sr.resolve('audit_org_phone',
+                                       ('PG', pg_project),
                                        ('Excel', excel_data),
                                        ('default', '')),
             audit_org_contact_hint=sr.resolve('audit_org_contact_hint',

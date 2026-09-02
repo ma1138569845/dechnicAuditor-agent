@@ -191,6 +191,7 @@ class PgDataQuery:
         """
         query = """SELECT id, audited_name, audited_person, audited_tel,
                     commission_person, commission_tel, audit_dept_name,
+                    audit_dept_person, audit_dept_tel,
                     audit_year, reference_year, start_time, end_time,
                     status, customer_id, remark, energy_codes, audit_template
                  FROM ts_institution_project WHERE (deleted IS NULL OR deleted = 0)"""
@@ -588,21 +589,24 @@ class PgDataQuery:
         return self._execute(query, tuple(params))
 
     def get_register_info(self, credit_code: str = None, dept_name: str = None) -> List[Dict]:
-        """ts_register_info — 注册信息（审计机构信息源）。
+        """ts_register_dept — 注册单位表（审计机构信息源）。
 
         按统一信用代码精确匹配或单位名称模糊匹配（ILIKE），
         返回 dept_name/address/contact/mobile 供"能源审计机构信息表"使用：
         - dept_name（单位名称）/ address（详细地址）：表内有值直接用，缺失由用户提问提供
         - contact/mobile：仅作提问预填参考，不作为最终值
+
+        注：审计机构数据源为 ts_register_dept（注册单位表），
+        不是 ts_register_info（被审计单位注册申请表）。
         """
-        query = """SELECT id, credit_code, dept_name, address, contact, mobile, status
-                 FROM ts_register_info WHERE deleted = 0"""
+        query = """SELECT id, credit_code, dept_name, address, contact, mobile
+                 FROM ts_register_dept WHERE (deleted IS NULL OR deleted = 0)"""
         params = []
         if credit_code:
             query += " AND credit_code = %s"; params.append(credit_code)
         if dept_name:
             query += " AND dept_name ILIKE %s"; params.append(f"%{dept_name}%")
-        query += " ORDER BY status ASC, update_time DESC"
+        query += " ORDER BY update_time DESC"
         return self._execute(query, tuple(params))
 
     # ========== 用能场景 / 计量信息 ==========

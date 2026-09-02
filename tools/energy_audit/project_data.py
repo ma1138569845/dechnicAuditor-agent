@@ -174,6 +174,7 @@ class EnergyYearly:
     electricity_kwh: float = 0
     water_m3: float = 0
     natural_gas_m3: float = 0
+    heating_energy_kwh: float = 0  # 供暖电耗 kWh（供暖循环泵/风机，dt=4 挂电记录；须从总电量剔除）
     heating_energy_heat_gj: float = 0
     petrol_kg: float = 0
     diesel_kg: float = 0

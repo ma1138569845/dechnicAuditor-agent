@@ -129,6 +129,31 @@ def detect_equipment_power_unit_issue(equipment: List[dict]) -> List[dict]:
     return issues
 
 
+def detect_heating_electricity_missing(pg_result: dict) -> List[dict]:
+    """供暖电耗缺失检测：项目有供暖（热力 GJ/供暖费/供暖方式）但 DB 无供暖电耗记录时提示。
+
+    依据 chapter5-indicators.md 口径铁律：非供暖能耗/常规电耗须剔除供暖电耗
+    （供暖循环泵/风机），单独计量缺失时由用户提供或按循环泵测算，禁止用 0 代入。
+    """
+    found = pg_result.get('found', {})
+    energy = found.get('energy_yearly', []) or []
+    metering = found.get('metering', {}) or {}
+    has_heating = bool(
+        any((e.get('heating_energy_heat_gj') or 0) > 0 or (e.get('heating_cost_wan') or 0) > 0
+            for e in energy)
+    ) or bool(metering.get('heat_pay_type') or metering.get('heat_price'))
+    if not has_heating:
+        return []
+    years_missing = [e.get('year') for e in energy if not (e.get('heating_energy_kwh') or 0) > 0]
+    if not years_missing:
+        return []
+    return [{
+        'type': '供暖电耗缺失', '等级': '提示',
+        '说明': (f"{'、'.join(str(y) for y in years_missing)}年未在DB采集到供暖电耗（供暖循环泵/风机），"
+                 "计算单位建筑面积非供暖能耗与常规电耗前，须由用户提供或按供暖期循环泵测算，禁止用 0 代入"),
+    }]
+
+
 def detect_area_mismatch(buildings: List[dict], declared_area: float) -> Optional[str]:
     """检测建筑面积合计 vs 声明总面积是否一致"""
     if not buildings:
@@ -257,6 +282,7 @@ if __name__ == "__main__":
     # 设备功率单位校验（W/kW 量级）
     anomalies += detect_equipment_power_unit_issue(
         pg_result.get('found', {}).get('equipment', []))
+    anomalies += detect_heating_electricity_missing(pg_result)
 
     # 报告
     report = format_collection_report(pg_result, anomalies)

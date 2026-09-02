@@ -349,12 +349,11 @@ def test_yearly_energy_data_uses_persisted_coefficients():
     )
     expected = (
         100000 * 0.15 / 1000 +
-        5000 * 0.3 / 1000 +
         2000 * 1.4 / 1000 +
         100 * 0.04 +
         300 * 1.5 / 1000 +
         200 * 1.5 / 1000
-    )
+    )  # 口径：水不折算标准煤（DB37/T 2672-2019 附录B），不计入综合能耗
     assert yd.total_energy_tce == pytest.approx(round(expected, 4))
 
 
@@ -404,10 +403,9 @@ def test_compute_project_indicators_uses_persisted_coefficients(monkeypatch):
     total_kgce = result['yearly'][0]['per_capita_energy']['total_kgce']
     expected = (
         100000 * 0.15 +
-        5000 * 0.3 +
         2000 * 1.4 +
         100 * 1000 * 0.04 +
         300 * 1.5 +
         200 * 1.5
-    )
+    )  # 口径：水不折算标准煤（DB37/T 2672-2019 附录B），不计入综合能耗
     assert total_kgce == pytest.approx(expected)

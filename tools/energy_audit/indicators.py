@@ -55,10 +55,13 @@ _DEFAULT_BENCHMARKS = {
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
-    'government': {  # DB37/T 2672-2019（山东寒冷地区口径，两份交付报告互证：烟台法院正式版+岚山财政局报告）
+    'government': {  # DB37/T 2672-2019（标准原文已核验 2026-09-02；烟台法院=市级以下+A区）
         'unit_area_non_heating': (20.0, 11.9, 6.5),
         'unit_area_elec': (67.4, 39.5, 20),
         'per_capita_energy': (1197.8, 781.0, 453.7),
+        # 表2 单位采暖建筑面积供暖能耗（不分机构等级，按供暖类型）：
+        # 市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
+        'unit_area_heating': (12.7, 11.1, 8.3),  # 默认市政集中供暖（按热计量）口径
         # 用水: DB37/T 4452-2021, 机关
         'water_per_person': (10, 25, 0),        # 先进值, 通用值（约束值）, — m³/(人·a)
         'standard_name': 'DB37/T 2672-2019《党政机关能源消耗定额标准》',
@@ -330,10 +333,12 @@ class YearlyEnergyData:
 
     @property
     def total_energy_tce(self) -> float:
-        """综合能耗 tce（优先使用持久化折标系数，否则 DB / 默认）"""
+        """综合能耗 tce（优先使用持久化折标系数，否则 DB / 默认）
+
+        口径（DB37/T 2672-2019 附录B）：水不折算标准煤，不计入综合能耗。
+        """
         tce = 0
         tce += self.electricity_kwh * self.get_coefficient('electricity') / 1000
-        tce += self.water_m3 * self.get_coefficient('water') / 1000
         tce += self.natural_gas_m3 * self.get_coefficient('natural_gas') / 1000
         tce += self.heating_energy_heat * self.get_coefficient('heat')
         tce += self.transportation_petrol_kg * self.get_coefficient('gasoline') / 1000
@@ -494,6 +499,53 @@ def calc_unit_area_electricity(
     }
 
 
+def calc_unit_area_heating_energy(
+    data: YearlyEnergyData,
+    heating_area: float = 0,
+    institution_type: str = 'government',
+    user_benchmark: Optional[Tuple[float, float, float]] = None,
+) -> dict:
+    """
+    单位采暖建筑面积供暖能耗（DB37/T 2672-2019 表2）
+
+    公式: Egn_m2 = Egn × 1000 / Mgn
+    式中:
+      Egn = 供暖能耗 (tce/a，含热力/供暖电耗/供暖燃气，见 YearlyEnergyData.heating_energy_tce)
+      Mgn = 采暖建筑面积 (m²)；缺失时用建筑面积兜底（2026-09-02 用户确认）
+
+    定额（表2，不分机构等级，按供暖类型）：
+      市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
+      默认取市政集中供暖（按热计量）口径，其他供暖类型由调用方传 user_benchmark 覆盖。
+
+    返回 {kgce_per_m2, heating_energy_kgce, heating_area_m2, benchmark}；
+    采暖建筑面积无效或项目无供暖能耗时返回同结构全 0 + error 字段，供上层安全降级。
+    """
+    area = heating_area if heating_area and heating_area > 0 else data.building_area
+    if area <= 0:
+        return {'kgce_per_m2': 0, 'heating_energy_kgce': 0, 'heating_area_m2': 0,
+                'benchmark': None, 'error': '采暖建筑面积无效'}
+
+    heating_kgce = data.heating_energy_tce * 1000
+    kgce_per_m2 = round(heating_kgce / area, 2)
+
+    benchmark = resolve_benchmark(institution_type, 'unit_area_heating', user_benchmark)
+    if kgce_per_m2 <= benchmark['引导值']:
+        evaluation = '低于引导值（先进水平）'
+    elif kgce_per_m2 <= benchmark['基准值']:
+        evaluation = '低于基准值（合理水平）'
+    elif kgce_per_m2 <= benchmark['约束值']:
+        evaluation = '低于约束值（达标）'
+    else:
+        evaluation = '高于约束值（需整改）'
+
+    return {
+        'kgce_per_m2': kgce_per_m2,
+        'heating_energy_kgce': heating_kgce,
+        'heating_area_m2': area,
+        'benchmark': {**benchmark, '实际值': kgce_per_m2, '评价结果': evaluation},
+    }
+
+
 def calc_per_capita_energy(
     data: YearlyEnergyData,
     institution_type: str = 'medical',
@@ -520,10 +572,9 @@ def calc_per_capita_energy(
         return {'kgce_per_person': 0, 'total_kgce': 0, 'people_count': data.people_count,
                 'benchmark': None, 'error': '用能人数无效'}
 
-    # 综合能耗用持久化折标系数（或三级兜底）计算
+    # 综合能耗用持久化折标系数（或三级兜底）计算；水不折算标准煤（DB37/T 2672-2019 附录B）
     kgce_total = (
         data.electricity_kwh * data.get_coefficient('electricity') +
-        data.water_m3 * data.get_coefficient('water') +
         data.natural_gas_m3 * data.get_coefficient('natural_gas') +
         data.heating_energy_heat * 1000 * data.get_coefficient('heat') +  # GJ→kgce
         data.transportation_petrol_kg * data.get_coefficient('gasoline') +
@@ -782,6 +833,7 @@ def energy_yearly_to_yearly_energy_data(ey, base) -> YearlyEnergyData:
         electricity_kwh=float(ey.electricity_kwh or 0),
         water_m3=float(ey.water_m3 or 0),
         natural_gas_m3=float(ey.natural_gas_m3 or 0),
+        heating_energy_kwh=float(ey.heating_energy_kwh or 0),
         heating_energy_heat=float(ey.heating_energy_heat_gj or 0),
         transportation_petrol_kg=float(ey.petrol_kg or 0),
         transportation_diesel_kg=float(ey.diesel_kg or 0),
@@ -877,6 +929,13 @@ def compute_project_indicators(project) -> dict:
     # 按年份排序
     yd_objects.sort(key=lambda x: x.year)
 
+    # 采暖建筑面积：建筑表 heating_area 聚合，缺失/全 0 时用建筑面积兜底（2026-09-02 用户确认）
+    heating_area = 0.0
+    for b in (project.buildings or []):
+        heating_area += float(getattr(b, 'heating_area', 0) or 0)
+    if heating_area <= 0:
+        heating_area = float(base.building_area or 0)
+
     yearly_results = []
     for yd in yd_objects:
         year_item = {'year': yd.year}
@@ -905,6 +964,14 @@ def compute_project_indicators(project) -> dict:
             institution_type=institution_type,
             bed_count=base.beds_count if institution_type == 'medical' else None,
         )
+
+        # 单位采暖建筑面积供暖能耗（表2 定额；项目有供暖能耗时计算，否则置 None）
+        if yd.heating_energy_tce > 0:
+            year_item['unit_area_heating'] = calc_unit_area_heating_energy(
+                yd, heating_area=heating_area, institution_type=institution_type,
+            )
+        else:
+            year_item['unit_area_heating'] = None
 
         # 原始属性，方便下游消费
         year_item['total_energy_tce'] = yd.total_energy_tce
