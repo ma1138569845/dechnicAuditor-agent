@@ -30,6 +30,7 @@ class PgDataQuery:
     def connect(self):
         """建立数据库连接"""
         self.connection = psycopg2.connect(**self.config)
+        self.connection.autocommit = True  # 必须：否则一次 SQL 异常后事务 aborted，后续查询全报 InFailedSqlTransaction
         self.cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def disconnect(self):
@@ -390,12 +391,40 @@ class PgDataQuery:
     # ========== 设备信息 ==========
 
     def _get_device_by_table(self, table: str, customer_id: int = None) -> List[Dict]:
-        """通用设备表查询（使用 SELECT *，避免硬编码字段与实际表结构不一致）。"""
-        query = f"SELECT * FROM {table} WHERE deleted = 0"
+        """通用设备表查询（使用 SELECT *，避免硬编码字段与实际表结构不一致）。
+
+        设备表与能耗/建筑/场景表同为版本机制（草稿 + PL 正式版本），
+        同一设备（device_name+power+power_unit）并存多版本时按版本归一：
+        正式版本优先、version_code 大者优先、草稿兜底，避免设备清单出现 3 条重复电梯。
+        表无 version_code/is_draft 列时回退全量查询。
+        """
+        base = f"FROM {table} t WHERE t.deleted = 0"
         params = []
         if customer_id:
-            query += " AND customer_id = %s"; params.append(customer_id)
-        return self._execute(query, tuple(params))
+            base += " AND t.customer_id = %s"
+            params.append(customer_id)
+        versioned = f"""
+            SELECT * FROM (
+                SELECT t.*, ROW_NUMBER() OVER (
+                    PARTITION BY COALESCE(t.device_name, 'id_' || t.id::text), t.power, t.power_unit
+                    ORDER BY CASE WHEN t.is_draft = 0 AND t.version_code IS NOT NULL THEN 0 ELSE 1 END,
+                             t.version_code DESC NULLS LAST
+                ) AS _rn
+                {base}
+            ) x WHERE _rn = 1
+        """
+        try:
+            rows = self._execute(versioned, tuple(params))
+            for r in rows:
+                r.pop('_rn', None)
+            return rows
+        except Exception:
+            # 表无版本字段（version_code/is_draft 缺失等），回退全量
+            try:
+                self.connection.rollback()  # 防御：非 autocommit 连接下清理 aborted 事务
+            except Exception:
+                pass
+            return self._execute(f"SELECT * {base}", tuple(params))
 
     def get_device_air(self, customer_id: int = None) -> List[Dict]:
         """ts_institution_device_air — 冷热源/空调设备。"""
@@ -468,6 +497,16 @@ class PgDataQuery:
         return str(v)
 
     @staticmethod
+    def _default_power_unit(category: str) -> str:
+        """设备表无 power_unit 列/值时，按类别推断功率单位。
+
+        DB 实况：照明/办公类 power 存 W 数值（40W 灯具、150W 台式机、20W 云桌面），
+        空调/动力/热水器类存 kW 数值（187kW 冷水机组、13.74kW 多联机、5kW 电开水器）。
+        历史事故：默认 kW 导致灯具 40W 被显示为 40.00 kW（放大 1000 倍）。
+        """
+        return 'W' if category in ('照明', '办公') else 'kW'
+
+    @staticmethod
     def _fmt_device(record: Dict, category: str) -> Dict:
         """把单条设备原始记录格式化为设备清单字段（含独立计量，表无该列则为空）。"""
         name = record.get('device_name') or '未命名'
@@ -488,7 +527,7 @@ class PgDataQuery:
         if record.get('device_type'):
             spec_parts.append(str(record['device_type']))
         if record.get('power'):
-            punit = record.get('power_unit') or 'kW'
+            punit = record.get('power_unit') or PgDataQuery._default_power_unit(category)
             spec_parts.append(f"{record['power']}{punit}")
         if record.get('air_technology'):
             spec_parts.append(str(record['air_technology']))

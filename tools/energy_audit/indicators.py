@@ -55,10 +55,10 @@ _DEFAULT_BENCHMARKS = {
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
-    'government': {  # DB37/T 2672-2019
-        'unit_area_non_heating': (12.8, 8.8, 6.0),
-        'unit_area_elec': (45.0, 35.0, 25.0),
-        'per_capita_energy': (800, 600, 400),
+    'government': {  # DB37/T 2672-2019（山东寒冷地区口径，两份交付报告互证：烟台法院正式版+岚山财政局报告）
+        'unit_area_non_heating': (20.0, 11.9, 6.5),
+        'unit_area_elec': (67.4, 39.5, 20),
+        'per_capita_energy': (1197.8, 781.0, 453.7),
         # 用水: DB37/T 4452-2021, 机关
         'water_per_person': (10, 25, 0),        # 先进值, 通用值（约束值）, — m³/(人·a)
         'standard_name': 'DB37/T 2672-2019《党政机关能源消耗定额标准》',

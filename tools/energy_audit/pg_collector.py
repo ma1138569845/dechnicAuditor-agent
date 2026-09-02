@@ -17,7 +17,7 @@ from tools.energy_audit import PgDataQuery
 from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 
 from tools.energy_audit.project_data import (
-    AuditProject, ProjectBase, BuildingInfo, EnergyYearly,
+    AuditProject, ProjectBase, BuildingInfo, EnergyYearly, EnergyMonthly,
     Equipment, MeteringInfo, ManagementInfo, EnergySaving, SharedOfficeUnit,
     TeamMember, CoopMember, ImageItem,
     save_project, SourceResolver, first_non_empty_source,
@@ -66,6 +66,34 @@ def _yn(v, yes='有', no='无'):
         return yes if int(v) == 1 else no
     except (TypeError, ValueError):
         return ''
+
+
+def _resolve_auditor(sr, pg_project: dict, excel_data: dict) -> str:
+    """审计机构名称解析：PG 中疑似测试数据（含'测试'）时回退默认正式机构名。"""
+    val = sr.resolve('auditor',
+                     ('PG', pg_project),
+                     ('Excel', excel_data),
+                     ('default', '同方德诚（山东）科技股份公司'))
+    if val and '测试' in str(val):
+        return '同方德诚（山东）科技股份公司'
+    return val
+
+
+def _expand_energy_monthly(energy_yearly) -> list:
+    """从 EnergyYearly 的 monthly_* 列表展开为 EnergyMonthly 行（第5章图表用）。"""
+    rows = []
+    for ey in energy_yearly:
+        me = getattr(ey, 'monthly_electricity_kwh', None) or []
+        mw = getattr(ey, 'monthly_water_m3', None) or []
+        mg = getattr(ey, 'monthly_natural_gas_m3', None) or []
+        for m in range(12):
+            rows.append(EnergyMonthly(
+                year=ey.year, month=m + 1,
+                electricity_kwh=float(me[m]) if m < len(me) else 0,
+                water_m3=float(mw[m]) if m < len(mw) else 0,
+                natural_gas_m3=float(mg[m]) if m < len(mg) else 0,
+            ))
+    return rows
 
 
 def _bool_cn(v, yes='是', no='否'):
@@ -366,8 +394,11 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'end_date': _date(b.get('use_end_date')),
             'garage': _yn(b.get('garage')),
             'garage_area': _num(b.get('garage_area'), 0.0),
-            'build_img': b.get('build_img') or '',
         })
+        # build_img 不属于 BuildingInfo 数据模型，单独存放供图片采集段使用
+        if b.get('build_img'):
+            result.setdefault('found', {}).setdefault('building_images', []).append(
+                {'build_name': b.get('build_name') or '', 'build_img': b.get('build_img')})
 
     if buildings:
         result['found']['buildings'] = buildings
@@ -426,15 +457,34 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
                     yearly_map[year].setdefault('coefficient_sources', {})[coeff_type] = 'PG'
             elif dt == 2:
                 cost_map = {
-                    '电能': 'electricity_cost_wan', '45': 'electricity_cost_wan',
+                    '电能': 'electricity_cost_wan', '45': 'electricity_cost_wan', '电': 'electricity_cost_wan',
                     '水': 'water_cost_wan', '01': 'water_cost_wan',
-                    '热能': 'heating_cost_wan', '50': 'heating_cost_wan',
+                    '热能': 'heating_cost_wan', '50': 'heating_cost_wan', '热力': 'heating_cost_wan',
+                    '天然气': 'natural_gas_cost_wan', '25': 'natural_gas_cost_wan',
                     '柴油': 'diesel_cost_wan', '300302': 'diesel_cost_wan',
                     '汽油': 'petrol_cost_wan', '300301': 'petrol_cost_wan',
                 }
                 cost_field = cost_map.get(code_name) or cost_map.get(code_id)
                 if cost_field:
-                    yearly_map[year][cost_field] = total / 10000
+                    # 费用记录 real_value 常为 0，必须以 total_value（building_total_value）为准
+                    yearly_map[year][cost_field] = round(
+                        float(rec.get('building_total_value') or 0) / 10000, 4)
+            elif dt == 7 and field == 'heating_energy_heat_gj':
+                # 供热费用（dt=7 单独记录）：同样以 building_total_value 为准
+                yearly_map[year]['heating_cost_wan'] = round(
+                    float(rec.get('building_total_value') or 0) / 10000, 4)
+            elif dt == 8 and field == 'petrol_kg':
+                # 交通费用（dt=8 单独记录）
+                yearly_map[year]['petrol_cost_wan'] = round(
+                    float(rec.get('building_total_value') or 0) / 10000, 4)
+            elif dt == 4 and field in ('heating_energy_heat_gj',):
+                # 供热能耗（GJ）：real_value 与 total_value 一致
+                yearly_map[year][field] = total
+            elif dt == 5 and field == 'petrol_kg':
+                # 交通能耗：DB 存吨（t），统一换算为 kg
+                yearly_map[year][field] = round(total * 1000, 2)
+            elif dt == 5 and field == 'diesel_kg':
+                yearly_map[year][field] = round(total * 1000, 2)
 
     energy_yearly = []
     for year in sorted(yearly_map.keys()):
@@ -489,6 +539,8 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'independent_construction_water': scene.get('construction_water_meter') == 1,
         }
         result['found']['metering'] = metering
+        if scene.get('work_staff'):
+            result['found']['people_count'] = scene.get('work_staff')
         mode_rows = pg.get_institution_scene_mode(
             customer_id=customer_id, scene_id=scene.get('id'),
         ) or []
@@ -608,8 +660,8 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     # base_url 未配置时返回空列表，不阻塞采集（照片缺失由 photo_manager 检查提示）。
     photo_items: List[ImageItem] = []
     _photo_id_map = []  # [(file_id, category)]
-    for b in pg_result['found'].get('buildings', []) or []:
-        for fid in parse_file_ids(b.get('build_img') or ''):
+    for bi in pg_result['found'].get('building_images', []) or []:
+        for fid in parse_file_ids(bi.get('build_img') or ''):
             _photo_id_map.append((fid, '建筑外观'))
     for mr in pg_result['found'].get('energy_meter', []) or []:
         for fid in parse_file_ids(mr.get('device_img') or ''):
@@ -667,10 +719,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                      ('PG', pg_project),
                                      ('Excel', excel_data),
                                      ('default', '')),
-            auditor=sr.resolve('auditor',
-                               ('PG', pg_project),
-                               ('Excel', excel_data),
-                               ('default', '同方德诚（山东）科技股份公司')),
+            auditor=_resolve_auditor(sr, pg_project, excel_data),
             # 审计机构信息（能源审计机构信息表）：name/address 来自 ts_register_info（PG），
             # 负责人/联系方式由用户提问提供（Excel 中可预填），表内 contact/mobile 作预填参考。
             audit_org_name=sr.resolve('audit_org_name',
@@ -698,6 +747,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                      ('Excel', excel_data),
                                      ('default', 0)),
             people_count=sr.resolve('people_count',
+                                    ('PG', pg_result['found'].get('people_count')),
                                     ('Excel', excel_data),
                                     ('default', 300)),
             beds_count=sr.resolve('beds_count',
@@ -741,6 +791,8 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
         ),
         buildings=_merge_buildings(pg_buildings, excel_data.get('buildings', [])),
         energy_yearly=_merge_energy(pg_energy, excel_data.get('energy_yearly', [])),
+        energy_monthly=_expand_energy_monthly(
+            _merge_energy(pg_energy, excel_data.get('energy_yearly', []))),
         equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
         metering=_merge_metering(pg_metering, excel_data.get('metering', {})),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),

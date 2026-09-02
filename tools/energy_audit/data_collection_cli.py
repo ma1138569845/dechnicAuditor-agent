@@ -225,8 +225,9 @@ def format_collection_report(pg_result: dict, anomalies: List[dict],
     if anomalies:
         lines.append(f"\n🔍 数据异常 ({len(anomalies)} 项):")
         for a in anomalies:
-            lines.append(f"  · [{a.get('等级','信息')}] {a.get('type','')}: "
-                          f"{a.get('year','')}年{a.get('能源','')} {a.get('变化率','')}")
+            detail = a.get('说明') or (
+                f"{a.get('year','')}年{a.get('能源','')} {a.get('变化率','')}".strip())
+            lines.append(f"  · [{a.get('等级','信息')}] {a.get('type','')}: {detail}")
     else:
         lines.append("\n✅ 无数据异常")
 
