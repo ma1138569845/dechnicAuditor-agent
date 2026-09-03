@@ -6,6 +6,7 @@ PG数据采集器 —— datacollection agent v2 tool
 prod - serial number - 3
 """
 
+from datetime import datetime
 import calendar
 import re
 import sys
@@ -28,6 +29,7 @@ from tools.energy_audit.institution_classifier import classify_institution
 from tools.energy_audit.file_resolver import (
     enrich_energy_saving_images,
     enrich_management_info,
+    enrich_meter_ledger,
     parse_file_ids,
     resolve_attachment_urls,
     download_attachment_images,
@@ -245,15 +247,30 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'contact_phone': proj.get('audited_tel', ''),
         'auditor': proj.get('audit_dept_name', ''),
     }
+    # 审计时间：DB 创建项目时间 ~ 报告生成时间（2026-09-03 用户确认）
+    # 审计期/基准期：项目表 audit_year / reference_year，格式 YYYY年M月-YYYY年M月
+    def _fmt_ym(dt):
+        try:
+            return f"{dt.year}年{dt.month}月"
+        except AttributeError:
+            return str(dt) if dt else ''
+    ct = proj.get('create_time')
+    if ct:
+        result['found']['project']['audit_start'] = _fmt_ym(ct)
+    result['found']['project']['audit_end'] = _fmt_ym(datetime.now())
     if proj.get('audit_year'):
         result['found']['project']['audit_year'] = proj['audit_year']
-        audit_start, audit_end = parse_audit_year_range(proj['audit_year'])
-        if audit_start:
-            result['found']['project']['audit_start'] = audit_start
-        if audit_end:
-            result['found']['project']['audit_end'] = audit_end
+        a_start, a_end = parse_audit_year_range(proj['audit_year'])
+        # create_time 为空时审计开始时间回退审计期起点
+        if not ct and a_start:
+            result['found']['project']['audit_start'] = a_start
+        if a_start and a_end:
+            result['found']['project']['audit_period'] = f"{a_start}-{a_end}"
     if proj.get('reference_year'):
         result['found']['project']['data_year'] = proj['reference_year']
+        r_start, r_end = parse_audit_year_range(proj['reference_year'])
+        if r_start and r_end:
+            result['found']['project']['base_period'] = f"{r_start}-{r_end}"
     data_start, data_end = parse_data_period(
         proj.get('reference_year'), proj.get('audit_year')
     )
@@ -270,45 +287,55 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'audit_template': proj.get('audit_template', ''),
     })
 
-    # ---- 1.3 审计机构信息（能源审计机构信息表数据源: ts_register_info + project 表）----
-    # 机构名称/地址：ts_register_info 表内有值直接用；名称含"测试"字样时过滤，
-    # 取 register_info 中同品牌（德诚）不含"测试"的最新记录。
-    # 负责人/联系方式：project 表 audit_dept_person/audit_dept_tel 直接采用（用户确认 DB 数据为准），
-    # register_info 的 contact/mobile 仅作提问预填参考（audit_org_contact_hint/audit_org_phone_hint）。
+    # ---- 1.3 审计机构信息（能源审计机构信息表数据源，2026-09-03 用户确认新链路）----
+    # ① 优先：按项目 id 查 ts_project_dept（机构名称/地址/负责人/联系方式），有值逐字段采用；
+    # ② 名称/地址兜底：按 project 的 audit_dept_name 查 ts_register_dept（含"测试"过滤，
+    #    取同品牌"德诚"不含"测试"的最新记录）；
+    # ③ 负责人/联系方式：仅 ts_project_dept 一个来源，无值则空，不查其他表。
     audit_org = {}
+    # ① 项目级审计机构信息表
     try:
-        regs = pg.get_register_info(dept_name=proj.get('audit_dept_name', '')) or []
-        if regs:
-            reg = regs[0]
-            if '测试' not in str(reg.get('dept_name', '')):
-                audit_org['audit_org_name'] = reg.get('dept_name', '')
-            audit_org['audit_org_address'] = reg.get('address', '')
-            audit_org['audit_org_contact_hint'] = reg.get('contact', '')
-            audit_org['audit_org_phone_hint'] = reg.get('mobile', '')
-        if not audit_org.get('audit_org_name'):
-            # 名称含"测试"或未查到：取 register_info 中同品牌（德诚）不含"测试"的最新记录
-            try:
-                regs_all = pg.get_register_info(dept_name='德诚') or []
-                for r in regs_all:
-                    if r.get('dept_name') and '测试' not in str(r.get('dept_name')):
-                        audit_org['audit_org_name'] = r.get('dept_name')
-                        if r.get('address'):
-                            audit_org['audit_org_address'] = r.get('address')
-                        if r.get('contact'):
-                            audit_org['audit_org_contact_hint'] = r.get('contact')
-                        if r.get('mobile'):
-                            audit_org['audit_org_phone_hint'] = r.get('mobile')
-                        break
-            except Exception:
-                pass
+        pd_rows = pg.get_project_dept(project_id=result['project_id']) or []
+        if pd_rows:
+            pd = pd_rows[0]
+            if pd.get('dept_name'):
+                audit_org['audit_org_name'] = pd['dept_name']
+            if pd.get('address'):
+                audit_org['audit_org_address'] = pd['address']
+            audit_org['audit_org_contact'] = pd.get('contact') or ''
+            audit_org['audit_org_phone'] = pd.get('mobile') or ''
     except Exception:
-        audit_org = {}
+        pass
+    # ② 名称/地址兜底：ts_register_dept
+    if not audit_org.get('audit_org_name') or not audit_org.get('audit_org_address'):
+        try:
+            regs = pg.get_register_info(dept_name=proj.get('audit_dept_name', '')) or []
+            if regs:
+                reg = regs[0]
+                if not audit_org.get('audit_org_name') and '测试' not in str(reg.get('dept_name', '')):
+                    audit_org['audit_org_name'] = reg.get('dept_name', '')
+                if not audit_org.get('audit_org_address') and reg.get('address'):
+                    audit_org['audit_org_address'] = reg.get('address')
+            if not audit_org.get('audit_org_name'):
+                # 名称含"测试"或未查到：取 register_dept 中同品牌（德诚）不含"测试"的最新记录
+                try:
+                    regs_all = pg.get_register_info(dept_name='德诚') or []
+                    for r in regs_all:
+                        if r.get('dept_name') and '测试' not in str(r.get('dept_name')):
+                            audit_org['audit_org_name'] = r.get('dept_name')
+                            if not audit_org.get('audit_org_address') and r.get('address'):
+                                audit_org['audit_org_address'] = r.get('address')
+                            break
+                except Exception:
+                    pass
+        except Exception:
+            pass
     # 兜底：仍无机构名时取项目表 audit_dept_name
     if not audit_org.get('audit_org_name'):
         audit_org['audit_org_name'] = proj.get('audit_dept_name', '')
-    # 审计机构负责人/联系方式：project 表 DB 值直接采用（用户确认）
-    audit_org['audit_org_contact'] = proj.get('audit_dept_person', '')
-    audit_org['audit_org_phone'] = proj.get('audit_dept_tel', '')
+    # ③ 负责人/联系方式：仅 ts_project_dept，无值保持空（不查别的表）
+    audit_org.setdefault('audit_org_contact', '')
+    audit_org.setdefault('audit_org_phone', '')
     result['found']['project'].update(audit_org)
 
     # ---- 1.5 客户信息 ----
@@ -565,6 +592,17 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             if scene.get('other_special_meter') else '',
             'independent_construction_elec': scene.get('construction_elec_meter') == 1,
             'independent_construction_water': scene.get('construction_water_meter') == 1,
+            'install_position': _int(scene.get('install_position')),
+            'position_reasonable': _int(scene.get('position_reasonable')),
+            'metering_standard': _int(scene.get('metering_standard')),
+            'partition_payment': scene.get('partition_payment') == 1 if scene.get('partition_payment') is not None else False,
+            'electric_pay_type': scene.get('electric_pay_type') or '',
+            'service_staff': '' if str(scene.get('service_staff') or '') in ('', '0', 'None', '无') else str(scene.get('service_staff')),
+            'scene_desc': '' if str(scene.get('scene_desc') or '') in ('', '未知', 'None') else str(scene.get('scene_desc')),
+            'record_attach_id': _int(scene.get('record_attach_id')),
+            'aircon_staff_num': _int(scene.get('aircon_staff_num')),
+            'light_staff_num': _int(scene.get('light_staff_num')),
+            'power_room_staff_num': _int(scene.get('power_room_staff_num')),
         }
         result['found']['metering'] = metering
         if scene.get('work_staff'):
@@ -591,6 +629,12 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     meters = pg.get_energy_meter(customer_id=customer_id)
     if meters:
         result['found']['energy_meter'] = meters
+        # 台账附件文件 id（电/水表记录拼接）→ 供 enrich_meter_ledger 下载提炼
+        _ledger_ids = []
+        for _m in meters:
+            _lids = [x.strip() for x in str(_m.get('ledger_files') or '').split(',') if x.strip()]
+            _ledger_ids.extend(_lids)
+        result['found'].setdefault('metering', {})['ledger_files'] = ','.join(dict.fromkeys(_ledger_ids))
 
     # ---- 6.6 折标系数 ----
     standards = pg.get_energy_standards()
@@ -814,6 +858,14 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
                                  ('PG', pg_project),
                                  ('Excel', excel_data),
                                  ('default', '')),
+            audit_period=sr.resolve('audit_period',
+                                    ('PG', pg_project),
+                                    ('Excel', excel_data),
+                                    ('default', '')),
+            base_period=sr.resolve('base_period',
+                                   ('PG', pg_project),
+                                   ('Excel', excel_data),
+                                   ('default', '')),
             data_start=sr.resolve('data_start',
                                   ('PG', pg_project),
                                   ('Excel', excel_data),
@@ -831,10 +883,13 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
         energy_monthly=_expand_energy_monthly(
             _merge_energy(pg_energy, excel_data.get('energy_yearly', []))),
         equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
-        metering=_merge_metering(pg_metering, excel_data.get('metering', {})),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
         energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
+        energy_meter=pg_result['found'].get('energy_meter', []) or [],
+        # meter 表数据按 data_type 回填表数（4.2 表数来源；Excel 同名键可覆盖）
+        metering=_merge_metering(_fill_meter_counts(pg_metering, pg_result['found'].get('energy_meter', [])),
+                                 excel_data.get('metering', {})),
         audit_team=[_dataclass_from_dict(TeamMember, m)
                     for m in pg_result['found'].get('team_members', [])],
         cooperation=[_dataclass_from_dict(CoopMember, c)
@@ -850,6 +905,8 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     # 下载制度文档 → 提取文字 → LLM 提炼，回填 proj.management（3.1 机构职责 / 3.2 目标方针）。
     # 缺 key / 文件 / 提取失败均静默降级，不阻塞采集。
     enrich_management_info(proj)
+    # 计量器具台账附件：下载台账文档 → 提取文字 → 回填 proj.metering.ledger_text（4.2 表4.1 取数）
+    enrich_meter_ledger(proj)
 
     # 记录集合/对象级数据来源
     proj.data_sources = sr.sources
@@ -969,6 +1026,22 @@ def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
     return result
 
 
+def _fill_meter_counts(metering: dict, energy_meter: List[dict]) -> dict:
+    """meter 表（ts_institution_energy_meter）数据回填计量信息：
+
+    data_type 1=电表 2=水表；表数取版本归一后记录的 meter_count。
+    """
+    m = dict(metering or {})
+    for rec in energy_meter or []:
+        dt = rec.get('data_type')
+        mc = _int(rec.get('meter_count'))
+        if dt == 1 and mc:
+            m.setdefault('electric_meters', mc)
+        elif dt == 2 and mc:
+            m.setdefault('water_meters', mc)
+    return m
+
+
 def _merge_metering(*sources: dict) -> MeteringInfo:
     """多源计量信息合并（优先采用第一个非空源，保留 False/0 等有效值）"""
     for src in sources:
@@ -992,14 +1065,26 @@ def _merge_shared_offices(*sources: List[dict]) -> List[SharedOfficeUnit]:
 
 
 def _merge_energy_saving(*sources: List[dict]) -> List[EnergySaving]:
-    """多源节能管理信息合并（按统计年去重：同年保留第一个来源的记录）"""
+    """多源节能管理信息合并。
+
+    去重：统计年有效时按年去重；统计年为空的记录不再丢弃（DB 该列允许 NULL，
+    法院等项目的节能管理记录即无年份），按整条内容指纹去重。
+    版本归一已在上游 get_institution_energy_saving 完成，此处仅合并多源。
+    """
     seen = set()
     result = []
     for src in sources:
         for es in src:
-            year = es.get('statistical_year', 0)
-            if year and year not in seen:
-                seen.add(year)
+            year = es.get('statistical_year')
+            if year:
+                key = ('year', year)
+            else:
+                try:
+                    key = ('noyear', frozenset((k, str(v)) for k, v in es.items()))
+                except Exception:
+                    key = ('noyear', len(result))  # 兜底：不可哈希时不去重
+            if key not in seen:
+                seen.add(key)
                 result.append(EnergySaving(**es))
     return result
 

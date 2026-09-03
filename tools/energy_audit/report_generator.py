@@ -483,7 +483,7 @@ class WordReportBuilder:
             [
                 ["机构名称", inst.get('name', '⚠️ 请提供被审计单位全称。')],
                 ["地  址", inst.get('address', '⚠️ 请提供单位详细地址。')],
-                ["联 系 人", inst.get('contact', '⚠️ 请提供联系人姓名。')],
+                ["负 责 人", inst.get('contact', '⚠️ 请提供负责人姓名。')],
                 ["联系方式", inst.get('phone', '⚠️ 请提供联系电话。')],
             ]
         )
@@ -850,6 +850,34 @@ class WordReportBuilder:
         "《城镇供热管网设计规范》（CJJ/T 34-2022）；",
     ]
 
+    @staticmethod
+    def _water_indicator_name(institution_category: str = '') -> str:
+        """取水指标名按机构类型自适应（1.2 审计范围与 5.3.4 标题共用，2026-09-03 用户确认）。
+
+        医疗 → 单位开放床日用水量；政务服务中心/场馆（含体育）→ 单位建筑面积年取水量；
+        教育 → 人均用水量；党政机关（默认）→ 人均机关取水量。
+        """
+        ic = institution_category or ''
+        if '医疗' in ic:
+            return '单位开放床日用水量'
+        if '政务' in ic or '场馆' in ic or '体育' in ic:
+            return '单位建筑面积年取水量'
+        if '教育' in ic:
+            return '人均用水量'
+        return '人均机关取水量'
+
+    @staticmethod
+    def _venue_sub_type(specific_type: str = '', institution_category: str = '') -> str:
+        """场馆子类型识别（DB37/T 3780-2019 定额按子类型分档）。
+
+        文化馆（宫）、美术馆等其他文化类场馆参照图书馆（标准注4）。
+        """
+        text = f"{specific_type or ''} {institution_category or ''}"
+        for k in ('图书馆', '博物馆', '剧院', '体育馆', '科技馆'):
+            if k in text:
+                return k
+        return '图书馆'
+
     def build_chapter1(self):
         """第1章 能源审计执行概要（模板填充）"""
         d = self.report_data
@@ -876,8 +904,8 @@ class WordReportBuilder:
         self._add_heading_2("1.2  审计范围")
         addr = ch1.get('address', '【地址】')
         bldg = ch1.get('buildings', '【建筑描述】')
-        # 年份：优先从 audit_cycle 解析，否则用 year_start/year_end
-        cyc = ch1.get('audit_cycle', '')
+        # 年份：优先从 audit_period 解析，否则用 year_start/year_end
+        cyc = ch1.get('audit_period', '')
         if cyc and '—' in cyc:
             parts = cyc.split('—')
             y1 = parts[0][:4] if len(parts[0]) >= 4 else ch1.get('audit_start', '')[:4]
@@ -885,6 +913,9 @@ class WordReportBuilder:
         else:
             y1 = ch1.get('audit_start', '')[:4] or ch1.get('year_start', '【起始年】')
             y2 = ch1.get('audit_end', '')[:4] or ch1.get('year_end', '【结束年】')
+        # 机构类别 → 取水指标名（与 5.3.4 动态一致）
+        ic12 = d.get('tags', {}).get('institution_category', '')
+        water_name12 = self._water_indicator_name(ic12)
         # 能源类型列表 → 中文
         et_raw = ch1.get('energy_types', [])
         if isinstance(et_raw, list):
@@ -903,18 +934,21 @@ class WordReportBuilder:
             f"本次能源审计工作基于{year_str}整年及每月的{energy_types}等能源账单及能耗统计数据，"
             f"同时结合现场勘察所收集的各建筑围护结构、各类用能设备资料、日常用能习惯等实际数据信息，"
             f"对{unit_short}年总能耗、单位建筑面积非供暖能耗、常规用能系统单位建筑面积电耗、"
-            f"人均综合能耗、人均机关取水量等进行分析计算，依据国家或地方能耗定额标准，"
+            f"人均综合能耗、{water_name12}等进行分析计算，依据国家或地方能耗定额标准，"
             f"对建筑用能现状进行总体评价。"
         )
 
         # ---- 1.3 审计周期 ----
         self._add_heading_2("1.3  审计周期")
         audit_time = ch1.get('audit_time', '【YYYY年M月—YYYY年M月】')
-        audit_period = ch1.get('audit_cycle', ch1.get('audit_period', '【YYYY年M月D日—YYYY年M月D日】'))
+        audit_period = ch1.get('audit_period', '【YYYY年M月-YYYY年M月】')
+        base_period = ch1.get('base_period', '【YYYY年M月-YYYY年M月】')
         self._add_body_text("审计时间")
         self._add_body_text(audit_time)
-        self._add_body_text("审计周期")
+        self._add_body_text("审计期")
         self._add_body_text(audit_period)
+        self._add_body_text("基准期")
+        self._add_body_text(base_period)
 
         # ---- 1.4 审计内容 ----
         self._add_heading_2("1.4  审计内容")
@@ -1232,6 +1266,8 @@ class WordReportBuilder:
         area = ch5.get('building_area', self.report_data.get('chapter2', {}).get('building_area', 0))
         people = ch5.get('people_count', self.report_data.get('chapter2', {}).get('people_count', 0))
         institution_type = ch5.get('institution_type', 'government')
+        _tags5 = self.report_data.get('tags', {})
+        venue_sub = self._venue_sub_type(_tags5.get('specific_type', ''), _tags5.get('institution_category', ''))
 
         if not years_raw:
             years_raw = sorted(set(str(d.get('year', '')) for d in energy_data_list if d.get('year')))
@@ -1909,7 +1945,7 @@ class WordReportBuilder:
         for yd in yd_objects:
             r = indicator_yearly.get(yd.year, {}).get('unit_area_electricity')
             if not r:
-                r = calc_unit_area_electricity(yd, institution_type=institution_type)
+                r = calc_unit_area_electricity(yd, institution_type=institution_type, sub_type=venue_sub)
             if isinstance(r, dict) and r.get('error'):
                 indicator_warnings.append(f"{yd.year}年常规用能系统单位建筑面积电耗：{r['error']}")
             rows[0].append(_cell(r, 'total_electricity_kwh', '{:,.0f}'))
@@ -1963,7 +1999,7 @@ class WordReportBuilder:
         for yd in yd_objects:
             r = indicator_yearly.get(yd.year, {}).get('per_capita_energy')
             if not r:
-                r = calc_per_capita_energy(yd, institution_type=institution_type)
+                r = calc_per_capita_energy(yd, institution_type=institution_type, sub_type=venue_sub)
             if isinstance(r, dict) and r.get('error'):
                 indicator_warnings.append(f"{yd.year}年人均综合能耗：{r['error']}")
             rows[0].append(_cell(r, 'total_kgce'))
@@ -1978,7 +2014,7 @@ class WordReportBuilder:
         # 5.3.4 用水指标（按机构类型分三种形态）
         if '医疗' in ic:
             # === 医疗：卫生业单位用水量（单位开放床日用水量） ===
-            self._add_heading_3("5.3.4  卫生业单位用水量")
+            self._add_heading_3("5.3.4  单位开放床日用水量")
             self._add_body_text(
                 f"单位时间内，三级、二级、一级综合医院住院部的"
                 f"单位开放床日用水量计算公式如下："
@@ -2049,37 +2085,50 @@ class WordReportBuilder:
             self._add_table(headers, rows, f"表5.{next_table+3}  单位标准人数用水量")
 
         else:
-            # === 党政/政务/场馆：人均机关取水量 ===
-            self._add_heading_3("5.3.4  人均机关取水量")
-            self._add_body_text(f"单位时间内，人均机关取水量计算公式如下：")
+            # === 党政/政务/场馆/教育：取水指标名按机构类型动态 ===
+            water_name = self._water_indicator_name(ic)
+            area_based = '政务' in ic or '场馆' in ic or '体育' in ic
+            water_unit = '立方米每平方米年（m³/(m²·a)）' if area_based else '立方米每人年（m³/(p·a)）'
+            self._add_heading_3(f"5.3.4  {water_name}")
+            self._add_body_text(f"单位时间内，{water_name}计算公式如下：")
             self._add_simple_fraction_formula("V_rc", "V_k", "N_p")
             self._add_body_text("式中：")
             self._add_formula_symbol("V_rc——",
-                "人均机关取水量，单位为立方米每人年（m³/p·a）；")
+                f"{water_name}，单位为{water_unit}；")
             self._add_formula_symbol("V_k——",
-                "年机关取水量，单位为立方米每年（m³/a）；")
+                "年取水量，单位为立方米每年（m³/a）；")
             self._add_formula_symbol("N_p——",
-                "机关人数，单位为p。")
+                ("建筑面积，单位为平方米（m²）。" if area_based
+                 else "用能人数（机关人数/在校人数），单位为p。"))
             self._add_body_text(
                 f"{unit_name}{yd_objects[0].year}年-{yd_objects[-1].year}年"
-                f"人均机关取水量指标如表5.{next_table+3}所示："
+                f"{water_name}指标如表5.{next_table+3}所示："
             )
             headers = ['统计周期'] + [f'{yd.year}年' for yd in yd_objects]
-            rows = [['取水量(m³)'], ['用能人数'], ['人均取水量(m³/人)'], ['通用值'], ['先进值'], ['评价结果']]
+            if area_based:
+                rows = [['取水量(m³)'], ['建筑面积(m²)'], ['单位建筑面积年取水量(m³/(m²·a))'], ['通用值'], ['先进值'], ['评价结果']]
+            else:
+                rows = [['取水量(m³)'], ['用能人数'], ['人均取水量(m³/人)'], ['通用值'], ['先进值'], ['评价结果']]
             for yd in yd_objects:
                 r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
                 if not r:
-                    r = calc_per_capita_water(yd, institution_type=institution_type)
+                    r = calc_per_capita_water(yd, institution_type=institution_type, building_area=area)
                 if isinstance(r, dict) and r.get('error'):
-                    indicator_warnings.append(f"{yd.year}年人均机关取水量：{r['error']}")
+                    indicator_warnings.append(f"{yd.year}年{water_name}：{r['error']}")
                 rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
-                rows[1].append(str(people))
-                rows[2].append(_cell(r, 'm3_per_person', '{:,.2f}'))
+                if area_based:
+                    if not area or area <= 0:
+                        indicator_warnings.append(f"{yd.year}年{water_name}：建筑面积缺失，无法计算")
+                    rows[1].append(str(area) if area else '—')
+                    rows[2].append(_cell(r, 'm3_per_area', '{:,.4f}'))
+                else:
+                    rows[1].append(str(people))
+                    rows[2].append(_cell(r, 'm3_per_person', '{:,.2f}'))
                 bm_w = (r.get('benchmark') or {}) if isinstance(r, dict) else {}
                 rows[3].append(str(bm_w.get('约束值', bm_w.get('通用值', ''))))
                 rows[4].append(str(bm_w.get('引导值', bm_w.get('先进值', ''))))
                 rows[5].append(bm_w.get('评价结果', '—'))
-            self._add_table(headers, rows, f"表5.{next_table+3}  人均机关取水量")
+            self._add_table(headers, rows, f"表5.{next_table+3}  {water_name}")
 
         # 5.3 指标计算不足提示（缺数据时友好提示而非崩溃）
         if indicator_warnings:
@@ -2583,8 +2632,8 @@ class WordReportBuilder:
                     building_area=area, people_count=people,
                 )
                 r_nh = calc_unit_area_non_heating_energy(yd)
-                r_ed = calc_unit_area_electricity(yd, institution_type=inst)
-                r_pe = calc_per_capita_energy(yd, institution_type=inst)
+                r_ed = calc_unit_area_electricity(yd, institution_type=inst, sub_type=venue_sub)
+                r_pe = calc_per_capita_energy(yd, institution_type=inst, sub_type=venue_sub)
                 r_pw = calc_per_capita_water(yd, institution_type=inst, bed_count=beds)
 
                 nh = r_nh.get('kgce_per_m2', 0)
@@ -2964,7 +3013,7 @@ class MarkdownReportBuilder:
             lines.append("| 项目 | 内容 |")
             lines.append("|------|------|")
             for k, v in [('机构名称', inst.get('name','')), ('地址', inst.get('address','')),
-                         ('联系人', inst.get('contact','')), ('联系方式', inst.get('phone',''))]:
+                         ('负责人', inst.get('contact','')), ('联系方式', inst.get('phone',''))]:
                 lines.append(f"| {k} | {v} |")
             lines.append("")
 
@@ -2991,7 +3040,8 @@ class MarkdownReportBuilder:
                 if unit: lines.append(f"**被审计单位**: {unit}")
                 if ch1.get('address'): lines.append(f"**地址**: {ch1['address']}")
                 if ch1.get('audit_time'): lines.append(f"**审计时间**: {ch1['audit_time']}")
-                if ch1.get('audit_cycle'): lines.append(f"**审计周期**: {ch1['audit_cycle']}")
+                if ch1.get('audit_period'): lines.append(f"**审计期**: {ch1['audit_period']}")
+                if ch1.get('base_period'): lines.append(f"**基准期**: {ch1['base_period']}")
                 lines.append("")
 
             elif '第2章' in ch_num:
@@ -3239,7 +3289,8 @@ class ReportGenerator:
                 'address': b.address,
                 'buildings': f"{len(project.buildings)}栋建筑",
                 'audit_time': f"{b.audit_start}—{b.audit_end}" if b.audit_start and b.audit_end else '',
-                'audit_cycle': f"{_iso_to_cn(b.data_start)}—{_iso_to_cn(b.data_end)}" if b.data_start and b.data_end else '',
+                'audit_period': b.audit_period or '',
+                'base_period': b.base_period or '',
                 'energy_types': [],
                 'province': b.province or '山东',
             },
@@ -3595,7 +3646,7 @@ if __name__ == "__main__":
             'team_members': [{'role':'组长','name':'李四','education':'硕士','certification':'工程师','major':'暖通'}],
             'cooperation': [{'role':'配合','dept':'办公室','name':'王五','gender':'男','position':'主任'}],
         },
-        'chapter1': {'audited_unit_short': '测试单位', 'audit_time': '2025年6月—2025年7月', 'audit_cycle': '2022年—2024年', 'energy_types': ['electricity_kwh','water_m3'], 'province': '山东'},
+        'chapter1': {'audited_unit_short': '测试单位', 'audit_time': '2025年6月—2025年7月', 'audit_period': '2022年1月-2024年12月', 'base_period': '2021年1月-2023年12月', 'energy_types': ['electricity_kwh','water_m3'], 'province': '山东'},
         'chapter2': {'unit_name': '测试单位', 'building_area': 5000, 'people_count': 200, 'buildings': [{'name':'主楼','year':2020,'floors':'5层','structure':'框架'}]},
         'chapter5': {'energy_data': [{'year':2022,'electricity_kwh':500000,'water_m3':5000,'natural_gas_m3':3000},{'year':2023,'electricity_kwh':520000,'water_m3':5500,'natural_gas_m3':3200}], 'building_area': 5000, 'people_count': 200},
         'chapter6': {'_equipment': [{'name':'中央空调','category':'空调','spec':'30kW','quantity':3}]},

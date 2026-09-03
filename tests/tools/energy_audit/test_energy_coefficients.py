@@ -1,5 +1,6 @@
 """能源审计折标煤系数持久化与指标计算测试。"""
 
+import re
 import json
 import sys
 import tempfile
@@ -209,12 +210,15 @@ def test_parse_data_period_unions_reference_and_audit(reference_year, audit_year
 
 
 def test_pg_collector_parses_audit_year_into_start_end():
+    # 2026-09-03 新口径：audit_start=create_time(无则回退审计期起点)、audit_end=报告生成时间、
+    # audit_period=audit_year（YYYY年M月-YYYY年M月）
     pg = _make_pg_instance([])
     pg.find_project_by_name.return_value['audit_year'] = '2022-5~2022-10'
     result = pgc._collect_from_pg_impl(pg, '测试项目')
     project = result['found']['project']
-    assert project['audit_start'] == '2022年5月'
-    assert project['audit_end'] == '2022年10月'
+    assert project['audit_start'] == '2022年5月'  # 无 create_time → 回退审计期起点
+    assert re.match(r'^\d{4}年\d{1,2}月$', project['audit_end'])  # 报告生成时间
+    assert project['audit_period'] == '2022年5月-2022年10月'
 
 
 def test_pg_collector_parses_reference_year_into_data_start_end():

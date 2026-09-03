@@ -132,7 +132,7 @@ def detect_equipment_power_unit_issue(equipment: List[dict]) -> List[dict]:
 def detect_heating_electricity_missing(pg_result: dict) -> List[dict]:
     """供暖电耗缺失检测：项目有供暖（热力 GJ/供暖费/供暖方式）但 DB 无供暖电耗记录时提示。
 
-    依据 chapter5-indicators.md 口径铁律：非供暖能耗/常规电耗须剔除供暖电耗
+    依据 energy-audit-report/references/chapters/chapter5-indicators.md 口径铁律：非供暖能耗/常规电耗须剔除供暖电耗
     （供暖循环泵/风机），单独计量缺失时由用户提供或按循环泵测算，禁止用 0 代入。
     """
     found = pg_result.get('found', {})

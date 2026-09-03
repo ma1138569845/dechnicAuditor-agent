@@ -20,24 +20,25 @@ def check_completeness(report_data: dict) -> Tuple[bool, List[str]]:
     # 三张表（审计基本信息）
     tabs = report_data.get('audit_info_tables', {})
     inst = tabs.get('institution', {})
-    if not inst.get('name'): missing.append("表1 → 审计机构名称")
+    if not inst.get('name'): missing.append("审计机构名称")
     for field, label in (('address', '审计机构详细地址'), ('contact', '审计机构负责人'), ('phone', '审计机构联系方式')):
         val = str(inst.get(field, '') or '').strip()
         if not val or val in ('【待补充】', '待补充'):
-            missing.append(f"表1 → 审计机构信息表：{label}（缺失或占位）")
+            missing.append(f"审计机构信息表：{label}（缺失或占位）")
     team = tabs.get('team_members') or []
     # 逐人检查：名单为空或任一人姓名为空/占位，都视为未提供
     if not team or not any(str(m.get('name', '') or '').strip() not in ('', '【待补充】', '待补充') for m in team):
-        missing.append("表2 → 审计组人员名单（当前显示【待补充】）")
+        missing.append("审计组人员名单（当前显示【待补充】）")
     coop = tabs.get('cooperation') or []
     if not coop or not any(str(c.get('name', '') or '').strip() not in ('', '【待补充】', '待补充') for c in coop):
-        missing.append("表3 → 审计配合人员名单（当前显示【待补充】）")
+        missing.append("审计配合人员名单（当前显示【待补充】）")
 
     # 第1章
     ch1 = report_data.get('chapter1', {})
     if not ch1.get('audited_unit_short'): missing.append("1.1 → 被审计单位简称")
     if not ch1.get('address'): missing.append("1.2 → 地址")
-    if not ch1.get('audit_cycle'): missing.append("1.3 → 审计周期")
+    if not ch1.get('audit_period'): missing.append("1.3 → 审计期")
+    if not ch1.get('base_period'): missing.append("1.3 → 基准期")
     if not ch1.get('energy_types'): missing.append("1.2 → 能源类型（电/水/气/…）")
 
     # 第2章

@@ -76,11 +76,33 @@ _DEFAULT_BENCHMARKS = {
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
         'standard_name': 'DB37/T 2674-2019《教育机构能源消耗定额标准》',
     },
-    'venue': {  # DB37/T 3780-2019, 场馆机构（体育场馆、文化场馆、科技场馆）
-        # 场馆机构能耗特点：大型空间照明、空调需求高，但人员密度波动大
-        'unit_area_non_heating': (18.0, 12.0, 7.5),
-        'unit_area_elec': (55.0, 40.0, 28.0),
-        'per_capita_energy': (650, 450, 300),
+    'venue': {  # DB37/T 3780-2019《场馆机构能源消耗定额标准》（标准原文核验 2026-09-03；取"市"档）
+        # 子类型嵌套：图书馆/博物馆/剧院/体育馆/科技馆 → (约束值, 基准值, 引导值)
+        # 注4：文化馆（宫）、美术馆等其他文化类场馆参照图书馆。
+        # 表1 单位建筑面积非供暖能耗 kgce/(m²·a)（市档）
+        'unit_area_non_heating': {
+            '图书馆': (16.2, 12.2, 9.7), '博物馆': (21.9, 15.3, 8.0), '剧院': (17.3, 12.3, 8.2),
+            '体育馆': (16.7, 14.9, 11.3), '科技馆': (15.6, 8.3, 6.6),
+        },
+        # 表2 单位采暖建筑面积供暖能耗 kgce/(m²·a)（市政集中供暖按热计量，不分省市档）
+        'unit_area_heating': {
+            '图书馆': (12.5, 11.4, 9.3), '博物馆': (12.9, 11.8, 10.3), '剧院': (12.6, 11.6, 9.9),
+            '体育馆': (16.7, 13.2, 11.5), '科技馆': (12.1, 11.3, 9.3),
+        },
+        # 表3 人均综合能耗 kgce/(p·a)（市档）
+        'per_capita_energy': {
+            '图书馆': (466.6, 388.8, 311.1), '博物馆': (522.0, 350.8, 225.7), '剧院': (552.5, 304.7, 204.8),
+            '体育馆': (641.3, 437.3, 332.6), '科技馆': (762.0, 635.0, 505.5),
+        },
+        # 表4 常规用能系统单位建筑面积电耗 kWh/(m²·a)（市档）
+        'unit_area_elec': {
+            '图书馆': (57.1, 35.1, 24.3), '博物馆': (65.8, 46.7, 27.7), '剧院': (67.1, 48.2, 32.3),
+            '体育馆': (54.3, 34.5, 23.9), '科技馆': (76.3, 42.9, 26.3),
+        },
+        # 表5 数据中心 EUE（场馆专用：2.2/1.7/1.4，与党政机关 2.2/1.8/1.4 不同）
+        'eue': (2.2, 1.7, 1.4),
+        # 用水：DB37/T 3780-2019 无取水定额 → 不对标（面积口径 benchmark 为空）
+        'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         # 用水: DB37/T 4452-2021, 场馆类
         'water_per_person': (8, 18, 0),          # 先进值, 通用值（约束值）, — m³/(人·a)
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
@@ -219,7 +241,8 @@ def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) ->
 
 def resolve_benchmark(institution_type: str = 'government',
                        metric: str = 'unit_area_non_heating',
-                       user_values: Optional[Tuple[float, float, float]] = None) -> dict:
+                       user_values: Optional[Tuple[float, float, float]] = None,
+                       sub_type: Optional[str] = None) -> dict:
     """三级兜底获取定额对标值
 
     Layer 1: DB (ts_limit_config)
@@ -237,8 +260,10 @@ def resolve_benchmark(institution_type: str = 'government',
     if db_val:
         std = db_val.get('标准', '')
         expected_kw = {'government': '党政机关', 'medical': '医疗机构', 'education': '教育机构'}
-        # 校验 DB 返回的标准名与机构类型是否匹配
-        if expected_kw.get(institution_type, '') in std:
+        # 校验 DB 返回的标准名与机构类型是否匹配；
+        # venue/service 无 DB 匹配规则 → 跳过 DB 层（防止空字符串恒匹配误用别类记录）
+        expected = expected_kw.get(institution_type)
+        if expected and expected in std:
             return db_val
         # 不匹配 → 忽略 DB，走 Layer 2/3
 
@@ -253,6 +278,10 @@ def resolve_benchmark(institution_type: str = 'government',
     # Layer 3
     defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
     vals = defaults.get(metric, (0, 0, 0))
+    if isinstance(vals, dict):
+        # venue 子类型嵌套：按场馆子类型取值，缺省用图书馆（注4：文化馆宫美术馆参照图书馆）
+        st = sub_type or '图书馆'
+        vals = vals.get(st) or vals.get('图书馆', (0, 0, 0))
     # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
     std_name = defaults.get('standard_name', '')
     if metric.startswith('water'):
@@ -455,6 +484,7 @@ def calc_unit_area_electricity(
     exclude_special_area: float = 0,
     institution_type: str = 'medical',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
+    sub_type: Optional[str] = None,  # venue 子类型（图书馆/博物馆/剧院/体育馆/科技馆）
 ) -> dict:
     """
     常规用能系统单位建筑面积电耗（三级兜底）
@@ -481,7 +511,7 @@ def calc_unit_area_electricity(
     kwh_per_m2 = round(non_heat_elec / area, 2)
 
     # 三级兜底对标
-    benchmark = resolve_benchmark(institution_type, 'unit_area_elec', user_benchmark)
+    benchmark = resolve_benchmark(institution_type, 'unit_area_elec', user_benchmark, sub_type)
     if kwh_per_m2 <= benchmark['引导值']:
         evaluation = '低于引导值（先进水平）'
     elif kwh_per_m2 <= benchmark['基准值']:
@@ -504,6 +534,7 @@ def calc_unit_area_heating_energy(
     heating_area: float = 0,
     institution_type: str = 'government',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
+    sub_type: Optional[str] = None,  # venue 子类型
 ) -> dict:
     """
     单位采暖建筑面积供暖能耗（DB37/T 2672-2019 表2）
@@ -528,7 +559,7 @@ def calc_unit_area_heating_energy(
     heating_kgce = data.heating_energy_tce * 1000
     kgce_per_m2 = round(heating_kgce / area, 2)
 
-    benchmark = resolve_benchmark(institution_type, 'unit_area_heating', user_benchmark)
+    benchmark = resolve_benchmark(institution_type, 'unit_area_heating', user_benchmark, sub_type)
     if kgce_per_m2 <= benchmark['引导值']:
         evaluation = '低于引导值（先进水平）'
     elif kgce_per_m2 <= benchmark['基准值']:
@@ -550,6 +581,7 @@ def calc_per_capita_energy(
     data: YearlyEnergyData,
     institution_type: str = 'medical',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
+    sub_type: Optional[str] = None,  # venue 子类型
 ) -> dict:
     """
     人均综合能耗（三级兜底）
@@ -583,7 +615,7 @@ def calc_per_capita_energy(
     per_person = round(kgce_total / data.people_count, 2)
 
     # 三级兜底对标
-    benchmark = resolve_benchmark(institution_type, 'per_capita_energy', user_benchmark)
+    benchmark = resolve_benchmark(institution_type, 'per_capita_energy', user_benchmark, sub_type)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         # 内置兜底也查不到时给提示
         evaluation = '暂无定额标准可对标'
@@ -609,6 +641,7 @@ def calc_per_capita_water(
     institution_type: str = 'government',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
     bed_count: Optional[int] = None,  # 医院使用
+    building_area: Optional[float] = None,  # 政务服务中心/场馆使用（面积口径）
 ) -> dict:
     """
     人均取水量 / 单位开放床日用水量（三级兜底）
@@ -634,9 +667,9 @@ def calc_per_capita_water(
         'medical': 'water_per_bed_day',
         'government': 'water_per_person',
         'education': 'water_per_person',
-        # FORK: venue/service 显式映射，避免依赖 .get 默认值的隐式兜底
-        'venue': 'water_per_person',
-        'service': 'water_per_person',
+        # FORK: venue/service 显式映射为面积口径（单位建筑面积年取水量）
+        'venue': 'water_per_area',
+        'service': 'water_per_area',
     }
     metric = metric_map.get(institution_type, 'water_per_person')
 
@@ -659,6 +692,19 @@ def calc_per_capita_water(
             'bed_count': bed_count,
             'metric': '单位开放床日用水量',
             'benchmark': {**benchmark, '实际值': L_per_bed_day, '评价结果': evaluation, '单位': 'L/(床·d)'},
+        }
+
+    # 政务服务中心/场馆：单位建筑面积年取水量 = 年取水量 / 建筑面积（m³/(m²·a)）
+    # DB37/T 4452-2021 无面积口径取水定额 → benchmark 为空，评价结果显示 "—"（标准待用户确认）
+    if institution_type in ('venue', 'service') and building_area and building_area > 0:
+        water_total = data.water_m3
+        m3_per_area = round(water_total / building_area, 4)
+        return {
+            'm3_per_area': m3_per_area,
+            'total_water_m3': water_total,
+            'building_area': building_area,
+            'metric': '单位建筑面积年取水量',
+            'benchmark': {},
         }
 
     # 机关/教育：人均取水量

@@ -1,0 +1,100 @@
+# 第1章写作模板
+
+
+
+## 输入内容
+
+数据来源：`load_project(unit_name)` 返回的 `AuditProject`（dataclass，一律用 `.` 属性访问，如 `proj.base.unit_name`）。
+字段缺失/为空时按 ea-authoring 主 SKILL.md「输入内容」回退流程处理（datacollection → 终止提示），禁止编造数据。
+
+| 输入 | 内容（第一章所需） | 数据模型来源（取值表达式） | 第一章消费点 |
+| ---- | ---- | ---- | ---- |
+| `base` | 项目基本信息（审计主体与周期）：审计类型 `unit_type`、审计机构 `auditor`、审计项目负责人 `project_manager`、审计起止时间 `audit_start`/`audit_end`、数据统计周期 `data_start`/`data_end`、省份 `province`、报告日期 `report_date`、客户ID `customer_id` | `proj.base`（ProjectBase） | 1.1 审计目的（委托机构）；1.3 审计周期；1.6 审计依据（省份→地方规章检索） |
+| `project_context` | 被审计单位概况：单位全称 `unit_name`、简称 `unit_short`、行政归属 `admin_affiliation`、地址 `address`、内设机构/科室 `department_count`、用能人数 `people_count`、床位数 `beds_count`、机构类别 `institution_category`（医疗/教育/党政机关/场馆…）、具体类型 `specific_type`、单位基本情况 `basic_situation`、总建筑面积 `building_area`、建筑数量 `building_count` | `proj.base` + `len(proj.buildings)` | 1.1 审计目的（单位简称）；1.2 审计范围（地址、N 栋建筑）；tags → 1.6 机构类型 |
+| `building_data[]` | 建筑列表（每栋）：`name` 建筑名称、`address` 地址、`year` 竣工年份、`function` 建筑功能、`floors` 层数（地上X层/地下Y层）、`height` 高度、`structure` 结构形式、`area` 建筑面积、`use_area` 使用面积、`function_zoning` 功能分区 | `proj.buildings`（List[BuildingInfo]） | 1.2 审计范围（“位于…的 N 栋建筑”）；派生汇总：`building_count = len(proj.buildings)`、`total_area = Σ b.area` |
+| `rag_reference[]` | 同类报告第一章写作参考：报告名称、机构类型标签（tags）、章节=第1章、小节（1.1–1.6）、参考正文；检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')` | `rag.rag_search.search_for_chapter()` | 1.1–1.6 的措辞、结构、审计依据清单参考；**不得**覆盖 `base`/`project_context` 中的本项目事实数据 |
+
+补充一行（可自动推导，非人工必填）：
+
+| 输入 | 内容 | 数据模型来源（取值表达式） | 第一章消费点 |
+| ---- | ---- | ---- | ---- |
+| `energy_types` | 审计周期内实际使用的能源类型（电/水/天然气/热/汽油/柴油）；由 `energy_yearly` 年度数据中非零项自动识别，未采集到时由 `base` 预填 | `proj.energy_yearly[]`（各能耗字段 >0） | 1.2 审计范围（“…等能源账单及能耗统计数据”） |
+
+
+
+## 模版
+
+## 1.1 审计目的
+
+固定两段式结构：
+
+```
+公共机构能源审计是指依据有关法律、法规、规章和标准，对公共机构的用能系统、设备的运行、管理及能源资源利用状况进行检验、核查和技术、经济分析评价，提出改进用能方式或提高用能效率建议和意见的行为。
+
+为了准确了解部分省级公共机构的用能情况，{省份}省机关事务管理局委托{审计单位}对{被审计单位}进行能源审计。
+```
+
+> **取值**：{省份} → `proj.base.province`；{审计单位} → `proj.base.auditor`；{被审计单位} → 正文用简称 `proj.base.unit_short`（空则回退 `proj.base.unit_name`）。
+
+## 1.2 审计范围
+
+两段式结构：段1=物理范围，段2=工作范围。
+
+```
+本次能源审计范围包含位于{地址}的{被审计单位}内{建筑列表}。
+
+本次能源审计工作基于{起始年}-{结束年}整年及每月的{能源类型}等能源账单及能耗统计数据，同时结合现场勘察所收集的各建筑围护结构、各类用能设备资料、日常用能习惯等实际数据信息，对{被审计单位}年总能耗、单位建筑面积非供暖能耗、常规用能系统单位建筑面积电耗、人均综合能耗、{取水指标名}等进行分析计算（{取水指标名}按机构类型自适应：医疗→单位开放床日用水量；政务服务中心/场馆→单位建筑面积年取水量；教育→人均用水量；党政机关→人均机关取水量），依据国家或地方能耗定额标准，对建筑用能现状进行总体评价。
+```
+
+> **取值**：{地址} → `proj.base.address`；{被审计单位} → `proj.base.unit_short`（空则 `proj.base.unit_name`）；{建筑列表} → `len(proj.buildings)` 栋建筑，多栋时列出各建筑名称（`b.name`）；{起始年}/{结束年} → `proj.base.data_start` / `proj.base.data_end` 取年份；{能源类型} → `proj.energy_yearly[]` 非零能耗字段推导（electricity_kwh→电、water_m3→水、natural_gas_m3→天然气、heating_energy_heat_gj→热、petrol_kg→汽油、diesel_kg→柴油）。
+
+## 1.3 审计周期
+
+固定格式：
+```
+审计时间
+{YYYY年M月—YYYY年M月}
+
+审计周期
+{YYYY年M月D日—YYYY年M月D日}
+```
+
+> **取值**：审计时间 → `proj.base.audit_start`（project.create_time）— `proj.base.audit_end`（报告生成时间），YYYY年M月；审计期 → `proj.base.audit_period`（audit_year）；基准期 → `proj.base.base_period`（reference_year），格式 YYYY年M月-YYYY年M月。
+
+## 1.4 审计内容
+
+完全固定：
+```
+依据国家有关的节能法规和标准，对公共机构能源资源利用状况进行检验、核查和分析评价，主要包括以下内容：
+1.能源资源管理情况；
+2.能耗分析评价；
+3.节能潜力分析及建议。
+```
+
+> **取值**：无输入，固定文本，不替换占位符。
+
+## 1.5 审计过程
+
+三段式（前期/中期/后期），只替换单位简称：
+
+```
+审计前期，审计组对{单位简称}发送能源审计调研表，根据反馈调研表梳理分析能耗数据、用能设备情况等，围绕单位用能水平、节能潜力点、能源管理等方面进行分析并形成初步评估意见。
+
+审计中期，审计组开展项目现场调研，根据前期评估内容进行现场沟通核实，确认前期资料与现场数据的一致性。主要调研包括能耗数据异常情况确认、现场用能设备与系统确认、能源管理情况确认等。同时现场重点查看节能管理责任和日常节能措施落实情况、用能系统运维管理情况、能源资源计量器具配备情况等。
+
+审计后期，审计组对现场调研数据及各类资料进行整理汇总，包含但不限于各单位能耗数据、用能系统、异常数据等，分析各单位用能结构和用能规律，进一步全面分析各单位能源应用情况，形成并提交能源审计报告。
+```
+
+> **取值**：{单位简称} → `proj.base.unit_short`（空则 `proj.base.unit_name`）。
+
+## 1.6 审计依据
+
+国标固定+省级规章+地方标准，每条用 ● 无序列表。
+
+**省级规章处理原则**：
+
+- 山东项目：直接用参考报告验证过的精确规章（鲁事管发〔2020〕32号、DB37系列）
+- 其他省份：必须经 web_search 搜索确认某省真实存在的规章
+- 禁止简单字符串替换省份名
+
+> **取值**：{省份}/{机构类型} → `proj.base.province` / `proj.base.institution_category`（决定省级规章与机构类型映射）；国标清单固定；地方规章/同类报告参考 → `rag_reference[]`（检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')`），山东项目可直接用 `province_regulations.get_provincial_regulations(province, inst_type)`。

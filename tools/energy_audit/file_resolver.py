@@ -28,7 +28,7 @@ from tools.energy_audit.db_config import get_file_base_url
 _IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')
 
 # 制度文件（文档类型）—— 用于文字提取，非图片展示
-_DOC_EXT = ('.pdf', '.docx', '.doc', '.txt', '.md')
+_DOC_EXT = ('.pdf', '.docx', '.doc', '.txt', '.md', '.xlsx', '.xls')
 
 _FILE_ID_RE = re.compile(r'\d+')
 
@@ -206,9 +206,52 @@ def extract_doc_text(path: str) -> str:
         if low.endswith(('.txt', '.md')):
             with open(str(path), encoding='utf-8', errors='replace') as f:
                 return f.read()
+        if low.endswith(('.xlsx', '.xls')):
+            import openpyxl
+            wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+            lines = []
+            for ws in wb.worksheets:
+                lines.append(f'【sheet: {ws.title}】')
+                for row in ws.iter_rows(values_only=True):
+                    cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                    if cells:
+                        lines.append(' | '.join(cells))
+            wb.close()
+            return '\n'.join(lines)
     except Exception as e:  # noqa: BLE001
         print(f"[file_resolver] 文档文字提取失败 {path}: {e}")
     return ''
+
+
+def enrich_meter_ledger(proj, base_url: str = None, pg: 'PgDataQuery' = None) -> None:
+    """计量器具台账附件（ts_institution_energy_meter.ledger_files）：
+
+    下载台账文档 → 提取文字 → 回填 proj.metering.ledger_text，供 author 4.2
+    表4.1 台账清单取数。任何一步失败静默跳过，不阻塞采集。
+    """
+    try:
+        ledger_ids = parse_file_ids(getattr(proj.metering, 'ledger_files', ''))
+        if not ledger_ids:
+            return
+        base_url = (base_url or get_file_base_url()).rstrip('/')
+        if not base_url:
+            return
+        atts = resolve_attachment_urls(ledger_ids, base_url=base_url, pg=pg) or []
+        docs = download_attachment_docs(atts) or []
+        if not docs:
+            return
+        texts = []
+        for d in docs:
+            try:
+                t = extract_doc_text(d.get('path', ''))
+                if t:
+                    texts.append(t)
+            except Exception:
+                continue
+        if texts:
+            proj.metering.ledger_text = '\n\n'.join(texts)
+    except Exception:
+        pass
 
 
 def enrich_management_info(proj, base_url: str = None, pg: 'PgDataQuery' = None) -> None:

@@ -192,7 +192,7 @@ class PgDataQuery:
         query = """SELECT id, audited_name, audited_person, audited_tel,
                     commission_person, commission_tel, audit_dept_name,
                     audit_dept_person, audit_dept_tel,
-                    audit_year, reference_year, start_time, end_time,
+                    audit_year, reference_year, start_time, end_time, create_time,
                     status, customer_id, remark, energy_codes, audit_template
                  FROM ts_institution_project WHERE (deleted IS NULL OR deleted = 0)"""
         params = []
@@ -340,10 +340,11 @@ class PgDataQuery:
     def get_institution_build(self, customer_id: int = None) -> List[Dict]:
         """获取 ts_institution_build 建筑信息。
 
-        版本归一规则（与 get_institution_energy 一致）：建筑表同一 build_name
-        并存草稿（is_draft=1, version_code=NULL）+ 多个正式版本（is_draft=0,
-        version_code 非空）。同一 build_name 只返回一条：正式版本优先，
-        version_code 大者优先，无正式版本时草稿兜底。
+        版本归一规则（与 get_institution_energy 一致）：建筑表同一业务键
+        (build_name, build_func) 并存草稿（is_draft=1, version_code=NULL）
+        + 多个正式版本（is_draft=0, version_code 非空）。同一业务键只返回一条：
+        正式版本优先、version_code 大者优先、无正式版本时草稿兜底；
+        归一键含 build_func，避免同名不同功能建筑被误并（2026-09-03）。
         """
         query = """SELECT
             b.id, b.build_name, b.address, b.build_year, b.build_func, b.build_func_region,
@@ -367,7 +368,7 @@ class PgDataQuery:
         FROM ts_institution_build b
         WHERE (b.deleted IS NULL OR b.deleted = 0)
           AND b.id IN (
-              SELECT DISTINCT ON (bb.build_name) bb.id
+              SELECT DISTINCT ON (bb.build_name, bb.build_func) bb.id
               FROM ts_institution_build bb
               WHERE (bb.deleted IS NULL OR bb.deleted = 0)"""
         params = []
@@ -379,7 +380,7 @@ class PgDataQuery:
             sub_filters += " AND bb.customer_id = %s"; sub_params.append(customer_id)
         query += sub_filters + (
             # 版本归一：正式版本(is_draft=0)优先，version_code 大者优先，草稿兜底
-            " ORDER BY bb.build_name,"
+            " ORDER BY bb.build_name, bb.build_func,"
             " COALESCE(bb.is_draft, 0) ASC,"
             " bb.version_code DESC NULLS LAST,"
             " bb.id DESC"
@@ -588,6 +589,20 @@ class PgDataQuery:
             query += " AND project_id = %s"; params.append(project_id)
         return self._execute(query, tuple(params))
 
+    def get_project_dept(self, project_id: int = None) -> List[Dict]:
+        """ts_project_dept — 项目级审计机构信息表（能源审计机构信息表数据源）。
+
+        字段：dept_name(机构名称)/address(地址)/contact(负责人)/mobile(联系方式)/project_id。
+        按项目 id 精确查询，id 倒序取最新记录。
+        """
+        query = "SELECT id, dept_name, address, contact, mobile, project_id FROM ts_project_dept"
+        params = []
+        if project_id:
+            query += " WHERE project_id = %s"
+            params.append(project_id)
+        query += " ORDER BY id DESC"
+        return self._execute(query, tuple(params))
+
     def get_register_info(self, credit_code: str = None, dept_name: str = None) -> List[Dict]:
         """ts_register_dept — 注册单位表（审计机构信息源）。
 
@@ -622,7 +637,11 @@ class PgDataQuery:
                     s.energy_metering, s.separate_meter, s.heat_area, s.heat_day, s.heat_price,
                     s.heat_pay_type, s.work_staff,
                     s.light_socket_meter, s.power_meter, s.aircon_meter, s.special_meter,
-                    s.other_special_meter, s.construction_elec_meter, s.construction_water_meter
+                    s.other_special_meter, s.construction_elec_meter, s.construction_water_meter,
+                    s.install_position, s.position_reasonable, s.metering_standard,
+                    s.partition_payment, s.electric_pay_type, s.service_staff,
+                    s.scene_desc, s.record_attach_id,
+                    s.aircon_staff_num, s.light_staff_num, s.power_room_staff_num
                  FROM ts_institution_scene s
                  WHERE (s.deleted IS NULL OR s.deleted = 0)
                    AND s.id IN (
@@ -711,7 +730,7 @@ class PgDataQuery:
                     m.sub_metering, m.other_metering_scenario, m.other_situation,
                     m.customer_id, m.data_type, m.measured_depth, m.month_measured,
                     m.month_files, m.year_measured, m.year_files, m.device_img,
-                    m.kitchen_water, m.year_water, m.year_water_value,
+                    m.kitchen_water, m.year_water, m.year_water_value, m.ledger_files,
                     m.create_time, m.update_time
                  FROM ts_institution_energy_meter m
                  WHERE (m.deleted IS NULL OR m.deleted = 0)
@@ -763,13 +782,32 @@ class PgDataQuery:
                     ac_replacement, water_saving_fixture_replacement, central_ac_control,
                     customer_id, version_code, is_draft
                  FROM ts_institution_energy_saving
-                 WHERE deleted = 0"""
+                 WHERE deleted = 0
+                   AND id IN (
+                       SELECT DISTINCT ON (COALESCE(ss.statistical_year, 0)) ss.id
+                       FROM ts_institution_energy_saving ss
+                       WHERE ss.deleted = 0"""
         params = []
         if customer_id:
             query += " AND customer_id = %s"; params.append(customer_id)
         if year is not None:
             query += " AND statistical_year = %s"; params.append(year)
+        # 子查询镜像过滤 + 版本归一（正式版本优先、version_code 大者优先、草稿兜底）
+        sub_filters = ""
+        sub_params = []
+        if customer_id:
+            sub_filters += " AND ss.customer_id = %s"; sub_params.append(customer_id)
+        if year is not None:
+            sub_filters += " AND ss.statistical_year = %s"; sub_params.append(year)
+        query += sub_filters + (
+            " ORDER BY COALESCE(ss.statistical_year, 0),"
+            " COALESCE(ss.is_draft, 0) ASC,"
+            " ss.version_code DESC NULLS LAST,"
+            " ss.id DESC"
+            ")"
+        )
         query += " ORDER BY statistical_year DESC, id"
+        params = params + sub_params
         return self._execute(query, tuple(params))
 
     # ========== 附件（文件） ==========

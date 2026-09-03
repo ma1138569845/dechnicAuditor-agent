@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════
+# 能源审计 Kanban 流水线 — 由 kanban-energy-audit-orchestrator 生成
+#
+# 项目数: {{PROJECT_COUNT}}
+# 并行度: {{MAX_CONCURRENT}} 项目
+# ═══════════════════════════════════════════════════════════════════════
+set -euo pipefail
+
+COLLECTOR="{{COLLECTOR_PROFILE}}"
+VALIDATOR="{{VALIDATOR_PROFILE}}"
+CALCULATOR="{{CALCULATOR_PROFILE}}"
+REPORTER="{{REPORTER_PROFILE}}"
+DIRECTOR="{{DIRECTOR_PROFILE}}"
+BASE="{{BASE}}"
+
+# ─────────────────────────────────────────────────────────────────────
+# 0. 环境检查
+# ─────────────────────────────────────────────────────────────────────
+echo "═══ 环境检查 ═══"
+
+if ! command -v hermes &>/dev/null; then
+    echo "✗ hermes CLI 未在 PATH 中"
+    exit 1
+fi
+echo "  ✓ hermes CLI"
+
+HERMES_HOME="${HERMES_HOME:-$HOME/AppData/Local/hermes}"
+for pf in "$COLLECTOR" "$VALIDATOR" "$CALCULATOR" "$REPORTER" "$DIRECTOR"; do
+    if [ ! -d "$HERMES_HOME/profiles/$pf" ]; then
+        echo "✗ Profile '$pf' 不存在: $HERMES_HOME/profiles/$pf"
+        echo "  创建: hermes profile create $pf --clone"
+        exit 1
+    fi
+    echo "  ✓ Profile: $pf"
+done
+
+if [ ! -f "$HERMES_HOME/kanban.db" ] && [ ! -d "$HERMES_HOME/kanban" ]; then
+    echo "  ⚠ kanban 未初始化，正在初始化..."
+    hermes kanban init 2>/dev/null || { echo "✗ 初始化失败"; exit 1; }
+fi
+echo "  ✓ kanban board"
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+# 1. 创建工作区
+# ─────────────────────────────────────────────────────────────────────
+echo "═══ 创建工作区 ═══"
+mkdir -p "$BASE"
+echo "  ✓ $BASE"
+
+{{MKDIR_COMMANDS}}
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+# 2. 复制配置
+# ─────────────────────────────────────────────────────────────────────
+echo "═══ 复制配置文件 ═══"
+{{CP_COMMANDS}}
+echo ""
+
+# ─────────────────────────────────────────────────────────────────────
+# 3. 创建 Kanban 任务图
+# ─────────────────────────────────────────────────────────────────────
+echo "═══ 创建 Kanban 任务图 ═══"
+echo "  {{PROJECT_COUNT}} 个项目，每项目 6 步任务 + 1 个汇总"
+echo "  预计 {{MAX_CONCURRENT}} 项目同时运行"
+echo ""
+
+{{KANBAN_TASKS}}
+
+# ─────────────────────────────────────────────────────────────────────
+# 4. 完成
+# ─────────────────────────────────────────────────────────────────────
+echo ""
+echo "══════════════════════════════════════════════════"
+echo "  设置完成！ {{PROJECT_COUNT}} 个项目"
+echo "══════════════════════════════════════════════════"
+echo ""
+echo "  工作区: $BASE"
+echo ""
+echo "  ── 监控 ──"
+echo "  hermes kanban list                              # 全部任务"
+echo "  hermes kanban list --status running             # 运行中"
+echo "  hermes kanban list --status blocked             # 阻塞"
+echo "  hermes dashboard                                 # 可视化"
+echo ""
+echo "  ── 报告收集 ──"
+for d in "$BASE"/*/output/; do
+    [ -d "$d" ] && ls "$d"/*.docx 2>/dev/null
+done
+echo ""
+echo "  ── 快速操作 ──"
+echo "  hermes kanban show <task_id>                    # 详情"
+echo "  hermes kanban reclaim <task_id>                 # 重跑"
+echo "  hermes kanban unblock <task_id>                 # 解阻塞"
+echo ""

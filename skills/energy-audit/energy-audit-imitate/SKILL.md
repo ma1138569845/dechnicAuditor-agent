@@ -132,7 +132,7 @@ Write `spec.json`:
   "audit_type": "公共机构",
   "cover": {"title": "<单位>能源审计报告", "audit_organization": "同方德诚科技有限公司"},
   "audit_info_tables": {
-    "institution": {"name": "<审计机构名称,ts_register_info>", "address": "<审计机构详细地址,ts_register_info/用户提供>",
+    "institution": {"name": "<审计机构名称,ts_register_dept>", "address": "<审计机构详细地址,ts_register_dept/用户提供>",
                     "contact": "<审计机构负责人,用户提供>", "phone": "<审计机构联系方式,用户提供>"},
     "team_members": [{"role": "审计负责人", "name": "…", "education": "…", "certification": "…", "major": "…"}],
     "cooperation": [{"role": "组长", "dept": "…", "name": "…", "gender": "…", "position": "…"}]

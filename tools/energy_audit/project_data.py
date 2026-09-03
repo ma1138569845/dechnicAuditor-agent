@@ -54,6 +54,8 @@ class ProjectBase:
     contact_phone: str = ""            # 联系电话
     audit_start: str = ""              # 审计起始时间 ex: "2025年6月"
     audit_end: str = ""                # 审计结束时间 ex: "2025年7月"
+    audit_period: str = ""             # 审计期 ex: "2025年1月-2026年9月"（audit_year）
+    base_period: str = ""               # 基准期 ex: "2023年1月-2024年1月"（reference_year）
     data_start: str = ""               # 数据起始年份 ex: "2022-01-01"
     data_end: str = ""                 # 数据结束年份 ex: "2024-12-31"
     building_area: float = 0           # 总建筑面积 m²
@@ -247,6 +249,19 @@ class MeteringInfo:
     independent_construction_water: bool = False # 施工用水独立计量
     has_shared_office: bool = False          # 是否合署办公 — ts_institution_scene.mode (1是/2否)
     has_household_payment: bool = False      # 分户缴费 — split_payment (1是/2否)
+    install_position: int = 0                # 计量器具安装位置 1按要求/2未按要求
+    position_reasonable: int = 0             # 位置合理性 1合理/2不合理
+    metering_standard: int = 0               # 计量规范性 1非常规范/2一般规范/3不规范
+    partition_payment: bool = False          # 分区缴费 — partition_payment (1是/2否)
+    electric_pay_type: str = ""              # 电费收费方式
+    service_staff: str = ""                  # 第三方服务人员
+    scene_desc: str = ""                     # 现场描述
+    ledger_files: str = ""                   # 计量器具台账附件文件 id（逗号分隔，电/水表记录拼接）
+    ledger_text: str = ""                    # 台账文档下载后提取的文字（enrich_meter_ledger 回填）
+    record_attach_id: int = 0                # 运行记录抽样文件 id（scene.record_attach_id）
+    aircon_staff_num: int = 0                # 空调系统运维人数（4.2 专职人员判定）
+    light_staff_num: int = 0                 # 照明系统运维人数
+    power_room_staff_num: int = 0            # 配电室运维人数
 
 
 @dataclass
@@ -392,6 +407,7 @@ class AuditProject:
     energy_monthly: List[EnergyMonthly] = field(default_factory=list)
     equipment: List[Equipment] = field(default_factory=list)
     metering: MeteringInfo = field(default_factory=MeteringInfo)
+    energy_meter: List[dict] = field(default_factory=list)  # 表具计量信息（ts_institution_energy_meter 原始记录，按 data_type/statistical_year 版本归一后）
     shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）
