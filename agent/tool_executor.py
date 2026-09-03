@@ -771,6 +771,7 @@ def _run_agent_tool_execution_middleware(
         function_args,
         _hermes_pipeline,
         session_id=str(getattr(agent, "session_id", "") or ""),
+        tool_call_id=tool_call_id or None,
         metadata={
             "task_id": effective_task_id or "",
             "turn_id": getattr(agent, "_current_turn_id", "") or "",
@@ -1196,9 +1197,9 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 _underlying, _underlying_args, _err = _ts.resolve_underlying_call(function_args)
                 if not _err and _underlying:
                     if _underlying in _tool_search_scoped_names(agent):
-                        # Probe-validate before unwrapping (ironclaw#5149):
-                        # missing required args return the parameter schema
-                        # instead of dispatching into an opaque failure.
+                        # Validate before unwrapping: the generic bridge hides
+                        # the concrete parameter schema from provider-native
+                        # tool-call validation.
                         _probe_err = _ts.validate_deferred_call_args(_underlying, _underlying_args)
                         if _probe_err is not None:
                             _ts_scope_block = _probe_err
@@ -2056,9 +2057,9 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 _underlying, _underlying_args, _err = _ts.resolve_underlying_call(function_args)
                 if not _err and _underlying:
                     if _underlying in _tool_search_scoped_names(agent):
-                        # Probe-validate before unwrapping (ironclaw#5149):
-                        # missing required args return the parameter schema
-                        # instead of dispatching into an opaque failure.
+                        # Validate before unwrapping: the generic bridge hides
+                        # the concrete parameter schema from provider-native
+                        # tool-call validation.
                         _probe_err = _ts.validate_deferred_call_args(_underlying, _underlying_args)
                         if _probe_err is not None:
                             # This path wraps _block_msg in {"error": ...} —

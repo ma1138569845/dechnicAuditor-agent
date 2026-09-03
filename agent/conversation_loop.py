@@ -41,6 +41,7 @@ from agent.conversation_compression import (
 from agent.context_engine import automatic_compaction_status_message
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
+from agent.fast_mode import begin_turn as begin_fast_mode_turn
 from agent.message_metadata import append_message
 from agent.turn_context import (
     PreflightCompressionTimedOut,
@@ -608,6 +609,36 @@ def _image_error_max_dimension(error: Exception) -> Optional[int]:
     return None
 
 
+def _pressure_with_real_floor(compressor: Any, rough_tokens: int) -> int:
+    """Floor the ROUGH pre-API pressure estimate at the last REAL prompt size.
+
+    Applied only on the fallback path -- when ``anchored_context_tokens`` has
+    no valid anchor (first request, transcript rewritten under the anchor,
+    provider never reported usage). A valid anchor is provider-exact and is
+    used as-is; in particular on MoA turns the anchor deliberately uses the
+    pre-fold aggregator usage while ``last_real_prompt_tokens`` holds the
+    folded figure, so flooring an anchored value would re-add fan-out tokens
+    the anchor exists to exclude.
+
+    On the rough path, non-ASCII text (Cyrillic, Greek, Polish, ...)
+    under-counts by up to ~2x, so a session can sit at the provider's real
+    context ceiling while the rough figure stays under the compaction
+    threshold -- on silent-clip providers (ollama /v1) that is a truncation
+    death spiral the reactive overflow handler never sees (observed live:
+    real prompts 64,842->64,995 against a 55,705 threshold). The provider's
+    last reported prompt_tokens is authoritative; never let the rough figure
+    fall below it. Skipped for exactly one turn after a compaction, when
+    last_real_prompt_tokens still holds the stale pre-compression value
+    (#36718's awaiting_real_usage_after_compression window).
+    """
+    last_real = int(getattr(compressor, "last_real_prompt_tokens", 0) or 0)
+    if last_real > rough_tokens and not getattr(
+        compressor, "awaiting_real_usage_after_compression", False
+    ):
+        return last_real
+    return rough_tokens
+
+
 def _ollama_context_limit_error(agent: Any, request_tokens: int) -> Optional[str]:
     """Return a user-facing error when Ollama is loaded with too little context."""
     if not getattr(agent, "tools", None):
@@ -988,6 +1019,7 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
     """
     stored_prompt = None
     stored_state = "missing"
+    session_row = None
     if conversation_history and agent._session_db:
         try:
             session_row = agent._session_db.get_session(agent.session_id)
@@ -1090,6 +1122,17 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
         # Continuing session — reuse the exact system prompt from the
         # previous turn so the Anthropic cache prefix matches.
         agent._cached_system_prompt = stored_prompt
+        # Same contract for tools[]: a fresh AIAgent for an existing session
+        # (gateway agent-cache eviction) re-probed every check_fn, so pin the
+        # array back to the order this session already sent (tools freeze).
+        try:
+            saved_tools = session_row.get("tool_names") if session_row else None
+            if saved_tools:
+                from tools.mcp_tool import restore_agent_tool_prefix
+
+                restore_agent_tool_prefix(agent, json.loads(saved_tools))
+        except Exception:
+            logger.debug("tool prefix restore skipped", exc_info=True)
         # Prompt-section callbacks are new-session-only. Recover their frozen
         # bytes from the persisted full prompt so a later compression rebuild
         # keeps them without evaluating plugin state in this resumed process.
@@ -1172,6 +1215,9 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
     if agent._session_db:
         try:
             agent._session_db.update_system_prompt(agent.session_id, agent._cached_system_prompt)
+            from tools.mcp_tool import persist_agent_tool_names
+
+            persist_agent_tool_names(agent)
         except Exception as exc:
             logger.warning(
                 "Session DB update_system_prompt failed for session %s: "
@@ -2042,6 +2088,7 @@ def run_conversation(
     agent._last_compaction_in_place = False
     agent._last_compression_attempt_recorded = False
     agent._last_compression_attempt_in_place = None
+    begin_fast_mode_turn(agent, conversation_history)
 
     # Adopt any ~/.hermes/.env credential/base-url edits made since the last
     # turn — a Settings save updates .env but not this worker's client, which
@@ -2160,6 +2207,12 @@ def run_conversation(
     failed = False
     codex_ack_continuations = 0
     length_continue_retries = 0
+    # One-shot "continue without thinking" override is turn-scoped: a
+    # thinking-only truncation arms it right before the continuation restart,
+    # and build_api_kwargs consumes it on that call. If the turn is
+    # interrupted/errors between arm and consume, it must not fire on the
+    # next turn's first request.
+    agent._ephemeral_reasoning_off = False
     # Total outer-loop exceptions this turn (#92450) — see _MAX_OUTER_LOOP_ERRORS.
     _outer_error_count = 0
     truncated_tool_call_retries = 0
@@ -2690,6 +2743,13 @@ def run_conversation(
         # gated on context_compressor — so orphans from session loading or
         # manual message manipulation are always caught.
         api_messages = agent._sanitize_api_messages(api_messages)
+        # Send-path vision eviction (#89296): compression only strips stale
+        # screenshots when prune fires, and the Anthropic adapter's keep-window
+        # never sees OpenAI-style tool-result image_url parts. The per-call
+        # clone is rewritten in place; persisted history is untouched.
+        from agent.context_compressor import evict_stale_outbound_tool_images
+
+        evict_stale_outbound_tool_images(api_messages)
 
         # One-time repeated-heal escalation notice (#96870): if the sanitizer
         # above just crossed the per-session heal threshold, deliver the
@@ -2859,6 +2919,10 @@ def run_conversation(
         )
         if _anchored_pressure is not None:
             request_pressure_tokens = _anchored_pressure
+        else:
+            request_pressure_tokens = _pressure_with_real_floor(
+                agent.context_compressor, request_pressure_tokens
+            )
         total_chars = approx_tokens * 4
         # Stash this request's rough estimate so update_from_response() can
         # pair it with the provider's real prompt count — the (rough, real)
@@ -4163,7 +4227,7 @@ def run_conversation(
                             "The model used all its output tokens on reasoning "
                             "and had none left for the actual response.\n\n"
                             "To fix this:\n"
-                            "→ Lower reasoning effort: `/thinkon low` or `/thinkon minimal`\n"
+                            "→ Lower reasoning effort: `/reasoning low` or `/reasoning minimal`\n"
                             "→ Or switch to a larger/non-reasoning model with `/model`"
                         )
                         agent._cleanup_task_resources(effective_task_id)
@@ -4290,29 +4354,46 @@ def run_conversation(
                             )
                         if assistant_message is not None and not _trunc_has_tool_calls:
                             length_continue_retries += 1
-                            # An EMPTY partial-stream stub (stream dropped
-                            # mid tool-call before any text was delivered)
-                            # must not be appended as an interim assistant
-                            # message: it would serialize as
-                            # {"role": "assistant", "content": ""}, and
+                            # An interim assistant message with NO visible
+                            # content must not be appended — whichever way it
+                            # got that way.  An empty partial-stream stub
+                            # (stream dropped before any text was delivered)
+                            # and a response whose whole output budget went to
+                            # reasoning delivered in a separate field (GLM-5.3
+                            # on ollama-cloud with reasoning_effort=high:
+                            # finish_reason="length", content="",
+                            # completion_tokens == max_tokens) both serialize
+                            # as {"role": "assistant", "content": ""}, and
                             # strict providers (Moonshot/Kimi via OpenRouter)
                             # reject empty assistant content with HTTP 400
                             # ("message ... with role 'assistant' must not be
                             # empty") on the very next replay — permanently
-                            # poisoning the session history.  There is no
-                            # partial text to continue from anyway, so only
-                            # the continuation user-message is appended.
+                            # poisoning the session history until the pre-call
+                            # sanitizer "heals" the hole (observed 3+ healings
+                            # per turn).  There is no partial text to continue
+                            # from anyway, so only the continuation
+                            # user-message is appended.
+                            _interim_content = getattr(assistant_message, "content", None)
                             _is_empty_partial_stub = (
                                 getattr(response, "id", "") == PARTIAL_STREAM_STUB_ID
-                                and not getattr(assistant_message, "content", None)
+                                and not _interim_content
                             )
-                            if not _is_empty_partial_stub:
+                            if not _interim_content and not _is_empty_partial_stub:
+                                # Thinking-only truncation: the model spent the
+                                # entire output cap on reasoning and produced no
+                                # visible text.  A continuation with thinking
+                                # ON would re-think the whole context from
+                                # scratch (continuations never replay prior
+                                # reasoning) and re-burn the same budget, so
+                                # the next call drops thinking for one request
+                                # — the answer must be written, not re-derived.
+                                agent._ephemeral_reasoning_off = True
+                            if _interim_content:
                                 interim_msg = agent._build_assistant_message(assistant_message, finish_reason)
                                 # Marked so the ceiling exit can drop the fragment trail.
                                 interim_msg["_length_continuation_fragment"] = True
                                 append_message(messages, interim_msg)
-                                if assistant_message.content:
-                                    truncated_response_parts.append(assistant_message.content)
+                                truncated_response_parts.append(_interim_content)
 
                             if length_continue_retries < 4:
                                 _is_partial_stream_stub = (
@@ -4356,12 +4437,42 @@ def run_conversation(
                                 break
 
                             partial_response = agent._strip_think_blocks(_join_truncated_parts(truncated_response_parts)).strip()
+                            # The pending one-shot reasoning-off override must
+                            # not leak into the next turn when the 4th
+                            # truncation goes straight to the ceiling exit
+                            # without scheduling a continuation call to
+                            # consume it.
+                            agent._ephemeral_reasoning_off = False
                             if partial_response:
                                 agent._vprint(
                                     f"{agent.log_prefix}⚠️  Response still truncated "
-                                    f"after 4 continuation attempts — keeping the "
+                                    f"after {length_continue_retries} continuation attempts — keeping the "
                                     f"partial response received so far.",
                                     force=True,
+                                )
+                                _ceiling_final = partial_response
+                            else:
+                                # Every fragment was empty — e.g. a thinking
+                                # model that spent each attempt's whole cap on
+                                # reasoning (GLM-5.3 on ollama-cloud).  Return
+                                # an actionable message instead of an invisible
+                                # None result, which only surfaces as a bare
+                                # error card.
+                                agent._vprint(
+                                    f"{agent.log_prefix}⚠️  Response still truncated "
+                                    f"after {length_continue_retries} continuation attempts — no visible "
+                                    f"text was produced.",
+                                    force=True,
+                                )
+                                _ceiling_final = (
+                                    "⚠️ **No visible answer was produced.** The "
+                                    "model hit its output-token limit on every "
+                                    "continuation attempt — its reasoning "
+                                    "consumed the entire budget each time.\n\n"
+                                    "To fix this:\n"
+                                    "→ Lower reasoning effort: `/reasoning low` "
+                                    "or `/reasoning none`\n"
+                                    "→ Or raise max_tokens for this model"
                                 )
                             # Unanswered continue nudges made every later turn re-truncate.
                             _turn_start = (
@@ -4390,7 +4501,7 @@ def run_conversation(
                             agent._cleanup_task_resources(effective_task_id)
                             agent._persist_session(messages, conversation_history)
                             return {
-                                "final_response": partial_response or None,
+                                "final_response": _ceiling_final,
                                 "messages": messages,
                                 "api_calls": api_call_count,
                                 "completed": False,
@@ -4498,6 +4609,11 @@ def run_conversation(
                             "error": "First response truncated due to output length limit"
                         }
                 
+                # Count every completed provider attempt, including providers
+                # that omit usage. Token/cost accounting below remains gated on
+                # real usage, but the request itself must stay observable.
+                agent.session_api_calls += 1
+
                 # Track actual token usage from response for context management
                 if hasattr(response, 'usage') and response.usage:
                     canonical_usage = normalize_usage(
@@ -4672,7 +4788,6 @@ def run_conversation(
                     agent.session_prompt_tokens += prompt_tokens
                     agent.session_completion_tokens += completion_tokens
                     agent.session_total_tokens += total_tokens
-                    agent.session_api_calls += 1
                     agent.session_input_tokens += canonical_usage.input_tokens
                     agent.session_output_tokens += canonical_usage.output_tokens
                     agent.session_cache_read_tokens += canonical_usage.cache_read_tokens
@@ -4819,6 +4934,15 @@ def run_conversation(
                             f"{cached:,}/{prompt:,} tokens "
                             f"({hit_pct:.0f}% hit, {written:,} written)"
                         )
+                else:
+                    logger.info(
+                        "API call #%d: model=%s provider=%s in=? out=? total=? "
+                        "latency=%.1fs usage=unavailable",
+                        agent.session_api_calls,
+                        agent.model,
+                        agent.provider or "unknown",
+                        api_duration,
+                    )
                 
                 _retry.has_retried_429 = False  # Reset on success
                 # Note: don't clear the retry buffer here — an "API call
@@ -5359,7 +5483,7 @@ def run_conversation(
                 ):
                     _retry.nous_auth_retry_attempted = True
                     if agent._try_refresh_nous_client_credentials(force=True):
-                        print(f"{agent.log_prefix}🔐 Nous agent key refreshed after 401. Retrying request...")
+                        agent._buffer_vprint(f"🔐 Nous agent key refreshed after 401. Retrying request...")
                         continue
                     # Credential refresh didn't help — show diagnostic info.
                     # Most common causes: Portal OAuth expired/revoked,
@@ -5521,6 +5645,37 @@ def run_conversation(
                         agent.log_prefix,
                         replay_stats["items"],
                         replay_stats["messages"],
+                    )
+                    continue
+
+                # ── Reasoning-mandatory route rejected a disable ──────
+                # The route (Nous Portal / OpenRouter, e.g. GLM-5.3) answers
+                # ``reasoning: {enabled: false}`` with HTTP 400.  The catalog
+                # guard in the provider profile normally swallows the
+                # disable, but a process that warmed its capability cache
+                # before the route flipped to mandatory keeps sending it.
+                # One-shot: never send a disable again this session (the
+                # wire builder omits it → upstream default thinking), queue
+                # a catalog refresh so the guard is right next time, retry.
+                if (
+                    classified.reason == FailoverReason.reasoning_mandatory
+                    and not _retry.reasoning_mandatory_retry_attempted
+                ):
+                    _retry.reasoning_mandatory_retry_attempted = True
+                    agent._reasoning_disable_rejected = True
+                    try:
+                        from hermes_cli.models import refresh_reasoning_caps_async
+                        refresh_reasoning_caps_async(agent.provider)
+                    except Exception:
+                        pass
+                    agent._vprint(
+                        f"{agent.log_prefix}⚠️  {agent.model} requires reasoning — "
+                        f"thinking stays on for this session, retrying...",
+                        force=True,
+                    )
+                    logger.warning(
+                        "%sReasoning-mandatory recovery: dropping reasoning disable for %s",
+                        agent.log_prefix, agent.model,
                     )
                     continue
 
@@ -6116,6 +6271,11 @@ def run_conversation(
                         messages, system_message,
                         approx_tokens=estimate_request_tokens_rough(api_messages, tools=agent.tools or None),
                         task_id=effective_task_id,
+                        # #100661: the provider proved the request does not fit.
+                        # Ignore the summary-failure cooldown for this ONE
+                        # attempt (bounded by max_compression_attempts) instead
+                        # of deferring every turn until the ladder lapses.
+                        bypass_cooldown=True,
                     )
                     if messages is _overflow_input and compression_skipped_due_to_lock(agent):
                         # #69870 lock-skip: the provider proved the request
@@ -6292,6 +6452,7 @@ def run_conversation(
                                 messages, system_message,
                                 approx_tokens=request_input_estimate,
                                 task_id=effective_task_id,
+                                bypass_cooldown=True,  # #100661 provider-proven overflow
                             )
                             if messages is _overflow_input and compression_skipped_due_to_lock(agent):
                                 compression_attempts -= 1
@@ -6455,6 +6616,11 @@ def run_conversation(
                         messages, system_message,
                         approx_tokens=estimate_request_tokens_rough(api_messages, tools=agent.tools or None),
                         task_id=effective_task_id,
+                        # #100661: the provider proved the request does not fit.
+                        # Ignore the summary-failure cooldown for this ONE
+                        # attempt (bounded by max_compression_attempts) instead
+                        # of deferring every turn until the ladder lapses.
+                        bypass_cooldown=True,
                     )
                     if messages is _overflow_input and compression_skipped_due_to_lock(agent):
                         # #69870 lock-skip: the provider proved the request
@@ -8153,9 +8319,19 @@ def run_conversation(
                     _info = getattr(_compressor, "should_compress_info", None)
                     if _info is not None:
                         try:
-                            _block_reason = _info(_real_tokens)[1]
+                            _should_now, _block_reason = _info(_real_tokens)
                         except Exception:
-                            _block_reason = None
+                            _should_now, _block_reason = False, None
+                        if _should_now and not _block_reason:
+                            # The engine says compression SHOULD run, yet this
+                            # branch was taken — the per-turn attempt budget is
+                            # spent. Over threshold with no reclamation left is
+                            # exactly the silent-lockout case, so name it
+                            # instead of dropping the (True, None) on the floor
+                            # (#101889).
+                            _block_reason = (
+                                f"attempts_exhausted:{compression_attempts}"
+                            )
                     if _block_reason:
                         agent._warn_context_overflow_blocked(
                             _block_reason,
@@ -8420,6 +8596,7 @@ def run_conversation(
                             agent,
                             finish_reason=finish_reason,
                             response=response,
+                            observed_generation=_has_structured,
                         )
                     _empty_retry_budget = (
                         _empty_guard.empty_retry_budget(agent, response)
@@ -8487,15 +8664,14 @@ def run_conversation(
 
                     if _truly_empty and _deterministic_empty:
                         logger.warning(
-                            "Deterministic empty response detected "
-                            "(consecutive zero-output completions, "
-                            "model=%s provider=%s finish_reason=%s) — "
+                            "Repeated empty response detected "
+                            "(model=%s provider=%s finish_reason=%s) — "
                             "skipping remaining retries",
                             agent.model, agent.provider, finish_reason,
                         )
                         agent._buffer_status(
-                            "⚠️ Model is deterministically returning empty "
-                            "(zero output tokens) — skipping further retries "
+                            "⚠️ Model is repeatedly returning empty content — "
+                            "skipping further retries "
                             "to avoid repeat charges"
                         )
 

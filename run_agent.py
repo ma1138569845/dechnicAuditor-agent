@@ -2021,6 +2021,13 @@ class AIAgent:
             if not enabled:
                 return
 
+        # Structural clone at the single chokepoint every review path
+        # (automatic, /refine, idle-queue deferral) goes through. The fork
+        # sanitizes its transcript in place; a shallow copy would alias the
+        # nested tool_calls/content containers of the live history (#100795).
+        from agent.turn_finalizer import _clone_background_review_messages
+        messages_snapshot = _clone_background_review_messages(messages_snapshot)
+
         kwargs = dict(
             messages_snapshot=messages_snapshot,
             review_memory=review_memory,
@@ -2663,13 +2670,17 @@ class AIAgent:
             # ("storage was busy, send it again") from disk-full/read-only.
             from hermes_state import (
                 CompressionSessionClosedError,
+                StateDbCorruptError,
                 StateDbReplacedError,
                 classify_persistence_error,
                 divert_session_transcript_jsonl,
             )
 
             self._last_persistence_error_cause = classify_persistence_error(e)
-            if isinstance(e, StateDbReplacedError):
+            if isinstance(e, (StateDbReplacedError, StateDbCorruptError)):
+                # Replaced generation or quarantined (structurally corrupt)
+                # handle: SQLite will not take this batch again, so keep it
+                # on disk instead of only in RAM.
                 try:
                     divert_session_transcript_jsonl(
                         getattr(self, "session_id", "") or "",
@@ -2677,7 +2688,8 @@ class AIAgent:
                     )
                 except Exception:
                     logger.warning(
-                        "JSONL divert failed after state.db replace for %s",
+                        "JSONL divert failed after state.db %s for %s",
+                        self._last_persistence_error_cause,
                         getattr(self, "session_id", None),
                         exc_info=True,
                     )
@@ -4411,6 +4423,11 @@ class AIAgent:
                     "pending_messages/pending-*.json."
                 )
             if cause == "corrupt":
+                from hermes_state import _default_db_path
+
+                # Copy-pasteable, so name the real store (profiles /
+                # HERMES_HOME do not live under ~/.hermes).
+                db_path = _default_db_path()
                 return (
                     prefix
                     + "the turn was stopped because the state database "
@@ -4418,8 +4435,15 @@ class AIAgent:
                     "have been lost on restart). Freeing disk space will "
                     "not help. Recovery options:\n"
                     "1. Run `hermes doctor --fix`\n"
-                    "2. Salvage with: sqlite3 ~/.hermes/state.db \".recover\" "
-                    "(then replace state.db)\n"
+                    "2. Stop the gateway, then recover with:\n"
+                    f"   hermes sessions recover --source {db_path} "
+                    "--inspect-only\n"
+                    "   (if it reports recoverable) hermes sessions recover "
+                    f"--source {db_path} --output recovered-state.db\n"
+                    "   — recovery snapshots the damaged file first; do NOT "
+                    "run `sqlite3 ... \".recover\"` against the live "
+                    "state.db, a vulnerable sqlite3 CLI can corrupt it "
+                    "further\n"
                     "3. Restore from a backup in ~/.hermes/backups/\n"
                     "Then send your message again."
                 )
@@ -5152,6 +5176,14 @@ class AIAgent:
         # still holds the closed agent (e.g. a draining background task).
         try:
             self._session_messages = []
+            # Shadow copies of the same transcript: the DB-flush settled-prefix
+            # snapshot (a shallow copy of the whole list, see
+            # _flush_session_to_db) and the streamed-text accumulator. On a
+            # closed delegate child these were the only remaining owners of
+            # every message dict, so a retained child kept its full history
+            # alive in the parent's heap.
+            self._db_flush_scan_prefix = None
+            self._streamed_assistant_text_parts = []
         except Exception:
             pass
 
@@ -6411,9 +6443,12 @@ class AIAgent:
         try:
             from hermes_cli.auth import resolve_nous_runtime_credentials
 
+            # Pass the bearer that just 401'd so a refresh already done by a
+            # sibling process is adopted instead of rotating the grant again.
             creds = resolve_nous_runtime_credentials(
                 timeout_seconds=env_float("HERMES_NOUS_TIMEOUT_SECONDS", 15),
                 force_refresh=force,
+                stale_access_token=self.api_key or None,
             )
         except Exception as exc:
             logger.debug("Nous credential refresh failed: %s", exc)
@@ -7137,6 +7172,26 @@ class AIAgent:
                 self._record_streamed_assistant_text(tail)
         self._current_streamed_assistant_text = ""
 
+    @property
+    def _current_streamed_assistant_text(self) -> str:
+        """Visible assistant text streamed so far this turn.
+
+        Backed by a list of pieces rather than one growing string. Adding to
+        a string with ``+=`` on an attribute copies the whole thing every
+        time, so a long reply costs the square of its length in copying. The
+        pieces are joined here when a caller needs the full text. Emptiness
+        checks on the hot path should look at ``_streamed_assistant_text_parts``
+        instead, so they do not join on every delta.
+        """
+        parts = getattr(self, "_streamed_assistant_text_parts", None)
+        if not parts:
+            return ""
+        return "".join(parts)
+
+    @_current_streamed_assistant_text.setter
+    def _current_streamed_assistant_text(self, value: str) -> None:
+        self._streamed_assistant_text_parts = [value] if value else []
+
     def _record_streamed_assistant_text(self, text: str) -> None:
         """Accumulate visible assistant text emitted through stream callbacks."""
         # Single-writer guard (#65991): a superseded stream must not pollute the
@@ -7146,9 +7201,11 @@ class AIAgent:
         if self._stream_writer_superseded():
             return
         if isinstance(text, str) and text:
-            self._current_streamed_assistant_text = (
-                getattr(self, "_current_streamed_assistant_text", "") + text
-            )
+            parts = getattr(self, "_streamed_assistant_text_parts", None)
+            if parts is None:
+                parts = []
+                self._streamed_assistant_text_parts = parts
+            parts.append(text)
 
     @staticmethod
     def _normalize_interim_visible_text(text: str) -> str:
@@ -7495,9 +7552,12 @@ class AIAgent:
             else:
                 # Defensive: legacy callers without the scrubber attribute.
                 text = sanitize_context(text)
-            # Only strip leading newlines on the first delta — mid-stream "\n" is legitimate markdown.
+            # Only strip leading newlines on the first delta. Mid-stream
+            # newlines are legitimate markdown. Look at the parts list, not
+            # the joined property: joining on every token would copy the
+            # whole reply again.
             if not prepended_break and not getattr(
-                self, "_current_streamed_assistant_text", ""
+                self, "_streamed_assistant_text_parts", None
             ):
                 text = text.lstrip("\n")
         if not text:
@@ -8534,6 +8594,7 @@ class AIAgent:
         task_id: str = "default",
         focus_topic: str = None,
         force: bool = False,
+        bypass_cooldown: bool = False,
         defer_context_engine_notification: bool = False,
         commit_fence=None,
     ) -> tuple:
@@ -8542,7 +8603,9 @@ class AIAgent:
         ``force=True`` is passed by the manual ``/compress`` slash command
         so users can bypass the summary-failure cooldown after an
         auto-compress abort.  Auto-compress callers use the default
-        ``force=False``.
+        ``force=False``.  ``bypass_cooldown=True`` is passed by the
+        provider-proven overflow recovery path so one real attempt runs while
+        the cooldown is armed (#100661) — without clearing it.
         """
         # Per-attempt signal consumed by turn-start preflight (#98424) and the
         # in-loop pre-API/overflow consumers. A stalled compression must not
@@ -8623,6 +8686,7 @@ class AIAgent:
                     approx_tokens=approx_tokens, task_id=task_id,
                     focus_topic=focus_topic,
                     force=force,
+                    bypass_cooldown=bypass_cooldown,
                     defer_context_engine_notification=(
                         defer_context_engine_notification
                     ),
@@ -9003,6 +9067,13 @@ class AIAgent:
             function_result = append_toolguard_guidance(function_result, decision)
         if decision.should_halt:
             self._set_tool_guardrail_halt(decision)
+        else:
+            # observe_call may have raised the identical-call streak halt
+            # (hard_stop_enabled, tool-agnostic) — surface it the same way.
+            streak_halt = self._tool_guardrails.halt_decision
+            if streak_halt is not None and streak_halt.code == "identical_call_streak_halt":
+                function_result = append_toolguard_guidance(function_result, streak_halt)
+                self._set_tool_guardrail_halt(streak_halt)
         if stall_notice:
             function_result = (function_result or "") + "\n\n" + stall_notice
         return function_result
@@ -9253,8 +9324,11 @@ class AIAgent:
         relay_turn = None
         durable_turn_lease = None
         durable_turn_lease_stop = None
-        durable_turn_lease_thread = None
-        durable_turn_liveness_thread = None
+        durable_turn_lease_refresh = None
+        durable_turn_liveness_watchdog = None
+        # Handles on the shared periodic scheduler thread (one per process,
+        # agent/periodic_scheduler.py) instead of 1-2 daemon threads per turn.
+        durable_turn_timer_handles = []
         durable_turn_lease_activity_lock = threading.Lock()
         durable_turn_lease_turn_active = False
         durable_turn_lease_interrupt_message = None
@@ -9465,7 +9539,7 @@ class AIAgent:
                     )
 
                 # Long model/tool/compression turns outlive a fixed TTL. Refresh
-                # in a daemon thread; holder-qualified UPDATE and DELETE fence a
+                # on the shared periodic scheduler; holder-qualified UPDATE and DELETE fence a
                 # late refresher/release from a successor lease.
                 durable_turn_lease_stop = threading.Event()
                 _lease_refresh_interval = float(
@@ -9482,10 +9556,10 @@ class AIAgent:
                 # "active", and never be force-aborted.
                 #
                 # The watchdog policy (config resolution, sampling state
-                # machine, thread mechanics) lives in agent/turn_liveness.py;
+                # machine, polling mechanics) lives in agent/turn_liveness.py;
                 # this block is only the integration seam: resolve the
                 # config.yaml settings, wire the commit/deactivate callbacks
-                # that own turn-lease state, and start the thread.
+                # that own turn-lease state, and schedule the poll.
                 try:
                     from hermes_cli.config import (
                         load_config_readonly as _liveness_load_config,
@@ -9613,60 +9687,57 @@ class AIAgent:
                     with durable_turn_lease_activity_lock:
                         return durable_turn_lease_turn_active
 
-                def _refresh_durable_turn_lease() -> None:
-                    while not durable_turn_lease_stop.wait(_lease_refresh_interval):
-                        try:
-                            if not _turn_db.refresh_session_turn_lease(
-                                getattr(self, "session_id", None) or session_id,
-                                durable_turn_lease,
-                                ttl_seconds=_lease_ttl,
-                            ):
-                                # finally sets the stop event then releases.
-                                # A late holder-fenced miss after that join
-                                # timeout must not hard-interrupt the next turn.
-                                if durable_turn_lease_stop.is_set():
-                                    return
-                                logger.error(
-                                    "Lost session turn lease while turn is active: %s",
-                                    getattr(self, "session_id", None) or session_id,
-                                )
-                                _interrupt_turn(
-                                    "Session turn lease lost; stopping to protect "
-                                    "the transcript."
-                                )
-                                return
-                        except Exception:
+                def _refresh_durable_turn_lease():
+                    # One periodic tick on the shared scheduler thread every
+                    # _lease_refresh_interval; returning False stops it.
+                    if durable_turn_lease_stop.is_set():
+                        return False
+                    try:
+                        if not _turn_db.refresh_session_turn_lease(
+                            getattr(self, "session_id", None) or session_id,
+                            durable_turn_lease,
+                            ttl_seconds=_lease_ttl,
+                        ):
+                            # finally sets the stop event then releases.
+                            # A late holder-fenced miss after that cancel
+                            # wait must not hard-interrupt the next turn.
                             if durable_turn_lease_stop.is_set():
-                                return
-                            logger.warning(
-                                "Failed to refresh session turn lease: %s",
+                                return False
+                            logger.error(
+                                "Lost session turn lease while turn is active: %s",
                                 getattr(self, "session_id", None) or session_id,
-                                exc_info=True,
                             )
                             _interrupt_turn(
-                                "Session turn lease could not be refreshed; "
-                                "stopping to protect the transcript."
+                                "Session turn lease lost; stopping to protect "
+                                "the transcript."
                             )
-                            return
+                            return False
+                    except Exception:
+                        if durable_turn_lease_stop.is_set():
+                            return False
+                        logger.warning(
+                            "Failed to refresh session turn lease: %s",
+                            getattr(self, "session_id", None) or session_id,
+                            exc_info=True,
+                        )
+                        _interrupt_turn(
+                            "Session turn lease could not be refreshed; "
+                            "stopping to protect the transcript."
+                        )
+                        return False
 
-                durable_turn_lease_thread = threading.Thread(
-                    target=_refresh_durable_turn_lease,
-                    name="session-turn-lease-refresh",
-                    daemon=True,
-                )
+                durable_turn_lease_refresh = _refresh_durable_turn_lease
                 if _liveness_timeout is not None:
-                    durable_turn_liveness_thread = (
-                        turn_liveness.TurnLivenessWatchdog(
-                            self,
-                            session_id=getattr(self, "session_id", None) or session_id,
-                            timeout_s=_liveness_timeout,
-                            poll_s=_liveness_poll,
-                            stop_event=durable_turn_lease_stop,
-                            activity_lock=self._liveness_activity_lock(),
-                            is_turn_active=_turn_is_active,
-                            commit_abort=_commit_turn_liveness_abort,
-                            deactivate_turn=_deactivate_turn_after_liveness_abort,
-                        ).make_thread()
+                    durable_turn_liveness_watchdog = turn_liveness.TurnLivenessWatchdog(
+                        self,
+                        session_id=getattr(self, "session_id", None) or session_id,
+                        timeout_s=_liveness_timeout,
+                        poll_s=_liveness_poll,
+                        stop_event=durable_turn_lease_stop,
+                        activity_lock=self._liveness_activity_lock(),
+                        is_turn_active=_turn_is_active,
+                        commit_abort=_commit_turn_liveness_abort,
+                        deactivate_turn=_deactivate_turn_after_liveness_abort,
                     )
 
 
@@ -9719,7 +9790,7 @@ class AIAgent:
             # which may be observed from another thread.
             with bind_subagent_parent(self), scoped_runtime_main({}):
                 try:
-                    if durable_turn_lease_thread is not None:
+                    if durable_turn_lease_refresh is not None:
                         with durable_turn_lease_activity_lock:
                             durable_turn_lease_turn_active = True
                         # Stamp the activity clock at turn entry (#95663
@@ -9732,9 +9803,17 @@ class AIAgent:
                         # first poll whenever the agent had been idle longer
                         # than the watchdog bound.
                         self._touch_activity("starting new turn")
-                        durable_turn_lease_thread.start()
-                        if durable_turn_liveness_thread is not None:
-                            durable_turn_liveness_thread.start()
+                        from agent.periodic_scheduler import schedule as _schedule_periodic
+
+                        durable_turn_timer_handles.append(
+                            _schedule_periodic(
+                                durable_turn_lease_refresh, _lease_refresh_interval
+                            )
+                        )
+                        if durable_turn_liveness_watchdog is not None:
+                            durable_turn_timer_handles.append(
+                                durable_turn_liveness_watchdog.schedule()
+                            )
                     result = run_conversation(
                         self,
                         user_message,
@@ -9803,17 +9882,12 @@ class AIAgent:
                         )
                 finally:
                     _stop_durable_turn_lease_refresher()
-                    for _durable_thread in (
-                        durable_turn_lease_thread,
-                        durable_turn_liveness_thread,
-                    ):
-                        if (
-                            _durable_thread is not None
-                            and _durable_thread.is_alive()
-                        ):
-                            _durable_thread.join(timeout=1.0)
+                    # wait=1.0 mirrors the old thread join(timeout=1.0): an
+                    # in-flight tick on the scheduler thread finishes first.
+                    for _durable_handle in durable_turn_timer_handles:
+                        _durable_handle.cancel(wait=1.0)
                     # Clear any interrupt the refresher may have fired between
-                    # the inner stop and this join. Must run AFTER join so a
+                    # the inner stop and this cancel. Must run AFTER it so a
                     # late interrupt does not survive into the next turn.
                     _clear_durable_turn_lease_interrupt()
                     if durable_turn_lease is not None:
