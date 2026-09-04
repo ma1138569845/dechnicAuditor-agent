@@ -16,14 +16,12 @@ skill_view('energy-audit')
 
 ```python
 from tools.energy_audit.project_data import AuditProject, ProjectBase, EnergyYearly, BuildingInfo, save_project
-from tools.energy_audit.report_generator import ReportGenerator
 
 proj = AuditProject(base=ProjectBase(name='项目', unit_name='被审计单位', ...))
 # 补充 proj.energy_yearly, proj.buildings, proj.equipment 等...
 save_project(proj)  # 持久化
-gen = ReportGenerator('公共机构')
-gen.load_from_project(proj)
-gen.generate_word('报告.docx')
+# 报告正文由 author 按 ea-authoring 技能逐章写作 + office_editor 组装，
+# 脚本不生成正文（report_generator 正文生成已于 2026-09-04 退役）。
 ```
 
 ## Step 2: 小数 — 项目数据初始化（新流程）
@@ -96,9 +94,9 @@ rag/rag_search.py（rag/rag_search.py）:
 ## Step 7: 输出
 
 ```
-report_generator.py:
-  set_report_data({cover, audit_info_tables, chapter1-8, sections, tags})
-  → generate_word() → 【单位名】_能源审计报告.docx
+ea-authoring（author 技能）:
+  load_project() → 逐章按 chapterX-guide 写作 → office_editor 组装
+  → 首行缩进 + 水印 + 目录页码 → 【单位名】能源审计报告.docx
 ```
 
 ## 关键路径
@@ -106,7 +104,8 @@ report_generator.py:
 ```
 项目根: D:\data\pyProject\dc_agent\dechnicAuditor-agent
 工具包: tools/energy_audit/
-  report_generator.py   — Word报告生成器（主入口）
+  chapter5_agent.py     — 第5章计算/图表（caliber）
+  ea-authoring skill     — 正文写作 + Word 组装（author，主入口）
   indicators.py         — 5项指标计算 + 三级兜底
   chapter5_agent.py     — 第5章子Agent
   rag/rag_search.py     — RAG检索（search_reports / search_for_chapter）

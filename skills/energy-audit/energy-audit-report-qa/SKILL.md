@@ -11,6 +11,19 @@ description: Use when 对照核查能源审计报告(生成版vs正式版)。doc
 
 DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱已收录其中）。
 
+## 验收口径（2026-09-04 定，替代"与法院正式版逐字对齐"）
+
+报告合格判定为**四类合规**，不再以对齐某个交付报告为准：
+
+| 类别 | 检查点 |
+|------|--------|
+| 结构合规 | 8 章 + 5 附录齐全；章节编号连续；1.2 列举指标名 = 5.3 实际生成指标；8 章结论 = 5/7 章原文复用 |
+| 口径合规 | 折标系数（core/standards-values 权威值）；供暖电耗剔除；定额按机构类型选对标准（党政 2672/医疗 2673/场馆 3780）；取水指标按类型自适应 |
+| 数据自洽 | 费用÷单价=用量交叉验证；指标复算一致；章间数据同源（2.2 面积 = 5.3 计算面积） |
+| 格式合规 | 用户 Word 规范（format_spec.py 权威值：字体/字号/行距/表格行高/首行缩进）+ 三件套（目录 updateFields/水印 DrawingML/页码第X页共Y页） |
+
+泛化验证基线：**山东省立医院东院区**（医疗类）——医院项目验收点：医疗定额 DB37/T 2673-2019、单位开放床日用水量（5.3.4）、chapter3 医疗模板、特殊用能（大型医疗设备/净化空调/消毒蒸汽）剔除口径。
+
 ## When to Use
 
 - 用户要求对照两份能源审计报告找差距（生成版 vs 正式版）
@@ -93,10 +106,10 @@ DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱
 
 1. **数据层**：真实值（审计机构地址/负责人/审计组名单）只存在于正式报告，DB 从未录入。实测 PG：`ts_project_audit_user`/`ts_project_audited_user` 全库仅其他项目 1 条测试数据；`ts_customer_info` 的 contact/mobile 为空；`ts_institution_project` 只有测试值（audit_dept_name=同方德诚测试公司-1、audit_dept_person=吕晓晗）
 2. **模型层**：datacollection 采集模型（ProjectBase）无审计机构地址/负责人/电话、无审计组/配合人员字段 → data.json 永远不会携带这些数据
-3. **生成层**（report_generator.py `load_from_project` ≈L3216）：team_members/cooperation **硬编码【待补充】占位**，从不查 `ts_project_audit_user`；institution 取被审计单位字段（b.unit_name/b.address/b.contact_person/b.contact_phone），与"能源审计机构信息表"语义错位。pg_collector 虽查了 audit_users，但字段映射对不上（DB position/degree/qualifications → 生成器要 role/education/certification），且未接入 report_data
+3. **写作层**（author 写作审计信息表时）：team_members/cooperation 曾**硬编码【待补充】占位**，从不查 `ts_project_audit_user`；institution 取被审计单位字段（b.unit_name/b.address/b.contact_person/b.contact_phone），与"能源审计机构信息表"语义错位。pg_collector 虽查了 audit_users，但字段映射对不上（DB position/degree/qualifications → 生成器要 role/education/certification），且未接入 report_data
 4. **校验层**：data_check 只查 team_members 非空（占位恒通过）；V1 `mode_data_check.py` 把 team_members 映射到不存在的 `base.project_manager`（恒缺失但"审计组人员"仅 P2 不阻塞）、institution 只映射 name；V3 `mode_report_review.py` 与 report_qa.py 残留占位符扫描**只扫段落（kind=="p"）不扫表格单元格** → 表内【待补充】必然漏检；必备三表检查也只查标题段落
 
-排查方法：docx 表格反查 → `energy_audit_get_project` 看工具层返回 → 直连 PG 查四张表（ts_project_audit_user/ts_project_audited_user/ts_customer_info/ts_institution_project.audit_dept_name|person|tel）→ 对照 report_generator 装配代码。修复治本：数据补录 + 模型加字段 + 装配查库 + 校验扫单元格。
+排查方法：docx 表格反查 → `energy_audit_get_project` 看工具层返回 → 直连 PG 查四张表（ts_project_audit_user/ts_project_audited_user/ts_customer_info/ts_institution_project.audit_dept_name|person|tel）→ 对照写作层映射enerator 装配代码。修复治本：数据补录 + 模型加字段 + 装配查库 + 校验扫单元格。
 
 **数据源与字段映射（2026-09 用户确认）**：
 - 审计组名单 = `ts_project_audit_user`：position（职务，存"审计负责人/审计联络人/成员"）→报告"组内职务"列 role；degree→education、qualifications→certification、major→major

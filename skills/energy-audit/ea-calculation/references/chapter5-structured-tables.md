@@ -1,10 +1,10 @@
-# 第5章 build_chapter5() — 结构化表格生成
+# 第5章 结构化表格渲染（chapter5_agent 渲染 + author 装配）
 
 ## 改造原因
 
-v1.7.0 之前，`build_chapter5()` 只是接受一段文本字符串，逐段塞入 Word。结果第5章只有纯文字，没有独立的指标表、对标表、基准表，与正式审计报告格式严重不符。
+历史（v1.7.0 前）：第5章只有纯文字，没有独立的指标表、对标表、基准表，与正式审计报告格式严重不符。
 
-v1.7.0 重写后，`build_chapter5()` 直接从结构化数据自动生成完整章节（总述+5.1概况+5.3五项指标（含供暖）+5.4基准），全部以 Word 表格方式呈现。
+现行（2026-09-04 定）：`chapter5_agent.py` 直接从结构化数据渲染完整章节表格（总述+5.1概况+5.3五项指标（含供暖）+5.4基准），全部以 Markdown 表格方式输出，author 装配进 docx 时按 office_editor 转 Word 表格。
 
 ## 输入格式
 
@@ -69,7 +69,7 @@ report_data['chapter5'] = {
 
 ## 与 chapter5_agent.py 的关系
 
-`chapter5_agent.py` 独立保留，用于 DB 有数据的场景。`build_chapter5()` 不依赖它，直接从 `energy_data` 字段读取。
+`chapter5_agent.py` 是第5章表格/图表的唯一渲染器（DB 有数据的场景），author 不重复造表。
 
 ## 与 load_from_project() 的配合
 

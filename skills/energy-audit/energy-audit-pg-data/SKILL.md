@@ -71,7 +71,7 @@ conn.autocommit = True  # 必须！否则单条查询报错会 abort 整个事�
 | 场景/人数 | ts_institution_scene（work_staff 用能人数/heat_price 热价；⚠️ heat_area/heat_day 常为 NULL） | customer_id |
 | 供热面积 | **权威源 ts_institution_build.heat_area（每栋建筑供热面积，法院=24300 有值）**，非 scene.heat_area；指标计算供暖能耗定额时聚合 build.heat_area，缺失/全 0 时用建筑面积兑底（2026-09-02 用户确认） | customer_id |
 | 设备分类 | ts_institution_device_{air,light,office,power,hygiene,hotwater,steam,special,other,td} | customer_id |
-| 图片/附件 | 建筑外观=ts_institution_build.build_img；电水表照片=ts_institution_energy_meter.device_img；计量台账=meter.ledger_files/year_files/month_files；管理制度/奖项=ts_institution_energy_saving.management_files/award_certificate | 均为 ts_attachment.group_id |
+| 图片/附件 | 建筑外观=ts_institution_build.build_img；电水表照片=ts_institution_energy_meter.device_img；**设备照片=设备分表 _img 列（device_img/system_img/tower_img/pump_img 等）**；**发票照片=ts_institution_energy_invoice（主表）+ ts_institution_energy_invoice_image（明细，record_id 关联，file_id→ts_attachment.group_id）**；计量台账=meter.ledger_files/year_files/month_files；管理制度/奖项=ts_institution_energy_saving.management_files/award_certificate | 均为 ts_attachment.group_id |
 
 > 图片 file id 落在 **ts_attachment（列名 group_id，无 id 列**，按 id 查报 UndefinedColumn）；attach_url 为相对路径（/日期目录/xxx.png），拼 `db_config.get_file_base_url()` 得完整 URL（config.yaml energy_audit 段需配 file.base_url）。⚠️ 验证 base_url 时用**本项目实际 attach_url**（法院是 /20260731、/20260801 目录）——全库样例里常见的 /20260207 目录是**别租户旧文件**，拿它测 404 会误判 base_url 失效。
 
@@ -85,7 +85,7 @@ degree(学历)→education ｜ qualifications(资质)→certification ｜ major�
 group_position(组内职务，存"组长/联系人")→role ｜ department(部门)→dept ｜
 name→name ｜ sex(性别)→gender ｜ position(职务，存"主任/科长")→position
 
-`report_generator` 取值键已对齐（role/name/education/certification/major 与
+审计组成员取值键已对齐（role/name/education/certification/major 与
 role/dept/name/gender/position），`pg_collector` 按上表映射组装即可。
 
 **审计机构信息（报告"能源审计机构信息表"：机构名称/地址/负责人/联系方式）**：
@@ -256,7 +256,7 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   挂在其他项目上），查不到不代表漏查，是业务未录入。
 - `system_users` 有审计员档案（degree/qualifications/major/is_audit），仅作
   学历/资质参考，**不是**审计组名单数据源。
-- `report_generator.load_from_project` 曾硬编码 team_members/cooperation 为
+- author 写作层曾硬编码 team_members/cooperation 为
   【待补充】占位、institution 取被审计单位字段（语义错位，应取审计机构
   信息）——生成报告前核对 audit_info_tables 装配，勿依赖其兜底。
 - **冲突消解禁止多数投票**：错误被复制进多个正式版本后（如 PL0401/0402 均错、

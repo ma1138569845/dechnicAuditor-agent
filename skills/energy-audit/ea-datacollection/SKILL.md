@@ -74,7 +74,7 @@ result = collect_from_pg(project_name)
 | 计量器具 | ts_institution_scene(计量基本情况)/ts_institution_energy_meter(表具详细) | 现场确认 |
 | 节能管理 | ts_institution_energy_saving | 管理文件/制度/奖项 |
 | 人员信息 | ts_project_audit_user / ts_project_audited_user | 审计组/被审计方 |
-| 图片 | ts_institution_build.build_img（建筑外观）/ ts_institution_energy_meter.device_img（电水表照片）/ meter.ledger_files·year_files·month_files（计量台账）/ 设备分类表 ledger_files | 现场照片补充 |
+| 图片 | ts_institution_build.build_img（建筑外观）/ ts_institution_energy_meter.device_img（电水表照片）/ 设备分表 _img 列（第6章设备照片）/ ts_institution_energy_invoice+invoice_image（缴费发票照片，record_id 关联）/ meter.ledger_files·year_files·month_files（计量台账）/ 设备分类表 ledger_files | 现场照片补充 |
 
 ### 能耗表版本机制（⚠️ 取数铁律）
 

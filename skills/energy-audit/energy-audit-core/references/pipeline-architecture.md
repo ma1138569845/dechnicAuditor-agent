@@ -39,7 +39,7 @@ python tools/energy_audit/data_collection_cli.py <项目名>
 | 采集 | `pg_collector.py` / `pg_query.py` / `excel_processor.py` | `ea-datacollection` | PG 取数 + 构建 `AuditProject` |
 | 验证 | `data_analysis.py` / `data_check.py` | `ea-validation` | 异常检测 + KG 因果诊断 |
 | 计算 | `indicators.py` / `chapter5_agent.py` / `energy_flow_chart.py` | `ea-calculation` | 5 项指标 + 第5章 + 能流图 |
-| 报告 | `report_generator.py` / `report_qa.py` | `ea-authoring` | 8 章 .docx / .md 生成 + 质检 |
+| 报告 | `ea-authoring`（LLM 写作 + office_editor 组装）/ `report_qa.py`（质检） | `ea-authoring` / `energy-audit-report-qa` | 8 章 .docx 写作组装 + 质检 |
 
 ## 与旧方式对比
 

@@ -40,7 +40,7 @@ N行 × 5列。表头行自动生成。数据源 `ts_project_audited_user`。
 ## 生成方式
 
 ```python
-gen.set_report_data({
+（历史示例，正文生成已退役）gen.set_report_data({
     'audit_info_tables': {
         'institution': {'name': '...', 'address': '...', 'contact': '...', 'phone': '...'},
         'team_members': [{'role': '组长', 'name': '...', 'education': '...', 'certification': '...', 'major': '...'}, ...],

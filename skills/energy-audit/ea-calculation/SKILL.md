@@ -194,14 +194,18 @@ resolve_benchmark(institution_type, metric, user_values, children_func, climate_
 
 ---
 
-## Capability 5: 第5章生成 + 图表
+## Capability 5: 第5章数据渲染 + 图表（混合模式，2026-09-04 定）
+
+**第5章 = 脚本渲染表格/图表 + author LLM 写叙述段**：
 
 ```python
 from tools.energy_audit.chapter5_agent import generate, generate_charts
 
-md = generate(config, str(out_dir / 'chapter5.md'))
+md = generate(config, str(out_dir / 'chapter5.md'))   # 输出 5.1~5.4 的表格 + 图表引用（数值零差错）
 generate_charts(data, config, str(out_dir / 'charts'))
 ```
+
+脚本只渲染数据驱动的概括句/表格/图表（数字最密集章零差错）；**分析性叙述**（逐月趋势归因、评价结论、同比解读）由 author 按 chapter5-writing-guide.md 撰写后装配。
 
 章节结构（细节见 `references/chapter5-writing-guide.md` 与 `chapter5-agent-guide.md`）：
 
@@ -309,6 +313,6 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 | 📥 数据加载 | 从 data.json 或 PG 加载能耗数据 | `project_data.py` / `pg_query.py` |
 | 🧮 指标计算 | 5项核心指标 + 三级兜底系数/定额 | `indicators.py` |
 | 📊 定额对标 | DB37/T 2673-2019（医疗）/ DB37/T 2672-2019（机关） | `indicators.py` → `resolve_benchmark` |
-| 📝 第5章生成 | 完整Markdown (5.1~5.4 含表格图表) | `chapter5_agent.py` |
+| 📝 第5章渲染 | 5.1~5.4 表格+图表引用 Markdown（叙述段由 author 写） | `chapter5_agent.py` |
 | 📈 图表生成 | 能源流向图（graphviz）+ 逐年/逐月趋势（matplotlib） | `energy_flow_chart.py` / `matplotlib` |
 | 📋 基准计算 | 5.4 节用量基准+费用基准 | `indicators.py` → `calc_baseline` |

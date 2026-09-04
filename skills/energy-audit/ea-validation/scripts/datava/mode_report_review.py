@@ -3,7 +3,7 @@
 三条主线：
     跨章数据一致性  第2章面积 vs 第5章面积、第4章能耗 vs 第5章能耗、与 data.json 对齐
     章节完整性      1~8章齐备、1.6省级规章≥3条、第6章动态H3、第8章指标汇总表
-    格式规范        字体/字号/行距/缩进/对齐/表格行高（对齐 report_generator.FormatSpec）
+    格式规范        字体/字号/行距/缩进/对齐/表格行高（对齐 tools/energy_audit/format_spec.py 的 FormatSpec）
 
 产出：report_review.json + report_review.txt
 存在 P0 时进程以退出码 2 结束，上游据此 kanban_block。
@@ -58,7 +58,7 @@ PLACEHOLDERS: Tuple[Tuple[str, str], ...] = (
     ("TODO", "TODO 标记"),
 )
 
-# 对齐 tools/energy_audit/report_generator.py 的 FormatSpec
+# 对齐 tools/energy_audit/format_spec.py 的 FormatSpec
 FMT_BODY = {"font": "宋体", "size": 12.0, "line_spacing": 1.5, "indent_pt": 24.0, "align": 3}
 FMT_H1 = {"font": "宋体", "size": 15.0, "bold": True, "align": 1}
 FMT_H2 = {"font": "宋体", "size": 14.0, "bold": True, "align": 0}
@@ -575,7 +575,7 @@ def check_format(blocks: Sequence[Block]) -> List[Finding]:
             detail="; ".join(violation.samples),
             expected=violation.expected,
             actual=f"{violation.count} 处偏离",
-            suggestion="对齐 report_generator.FormatSpec 后重新生成，勿手工改样式",
+            suggestion="对齐 format_spec.FormatSpec 重新生成，勿手工改样式",
         )
         for key, violation in sorted(violations.items())
     ]

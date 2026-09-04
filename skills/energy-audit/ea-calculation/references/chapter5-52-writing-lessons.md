@@ -302,7 +302,7 @@ petrol_cost_wan: float = 0        # 油费（万元）
 1. `project_data.py` — `EnergyYearly` 新增字段
 2. `indicators.py` — `YearlyEnergyData` 新增字段  
 3. 数据加载构造（`pg_collector.py` / `project_data.py`）— `energy_data` dict 和 `YearlyEnergyData()` 构造均需传递
-4. `report_generator.py` — `build_chapter5` 中 `YearlyEnergyData()` 构造需传递
+4. `chapter5_agent.py`（caliber 计算层）中 `YearlyEnergyData()` 构造需传递
 
 ### 表格生成注意事项
 
@@ -378,4 +378,4 @@ self._add_table(cost_headers, cost_rows,
 
 ## 实现代码位置
 
-`report_generator.py` → `build_chapter5()` → 5.3.1 段，在数据表之前插入4段文字。
+第5章 5.3.1 段（caliber 产出的 chapter5.md 装配），在数据表之前插入4段文字。

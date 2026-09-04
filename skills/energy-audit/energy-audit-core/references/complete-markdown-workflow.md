@@ -4,7 +4,7 @@
 
 ## 问题背景
 
-`MarkdownReportBuilder` 只从 `report_data['sections']` 读取内容，而 `sections` 通常只包含第4章和第5章的纯文本（4.1~4.4、5.1~5.3）。第1-3章和第6-8章由 Word 专用的 `build_chapter1()` ~ `build_chapter8()` 方法生成，其内容在 Markdown 输出中全部显示为 `[内容待补充]`。
+历史（2026-09-04 前）：`MarkdownReportBuilder` 只从 `report_data['sections']` 读取内容，而 `sections` 通常只包含第4章和第5章的纯文本（4.1~4.4、5.1~5.3）；第1-3章和第6-8章由已退役的 Word 专用 `build_chapter1()` ~ `build_chapter8()` 方法生成，其内容在 Markdown 输出中全部显示为 `[内容待补充]`。
 
 ## 两阶段流程
 
@@ -30,7 +30,7 @@
 
 **第3章（LLM生成）**：从 `report_data['chapter3']` 取 `section_3_1/3_2/3_3`。
 
-**第4-5章**：内容已在 `sections` 中，MarkdownReportBuilder 能正常输出。
+**第4-5章**（历史）：内容已在 `sections` 中，MarkdownReportBuilder 能正常输出（该 Builder 已随正文退役删除）。
 
 **第6章（动态生成）**：从 `report_data['chapter6']` 取 cooling/water/heating/other_energy 各系统的 text + equipment 列表，每个系统生成 H2 节 + 设备表。
 
@@ -56,4 +56,4 @@ assert '|---' in content
 ## 模板文件
 
 - `tools/energy_audit/generate_report_shengli.py` — 省立东院完整 Word 生成模板（含全部 report_data 结构）
-- `tools/energy_audit/report_generator.py` — WordReportBuilder（各章 build 方法）和 MarkdownReportBuilder
+- `ea-authoring` 技能 — 各章写作指南（chapterX-guide）+ office_editor 组装 Word（report_generator 正文生成已退役）

@@ -51,7 +51,7 @@ result = collect_from_pg("日照市岚山区人民医院")   # → {'found': {..
 
 | 模块 | 入口 | 场景 |
 |------|------|------|
-| `report_generator.py` | `WordReportBuilder` / `MarkdownReportBuilder` / `ReportGenerator` / `FormatSpec` | 8 章报告 .docx / .md 生成 |
+| `report_generator.py` | `WordReportBuilder`（仿写渲染）/ `CHAPTER_STRUCTURES` / `load_from_project` | 仅供 imitate 仿写模式渲染；正文生成已退役 |
 | `report_qa.py` | `check_report` | 报告自动质检 |
 | `example_report.py` | `generate_sample_report` | 示例报告生成（参考模板） |
 | `ingest_reports.py` | （见下方废弃标注） | 历史报告入库（已迁移） |

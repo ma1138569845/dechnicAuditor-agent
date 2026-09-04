@@ -199,7 +199,7 @@ indicators.json → data.json 内嵌 indicators → compute_project_indicators()
    - 第8章指标汇总表 ≥1 张
    - 必备三表：能源审计机构信息表 / 审计组人员名单 / 配合人员名单
    - 残留占位符检测（【待补充】/【XX/YYYY年M月/待LLM生成/TODO → P0）
-3. **格式规范** — 字体/字号/加粗/对齐/行距/首行缩进/表格行高，全部对齐 `report_generator.FormatSpec`；仅显式设置且偏离时判违规，继承样式不误报
+3. **格式规范** — 字体/字号/加粗/对齐/行距/首行缩进/表格行高，全部对齐 `tools/energy_audit/format_spec.py` 的 `FormatSpec`（格式规范权威单点）；仅显式设置且偏离时判违规，继承样式不误报
 
 ### 报告定位
 

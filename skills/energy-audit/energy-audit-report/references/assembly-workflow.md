@@ -1,6 +1,12 @@
 # 报告组装与交付工作流（实测于烟台法院项目，2026-09）
 
-完整编制一份 Word 报告的实操链路：spec.json → assemble_report.py → 附录追加 → 数值断言。
+完整编制一份 Word 报告的实操链路。
+
+## 0. 路径定位（2026-09-04 定）
+
+- **默认路径 = ea-authoring**：author 按 skill 逐章 LLM 写作 → office_editor 组装 Word → 三件套 + 附录（officecli）。
+- **本文件描述的是仿写路径**：spec.json → assemble_report.py（energy-audit-imitate 工具，内部用 python-docx 渲染）→ 附录追加（officecli）→ 数值断言。仅当走"仿写同类报告"模式时使用。
+- 正文生成脚本（report_generator 的 build_chapter1~8）已退役，任何路径都不再调用。
 
 ## 1. 组装（assemble_report.py）
 
@@ -51,7 +57,7 @@ officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
 | 附录 | 内容 | 数据来源 |
 |---|---|---|
 | 附录1 建筑基本信息及设备统计表 | 建筑基本信息（18 字段）+ 设备统计（分系统设备表） | 引用正文表2.1 / 6.x + 说明 |
-| 附录2 建筑能耗数据信息表 | 每年一张 7 列表：月份×水量(m³)/水费(元)/单价(元/m³)/电量(kWh)/电费(元)/单价(元/kWh)，12 月+合计行 | 逐月费用从 DB 拉取，**合计必须与正文主表费用一致**（report-qa 铁律） |
+| 附录2 建筑能耗数据信息表 | 每年一张 7 列表：月份×水量(m³)/水费(元)/单价(元/m³)/电量(kWh)/电费(元)/单价(元/kWh)，12 月+合计行；**佐证材料=缴费发票照片**（`proj.images` 分类'缴费发票'，caption 为"电费 1月~2月"等类型+期间，按 caption 前缀分组嵌入） | 逐月费用从 DB 拉取，**合计必须与正文主表费用一致**（report-qa 铁律）；发票照片采集自 ts_institution_energy_invoice+invoice_image 双表（2026-09-04 接入） |
 | 附录3 室内环境测量 | 室内温度/湿度/照度等实测数据表 | `proj.indoor_env`（ts_institution_environment，取 deleted=0 且 room_name 合理的记录） |
 | 附录4 室内空气质量指标及要求 | 空气质量指标限值表（GB/T 18883-2022） | 标准固定表 |
 | 附录5 各种能源折标准煤参考系数 | 固定表：原煤0.7143/天然气1.2143/液化气1.7143/汽油1.4714/柴油1.4571/燃料油1.4286/电力0.31等价/热力0.03412当量 | 固定（权威值见 core/references/standards-values.md） |
