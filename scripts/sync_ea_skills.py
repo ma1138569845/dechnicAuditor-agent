@@ -35,7 +35,7 @@ ROLE_MATRIX = {
     "kanban-energy-audit-orchestrator": ["editor"],
     "ea-datacollection": ["datacollection"],
     "ea-validation": ["datava"],
-    "ea-calculation": ["caliber"],
+    "ea-calculation": ["caliber", "author"],
     "ea-authoring": ["author"],
 }
 # knowledger 仅装 energy-audit-core（共享口径），其专属 knowledge-tools /

@@ -68,7 +68,7 @@ author: 马天远
 | 第2章 | `references/chapter2-guide.md` | LLM 生成 + 建筑参数表/图片 |
 | 第3章 | `references/chapter3-guide.md` | LLM 生成（制度/痛点/成效） |
 | 第4章 | `references/chapter4-guide.md` | LLM 生成（4.1 固定文字/4.2 计量） |
-| 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表） | **只装配引用、不重写**；计算与写作口径见 ea-calculation/references/chapter5-* |
+| 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表） | **只装配引用、不重写**；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
 | 第6章 | 见下方专项列表 | LLM 生成（分系统详述） |
 | 第7章 | `references/chapter7-guide.md` | LLM 生成（问题-措施映射） |
 | 第8章 | `references/chapter8-guide.md` | 聚合复用第5/7章结论 |
