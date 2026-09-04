@@ -262,8 +262,8 @@ class PgDataQuery:
         value1..value12 由 ts_institution_energy_data 按 period_code 展开生成。
 
         版本归一规则：同一 (year, data_type, energy_code) 只返回一条 ——
-        优先取正式版本（is_draft=0 且 version_code 非空，version_code 最大者），
-        无正式版本时取草稿兜底；草稿与正式版本并存时不再重复返回。
+        优先取草稿（is_draft=1，最新编辑数据）；无草稿时取正式版本（version_code 大者优先）
+        草稿优先（is_draft=1=最新编辑数据）；无草稿时取正式版本（version_code 大者优先）。
         """
         query = """
             SELECT m.id, m.year, m.data_type, m.energy_code, m.energy_name,
@@ -286,7 +286,7 @@ class PgDataQuery:
             query += " AND m.year = %s"; params.append(year)
         if data_type is not None:
             query += " AND m.data_type = %s"; params.append(data_type)
-        # 子查询镜像同样过滤条件（版本归一：正式版本优先，版本号大者优先，草稿兜底）
+        # 子查询镜像同样过滤条件（版本归一：草稿优先，无草稿时版本号大者优先）
         sub_filters = ""
         sub_params = []
         if customer_id:
@@ -297,7 +297,7 @@ class PgDataQuery:
             sub_filters += " AND mm.data_type = %s"; sub_params.append(data_type)
         query += sub_filters + (
             " ORDER BY mm.year, mm.data_type, mm.energy_code,"
-            " COALESCE(mm.is_draft, 0) ASC,"
+            " COALESCE(mm.is_draft, 0) DESC,"
             " mm.version_code DESC NULLS LAST,"
             " mm.id DESC"
             ")"
@@ -343,7 +343,7 @@ class PgDataQuery:
         版本归一规则（与 get_institution_energy 一致）：建筑表同一业务键
         (build_name, build_func) 并存草稿（is_draft=1, version_code=NULL）
         + 多个正式版本（is_draft=0, version_code 非空）。同一业务键只返回一条：
-        正式版本优先、version_code 大者优先、无正式版本时草稿兜底；
+        草稿优先（is_draft=1，最新编辑数据）、无草稿时取正式版本（version_code 大者优先）；
         归一键含 build_func，避免同名不同功能建筑被误并（2026-09-03）。
         """
         query = """SELECT
@@ -379,9 +379,9 @@ class PgDataQuery:
         if customer_id:
             sub_filters += " AND bb.customer_id = %s"; sub_params.append(customer_id)
         query += sub_filters + (
-            # 版本归一：正式版本(is_draft=0)优先，version_code 大者优先，草稿兜底
+            # 版本归一：草稿(is_draft=1)优先（最新编辑数据），无草稿时 version_code 大者优先
             " ORDER BY bb.build_name, bb.build_func,"
-            " COALESCE(bb.is_draft, 0) ASC,"
+            " COALESCE(bb.is_draft, 0) DESC,"
             " bb.version_code DESC NULLS LAST,"
             " bb.id DESC"
             ")"
@@ -397,7 +397,7 @@ class PgDataQuery:
 
         设备表与能耗/建筑/场景表同为版本机制（草稿 + PL 正式版本），
         同一设备（device_name+power+power_unit）并存多版本时按版本归一：
-        正式版本优先、version_code 大者优先、草稿兜底，避免设备清单出现 3 条重复电梯。
+        草稿优先（is_draft=1，最新编辑数据），无草稿时 version_code 大者优先，避免设备清单出现重复。
         表无 version_code/is_draft 列时回退全量查询。
         """
         base = f"FROM {table} t WHERE t.deleted = 0"
@@ -409,7 +409,7 @@ class PgDataQuery:
             SELECT * FROM (
                 SELECT t.*, ROW_NUMBER() OVER (
                     PARTITION BY COALESCE(t.device_name, 'id_' || t.id::text), t.power, t.power_unit
-                    ORDER BY CASE WHEN t.is_draft = 0 AND t.version_code IS NOT NULL THEN 0 ELSE 1 END,
+                    ORDER BY CASE WHEN t.is_draft = 1 THEN 0 ELSE 1 END,
                              t.version_code DESC NULLS LAST
                 ) AS _rn
                 {base}
@@ -629,8 +629,8 @@ class PgDataQuery:
     def get_institution_scene(self, customer_id: int = None) -> List[Dict]:
         """ts_institution_scene — 用能场景、计量与供暖信息。
 
-        版本归一：同一 (year) 并存草稿/多个正式版本，正式版本优先、
-        version_code 大者优先、草稿兜底（与 energy/build 取数规则一致）。
+        版本归一：同一 (year) 并存草稿/多个正式版本，草稿优先、
+        无草稿时 version_code 大者优先（与 energy/build 取数规则一致）。
         """
         query = """SELECT
                     s.id, s.year, s.mode, s.split_measure, s.split_payment,
@@ -657,7 +657,7 @@ class PgDataQuery:
             sub_filters += " AND ss.customer_id = %s"; sub_params.append(customer_id)
         query += sub_filters + (
             " ORDER BY ss.year,"
-            " COALESCE(ss.is_draft, 0) ASC,"
+            " COALESCE(ss.is_draft, 0) DESC,"
             " ss.version_code DESC NULLS LAST,"
             " ss.id DESC"
             ")"
@@ -724,7 +724,7 @@ class PgDataQuery:
             year: 统计年份；不填则返回全部。
 
         版本归一：同一 (data_type, statistical_year) 并存草稿/多个正式版本，
-        正式版本优先、version_code 大者优先、草稿兜底。
+        草稿优先（is_draft=1，最新编辑数据），无草稿时 version_code 大者优先。
         """
         query = """SELECT m.id, m.statistical_year, m.has_other_meter, m.meter_count,
                     m.sub_metering, m.other_metering_scenario, m.other_situation,
@@ -755,7 +755,7 @@ class PgDataQuery:
             sub_filters += " AND mm.statistical_year = %s"; sub_params.append(year)
         query += sub_filters + (
             " ORDER BY mm.data_type, mm.statistical_year,"
-            " COALESCE(mm.is_draft, 0) ASC,"
+            " COALESCE(mm.is_draft, 0) DESC,"
             " mm.version_code DESC NULLS LAST,"
             " mm.id DESC"
             ")"
@@ -792,7 +792,7 @@ class PgDataQuery:
             query += " AND customer_id = %s"; params.append(customer_id)
         if year is not None:
             query += " AND statistical_year = %s"; params.append(year)
-        # 子查询镜像过滤 + 版本归一（正式版本优先、version_code 大者优先、草稿兜底）
+        # 子查询镜像过滤 + 版本归一（草稿优先=最新编辑数据，无草稿时 version_code 大者优先）
         sub_filters = ""
         sub_params = []
         if customer_id:
@@ -801,7 +801,7 @@ class PgDataQuery:
             sub_filters += " AND ss.statistical_year = %s"; sub_params.append(year)
         query += sub_filters + (
             " ORDER BY COALESCE(ss.statistical_year, 0),"
-            " COALESCE(ss.is_draft, 0) ASC,"
+            " COALESCE(ss.is_draft, 0) DESC,"
             " ss.version_code DESC NULLS LAST,"
             " ss.id DESC"
             ")"

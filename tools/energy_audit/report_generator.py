@@ -589,12 +589,12 @@ class WordReportBuilder:
 
         para = self.doc.add_paragraph()
         para.alignment = self.WD_ALIGN.CENTER
-        para.paragraph_format.line_spacing = 1.2
+        para.paragraph_format.line_spacing = 1.5
         run = para.add_run("目  录")
         self._set_font(run, "黑体", FMT.body_font_en, 18, bold=True)
 
         field = self.doc.add_paragraph()
-        field.paragraph_format.line_spacing = 1.2
+        field.paragraph_format.line_spacing = 1.5
         r = field.add_run()._r
         begin = etree.SubElement(r, _qn("w:fldChar"))
         begin.set(_qn("w:fldCharType"), "begin")
@@ -2771,7 +2771,7 @@ class WordReportBuilder:
         return path
 
     def _add_image_with_caption(self, image_path: str, caption: str):
-        """嵌入图片（宽度12cm，居中），下方居中添加图注（10pt 宋体）"""
+        """嵌入图片（宽度12cm，居中），下方居中添加图注（12pt 宋体，1.5倍行距，居中）"""
         from docx.shared import Cm as _Cm
         para = self.doc.add_paragraph()
         para.alignment = self.WD_ALIGN.CENTER
@@ -2782,11 +2782,12 @@ class WordReportBuilder:
             run = para.add_run(f"[图片无法嵌入: {e}]")
             self._set_font(run, FMT.body_font_cn, FMT.body_font_en, 10)
 
-        # 图注
+        # 图注（12pt 宋体，1.5倍行距，居中）
         cap_para = self.doc.add_paragraph()
         cap_para.alignment = self.WD_ALIGN.CENTER
+        cap_para.paragraph_format.line_spacing = FMT.body_line_spacing
         cap_run = cap_para.add_run(caption)
-        self._set_font(cap_run, FMT.body_font_cn, FMT.body_font_en, 10)
+        self._set_font(cap_run, FMT.body_font_cn, FMT.body_font_en, FMT.body_size)
 
     def _add_building_param_table(self, bldg: dict, table_num: int):
         """生成单个建筑的参数表（4列键值对），标题在表格上方"""

@@ -517,17 +517,17 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
                 }
                 cost_field = cost_map.get(code_name) or cost_map.get(code_id)
                 if cost_field:
-                    # 费用记录 real_value 常为 0，必须以 total_value（building_total_value）为准
+                    # 费用取 real_value（单位实际费用值，unit_total_value）；版本归一带最新正式版本
                     yearly_map[year][cost_field] = round(
-                        float(rec.get('building_total_value') or 0) / 10000, 4)
+                        float(rec.get('unit_total_value') or 0) / 10000, 4)
             elif dt == 7 and field == 'heating_energy_heat_gj':
-                # 供热费用（dt=7 单独记录）：同样以 building_total_value 为准
+                # 供热费用（dt=7 单独记录）：取 real_value
                 yearly_map[year]['heating_cost_wan'] = round(
-                    float(rec.get('building_total_value') or 0) / 10000, 4)
+                    float(rec.get('unit_total_value') or 0) / 10000, 4)
             elif dt == 8 and field == 'petrol_kg':
-                # 交通费用（dt=8 单独记录）
+                # 交通费用（dt=8 单独记录）：取 real_value
                 yearly_map[year]['petrol_cost_wan'] = round(
-                    float(rec.get('building_total_value') or 0) / 10000, 4)
+                    float(rec.get('unit_total_value') or 0) / 10000, 4)
             elif dt == 4 and field in ('heating_energy_heat_gj',):
                 # 供热能耗（GJ）：real_value 与 total_value 一致
                 yearly_map[year][field] = total
