@@ -1,102 +1,51 @@
 ---
 name: energy-audit-report
-description: 编制公共机构能源审计报告（全文8章+附录）与模板。前四章按机构类型选模板并注入基础数据；第五章由三年能耗账单计算驱动（折标→综合能耗→单位面积/人均指标→DB37/T 2672-2019 定额对标评价）；第六章按设备清单分系统生成；第七章问题-措施一一映射；第八章聚合复用第5/7章结论。附机构类型实例库（法院/医院/学校）、市州0-11章模板骨架、Word成品工艺（md→docx）、自洽示例数据规则。当需要"编制/生成完整能源审计报告""写第五章能耗指标分析""定额对标评价""节能潜力分析及建议""审计结论""编写报告模板/示例数据""md转Word"等场景时使用。
+description: 能源审计报告共享资产库——机构类型实例库（法院/医院/学校）、市州0-11章模板骨架、报告装配工作流（spec.json→assemble_report.py→附录→数值断言）、Word成品工艺（md→docx、格式三件套）、附录/折标系数规范、定额补充（EUE表5、省级规章验证铁律）、PG数据导出流程。当需要"查找同类报告实例/参考""市州报告模板骨架""报告装配与数值断言""Word成品格式处理""md转Word""附录规范""数据导出"等场景时使用。章节正文写作规则见 ea-authoring（第1/2/3/4/6/7/8章）与 ea-calculation（第5章），章结构权威见 energy-audit-core/references/public-institution-report-structure.md。
 agent_created: true
 ---
 
-# Energy Audit Report（全报告编制 + 实例库 + Word 成品）
+# Energy Audit Report 共享资产库（实例库 + 装配工艺 + Word 成品）
 
-按"8 章 + 附录"结构编制公共机构能源审计报告。样例基准为烟台经济技术开发区人民法院
-（党政机关类，DB37/T 2672-2019 对标，2026-09 全链路验证）。核心生成机制三种：
-
-1. **模板占位**：前四章固定框架 + `[占位符]` 注入机构数据（机构类型决定模板变体）
-2. **计算驱动**：第五章由三年能耗账单数据计算出指标值，对标定额标准三档值生成评价结论
-3. **聚合复用**：第八章直接复用第 5 章指标结论原文与第 7 章措施标题，不重新撰写
+> **本 skill 不再定义"编制报告"的写作规则**（2026-09-03 定位修正）。
+> - 第1/2/3/4/6/7/8章正文写作 → `ea-authoring`（author 专属）
+> - 第5章计算与写作 → `ea-calculation`（caliber 专属）
+> - 报告 8 章结构与章间联动铁律 → `energy-audit-core/references/public-institution-report-structure.md`
+> - 定额矩阵/折标系数/版本归一权威单点 → `energy-audit-core/references/`
+>
+> 本 skill 提供的是**跨角色共享的资产与工艺**：同类报告实例、市州模板骨架、
+> 装配工作流、Word 成品工艺、附录规范、数据导出。
 
 ## 内部结构导航
 
 | 路径 | 内容 |
 |------|------|
-| `references/chapters/chapter1-template.md` ~ `chapter8-conclusion.md` | 各章写作模板（1/2/4/5/7/8 章；3/6 章走对应专项规范） |
-| `references/chapters/chapter5-indicators.md` | 第5章指标计算口径（供暖电耗剔除铁律、5.3.5 供暖能耗段、口径统一） |
-| `references/structure.md` | 报告 8 章结构 + 章间联动校验规则 |
 | `references/examples/court-agency-audit.md` | **法院/党政机关实例**（烟台法院 8 章工作流、指标口径、Word 参数） |
 | `references/examples/hospital-audit.md` | 医院实例（DB37/T 2673-2019、床日用水量、特殊用能） |
 | `references/examples/school-audit-template.md` | 学校实例（寄宿制修正、寒暑假日历） |
 | `references/city-template-guide.md` | 市州模板 0-11 章骨架 + 单位类型适配 + 示例数据自洽规则 |
-| `references/assembly-workflow.md` | 报告装配工作流（指标口径实证、定额核验） |
-| `references/word-finishing.md` | Word 成品工艺（格式三件套、页面设置） |
-| `references/data-export.md` | PG 数据导出流程 |
+| `references/assembly-workflow.md` | 报告装配工作流（spec.json → assemble_report.py → 附录追加 → 40+ 数值断言） |
+| `references/word-finishing.md` | ⚠️ 历史工艺存档（report_generator/assemble 旧链路）；**当前 Word 成品主链在 ea-authoring**（office_editor 工具集 + office_cli_command 缩进/水印，见 ea-authoring 排版技术节） |
 | `references/quota-supplement.md` | 定额补充（EUE 表5、区域供热办法、省级规章验证铁律） |
-| `scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数，用 anaconda python 运行） |
+| `scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数） |
 
-> 定额矩阵/折标系数/版本归一的**权威单点**在 `energy-audit-core/references/`，
-> 本 skill 不复制数值，写报告时从 core 引用。
+## 资产使用场景
 
-## Report Structure（详见 references/structure.md）
+1. **找同类报告参考**：按机构类型查 `references/examples/`（法院/医院/学校），写报告前先读同型实例。
+2. **市州项目**：按 `city-template-guide.md` 的 0-11 章骨架选模板。
+3. **报告装配**（仿写/组装模式）：按 `assembly-workflow.md`——正文写进 spec.json，`assemble_report.py` 组装，附录手动追加，最后 40+ 项数值断言。
+4. **Word 成品处理**：`word-finishing.md`（目录 updateFields / 水印 DrawingML 禁 VML / 页码第X页共Y页）+ `scripts/md_to_docx_energy_audit.py`。
+5. **数据导出**：PG 整库导出流程已移至 `energy-audit-pg-data/references/data-export.md`。
 
-```
-第1章 能源审计执行概要      → 模板（1.1目的~1.6依据，仅注入机构/时间）
-第2章 公共机构概况          → 模板 + 机构简介/建筑信息注入（表2.1 建筑信息18字段）
-第3章 能源资源管理状况      → 专项规范（管理制度/奖项/痛点，ts_institution_energy_saving）
-第4章 能源资源计量及统计状况 → 模板 + 计量器具清单注入（表4.1）
-第5章 能源资源消费/消耗指标分析 → 计算驱动（表5.1费用、表5.2~5.6指标对标）
-第6章 主要能源资源利用系统分析 → 分系统 + 设备清单表6.x
-第7章 节能效果与节能潜力分析   → 问题-措施一一映射（措施库8类）
-第8章 审计结论              → 聚合复用第5/7章
-附录1~8                     → 数据表+证明材料（建筑/能耗账单/检测表/折标系数）
-```
+## 章节写作规则去向（合并后单点）
 
-## Workflow
-
-### Step 1: 输入清单核对
-
-| 输入 | 用于 | 缺失时处理 |
-|------|------|-----------|
-| 机构全称、类型（党政机关/医院/学校等） | 全文 `[机构]` 替换、模板变体选择 | 必须提供 |
-| 机构简介（成立沿革/职能/内设机构/人数） | 2.1 | 提示补充 |
-| 建筑信息（地址/年代/层数/面积/结构/冷热源/末端等 18 字段） | 2.2 表2.1、5.3 计算 | 提示补充 |
-| 三年逐月能耗账单（电/水/热/气/油：用量+单价+费用） | 5.2、5.3、附录2 | 必须提供（指标章核心） |
-| 设备清单（名称/品牌型号/功率/数量/运行时间） | 6.1~6.3 | 提示补充 |
-| 用能人数、特殊用能剔除项（信息中心等） | 5.3 | 无剔除项则省略剔除说明 |
-| 管理制度/奖项/痛点（ts_institution_energy_saving） | 第3章 | 模板兜底 |
-| 计量器具清单（名称/范围/数量/位置） | 4.2 | 提示补充 |
-| 现场发现问题清单 | 7.1 | 通用问题库兜底 |
-
-### Step 2: 确定机构类型并选模板
-
-- 党政机关/群团机关 → DB37/T 2672-2019 对标（标准值齐全，见 core 的 standards-values.md）
-- 医院/学校等 → 模板结构相同，定额标准与专项指标不同（标准值库标注"待补充"的，须向用户确认后填入，不得编造）
-
-### Step 3: 第5章指标计算（详见 references/chapters/chapter5-indicators.md）
-
-1. 综合能耗 = Σ(各类能源实物量 × 折标系数)，系数见 energy-audit-core/references/coefficient-caliber.md
-2. 特殊用能剔除（信息中心用电、数据中心对应面积等），剔除说明必须写明数据来源
-3. 逐项计算指标 → 与定额约束值/基准值/引导值三档比较 → 生成评价句式
-4. 同比增减量/率由三年数据直接计算，禁止编造
-5. 供暖电耗剔除铁律：非供暖能耗与常规电耗须从总电量扣除供暖电耗（缺失时由用户提供或按循环泵测算，禁止用 0 代入）
-
-### Step 4: 分章生成
-
-按 1→8 章顺序生成，每章先读对应 references 模板，替换占位符，插入计算结果。
-
-### Step 5: 章间联动与编号校验
-
-- 第 1 章 1.2 列举的指标名 = 第 5 章 5.3 实际生成的指标
-- 第 2 章 2.3 用能系统总览 = 第 6 章分系统清单
-- 第 8 章指标结论 = 第 5 章 5.3 各结论段**原文复制**
-- 第 8 章建议列表 = 第 7 章 7.2 各小节标题
-- 图号（图X.Y）表号（表X.Y）按章连续递增，先文字引用后插图插表
-
-### Step 6: 格式校验输出
-
-- 单位不加括号：kgce/m²·a、kWh/m²·a、kgce/p·a、m³/p·a
-- 标准号不加括号：书名号仅用于标准名称，如《党政机关能源消耗定额标准》DB37/T 2672-2019
-- 账单数据保留 2 位小数；指标值保留 2 位小数；费用以万元计保留 2 位
-- 图注格式：图X.Y  说明文字（单位：xx），居中
-- 输出为 Word 时正文宋体、图表按 references/structure.md 排版规则
-
-## Word 成品（详见 references/word-finishing.md）
-
-- 转换：`python scripts/md_to_docx_energy_audit.py`（anaconda python：`D:/develop/anaconda3/python.exe`）
-- 三件套：目录 updateFields on open / 水印 DrawingML（单位全称，add_watermark.py 注入，禁 VML）/ 页码第X页共Y页
+| 章 | 权威位置 |
+|---|---|
+| 第1章 | `ea-authoring/references/chapter1-templates.md` |
+| 第2章 | `ea-authoring/references/chapter2-guide.md` |
+| 第3章 | `ea-authoring/references/chapter3-guide.md` |
+| 第4章 | `ea-authoring/references/chapter4-guide.md` |
+| 第5章 | `ea-calculation/references/chapter5-writing-guide.md`（生成逻辑）+ `chapter5-writing-logic.md`（写作逻辑与计算三铁律） |
+| 第6章 | `ea-authoring/references/chapter6-*.md` |
+| 第7章 | `ea-authoring/references/chapter7-guide.md` |
+| 第8章 | `ea-authoring/references/chapter8-guide.md` |
+| 8章结构/章间联动 | `energy-audit-core/references/public-institution-report-structure.md` |

@@ -1,6 +1,6 @@
 ---
 name: ea-authoring
-description: 当 author（小德）Agent 编写或生成公共机构能源审计报告时使用——覆盖第1~8章正文写作、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。数据采集/入库/校验问题不适用本技能。
+description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章由 caliber 的 ea-calculation 产出，author 只装配不重写）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 转交 editor 流水线，勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
 version: 1.5.0
 author: 马天远
 ---
@@ -39,6 +39,9 @@ author: 马天远
 
 - ✅ 编写任意章节正文、生成/修改 .docx、排版样式、公式、图片与表格嵌入
 - ❌ 数据采集、数据校验、入库 → 属于 datacollection Agent 职责（`ea-datacollection`），不要在本技能内解决。
+- ❌ **default 主对话/非 author 角色**收到"编制/生成XX能源审计报告"请求 → 先加载
+  `energy-audit-routing` 转交 editor 流水线，勿直接按本技能动手（本技能仅 author
+  profile 装配，写作前置数据必须来自上游 caliber 产出）。
 
 ## 输入内容（强制前置流程）
 
@@ -66,7 +69,7 @@ author: 马天远
 | 第2章 | `references/chapter2-guide.md`（LLM 生成 + 自动表格/图片） |
 | 第3章 | `references/chapter3-guide.md` |
 | 第4章 | `references/chapter4-guide.md` |
-| 第5章 | （待补充） |
+| 第5章 | `ea-calculation`（caliber 产出 chapter5.md，author **只装配引用、不重写**；计算与写作口径见 ea-calculation/references/chapter5-*） |
 | 第6章 | 见下方专项列表 |
 | 第7章 | `references/chapter7-guide.md` |
 | 第8章 | `references/chapter8-guide.md` |
@@ -116,6 +119,8 @@ author: 马天远
 4. **正文首行缩进（强制）**：对刚保存的 .docx，用 **`office_cli_command`（officecli）** 给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。做法见 `references/docx-first-line-indent.md`。禁止 python-docx。标题/表题/图注/单元格/列表不缩进。无缩进不得交付。
 5. **加水印（强制）**：注入被审计单位名称水印，再预览。做法见 `references/docx-watermark.md`。无水印不得交付。
 6. 排版预览用 `office_preview`；确认引擎用 `office_status`
+
+**附录编写（officecli，2026-09-03 定）**：附录1~5（建筑基本信息及设备统计表/能耗数据信息表/室内环境测量/室内空气质量指标及要求/折标准煤参考系数）用 `office_cli_command` 追加——`add ... --type heading/table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**全链路禁用 python-docx，附录无例外**；清单与数据来源详见 `energy-audit-report/references/assembly-workflow.md`
 
 **引擎与回退**：
 - 首选 **editor_sdk**（本地二进制，MCP 协议）：`office_edit` 的 199 个 MCP 编辑操作全可用。

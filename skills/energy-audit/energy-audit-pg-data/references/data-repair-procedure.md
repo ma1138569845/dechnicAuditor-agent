@@ -48,7 +48,7 @@ WHERE m.deleted = 0 AND m.id IN (
   FROM ts_institution_energy_main mm
   WHERE mm.deleted = 0
   ORDER BY mm.year, mm.data_type, mm.energy_code,
-           COALESCE(mm.is_draft,0) ASC,      -- 正式版本优先
+           COALESCE(mm.is_draft,0) DESC,     -- 草稿优先（is_draft=1=最新编辑数据）
            mm.version_code DESC NULLS LAST,  -- 版本号大者优先
            mm.id DESC)
 ORDER BY m.year, m.data_type, m.energy_code, d.period_code
@@ -61,7 +61,7 @@ ORDER BY m.year, m.data_type, m.energy_code, d.period_code
 
 - **禁止多数投票**：错误被复制进多个正式版本后（如 PL0401/0402 均错、仅草稿对），
   投票 2:1 必然选中错误值（烟台法院热力 2024/2025 两年均因此选反）
-- 正确做法：正式版本优先取用；同组存在不同值时输出 conflicts 告警清单，
+- 正确做法：草稿优先取用（草稿=最新编辑数据）；同组存在不同值时输出 conflicts 告警清单，
   写入采集产物（如 data.json.collection_report.conflicts）供 V1 检查点消费，不静默消解
 - 采集产物须落地人员名单（ts_project_audit_user/audited_user 查了要写进输出——
   实测"查了没落地"导致封面人员表【待补充】）

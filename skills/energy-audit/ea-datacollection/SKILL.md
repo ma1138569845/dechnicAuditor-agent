@@ -1,5 +1,5 @@
 ---
-name: agent-datacollection
+name: ea-datacollection
 description: 能源审计项目多源统一数据采集能力。当需要为能源审计项目采集数据、从PG数据库/Excel/用户提供汇总项目信息、构建AuditProject数据模型、检查数据完整性时使用。支持多源兜底采集、字段来源追踪、基础数据问题标记。
 version: 2.1.0
 ---
@@ -82,7 +82,7 @@ result = collect_from_pg(project_name)
 
 取数规则（`pg_query.py` 已内置 DISTINCT ON 版本归一，直接调用即可）：
 
-1. 同一键只取一条：**正式版本优先**（is_draft=0），version_code 大者优先，无正式版本才用草稿兜底；
+1. 同一键只取一条：**草稿优先**（is_draft=1=最新编辑数据），无草稿时 version_code 大者优先；
 2. **禁止多数投票消解冲突**；版本间数值不一致时必须输出冲突告警清单，人工核实后修正 DB；
 3. 年度总量与逐月加总交叉校验，费用÷单价=用量校验。
 

@@ -1,5 +1,7 @@
 # 能源审计 Kanban 工作流详解
 
+> knowledger profile 不在本任务图内（知识库/问答辅助角色，见 role-definitions.md 顶部说明）。
+
 ## 任务图结构
 
 每个公共机构项目生成 6 个父子链接的 Kanban 任务 + 1 个汇总 Director

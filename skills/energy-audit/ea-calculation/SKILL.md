@@ -31,6 +31,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 | 文件 | 内容 |
 |------|------|
 | `indicators-guide.md` | 5 项指标计算指南 + DB37 定额默认值（含验证示例：日照市人民医院） |
+| `chapter5-writing-logic.md` | 第5章写作逻辑（四段式5.2/五要素5.3/三档评价规则/供暖电耗剔除·口径统一·交叉校验三铁律） |
 | `chapter5-writing-guide.md` | 第5章生成逻辑（结构/各节规则/动态表号） |
 | `chapter5-agent-guide.md` | 第5章 Agent 指南（5.1–5.4 + 图表函数） |
 | `chapter5-52-spec.md` / `chapter5-52-final-spec.md` | 5.2 节规范与最终版 |
@@ -105,14 +106,15 @@ proj = load_project(unit_name)
 
 ---
 
-## Capability 2: 四项核心指标计算
+## Capability 2: 五项核心指标计算
 
 | # | 指标 | 函数 | 说明 |
 |---|------|------|------|
 | 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | (总电 − 供暖电) / 面积 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | 电量总和/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数 = 在岗 + 编外 + 门诊折算 + 床位折算 |
-| 4 | 单位开放床日用水量 | `calc_per_capita_water(bed_count=N)` | 医院专用；非医院降级为人均取水量 |
+| 4 | 取水指标（医院=单位开放床日用水量；非医院=人均取水量） | `calc_per_capita_water(bed_count=N)` | 医院传 bed_count 走床日口径；非医院降级人均取水量 |
+| 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 
 另：`calc_baseline(yearly_data)` 计算 5.4 节建筑能耗基准（用量基准 + 费用基准，多年区间/趋势）。
 
@@ -136,7 +138,7 @@ proj = load_project(unit_name)
 Layer 0: data.json 中 EnergyYearly.coefficients（由 DataCollection 从 PG 采集并持久化）
 Layer 1: DB（ts_institution_energy_main.standard_coal_coefficient，合理性过滤）
 Layer 2: 用户提供
-Layer 3: 内置默认（GB/T 2589-2020）
+Layer 3: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy-audit-core/references/coefficient-caliber.md）
 ```
 
 ### 内置默认值与合理性范围（超出范围跳过 Layer 1）
@@ -144,8 +146,8 @@ Layer 3: 内置默认（GB/T 2589-2020）
 | 能源 | 默认系数 (kgce/单位) | 合理性范围 |
 |------|---------------------|-----------|
 | 电 | 0.31 | 0.1 ~ 1.0 |
-| 水 | 0.2571 | 0.01 ~ 1.0 |
-| 天然气 | 1.33 | 0.5 ~ 2.5 |
+| 水 | —（不折标） | — |
+| 天然气 | 1.2143 | 0.5 ~ 2.5 |
 | 热 | 0.03412 | 0.01 ~ 0.05 |
 | 汽油 | 1.4714 | 1.0 ~ 2.0 |
 | 柴油 | 1.4571 | 1.0 ~ 2.0 |
@@ -205,7 +207,7 @@ generate_charts(data, config, str(out_dir / 'charts'))
 
 - 5.1 能耗概况 + 能源流向图（**graphviz 动态**，`draw_energy_flow_diagram()`；非 matplotlib 饼图）
 - 5.2 逐类型逐月数据分析（按用能类型**动态分节**，无数据不生成）+ 逐年柱状图 + 逐月趋势图
-- 5.3 四项指标对标表（公式 + 动态表号 + DB37 对标）
+- 5.3 五项指标对标表（公式 + 动态表号 + DB37 对标；供暖能耗项按 DB37/T 2672 表2）
 - 5.4 能耗基准（calc_baseline）
 
 图表规范：能源流向图用 graphviz（系统需装 dot 二进制），其余 matplotlib SimHei 字体（中文无乱码），输出 PNG 到 `charts/`；目录不存在自动创建。
@@ -218,7 +220,7 @@ generate_charts(data, config, str(out_dir / 'charts'))
 
 | 文件 | 内容 |
 |------|------|
-| indicators.json | 4 项指标 + 定额对标（含标准名/来源）+ 能耗基准 |
+| indicators.json | 5 项指标 + 定额对标（含标准名/来源）+ 能耗基准 |
 | chapter5.md | 第5章完整 Markdown |
 | indicators_report.txt | 可读指标报告 |
 | charts/*.png | 能耗结构图 / 逐年柱状图 / 逐月趋势图 |
@@ -242,8 +244,9 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
    标准: DB37/T 2673-2019《医疗机构能源消耗定额标准》 | 来源: DB
 2. 常规用能系统单位面积电耗: 69.4 kWh/(m²·a)
 3. 人均综合能耗: 1,435 kgce/(人·a)
-4. 单位开放床日用水量: 486 L/(床·d)
-5. 建筑能耗基准 (2022、2023、2024年): ...
+4. 取水指标: 486 L/(床·d)（医院床日口径）
+5. 单位采暖建筑面积供暖能耗: 8.2 kgce/(m²·a)（有供暖项目）
+6. 建筑能耗基准 (2022、2023、2024年): ...
 ```
 
 ---
@@ -304,7 +307,7 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 | 职责 | 说明 | 依赖工具 |
 | ---- | ---- | ---- |
 | 📥 数据加载 | 从 data.json 或 PG 加载能耗数据 | `project_data.py` / `pg_query.py` |
-| 🧮 指标计算 | 4项核心指标 + 三级兜底系数/定额 | `indicators.py` |
+| 🧮 指标计算 | 5项核心指标 + 三级兜底系数/定额 | `indicators.py` |
 | 📊 定额对标 | DB37/T 2673-2019（医疗）/ DB37/T 2672-2019（机关） | `indicators.py` → `resolve_benchmark` |
 | 📝 第5章生成 | 完整Markdown (5.1~5.4 含表格图表) | `chapter5_agent.py` |
 | 📈 图表生成 | 能源流向图（graphviz）+ 逐年/逐月趋势（matplotlib） | `energy_flow_chart.py` / `matplotlib` |

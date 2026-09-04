@@ -1,6 +1,6 @@
 ---
 name: energy-audit-routing
-description: "能源审计任务转交：default→editor 唯一调度，采集/校验/报告归流水线。"
+description: "能源审计任务转交：default→editor 唯一调度。用户提出\"编制/生成/完成XX能源审计报告\"或任何涉及某单位能源审计的任务（采集/校验/核算/分析/报告）时，default（当前会话）必须先加载本技能转交 editor——不自派执行，采集/校验/报告归流水线。"
 version: 1.1.0
 author: DechnicAuditor
 license: MIT

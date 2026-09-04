@@ -24,6 +24,13 @@ the scripted REST/pipeline path (`energy_audit_imitate_report`).
 - The desktop dialog submits `/energy-audit-imitate` after choosing 智能体任务.
 - The user wants chapter prose in the style of similar reports, not a fixed template fill.
 
+> **与 ea-authoring 的分工（2026-09 定）**：本技能 = **仿写模式**（读同类参考报告 →
+> 仿修辞结构 → `assemble_report.py` 组装，Word 工艺为 assemble 链路）；
+> `ea-authoring` = **标准流水线模式**（office_editor 工具集 + office_cli_command 缩进/水印，
+> 正式 Kanban 交付走它）。格式基准两模式共用 `energy-audit-core/references/report-format-spec.md`；
+> 本技能自带 copies 供仿写快速查阅，权威以 core 版为准（本技能 `references/report-format-spec.md`
+> 为扩展版，含 assemble 专属细节，勿在正式流水线中作为格式依据）。
+
 Don't use for: 标准模板 generation (desktop 脚本实现 + 标准模板), a single
 paragraph (then `energy_audit_imitate_paragraph` is enough), or editing an
 existing `.docx` layout (`docx`).

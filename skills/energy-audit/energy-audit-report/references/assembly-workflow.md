@@ -13,7 +13,7 @@ python "$HERMES_HOME/skills/productivity/energy-audit-imitate/scripts/assemble_r
 ```
 
 从仓库根目录运行（assemble 内部 `from tools.energy_audit.report_generator import`），
-用仓库 .venv 的 python（需 python-docx/matplotlib/graphviz）。
+用仓库 .venv 的 python（assemble_report.py 工具内部依赖 python-docx/matplotlib/graphviz；author 手工编辑文档一律 officecli，见第3节）。
 
 **正文语法**：`1.1 标题`/`1.1.1 标题` 行→H2/H3；`表X.Y 标题` 行后紧跟 `| |`
 表格块→Word 规范表（12pt 居中、行高 1.01cm）；`[[图:类型|图注]]`→matplotlib 图。
@@ -32,24 +32,37 @@ python "$HERMES_HOME/skills/productivity/energy-audit-imitate/scripts/assemble_r
 - 图号按章连续递增，先正文引用后插图（图5.1 流向图、图5.2~5.4 逐月电/水/气、
   图5.5 费用占比）。
 
-## 3. 附录手动追加（assemble 只生成 8 章）
+## 3. 附录追加（assemble 只生成 8 章；2026-09-03 起统一用 officecli，禁用 python-docx）
 
-用 python-docx 打开生成的 docx 在末尾追加（只改 body，水印/TOC/页码域全部保留）：
+**工具**：`office_cli_command`（officecli）——与 ea-authoring 全链一致，python-docx 禁令无例外。
+追加方式：对生成后的 docx 依次执行（只改 body，水印/TOC/页码域自动保留）：
 
-- 附录1 建筑基本信息及设备统计表（引用正文表2.1/6.x + 说明）
-- 附录2 建筑能耗数据信息表：每年一张 7 列表——月份×水量(m³)/水费(元)/单价(元/m³)/
-  电量(kWh)/电费(元)/单价(元/kWh)，12 月+合计行；逐月费用从 DB 草稿版拉取，
-  合计必须与主表费用一致
-- 附录3~7（现场照片/发票/证书等）无数据时列标题+“待补充”
-- 附录8 各种能源折标准煤参考系数（固定表：原煤0.7143/天然气1.2143/液化气1.7143/
-  汽油1.4714/柴油1.4571/燃料油1.4286/电力0.31等价/热力0.03412当量）
+```bash
+# 标题
+officecli add report.docx /body --type heading --prop level=1 --prop text="附录1 建筑基本信息及设备统计表"
+# 表格（N行M列）
+officecli add report.docx /body --type table --prop rows=N --prop cols=M
+officecli set report.docx '/body/table[K]/row[1]/cell[1]' --prop text="..."
+officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
+```
 
-追加表格格式：Table Grid 样式、12pt 宋体居中、行高 1.01cm（w:trHeight val=287 exact）。
+**附录清单（5 个，2026-09-03 用户确认）**：
+
+| 附录 | 内容 | 数据来源 |
+|---|---|---|
+| 附录1 建筑基本信息及设备统计表 | 建筑基本信息（18 字段）+ 设备统计（分系统设备表） | 引用正文表2.1 / 6.x + 说明 |
+| 附录2 建筑能耗数据信息表 | 每年一张 7 列表：月份×水量(m³)/水费(元)/单价(元/m³)/电量(kWh)/电费(元)/单价(元/kWh)，12 月+合计行 | 逐月费用从 DB 拉取，**合计必须与正文主表费用一致**（report-qa 铁律） |
+| 附录3 室内环境测量 | 室内温度/湿度/照度等实测数据表 | `proj.indoor_env`（ts_institution_environment，取 deleted=0 且 room_name 合理的记录） |
+| 附录4 室内空气质量指标及要求 | 空气质量指标限值表（GB/T 18883-2022） | 标准固定表 |
+| 附录5 各种能源折标准煤参考系数 | 固定表：原煤0.7143/天然气1.2143/液化气1.7143/汽油1.4714/柴油1.4571/燃料油1.4286/电力0.31等价/热力0.03412当量 | 固定（权威值见 core/references/standards-values.md） |
+
+追加表格格式：Table Grid 样式、12pt 宋体居中、行高 1.01cm（officecli set 实现）。
+无数据的附录列标题 + "待补充"，不编造。
 
 ## 4. 组装后数值断言（必做）
 
 对 .docx 全文（段落+表格）做 40+ 项关键数值断言，与 DB 计算值逐一比对：
-电量/水量/气量/热量/油量三年值、四项指标值、费用合计、同比率、定额三档值、
+电量/水量/气量/热量/油量三年值、五项指标值（含供暖）、费用合计、同比率、定额三档值、
 用能人数、建筑面积、热价。再扫残留占位符——"测试"命中先确认是否"水平衡测试"
 等专业术语，"待补充"应为真实缺失数据（建筑外窗/保温/消防、附件等）。
 

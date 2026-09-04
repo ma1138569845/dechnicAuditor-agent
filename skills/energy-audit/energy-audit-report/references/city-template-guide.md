@@ -44,8 +44,8 @@ metadata:
 - 医院（已跑通 2026-08：二级=日照岚山区人民医院、三级=山东省立医院东院区）：全天候运行、消毒供应/净化空调/医疗设备特殊用能；定额对标 DB37/T 2673-2019（数值需核验，拿不到用【待核验】占位，已确认三级电耗引导值 76.4）、用水定额 DB37/T 4452-2021（二级 540/340、三级 804/440 L/(床·d)）；第4项指标用单位开放床日用水量；测试数据/复制数据判别见“真实数据核验”。详见 `references/examples/hospital-audit.md`
 - **党政机关/法院版已跑通**（2026-08 烟台经开区法院，参考日照岚山区法院报告）：
   8 章结构（非市州 0–11 章）：1 执行概要 → 2 公共机构概况 → 3 能源资源管理 → 4 计量统计 →
-  5 消耗指标分析（5.2 消耗数据/5.3 四项指标/5.4 能耗基准）→ 6 用能系统分析 → 7 节能潜力 → 8 结论 + 10 附录
-  5.3 节四项指标：单位建筑面积非供暖能耗 / 常规用能系统单位建筑面积电耗 / 人均综合能耗 / 人均机关取水量，
+  5 消耗指标分析（5.2 消耗数据/5.3 五项指标/5.4 能耗基准）→ 6 用能系统分析 → 7 节能潜力 → 8 结论 + 
+  5.3 节指标：单位建筑面积非供暖能耗 / 常规用能系统单位建筑面积电耗 / 人均综合能耗 / 取水指标（医院=床日、机关=人均、场馆=单位面积） / 供暖能耗（有供暖项目）
   对标 DB37/T 2672-2019（山东党政机关，约束/基准/引导三级）
   供能：风冷冷水机组+多联机、市政供暖按热量表缴费、散热器采暖、厨房天然气、公务车汽油
   用能人数来自 ts_institution_scene.work_staff（351 人），不是编造
@@ -67,7 +67,7 @@ metadata:
 ## 数据来源：PG 全量导出
 
 需要把真实客户数据（非示例）导出为中文 md 时，见
-`references/data-export.md`——连接信息、表结构速查、能源代码映射（01=水/25=天然气，勿信表头）、
+`energy-audit-pg-data/references/data-export.md`（已移入 pg-data 技能）——连接信息、表结构速查、能源代码映射（01=水/25=天然气，勿信表头）、
 autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载）、
 表序→报告逻辑重组（14 章结构 + 数据质量说明章节）。
 
@@ -86,7 +86,7 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - **skill 双副本同步方向**：energy-audit-imitate 存在 repo `skills/productivity/`（权威源，bundled 只读）与 profile 副本两处；repo 若被 profile 旧版覆盖，其自带验收测试（tests/skills/test_energy_audit_imitate_skill.py）会立刻红（resolve_unit_name/format-spec 引用）——改 repo 后必须同步回 profile，反之会把测试打回 0.1.0 时代。
 - **仿写模式图表（2026-08 新能力）**：正文插 `[[图:类型|图注]]` 标记行即可嵌入图表，类型含 flow/trend/pie/cost_pie/monthly_electricity_kwh/monthly_water_m3/monthly_natural_gas_m3；数据来自 spec 的 `chart_data` 块（cost_pie 需各年费用字段 `*_cost_wan`）。不加标记 → 报告无任何图（用户会问"图表怎么没了"）。chart_data JSON 形状与渲染细节见 `references/word-finishing.md`
 - **组装收尾工作流（2026-09 烟台法院实测）**：spec.json → assemble_report.py（生成 8 章）→
-  python-docx 手动追加附录（assemble 不支持附录；追加只改 body，水印/TOC/页码域保留）→
+  officecli 追加附录（assemble 不支持附录；`office_cli_command` add/set 实现，禁用 python-docx）→
   40+ 项数值断言（与 DB 计算值比对）+ 占位符扫描（"测试"命中先确认是否"水平衡测试"术语）。
   ⚠ 图表口径：trend/pie 内部用 0.1229 折标，与正文 0.31 等价口径矛盾，指标展示图勿用；
   cost_pie 仅电/水/气/热 4 项（无油费）。⚠ indicators.py 内置 `_DEFAULT_BENCHMARKS['government']`

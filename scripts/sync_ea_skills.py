@@ -22,11 +22,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS_SRC = os.path.join(REPO, "skills", "energy-audit")
 HERMES_HOME = os.path.expanduser("~") + r"\AppData\Local\hermes"
 MAIN_SKILLS = os.path.join(HERMES_HOME, "skills", "energy-audit")
-PROFILES = ["datacollection", "datava", "caliber", "author", "editor"]
+PROFILES = ["datacollection", "datava", "caliber", "author", "editor", "knowledger"]
 
 # 角色安装矩阵：skill 目录名 → 需要安装的 profile 列表（全部 skill 都会发布到主 hermes skills）
 ROLE_MATRIX = {
-    "energy-audit-core": ["datacollection", "datava", "caliber", "author", "editor"],
+    "energy-audit-core": ["datacollection", "datava", "caliber", "author", "editor", "knowledger"],
     "energy-audit-pg-data": ["datacollection", "datava"],
     "energy-audit-report": ["caliber", "author"],
     "energy-audit-report-qa": ["editor"],
@@ -38,6 +38,8 @@ ROLE_MATRIX = {
     "ea-calculation": ["caliber"],
     "ea-authoring": ["author"],
 }
+# knowledger 仅装 energy-audit-core（共享口径），其专属 knowledge-tools /
+# structured-document-rag 在 profile 独立分类目录（sync 不管理，勿在此矩阵声明）
 
 # 主目录旧位置清理清单（迁移后遗留的 productivity/ 下旧副本）
 MAIN_STALE = [
@@ -177,6 +179,9 @@ def main():
         bad = 0
         for prof in PROFILES:
             prof_skills = os.path.join(HERMES_HOME, "profiles", prof, "skills", "energy-audit")
+            if not os.path.isdir(os.path.join(HERMES_HOME, "profiles", prof)):
+                # profile 目录不存在（如被移入 .deleted）→ 跳过校验，避免全量误报
+                continue
             for s, profs in ROLE_MATRIX.items():
                 if prof not in profs:
                     continue

@@ -26,11 +26,26 @@ report_generator.py 的 `generate()` 在 `doc.save()` 后自动完成三件收�
 - 曾用 468pt/opacity 0.15 被用户批"不明显"——浅参数不再使用。
 - 验证：header XML 应含 `EAWatermark` + `wps:wsp` + `behindDoc="1"`，且无 `v:textpath`。
 
-## 3. 页脚页码（第 X 页 共 Y 页）
+## 3. 页眉文字（2026-09-04 起必做，assemble 不生成）
 
-- `_add_page_numbers()`：footer 写入居中段落："第 " + PAGE 域 + " 页 共 "
-  + NUMPAGES 域 + " 页"，10.5pt（sz=21），Times New Roman + eastAsia 宋体。
+- 规范：页眉文字 = 被审计单位全称 + 两空格 + "能源审计报告"，右对齐，宋体 10.5pt
+  （sz=21），与 DrawingML 水印共存（水印 behindDoc 衬底，文字段落在前）。
+- assemble/ReportGenerator/add_watermark.py **均不生成页眉文字**，须在装配后由
+  zip/lxml 级脚本注入 header\*.xml（项目模板：fix_header_footer.py）。
+- 页眉内水印≠页眉文字，两者都验证。
+
+## 4. 页脚页码（仅页码，2026-09-04 改）
+
+- 规范：页脚**只显示页码**（PAGE 域），居中，10.5pt（sz=21），Times New Roman
+  + eastAsia 宋体；**不再写"第 X 页 共 Y 页"**。
 - 域结构：fldChar begin → instrText ` PAGE ` → separate → 占位 t → end。
+- ⚠ `_add_page_numbers()` 仍生成"第 X 页 共 Y 页"旧格式，须脚本替换为纯 PAGE 域。
+
+## 5. ⚠ OnlyOffice 打开会丢 updateFields（2026-09-04 实证）
+
+office_open/office_render（editor_sdk/OnlyOffice）打开 docx 后，settings.xml 的
+`<w:updateFields>` 会丢失（目录不再自动刷新）。渲染目检后必须复查 settings.xml，
+丢失则重跑 assemble→append→fix 链或 zip 级补写。断言脚本应含 updateFields 检查。
 
 ## 4. 仿写模式图表（[[图:…]] 标记 + chart_data）
 

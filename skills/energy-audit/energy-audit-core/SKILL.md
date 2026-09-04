@@ -73,7 +73,7 @@ author: 马天远
 |------|------|
 | `energy-audit-core/references/standards-values.md（权威单点）` | ★权威·定额标准矩阵（DB37/T 2672-2019 表1-5 党政机关 + DB37/T 2673-2019 医院 + DB37/T 4452-2021 水）。任何定额值只以此文件为准 |
 | `energy-audit-core/references/coefficient-caliber.md（权威单点）` | ★权威·折标系数口径（电0.31/热34.12kgce每GJ/气1.2143/油1.4714/水不折算） |
-| `version-normalization.md` | ★权威·版本归一规则（正式版本优先，禁多数投票） |
+| `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |
 | `report-format-spec.md` | 报告格式总规范 |
 | `public-institution-report-structure.md` | 公共机构报告 8 章结构 |
 | `chapter-writing-specs.md` | 章节写作通用规范 |

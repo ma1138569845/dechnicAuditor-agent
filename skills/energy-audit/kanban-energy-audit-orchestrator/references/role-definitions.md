@@ -2,6 +2,12 @@
 
 能源审计 Kanban 编排器使用 4 个固定的 Profile 角色。每个角色是一个独立的 Hermes Profile，有专属的 SOUL.md、技能和工具集。
 
+> **knowledger（辅助角色，不在流水线任务图内）**：另有 `knowledger` profile 专职
+> 能源审计知识库维护/检索/问答（RAG `energy_audit_rag_search` + LLM Wiki + KG 因果诊断），
+> 技能为 `energy-audit-knowledge-tools` 等。**6+1 任务图不含 knowledger**——流水线内
+> KG 因果推理由 datava V1 本地执行（`energy_kg.py`），knowledger 面向用户专业问答与
+> 知识库建设，不接收 kanban 任务。2026-09 复位确认。
+
 ## 角色总览
 
 ```
@@ -57,14 +63,14 @@ DataCollection → DataVA      → Caliber        → author
 - validation.json 路径
 - 机构类型（决定定额标准 DB37/T 2673 vs 2672）
 - 非供暖能耗折标系数（默认等效电 0.31）
-- 指标项（默认 4 项全算）
+- 指标项（默认 5 项全算，含供暖能耗项；无供暖项目时 4 项常规）
 
 ## 4. 报告生成 Agent -author(小德)
 
 | 项 | 值 |
 |----|-----|
 | Profile 名 | `author` |
-| 技能 | `ea-authoring` + `energy-audit-core` + `energy-audit-report`（含实例库与Word工艺，已合并原 energy-audit-reports） + `energy-audit-imitate` |
+| 技能 | `ea-authoring` + `energy-audit-core` + `energy-audit-report`（共享资产库：实例/模板/装配/导出，Word 成品主链在 ea-authoring） + `energy-audit-imitate`（仿写模式，可选） |
 | 工具集 | hermes-cli + energy_audit（9 工具：PG 查询/RAG/仿写，详见 references/tools-reference.md） |
 | 输入 | `indicators.json`, `chapter5.md` (上游产出) |
 | 输出 | `能源审计报告.docx` (完整 8 章) |

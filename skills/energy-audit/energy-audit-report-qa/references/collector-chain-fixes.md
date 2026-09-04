@@ -42,9 +42,10 @@
 - TINY_CATS={照明,办公}、TINY_NAMES=(灯,电脑,台式机,云桌面,打印机,复印机,电开水器)：spec 含 kW 且功率>5 → 报警
 - MID_NAMES=(电梯)：>100 kW 报警
 - 首版统一 100kW 阈值误判（40kW×224 面板灯不触发），必须分档。
-- 电梯 120kW：两层根因——(a) 设备分类表也有版本机制，原 _get_device_by_table 无归一 → 设备清单 3 条重复电梯（草稿+PL0401/0402），已修（device_name+power+power_unit 分组，正式版本优先）；
-  (b) 用户在平台把电梯改 12kW，**只落在草稿版本**（is_draft=1），正式版本 PL0401/0402 仍是 120 → 归一后仍取 120。
-  → 用户声称"DB 已改"时按版本逐条核对；只改草稿需提示用户发布/同步正式版本。
+- 电梯 120kW：两层根因——(a) 设备分类表也有版本机制，原 _get_device_by_table 无归一 → 设备清单 3 条重复电梯（草稿+PL0401/0402），已修（device_name+power+power_unit 分组，草稿优先）；
+  (b) 用户在平台把电梯改 12kW，**只落在草稿版本**（is_draft=1），正式版本 PL0401/0402 仍是 120。
+  → 2026-09-04 起版本归一改**草稿优先**：归一后取草稿 12kW（正确新值）；正式版本仍 120 属旧快照，
+     需提示用户发布/同步正式版本，避免后续指定版本号取数时回退旧值。
 - pg_query.connect() 必须 autocommit=True（否则异常回退查询因事务 aborted 再报 InFailedSqlTransaction，回退分支失效）。
 
 ## 供暖电耗数据链路（已闭环，2026-09-02）
@@ -62,8 +63,8 @@
 - 验收：data.json 三年 heating_energy_kwh 与正式版一致，2025 非供暖能耗
   = (1040085−78210)×0.31/24300 = 12.27 ✓。
 - 注意：用户平台录入的供暖电耗是草稿（is_draft=1）；该业务键组内无正式版本时
-  草稿兜底可被取到。若日后平台发布正式版本，取数自动改取正式版本——QA 时
-  对比两版本值是否一致。
+  草稿优先可被取到；该业务键无草稿时取 version_code 大者正式版。QA 时
+  对比草稿与正式版本值（不一致以账单为准并告警）。
 
 ## 供暖电耗缺失检测与提示（2026-09-02 追加）
 
@@ -73,7 +74,7 @@
   测算，禁止用 0 代入。法院已录数据 → 不触发（"无数据异常"）。
 - 供暖信息缺失提示原为捆绑条件 `if not scene.heat_day` → 报"供热面积/供热天数/热价
   未记录"（heat_price=89.61 有值时也误报热价缺失）→ 改为逐项检查拼 missing 项。
-- energy-audit-report/references/chapters/chapter5-indicators.md 口径铁律追加：预计算 indicators 的 heating_energy_kwh 缺失时
+- （已并入）ea-calculation/references/chapter5-writing-logic.md 口径铁律追加：预计算 indicators 的 heating_energy_kwh 缺失时
   按 0 计入属"未剔除口径"，author 写 5.3 不得直接引用预计算值。
 - **审计机构取数口径变更（2026-09-02 用户确认"DB 数据为准"）**：audit_org_contact/phone
   从 project.audit_dept_person/audit_dept_tel 直接采用（不再强制向用户提问）；
