@@ -25,6 +25,7 @@ from .common import (
     pct_change,
     project_data_path,
     project_dir,
+    projects_root,
     read_json,
     safe_float,
     with_artifacts,
@@ -92,17 +93,166 @@ METRIC_SPECS: Tuple[MetricSpec, ...] = (
 #  输入加载
 # ================================================================
 
+def _infer_institution_type(quota: dict) -> str:
+    """从 by_year 定额标准名推断机构类型。
+
+    只看能耗标准名（机构类型权威来源）；水标准名如
+    「山东省教育、卫生等服务业用水定额」是行业分类名，含"教育/卫生"字样，
+    不能作为机构类型依据。
+    """
+    text = str(quota.get("能耗") or "")
+    if "医疗" in text:
+        return "medical"
+    if "教育" in text:
+        return "education"
+    return "government"
+
+
+def _water_field_of(row: dict) -> Optional[str]:
+    """by_year 行内取水字段名（机关/教育=人均取水量，医疗=床日用水量，场馆=单位面积取水量）。"""
+    for key in row:
+        if "评价" in key:
+            continue
+        if "取水" in key or "用水" in key:
+            return key
+    return None
+
+
+def _water_value_field(field_name: str) -> str:
+    if "床日" in field_name or "L_bed" in field_name or "bed" in field_name.lower():
+        return "L_per_bed_day"
+    if "面积" in field_name or "m3_m2" in field_name or "m2" in field_name:
+        return "m3_per_area"
+    return "m3_per_person"
+
+
+def _water_quota_key(quota: dict) -> Optional[str]:
+    """定额标准里存用水两档数值的键（排除标准名字符串键）。
+
+    「用水」键存的是标准名（str），真正的两档数组在如
+    「机关用水先进通用」这类键（list 值）里。
+    """
+    for key, value in quota.items():
+        if isinstance(value, (list, tuple)) and ("用水" in key or "取水" in key):
+            return key
+    return None
+
+
+def adapt_by_year(payload: dict) -> dict:
+    """caliber by_year schema → 模块 yearly[] schema 适配。
+
+    caliber 重建管线产出扁平结构：
+      顶层 定额标准.{能耗, 用水, 非供暖三档_约束基准引导, 电耗三档, 人均综合能耗三档,
+                     机关用水先进通用: [先进, 通用], ...}
+      顶层 口径.{建筑面积_m2, 用能人数, 床位数, ...}
+      by_year[i] = {year, 单位建筑面积非供暖能耗_kgce_m2a, 评价_非供暖,
+                    常规电耗_kWh_m2a, 评价_电耗, 人均综合能耗_kgce_pa, 评价_人均,
+                    人均机关取水量_m3_pa, 评价_取水, ...}
+
+    适配要点：
+      - 能源指标三档 [约束, 基准, 引导] 位置语义与模块一致，直接映射；
+      - 用水定额只有两档 (先进值, 通用值) 且先进 < 通用，按语义还原后
+        放入 约束值=通用值、基准值=先进值，避免 WATER_SEMANTICS 误报；
+      - 标准名 / 评价文字一并映射，供对标一致性与评价复核沿用。
+    """
+    quota = payload.get("定额标准") or {}
+    caliber_koujing = payload.get("口径") or {}
+    standard_energy = str(quota.get("能耗") or "")
+    standard_water = str(quota.get("用水") or "")
+    institution_type = _infer_institution_type(quota)
+
+    triple_map = (
+        ("unit_area_non_heating", "非供暖三档_约束基准引导"),
+        ("unit_area_electricity", "电耗三档"),
+        ("per_capita_energy", "人均综合能耗三档"),
+    )
+    energy_field_map = (
+        ("unit_area_non_heating", "单位建筑面积非供暖能耗_kgce_m2a", "kgce_per_m2", "评价_非供暖"),
+        ("unit_area_electricity", "常规电耗_kWh_m2a", "kwh_per_m2", "评价_电耗"),
+        ("per_capita_energy", "人均综合能耗_kgce_pa", "kgce_per_person", "评价_人均"),
+    )
+
+    yearly: List[dict] = []
+    for row in payload.get("by_year") or []:
+        if not isinstance(row, dict):
+            continue
+        year = row.get("year")
+        item: Dict[str, Any] = {"year": year}
+        for key, raw_field, value_field, eval_field in energy_field_map:
+            triple = quota.get(dict(triple_map)[key]) or []
+            benchmark = {
+                "约束值": triple[0] if len(triple) > 0 else 0,
+                "基准值": triple[1] if len(triple) > 1 else 0,
+                "引导值": triple[2] if len(triple) > 2 else 0,
+                "标准": standard_energy,
+                "来源": "by_year适配",
+                "评价结果": str(row.get(eval_field) or ""),
+            }
+            item[key] = {value_field: row.get(raw_field), "benchmark": benchmark}
+
+        water_field = _water_field_of(row)
+        water_quota_key = _water_quota_key(quota)
+        if water_field:
+            quota_pair = list(quota.get(water_quota_key) or []) if water_quota_key else []
+            advanced = quota_pair[0] if len(quota_pair) > 0 else 0
+            general = quota_pair[1] if len(quota_pair) > 1 else 0
+            water_benchmark = {
+                # 用水两档语义：先进值(严) < 通用值(宽)；按模块口径放 约束=通用、基准=先进
+                "约束值": general,
+                "基准值": advanced,
+                "引导值": 0,
+                "标准": standard_water,
+                "来源": "by_year适配",
+                "评价结果": str(row.get("评价_取水") or ""),
+            }
+            item["water_indicator"] = {
+                _water_value_field(water_field): row.get(water_field),
+                "benchmark": water_benchmark,
+            }
+        yearly.append(item)
+
+    return {
+        "project": payload.get("project") or "",
+        "institution_type": institution_type,
+        "building_area": caliber_koujing.get("建筑面积_m2"),
+        "people_count": caliber_koujing.get("用能人数"),
+        "beds_count": caliber_koujing.get("床位数") or 0,
+        "yearly": yearly,
+        "status": "ok",
+        "_adapter_note": "caliber by_year schema 适配映射（定额标准→三值，评价文字→benchmark.评价结果）",
+    }
+
+
 def load_indicators(
     project: str, output_dir: Optional[str] = None
 ) -> Tuple[Optional[dict], str, str]:
     """加载指标。返回 (indicators, 来源说明, 错误)。
 
-    优先级：indicators.json → data.json 的 indicators 字段 → 现算。
+    优先级：
+      1. indicators.json 的 yearly[]（模块原生 schema）
+      2. indicators.json 的 by_year（caliber 重建 schema，适配映射；存在时
+         不再回落 data.json 内嵌——内嵌块可能是重建前旧口径残留，见 P1 先例）
+      3. data.json 的 indicators 字段（旧口径兼容）
+      4. compute_project_indicators 现算
     """
-    candidate = project_dir(project, output_dir) / "indicators.json"
-    payload = read_json(candidate)
-    if isinstance(payload, dict) and payload.get("yearly"):
-        return payload, f"indicators.json ({candidate})", ""
+    candidate_dirs = (
+        projects_root() / project,           # 项目根目录（老布局）
+        projects_root() / project / "data",  # caliber 实际输出目录
+    )
+    payload = None
+    payload_path = None
+    for base in candidate_dirs:
+        cand = base / "indicators.json"
+        data = read_json(cand)
+        if isinstance(data, dict):
+            payload, payload_path = data, cand
+            break
+    if isinstance(payload, dict):
+        if payload.get("yearly"):
+            return payload, f"indicators.json ({payload_path})", ""
+        if payload.get("by_year"):
+            adapted = adapt_by_year(payload)
+            return adapted, f"indicators.json ({payload_path}) (caliber by_year schema, adapter 映射)", ""
 
     raw = read_json(project_data_path(project))
     if isinstance(raw, dict):
