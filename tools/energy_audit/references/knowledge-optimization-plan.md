@@ -3,7 +3,8 @@
 > 2026-07-14 | 基于当时系统现状 + 三方案对比分析
 >
 > **流水线现状（2026-08 更正）**：`run_pipeline.py` / `agent_xiaocheng()` 已不存在。
-> 现行入口是 `energy_audit_tool.rest_generate_energy_audit_report` → `build_and_save_project` → `load_from_project` → `generate_word`。
+> **（2026-09-04 再更正）**：`generate_word` 正文生成已退役——现行入口 `rest_generate_energy_audit_report` 仅采集落盘，
+> 正文由 author 按 ea-authoring 技能 LLM 写作 + office_editor 组装；`generate_word` 仅存仿写模式（imitated_chapters）。
 > `search_for_chapter()` 仍是 RAG 库函数，**不写入第1/3章**。第3章走 PG 节能管理表 + 制度文件 LLM 提炼。
 
 ---

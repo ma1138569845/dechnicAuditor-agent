@@ -556,7 +556,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         result['found']['equipment'] = equipment
 
     # ---- 5. 人员 ----
-    # 字段映射（对齐 report_generator 取值键 role/name/education/certification/major）：
+    # 字段映射（对齐 author 写作取值键 role/name/education/certification/major）：
     # ts_project_audit_user: position(组内职务)→role, degree→education, qualifications→certification
     audit_users = [{'role': r.get('position'), 'name': r.get('name'),
                     'education': r.get('degree'), 'certification': r.get('qualifications'),
@@ -635,6 +635,18 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             _lids = [x.strip() for x in str(_m.get('ledger_files') or '').split(',') if x.strip()]
             _ledger_ids.extend(_lids)
         result['found'].setdefault('metering', {})['ledger_files'] = ','.join(dict.fromkeys(_ledger_ids))
+
+    # ---- 6.5b 缴费发票（主表 + 图片明细双表）----
+    invoices = pg.get_institution_energy_invoice(customer_id=customer_id)
+    if invoices:
+        _inv_ids = [r['id'] for r in invoices]
+        _img_rows = pg.get_institution_energy_invoice_images(_inv_ids)
+        _img_by_record: dict = {}
+        for _ir in _img_rows:
+            _img_by_record.setdefault(_ir['record_id'], []).append(_ir)
+        for _inv in invoices:
+            _inv['images'] = _img_by_record.get(_inv['id'], [])
+        result['found']['energy_invoices'] = invoices
 
     # ---- 6.6 折标系数 ----
     standards = pg.get_energy_standards()
@@ -745,6 +757,36 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     for mr in pg_result['found'].get('energy_meter', []) or []:
         for fid in parse_file_ids(mr.get('device_img') or ''):
             _photo_id_map.append((fid, '计量器具'))
+    # 发票照片（ts_institution_energy_invoice + invoice_image 双表）→ 分类'缴费发票'，
+    # caption 带能源类型与期间（如"电费 1月~2月"），附录按 caption 前缀分组排列。
+    _INVOICE_TYPE_CN = {
+        '01': '水费', '10': '煤炭费', '25': '燃气费', '45': '电费',
+        '50': '供暖费', '300301': '油费', '300302': '油费',
+    }
+    _invoice_records = pg_result['found'].get('energy_invoices', []) or []
+    for inv in _invoice_records:
+        _type_cn = _INVOICE_TYPE_CN.get(str(inv.get('energy_type') or '').strip(), '能源费')
+        for _img in inv.get('images', []) or []:
+            _fid = _img.get('file_id')
+            if not _fid:
+                continue
+            for fid in parse_file_ids(_fid):
+                _period = _img.get('period_name') or _img.get('period_code') or ''
+                _photo_id_map.append((fid, ('缴费发票', f"{_type_cn} {_period}".strip())))
+    # 设备分表照片（_img 列）→ 第6章分系统分类（2026-09-04 补，此前正文无设备照片）
+    _DEVICE_PHOTO_CATEGORY = {
+        '空调': '制冷设备', '照明': '照明设备', '办公': '办公设备',
+        '动力': '其他用电设备', '生活热水': '其他用电设备',
+        '其他设备': '制冷设备', '输配设备': '制冷设备', '蒸汽': '制冷设备',
+        '特殊设备': '信息机房',
+        # 卫生器具（用水系统）暂不映射：DB 无照片记录，后续有需要再加'用水设备'分类
+    }
+    for eq in pg_result['found'].get('equipment', []) or []:
+        _cat = _DEVICE_PHOTO_CATEGORY.get(eq.get('category') or '')
+        if not _cat:
+            continue
+        for fid in (eq.get('img_ids') or []):
+            _photo_id_map.append((fid, _cat))
     if _photo_id_map:
         _atts = resolve_attachment_urls([fid for fid, _ in _photo_id_map])
         _path_by_id = {}
@@ -754,9 +796,13 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
         for fid, cat in _photo_id_map:
             pth = _path_by_id.get(fid)
             if pth:
-                photo_items.append(ImageItem(path=pth, category=cat))
+                if isinstance(cat, tuple):  # (category, caption) — 缴费发票等带图注分类
+                    photo_items.append(ImageItem(path=pth, category=cat[0], caption=cat[1]))
+                else:
+                    photo_items.append(ImageItem(path=pth, category=cat))
     if photo_items:
-        print(f"[datacollection v2] 已采集照片 {len(photo_items)} 张（建筑外观/计量器具）")
+        _cats = sorted({im.category for im in photo_items})
+        print(f"[datacollection v2] 已采集照片 {len(photo_items)} 张（{'/'.join(_cats)}）")
     elif _photo_id_map:
         print("[datacollection v2] 照片未采集：file base_url 未配置或附件下载失败，缺失项由 photo_manager 检查提示")
 

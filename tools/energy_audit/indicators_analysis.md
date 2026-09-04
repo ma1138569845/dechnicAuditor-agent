@@ -12,7 +12,7 @@
 | `pg_collector.py:681` | `proj.indicators = compute_project_indicators(proj)` | 数据收集阶段**预计算**项目指标 |
 | `chapter5_agent.py:20-27,367,418` | `from tools.energy_audit.indicators import (YearlyEnergyData, ..., institution_category_to_type, compare_with_benchmark, calc_baseline)` | 报告第 5 章"能源消费指标分析"直接复用 |
 | `excel_processor.py:596-597` | `compute_audit_indicators()` → 委托本模块 | 通用指标入口 |
-| `report_generator.py` | 引用（指标数据写入报告） | 渲染 |
+| 报告正文（ea-authoring skill） | 引用指标数据写作 | LLM 写作 |
 
 结论：它是**单一事实来源（single source of truth）**，被数据收集和报告生成两侧共享，改动会影响两条链路。
 

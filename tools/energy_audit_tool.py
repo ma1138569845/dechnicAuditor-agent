@@ -651,10 +651,11 @@ def rest_generate_energy_audit_report(
     mode: str = "template",
     reference_dir: str = None,
 ) -> dict:
-    """从 PG 取数生成能源审计报告 .docx（REST 版本，返回 dict）。
+    """从 PG 取数生成能源审计报告（REST 版本，返回 dict）。
 
-    mode=template：固定章节模板填数。
     mode=imitate：按类型从参考报告目录取同类报告仿写后生成 Word。
+    mode=template：仅采集数据落盘 data.json，正文写作已移交 ea-authoring 技能
+    （2026-09-04：report_generator 正文生成退役，脚本不写正文）。
     """
     try:
         import docx  # noqa: F401
@@ -697,16 +698,8 @@ def rest_generate_energy_audit_report(
 
     try:
         from tools.energy_audit.pg_collector import build_and_save_project
-        from tools.energy_audit.report_generator import ReportGenerator
     except ImportError as e:
         return {"error": "能源审计报告工具加载失败", "message": str(e)}
-
-    # 报告输出目录：优先调用方指定，其次 config.yaml 的 output.directory，最后回退 ./reports。
-    default_dir = output_dir or "./reports"
-    try:
-        os.makedirs(default_dir, exist_ok=True)
-    except OSError as e:
-        return {"error": "无法创建输出目录", "message": str(e)}
 
     try:
         project = build_and_save_project(project_name)
@@ -717,12 +710,14 @@ def rest_generate_energy_audit_report(
     if not project.base.unit_name:
         return {"error": "未找到项目", "message": f"数据库中不存在单位/项目：{project_name}"}
 
-    output_path = os.path.join(default_dir, f"{project_name}能源审计报告.docx")
-    try:
-        gen = ReportGenerator(audit_type)
-        gen.load_from_project(project)
-        result_path = gen.generate_word(output_path)
-    except Exception as e:
-        return {"error": "报告生成失败", "message": str(e)}
-
-    return {"ok": True, "file_path": result_path}
+    # 正文写作已移交 ea-authoring 技能（LLM 逐章写作 + office_editor 组装），
+    # 本接口只负责数据采集落盘，返回数据就绪状态与写作指引。
+    return {
+        "ok": True,
+        "message": (
+            f"{project_name} 数据已采集并落盘 data.json。"
+            "报告正文请按 ea-authoring 技能逐章写作（load_project 取数 → chapterX-guide 写作 → "
+            "office_editor 组装 Word + 三件套 + officecli 附录）。"
+        ),
+        "data_ready": True,
+    }

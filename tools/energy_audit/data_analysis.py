@@ -464,7 +464,7 @@ def load_analysis_result(path: str) -> AnalysisResult:
 
 def inject_diagnosis_to_chapter7(result: AnalysisResult, rd: dict) -> dict:
     """
-    将诊断结果注入 report_data['chapter7']，供 build_chapter7() 直接使用。
+    将诊断结果注入诊断清单，供 author 第7章写作直接使用。
 
     转换规则:
       anomaly.description → problem.title + 嵌原因/验证方法

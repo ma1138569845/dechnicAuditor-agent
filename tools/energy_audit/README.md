@@ -118,8 +118,8 @@ results = rag.search_best_practices('公共机构', '空调系统')
 from tools.energy_audit import ReportGenerator
 
 generator = ReportGenerator('公共机构')
-generator.set_report_data(report_data)
-generator.save_report('公共机构能源审计报告.md')
+generator.set_report_data(report_data)  # 仅仿写模式（imitated_chapters）；正文走 ea-authoring skill
+generator.generate_word('公共机构能源审计报告.docx')
 ```
 
 ## 工具包结构
@@ -130,7 +130,8 @@ tools/energy_audit/
 ├── excel_processor.py       # Excel数据处理工具
 ├── pg_query.py             # PostgreSQL数据查询工具
 ├── rag_retrieval.py        # RAG知识检索工具
-├── report_generator.py     # 报告生成工具
+├── report_generator.py     # 仿写模式渲染工具（正文生成已退役，见 ea-authoring skill）
+├── format_spec.py          # 格式规范权威单点
 ├── config.yaml            # 配置文件
 └── README.md              # 本说明文件
 ```

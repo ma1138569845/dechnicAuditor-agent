@@ -22,14 +22,15 @@ PHOTO_REQUIREMENTS = {
         ('计量器具', '电表、水表、气表等计量仪表照片', 'chapter4.images'),
     ],
     '第5章': [
-        ('能耗账单', '电费、水费、燃气费账单示例', 'chapter5.images'),
+        ('缴费发票', '能源缴费发票照片（电/水/燃气/供暖，采集自 ts_institution_energy_invoice + invoice_image）', 'chapter5.images'),
     ],
     '第6章': [
-        ('制冷设备', '冷水机组/多联机外机/分体空调等', 'chapter6.images.cooling'),
+        ('制冷设备', '冷水机组/多联机/冷却塔/水泵/换热器等（采集自设备分表 _img 列）', 'chapter6.images.cooling'),
         ('照明设备', '典型照明灯具照片', 'chapter6.images.lighting'),
-        ('变压器/配电', '变压器室、配电柜等', 'chapter6.images.transformer'),
-        ('水泵/水箱', '生活水泵、消防水箱等', 'chapter6.images.water'),
-        ('厨房设备', '燃气灶具、消毒柜等', 'chapter6.images.other_energy'),
+        ('办公设备', '电脑/打印机等办公设备照片', 'chapter6.images.office'),
+        ('其他用电设备', '电热水器/电梯等', 'chapter6.images.other_electric'),
+        ('信息机房', '服务器/机柜/精密空调等', 'chapter6.images.computer_room'),
+        ('厨房设备', '燃气灶具、消毒柜等', 'chapter6.images.kitchen'),
     ],
     '第7章': [
         ('节能改造示意', '改造前现状照片（可选对比）', 'chapter7.images'),

@@ -220,6 +220,7 @@ class Equipment:
     category: str = ""                 # 分类: 空调/照明/电梯/热水器/厨房/变压器
     spec: str = ""                     # 规格/功率
     quantity: int = 0                  # 数量
+    img_ids: List[str] = field(default_factory=list)  # 设备照片附件 file id（设备分表 _img 列，供第6章照片分类采集）
     energy_rating: str = ""            # 能效等级
     usage_years: str = ""              # 使用年限
     location: str = ""                 # 所在位置

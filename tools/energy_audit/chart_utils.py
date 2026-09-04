@@ -1,7 +1,7 @@
 """
 matplotlib 图表中文字体与上标渲染 —— 共享工具
 
-所有图表入口（report_generator / chapter5_agent 等）统一从这里配置字体，
+所有图表入口（imitate 仿写渲染 / chapter5_agent 等）统一从这里配置字体，
 避免各模块各自硬编码 rcParams 导致配置分散、行为不一致。
 
 背景：SimHei 缺少 ²/³/¹（U+00B2/B3/B9）等上标字形，直接渲染会显示为方框并

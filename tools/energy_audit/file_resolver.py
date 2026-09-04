@@ -8,7 +8,7 @@ ts_institution_energy_saving.management_files / award_certificate 存放的是
 2. 通过 PG 查 ts_attachment 拿到相对路径 attach_url；
 3. 用 file.base_url（config.yaml / EA_FILE_BASE_URL）拼出完整 URL；
 4. 图片附件（award_certificate / management_files 中的图片）下载到本地缓存，
-   供报告内嵌（build_chapter3 用 os.path.exists 校验本地路径）；
+   供报告内嵌（author 第3章写作用 os.path.exists 校验本地路径）；
 5. 文档附件（management_files 中的 PDF/Word）下载 + 提取文字 + LLM 提炼，
    回填第三章 3.1「机构职责」/ 3.2「目标方针」正文（见 enrich_management_info）。
 

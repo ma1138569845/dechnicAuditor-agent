@@ -544,11 +544,25 @@ class PgDataQuery:
         if 'is_metering' in record:
             metering = PgDataQuery._flag_cn(record.get('is_metering'))
 
+        # 图片列（各设备分表命名不一：device_img/system_img/fan_img/tower_img/
+        # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）
+        img_ids = []
+        for k, v in record.items():
+            if k.endswith('_img') and v:
+                for fid in str(v).replace('，', ',').split(','):
+                    fid = fid.strip()
+                    if fid:
+                        try:
+                            img_ids.append(int(fid))  # int：ts_attachment.group_id 为 bigint
+                        except ValueError:
+                            img_ids.append(fid)
+
         return {
             'name': name,
             'category': category,
             'spec': ' | '.join(filter(None, spec_parts)),
             'quantity': quantity,
+            'img_ids': img_ids,
             'independent_metering': metering,
             'independent_metering_desc': str(record['metering_desc']).strip()
             if record.get('metering_desc') else '',
@@ -765,6 +779,55 @@ class PgDataQuery:
         return self._execute(query, tuple(params))
 
     # ========== 节能管理信息 ==========
+
+
+    def get_institution_energy_invoice(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_energy_invoice — 公共机构能源发票信息（主表）。
+
+        版本归一（草稿优先，is_draft=1=最新编辑数据）：业务键
+        (select_time, energy_type, payment_granularity)。energy_type 存能源编码
+        （01水/10煤炭/25天然气/45电/50热力/300301汽油），非中文名。
+        """
+        query = """
+            SELECT id, select_time, energy_type, payment_granularity, customer_id,
+                   version_code, is_draft
+            FROM ts_institution_energy_invoice
+            WHERE (deleted IS NULL OR deleted = 0)
+        """
+        params: List = []
+        if customer_id:
+            query += " AND customer_id = %s"
+            params.append(customer_id)
+        query += """
+            AND id IN (
+                SELECT DISTINCT ON (select_time, energy_type, payment_granularity) id
+                FROM ts_institution_energy_invoice
+                WHERE (deleted IS NULL OR deleted = 0)
+        """
+        if customer_id:
+            query += " AND customer_id = %s"
+        query += """
+                ORDER BY select_time, energy_type, payment_granularity,
+                         COALESCE(is_draft, 0) DESC, version_code DESC NULLS LAST, id DESC
+            )
+            ORDER BY select_time, energy_type, payment_granularity
+        """
+        params2 = params + ([customer_id] if customer_id else [])
+        return self._execute(query, tuple(params2))
+
+    def get_institution_energy_invoice_images(self, record_ids: List[int] = None) -> List[Dict]:
+        """ts_institution_energy_invoice_image — 发票图片明细（按 record_id 关联主表）。
+
+        返回 record_id / period_code / period_name / file_id / sort；
+        file_id 为 ts_attachment.group_id（单值或空串）。
+        """
+        if not record_ids:
+            return []
+        query = """SELECT record_id, period_code, period_name, file_id, sort
+                   FROM ts_institution_energy_invoice_image
+                   WHERE record_id = ANY(%s)
+                   ORDER BY record_id, COALESCE(sort, 0), period_code"""
+        return self._execute(query, (list(record_ids),))
 
     def get_institution_energy_saving(self, customer_id: int = None,
                                       year: int = None) -> List[Dict]:
