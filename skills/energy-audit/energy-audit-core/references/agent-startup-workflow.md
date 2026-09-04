@@ -61,7 +61,7 @@ indicators.py:
   calc_unit_area_non_heating_energy()  → 单位面积非供暖能耗 + DB37对标
   calc_unit_area_electricity()          → 常规用能系统单位面积电耗 + 对标
   calc_per_capita_energy()              → 人均综合能耗 + 对标
-  calc_per_capita_water()              → 人均取水量/床日用水量 + 对标
+  calc_water_indicator()             → 取水指标（医院=床日/机关教育=人均/场馆=面积）+ 对标
   calc_baseline()                       → 5.4建筑能耗基准
 
 三级兜底: DB → 用户提供 → 内置GB/DB37默认

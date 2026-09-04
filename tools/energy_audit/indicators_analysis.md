@@ -36,7 +36,7 @@ indicators.py
 │   ├── compare_with_benchmark()              对标评价（约束/基准/引导）
 │   ├── calc_unit_area_electricity()          单位面积电耗
 │   ├── calc_per_capita_energy()              人均综合能耗
-│   ├── calc_per_capita_water()               人均取水/床日用水
+│   ├── calc_water_indicator()               取水指标（医院=床日/机关教育=人均/场馆=面积）
 │   └── calc_baseline()                       建筑能耗基准（三年趋势判断）
 └── 统一入口
     ├── energy_yearly_to_yearly_energy_data()  EnergyYearly→YearlyEnergyData 转换器

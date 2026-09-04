@@ -1290,7 +1290,7 @@ class WordReportBuilder:
         # 用 indicators.py 计算指标
         from tools.energy_audit.indicators import (
             YearlyEnergyData, calc_unit_area_non_heating_energy, calc_unit_area_electricity,
-            calc_per_capita_energy, calc_per_capita_water, resolve_benchmark,
+            calc_per_capita_energy, calc_water_indicator, resolve_benchmark,
         )
         yd_objects = []
         for d in energy_data_list:
@@ -2037,9 +2037,9 @@ class WordReportBuilder:
             rows = [['取水量(m³)'], ['床位数'], ['单位开放床日用水量(L/床·d)'], ['通用值'], ['先进值'], ['评价结果']]
             beds = self.report_data.get('chapter2', {}).get('beds_count', 0) or 0
             for yd in yd_objects:
-                r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
+                r = indicator_yearly.get(yd.year, {}).get('water_indicator') or indicator_yearly.get(yd.year, {}).get('per_capita_water')  # 旧键兼容
                 if not r:
-                    r = calc_per_capita_water(yd, institution_type=institution_type, bed_count=beds)
+                    r = calc_water_indicator(yd, institution_type=institution_type, bed_count=beds)
                 if isinstance(r, dict) and r.get('error'):
                     indicator_warnings.append(f"{yd.year}年卫生业单位用水量：{r['error']}")
                 rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
@@ -2070,9 +2070,9 @@ class WordReportBuilder:
             headers = ['统计周期'] + [f'{yd.year}年' for yd in yd_objects]
             rows = [['取水量(m³)'], ['标准人数'], ['单位标准人数用水量(m³/p·a)'], ['通用值'], ['先进值'], ['评价结果']]
             for yd in yd_objects:
-                r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
+                r = indicator_yearly.get(yd.year, {}).get('water_indicator') or indicator_yearly.get(yd.year, {}).get('per_capita_water')  # 旧键兼容
                 if not r:
-                    r = calc_per_capita_water(yd, institution_type=institution_type)
+                    r = calc_water_indicator(yd, institution_type=institution_type)
                 if isinstance(r, dict) and r.get('error'):
                     indicator_warnings.append(f"{yd.year}年单位标准人数用水量：{r['error']}")
                 rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
@@ -2110,9 +2110,9 @@ class WordReportBuilder:
             else:
                 rows = [['取水量(m³)'], ['用能人数'], ['人均取水量(m³/人)'], ['通用值'], ['先进值'], ['评价结果']]
             for yd in yd_objects:
-                r = indicator_yearly.get(yd.year, {}).get('per_capita_water')
+                r = indicator_yearly.get(yd.year, {}).get('water_indicator') or indicator_yearly.get(yd.year, {}).get('per_capita_water')  # 旧键兼容
                 if not r:
-                    r = calc_per_capita_water(yd, institution_type=institution_type, building_area=area)
+                    r = calc_water_indicator(yd, institution_type=institution_type, building_area=area)
                 if isinstance(r, dict) and r.get('error'):
                     indicator_warnings.append(f"{yd.year}年{water_name}：{r['error']}")
                 rows[0].append(_cell(r, 'total_water_m3', '{:,.2f}'))
@@ -2585,7 +2585,7 @@ class WordReportBuilder:
                 r_nh = item.get('unit_area_non_heating', {})
                 r_ed = item.get('unit_area_electricity', {})
                 r_pe = item.get('per_capita_energy', {})
-                r_pw = item.get('per_capita_water', {})
+                r_pw = item.get('water_indicator') or item.get('per_capita_water', {})  # 旧键兼容
 
                 nh = r_nh.get('kgce_per_m2', 0)
                 ed = r_ed.get('kwh_per_m2', 0)
@@ -2614,7 +2614,7 @@ class WordReportBuilder:
             self._add_body_text(f"参照{std_name}及DB37/T 4452-2021，各项能耗指标评价结果如下：")
             from tools.energy_audit.indicators import (
                 YearlyEnergyData, calc_unit_area_non_heating_energy,
-                calc_unit_area_electricity, calc_per_capita_energy, calc_per_capita_water,
+                calc_unit_area_electricity, calc_per_capita_energy, calc_water_indicator,
             )
             area = ch5.get('building_area', 0)
             people = ch5.get('people_count', 0)
@@ -2634,7 +2634,7 @@ class WordReportBuilder:
                 r_nh = calc_unit_area_non_heating_energy(yd)
                 r_ed = calc_unit_area_electricity(yd, institution_type=inst, sub_type=venue_sub)
                 r_pe = calc_per_capita_energy(yd, institution_type=inst, sub_type=venue_sub)
-                r_pw = calc_per_capita_water(yd, institution_type=inst, bed_count=beds)
+                r_pw = calc_water_indicator(yd, institution_type=inst, bed_count=beds)
 
                 nh = r_nh.get('kgce_per_m2', 0)
                 ed = r_ed.get('kwh_per_m2', 0)

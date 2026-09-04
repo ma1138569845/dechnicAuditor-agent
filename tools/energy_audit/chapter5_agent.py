@@ -22,7 +22,7 @@ from tools.energy_audit.indicators import (
     calc_unit_area_non_heating_energy,
     calc_unit_area_electricity,
     calc_per_capita_energy,
-    calc_per_capita_water,
+    calc_water_indicator,
     calc_baseline,
     institution_category_to_type,
     COEFFICIENTS,
@@ -402,7 +402,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
             md += "|------|-----------|--------|---------------------------|----------|\n"
             for yd in yd_list:
-                r = calc_per_capita_water(yd, institution_type='medical', bed_count=bed_count)
+                r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
                 md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
         else:
             md += "### 5.3.4 人均取水量\n\n"
@@ -411,7 +411,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += "| 年度 | 取水量(m³) | 用能人数 | 人均取水量(m³/人) | 评价结果 |\n"
                 md += "|------|-----------|----------|-------------------|----------|\n"
                 for yd in yd_list:
-                    r = calc_per_capita_water(yd, institution_type=institution_type)
+                    r = calc_water_indicator(yd, institution_type=institution_type)
                     md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {people} | {r['m3_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
         md += "\n"
 

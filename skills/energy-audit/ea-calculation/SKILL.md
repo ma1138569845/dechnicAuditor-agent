@@ -113,7 +113,7 @@ proj = load_project(unit_name)
 | 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | (总电 − 供暖电) / 面积 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | 电量总和/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数 = 在岗 + 编外 + 门诊折算 + 床位折算 |
-| 4 | 取水指标（医院=单位开放床日用水量；非医院=人均取水量） | `calc_per_capita_water(bed_count=N)` | 医院传 bed_count 走床日口径；非医院降级人均取水量 |
+| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆=单位建筑面积年取水量） | `calc_water_indicator(bed_count=N, building_area=A)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用 |
 | 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 
 另：`calc_baseline(yearly_data)` 计算 5.4 节建筑能耗基准（用量基准 + 费用基准，多年区间/趋势）。

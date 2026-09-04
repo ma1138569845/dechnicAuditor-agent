@@ -75,7 +75,7 @@ try:
         compare_with_benchmark,
         calc_unit_area_electricity,
         calc_per_capita_energy,
-        calc_per_capita_water,
+        calc_water_indicator,
         calc_baseline,
         resolve_coefficient,
         resolve_benchmark,
@@ -172,9 +172,9 @@ def calc_all_indicators(
     r3 = calc_per_capita_energy(latest, institution_type=inst_type)
     results['per_capita_energy'] = r3
 
-    # ── 指标 (4): 取水量 ──
-    r4 = calc_per_capita_water(latest, inst_type, bed_count=bed_count)
-    results['per_capita_water'] = r4
+    # ── 指标 (4): 取水指标（医院=床日/机关教育=人均/场馆=面积）──
+    r4 = calc_water_indicator(latest, inst_type, bed_count=bed_count)
+    results['water_indicator'] = r4
 
     # ── 5.4: 建筑能耗基准 ──
     baseline = calc_baseline(yearly_data)
@@ -225,8 +225,8 @@ def format_indicators_report(results: dict) -> str:
     lines.append(f"   约束值: {bm3.get('约束值','-')}  基准值: {bm3.get('基准值','-')}  引导值: {bm3.get('引导值','-')}")
     lines.append("")
 
-    # 指标(4)
-    r4 = results.get('per_capita_water', {})
+    # 指标(4) 取水指标
+    r4 = results.get('water_indicator') or results.get('per_capita_water', {})  # 旧键兼容
     bm4 = r4.get('benchmark') or {}
     if 'L_per_bed_day' in r4:
         lines.append(f"4. 单位开放床日用水量: {r4.get('L_per_bed_day','-')} L/(床·d)")
@@ -297,7 +297,7 @@ def run_caliber(
     print(f"  ✅ 非供暖能耗: {r1.get('kgce_per_m2','-')} kgce/m² [{bm1.get('评价结果','-')}]")
     print(f"  ✅ 常规电耗: {r2.get('kwh_per_m2','-')} kWh/m² [{bm2.get('评价结果','-')}]")
     print(f"  ✅ 人均能耗: {results.get('per_capita_energy',{}).get('kgce_per_person','-')} kgce/人")
-    r4 = results.get('per_capita_water', {})
+    r4 = results.get('water_indicator') or results.get('per_capita_water', {})  # 旧键兼容
     if 'L_per_bed_day' in r4:
         print(f"  ✅ 床日用水: {r4.get('L_per_bed_day','-')} L/(床·d)")
     else:

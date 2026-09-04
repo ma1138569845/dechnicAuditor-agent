@@ -79,10 +79,10 @@ METRIC_SPECS: Tuple[MetricSpec, ...] = (
     MetricSpec("unit_area_electricity", "单位面积常规电耗", ("kwh_per_m2",), "kWh/(m²·a)", "energy"),
     MetricSpec("per_capita_energy", "人均综合能耗", ("kgce_per_person",), "kgce/(人·a)", "energy"),
     MetricSpec(
-        "per_capita_water",
-        "人均取水量/单位床日用水量",
-        ("L_per_bed_day", "m3_per_person"),
-        "L/(床·d) 或 m³/(人·a)",
+        "water_indicator",
+        "取水指标（医院=床日/机关教育=人均/场馆=面积）",
+        ("L_per_bed_day", "m3_per_person", "m3_per_area"),
+        "L/(床·d) 或 m³/(人·a) 或 m³/(m²·a)",
         "water",
     ),
 )
@@ -345,6 +345,14 @@ def _yoy_severity(change: float) -> Optional[str]:
     return None
 
 
+def _row_metric(row: dict, spec) -> dict:
+    """取年度行中某指标的 dict；water_indicator 兼容旧键 per_capita_water。"""
+    metric = row.get(spec.key)
+    if spec.key == "water_indicator" and not metric:
+        metric = row.get("per_capita_water")  # 旧 indicators.json/data.json 兼容
+    return metric or {}
+
+
 def check_yoy(yearly: Sequence[dict]) -> List[Finding]:
     """逐年指标变化排查。"""
     findings: List[Finding] = []
@@ -352,7 +360,7 @@ def check_yoy(yearly: Sequence[dict]) -> List[Finding]:
     for spec in METRIC_SPECS:
         series: List[Tuple[int, str, float]] = []
         for row in rows:
-            metric = row.get(spec.key) or {}
+            metric = _row_metric(row, spec)
             if metric.get("error"):
                 continue
             field_name, value = metric_value(metric, spec)
@@ -576,7 +584,7 @@ def run(project: str, *, output_dir: Optional[str] = None) -> ReviewResult:
     for row in sorted(yearly, key=lambda r: safe_float(r.get("year"))):
         year = int(safe_float(row.get("year")))
         for spec in METRIC_SPECS:
-            metric = row.get(spec.key) or {}
+            metric = _row_metric(row, spec)
             if metric.get("error"):
                 findings.append(
                     Finding(

@@ -636,7 +636,7 @@ def calc_per_capita_energy(
     }
 
 
-def calc_per_capita_water(
+def calc_water_indicator(
     data: YearlyEnergyData,
     institution_type: str = 'government',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
@@ -644,16 +644,18 @@ def calc_per_capita_water(
     building_area: Optional[float] = None,  # 政务服务中心/场馆使用（面积口径）
 ) -> dict:
     """
-    人均取水量 / 单位开放床日用水量（三级兜底）
+    取水指标（按机构类型分派三种口径，三级兜底）
 
-    公式（机关/教育）: Wr = W / P  (m³/人·a)
-    公式（医院）:      Vz = Wz / Nbed  (L/(床·d))
+    公式（机关/教育）: Wr = W / P  (m³/人·a)            人均取水量
+    公式（医院）:      Vz = Wz / Nbed  (L/(床·d))        单位开放床日用水量
+    公式（场馆/政务服务中心）: Vm = W / A (m³/(m²·a))    单位建筑面积年取水量
 
     式中:
       W    = 年总取水量 (m³)
       P    = 用能人数
       Wz   = 年住院部用水总量 (m³)
       Nbed = 床位数
+      A    = 建筑面积 (m²)
 
     DB37/T 4452-2021 定额：
       二级医院: 先进值 340, 通用值 540 L/(床·d)
@@ -662,6 +664,9 @@ def calc_per_capita_water(
     返回 dict，包含 {m3_per_person, total_water_m3, people_count, benchmark}
     医院模式额外返回 {L_per_bed_day, bed_count}；
     用能人数无效时返回同结构全 0 + error 字段，供上层安全降级。
+
+    历史命名 calc_per_capita_water（仅覆盖人均口径，误导），2026-09-04 更名；
+    indicators.json/data.json 中旧键 per_capita_water 与新键 water_indicator 读取端均兼容。
     """
     metric_map = {
         'medical': 'water_per_bed_day',
@@ -912,7 +917,7 @@ def compute_project_indicators(project) -> dict:
             'unit_area_non_heating': {...},
             'unit_area_electricity': {...},
             'per_capita_energy': {...},
-            'per_capita_water': {...},
+            'water_indicator': {...},   # 取水指标：医院=床日 / 机关教育=人均 / 场馆=单位面积
           },
           ...
         ],
@@ -1004,8 +1009,9 @@ def compute_project_indicators(project) -> dict:
             yd, institution_type=institution_type
         )
 
-        # 人均取水量 / 单位开放床日用水量（含对标）
-        year_item['per_capita_water'] = calc_per_capita_water(
+        # 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆=单位建筑面积年取水量，含对标）
+        # 键名 water_indicator（旧 data.json 的 per_capita_water 由读取端兼容回退）
+        year_item['water_indicator'] = calc_water_indicator(
             yd,
             institution_type=institution_type,
             bed_count=base.beds_count if institution_type == 'medical' else None,
@@ -1075,9 +1081,9 @@ def _test():
     r3 = calc_per_capita_energy(d2024)
     print(f"人均综合能耗: {r3['kgce_per_person']} kgce/(人·a) [{r3['benchmark']['评价结果']}]")
 
-    r4 = calc_per_capita_water(d2024, institution_type='medical', bed_count=500)
+    r4 = calc_water_indicator(d2024, institution_type='medical', bed_count=500)
     bm4 = r4['benchmark']
-    print(f"人均取水量: {r4.get('L_per_bed_day', r4.get('m3_per_person', 0))} {bm4.get('单位','')} [{bm4['评价结果']}]")
+    print(f"取水指标: {r4.get('L_per_bed_day', r4.get('m3_per_person', 0))} {bm4.get('单位','')} [{bm4['评价结果']}]")
     print(f"  标准: {bm4.get('标准','')} [{bm4['来源']}]")
 
     print("\\n✅ 指标计算工具验证通过")

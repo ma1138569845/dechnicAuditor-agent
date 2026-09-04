@@ -9,7 +9,7 @@
 | `calc_unit_area_non_heating_energy()` | 单位建筑面积非供暖能耗 | (总电-供暖电)×0.31/面积 | DB37/T 2673 |
 | `calc_unit_area_electricity()` | 常规用能系统单位建筑面积电耗 | 非供暖电/面积 | DB37/T 2673 |
 | `calc_per_capita_energy()` | 人均综合能耗 | 综合能耗/用能人数 | DB37/T 2673 |
-| `calc_per_capita_water()` | 人均取水量 / 单位开放床日用水量 / **单位建筑面积年取水量**（venue/service 传 building_area） | 取水量/人数 或 取水量×1000/(床位×365) 或 取水量/建筑面积 | DB37/T 4452（面积口径无定额，不对标） |
+| `calc_water_indicator()` | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / **场馆=单位建筑面积年取水量**，venue/service 传 building_area） | 取水量/人数 或 取水量×1000/(床位×365) 或 取水量/建筑面积 | DB37/T 4452（面积口径无定额，不对标） |
 | `calc_baseline()` | 建筑能耗基准(用量+费用) | 三年均值/最近一年 | 山东省节能量核定办法 |
 
 ## 三级兜底查询
