@@ -523,10 +523,17 @@ def _dict_to_dataclass(data: dict, cls: type) -> Any:
     if data is None:
         return cls() if not getattr(cls, '__origin__', None) else None
 
-    # 处理 List[SomeDataclass]
+    # 裸 dict（原始记录，如 energy_meter / rooms 字段类型为 List[dict]）：原样透传
+    if cls is dict:
+        return data
+
+    # 处理 List[SomeDataclass] / List[dict]
     origin = getattr(cls, '__origin__', None)
     if origin is list or origin is List:
         item_cls = cls.__args__[0]
+        # List[dict]：原 dict 元素直接透传（勿按 dataclass 递归）
+        if item_cls is dict:
+            return list(data)
         result = []
         for item in data:
             # 兼容旧数据：images 为纯字符串路径 → 转为 ImageItem(path=...)
