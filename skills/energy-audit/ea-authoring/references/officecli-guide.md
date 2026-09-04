@@ -153,9 +153,9 @@ officecli merge template.docx output-batch/ --data reports.json
 ]
 ```
 
-## 与现有 python-docx 的切换策略
+## 与 python-docx 的切换策略
 
-当前 `report_generator.py` 用 python-docx，迁移到 OfficeCLI 有两条路径：
+报告正文写作已全面转向 LLM + office_editor（officecli 回退），python-docx 仅存在于仿写脚本（assemble_report.py 等工具内部实现）。涉及 docx 编辑的手工操作一律 officecli：
 
 ### A) 渐进式替换（推荐）
 
@@ -173,9 +173,9 @@ def add_equation(officecli_path, docx_path, latex):
     ], check=True)
 ```
 
-### B) 全量重写（长远）
+### B) 全量重写（当前已定型）
 
-用 OfficeCLI SDK（`pip install officecli-sdk`）配合 Resident Mode 重写 `report_generator.py`：
+报告 docx 一律由 office_editor 工具集（editor_sdk）或 officecli 直接编辑：
 - 更少代码量（OfficeCLI 自动处理 OMML/TOC/页码）
 - 支持实时预览
 - 支持内置 `validate` 质检

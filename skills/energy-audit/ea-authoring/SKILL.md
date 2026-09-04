@@ -1,7 +1,7 @@
 ---
 name: ea-authoring
 description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章由 caliber 的 ea-calculation 产出，author 只装配不重写）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 转交 editor 流水线，勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
-version: 1.5.0
+version: 2.0.0
 author: 马天远
 ---
 
@@ -10,6 +10,8 @@ author: 马天远
 ## 概述
 
 本技能回答"如何写出 8 章完整、格式规范的公共机构能源审计报告 .docx"，只含报告写作/排版环节的深度知识。
+
+**正文写作由 LLM 逐章完成，本技能是唯一写作知识源。** 脚本（tools/energy_audit/）只负责采集、指标计算与图表渲染，**不写任何正文**；任何"跑脚本生成正文"的路径均已废弃（2026-09-04 定，report_generator 正文生成已退役）。
 
 **共享核心（REQUIRED BACKGROUND）：** 8章结构、格式规范、DB37 标准等通用原则在 `energy-audit-core` 技能中，本技能不重复，写作前须先具备该核心知识。
 
@@ -43,9 +45,11 @@ author: 马天远
   `energy-audit-routing` 转交 editor 流水线，勿直接按本技能动手（本技能仅 author
   profile 装配，写作前置数据必须来自上游 caliber 产出）。
 
-## 输入内容（强制前置流程）
+## 写作主工作流（LLM 逐章写作 + office_editor 组装）
 
 按顺序执行，禁止跳步：
+
+### 第 0 步：加载项目数据（强制前置）
 
 1. 调用 `tools/energy_audit/project_data.py` 的 `load_project(unit_name)` 查询当前审计项目数据。
    - 返回 `AuditProject` **dataclass**（非 dict），用 `.` 属性访问；`None` 表示项目不存在，用 `list_projects()` 确认。
@@ -53,61 +57,33 @@ author: 马天远
 2. 若返回 NULL 或缺少所需数据 → 回退流程，转交 profiles 的 datacollection Agent 获取数据。
 3. 若 datacollection 仍无法获取 → **立即终止整个报告编制流程**，提示用户先完善该审计项目的数据。禁止编造数据继续写作。
 
-## 章节写作指南
+### 第 1 步：逐章写作（LLM 生成正文，禁止脚本）
 
-使用 **office_editor 工具集**进行文档的创建与编辑（`office_edit` 走 editor_sdk MCP，详见下「Office 编辑」节）。
+按 1→8 章顺序，**每一章都读对应 reference 后用 LLM 撰写正文文本**，再写入 docx：
 
-所有参考文件位于 `references/` 目录：
+| 章节 | 参考文件 | 写法 |
+|------|---------|------|
+| 封面/审计信息表 | `references/building-param-table-spec.md`、`references/docx-ooxml-techniques.md` | 模板占位注入 |
+| 第1章 | `references/chapter1-templates.md` | 模板替换式（占位符→实际值） |
+| 第2章 | `references/chapter2-guide.md` | LLM 生成 + 建筑参数表/图片 |
+| 第3章 | `references/chapter3-guide.md` | LLM 生成（制度/痛点/成效） |
+| 第4章 | `references/chapter4-guide.md` | LLM 生成（4.1 固定文字/4.2 计量） |
+| 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表） | **只装配引用、不重写**；计算与写作口径见 ea-calculation/references/chapter5-* |
+| 第6章 | 见下方专项列表 | LLM 生成（分系统详述） |
+| 第7章 | `references/chapter7-guide.md` | LLM 生成（问题-措施映射） |
+| 第8章 | `references/chapter8-guide.md` | 聚合复用第5/7章结论 |
 
-| 章节 | 参考文件 |
-|------|---------|
-| 数据模型 | `references/data-model-reference.md`（load_project 返回格式 + 字段速查） |
-| 报告结构 | `energy-audit-core/references/public-institution-report-structure.md` |
-|  封面  |`references/docx-ooxml-techniques.md`|
-| 审计信息 |`references/building-param-table-spec.md`|
-| 第1章 | `references/chapter1-templates.md`（模板替换式） |
-| 第2章 | `references/chapter2-guide.md`（LLM 生成 + 自动表格/图片） |
-| 第3章 | `references/chapter3-guide.md` |
-| 第4章 | `references/chapter4-guide.md` |
-| 第5章 | `ea-calculation`（caliber 产出 chapter5.md，author **只装配引用、不重写**；计算与写作口径见 ea-calculation/references/chapter5-*） |
-| 第6章 | 见下方专项列表 |
-| 第7章 | `references/chapter7-guide.md` |
-| 第8章 | `references/chapter8-guide.md` |
+**第6章参考文件**（以正式报告为基准提炼，2026-09-04）：
 
-**第6章参考文件**（分系统详述，文件最多，单独列出）：
+- `references/chapter6-guide.md`（第6章总指南：五节结构 + 6.2/6.3/6.4 写作模板 + 数据来源/照片规范）
+- `references/chapter6-sub-system-spec.md`（6.1 分系统权威规范：7 个小节模板 + 设备归类 + 表格列）
+- `references/chapter6-indoor-env.md`（6.5 权威规范：两段测试叙述 + 三张表 + 逐项结论段）
 
-- `references/chapter6-guide.md`
-- `references/chapter6-indoor-env.md`
-- `references/chapter6-reference-structure.md`
-- `references/chapter6-sub-system-spec.md` / `chapter6-sub-system-spec-v2.md` / `chapter6-sub-system-final-spec.md`
-- `references/chapter6-writing-spec.md`
+第6章章节号权威口径：6.1 用电 / 6.2 用水 / 6.3 用热 / 6.4 其他用能 / 6.5 室内环境检测（对齐正式报告）。
 
-多份 spec 内容冲突时，以 `chapter6-sub-system-final-spec.md` 为准。
+### 第 2 步：Word 组装（office_editor 工具集）
 
-## 排版技术
-
-| 技术 | 参考文件 |
-|------|---------|
-| office_editor 工具集 | 见下「Office 编辑（office_editor 工具集）」节 |
-| OMML 公式 | `references/omml-formula-guide.md` |
-| OfficeCLI 集成 | `references/officecli-guide.md`（LaTeX 公式/目录/页眉页脚，python-docx 的替代工具） |
-| Word 生成技巧 | `references/word-generation-tips.md` |
-| 正文首行缩进 2 字符 | `references/docx-first-line-indent.md`（落盘后、加水印前必做） |
-| 项目名称水印（OnlyOffice 兼容） | `references/docx-watermark.md`（落盘前必做） |
-| 辅助视觉 | `references/auxiliary-vision-config.md` |
-
-## 架构与历史参考
-
-| 文件 | 内容 |
-|------|------|
-
-
-
-## Office 编辑（office_editor 工具集）
-
-报告 .docx 的创建/写入/保存走 `office_editor` 工具集的 7 个工具，**不要假定存在独立的"OfficeCLI"**（officecli 只是 editor_sdk 缺失时的受限回退引擎）。
-
-**新建报告基本工作流**：
+逐章写完的文本用 **office_editor 工具集**写入 .docx：
 
 1. `office_create(doc_type="doc", file_path="<绝对路径>/<项目名>能源审计报告.docx")` → `file_id`
 2. `office_edit(operation=..., op_args=...)` 逐章写入（**operation 是 MCP 操作名**，不是自定义方法名）：
@@ -131,27 +107,45 @@ author: 马天远
 - `office_save` 传 `save_path`（高层工具参数），不要直接传 `file_path` 之外的字段。
 - 既有 .docx（如已生成的报告含第2章图片/表格）用 `office_open(file_path)` 打开后，对占位/待修段落做**定点 `office_edit`**，不必全文重建。
 
+### 第 3 步：图表嵌入（脚本渲染，禁止 LLM 画图）
+
+第5章图表（流向图/饼图/趋势图）由 caliber 用 `chapter5_agent.py` 生成 PNG 落盘项目 `charts/` 目录，author 用 `office_edit` 嵌入对应位置（图注格式：图X.Y  说明文字（单位：xx），居中）。author 不得自绘或重算图表数据。
+
+## 排版技术
+
+| 技术 | 参考文件 |
+|------|---------|
+| office_editor 工具集 | 见「Office 编辑（office_editor 工具集）」节 |
+| OMML 公式 | `references/omml-formula-guide.md` |
+| OfficeCLI 集成 | `references/officecli-guide.md`（LaTeX 公式/目录/页眉页脚，python-docx 的替代工具） |
+| Word 生成技巧 | `references/word-generation-tips.md` |
+| 正文首行缩进 2 字符 | `references/docx-first-line-indent.md`（落盘后、加水印前必做） |
+| 项目名称水印（OnlyOffice 兼容） | `references/docx-watermark.md`（落盘前必做） |
+| 辅助视觉 | `references/auxiliary-vision-config.md` |
+
+## 架构与历史参考
+
+| 文件 | 内容 |
+|------|------|
+
 ## 关键规则（红线）
 
-1. **第6章 6.1 分系统详述**，结构参考 `references/chapter6-reference-structure.md`：
-   空调与供暖/照明/办公设备/其他用电(或医疗设备)/厨房/信息机房/变配电——每个分系统含冷热源描述+运行时间+设备照片+设备表。
+1. **第6章 6.1 分系统详述**，结构参考 `references/chapter6-sub-system-spec.md`：
+   （1）空调与供暖/（2）照明/（3）办公设备/（4）其他用电/（5）信息机房/（6）变配电/（7）厨房——每个分系统含叙述段+运行时间+设备照片+设备表。
 2. **第4章 4.2/4.3 独立计量、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
 3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-ooxml-techniques.md` 与 `references/docx-first-line-indent.md`。
-4. **第8章默认占位文本会阻塞自动生成**：`report_generator.py` 中 `'chapter8': {'text': '【待前7章就绪后LLM综合生成】'}` 会导致 `build_chapter8()` 直接返回。必须改为 `'chapter8': {}` 让自动生成生效。
-5. **新增 config 字段必须三处同步**：config JSON / `pg_collector.py` 构造参数 / `report_generator.py` 的 `load_from_project()`。漏任一处会导致字段静默丢失。
-6. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-watermark.md`。
-7. **落盘后、加水印前必须有正文首行缩进**：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。禁止 python-docx，禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-first-line-indent.md`。
+4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
+5. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-watermark.md`。
+6. **落盘后、加水印前必须有正文首行缩进**：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。禁止 python-docx，禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-first-line-indent.md`。
 
 ## 常见错误
 
 | 错误 | 后果 | 正确做法 |
 |------|------|---------|
 | 数据缺失时编造内容继续写 | 报告含虚假数据，审计无效 | 走"输入内容"回退流程，仍缺则终止并提示用户 |
-| 保留 chapter8 占位文本 | `build_chapter8()` 直接返回，第8章为空 | 占位改为 `'chapter8': {}`（红线4） |
-| config 新字段只改一处 | 字段静默丢失，排查困难 | 三处同步（红线5） |
+| 调用脚本（report_generator 等）生成正文 | 正文无泛化能力，换项目即失效 | LLM 逐章按 references 写作（红线4） |
 | 第4章已有独立计量仍问用户 | 与 data.json 矛盾或漏写已计量设备 | 4.2/4.3 先算 `has_ok`/`has_no`，见 `chapter4-guide.md` |
 | 第7章凭经验罗列通用问题 | 与实际数据矛盾 | 仅从 metering/equipment/building 字段推断（红线2） |
-| 第6章多份 spec 混用旧版 | 分系统结构不一致 | 以 `chapter6-sub-system-final-spec.md` 为准 |
 | 使用"OfficeCLI"独立工具编辑 | 工具已废弃/不指向正确引擎 | 用 `office_editor` 工具集（office_edit 走 editor_sdk MCP；officecli 回退走 `office_cli_command`） |
 | `office_edit` 把操作名直接当 method | `-32601 Method not found` | operation 用 MCP 工具名（`doc_insert_text` 等），走 `tools/call` 格式 |
 | `office_save` 传非 `save_path` 字段 | editor_sdk 的 `save_file` 认 `file_path` | 高层工具统一传 `save_path`，由 handler 映射 |

@@ -1,7 +1,6 @@
 # 第3章：能源资源管理状况 — 生成指南
 
-> 本指南对齐当前代码：
-> - `tools/energy_audit/report_generator.py` — `build_chapter3()` / `load_from_project()` / `_energy_saving_chapter3_sections()`
+> 数据链路（本指南只指导 LLM 写作，不依赖正文生成脚本）：
 > - `tools/energy_audit/file_resolver.py` — `enrich_management_info()`（采集阶段制度文件提炼）
 > - `tools/energy_audit/llm_client.py` — `summarize_management_docs()`（LLM 提炼 3.1/3.2）
 > - `tools/energy_audit/imitate_pipeline.py` — 仿写管道（新参考模式）
@@ -12,21 +11,21 @@
 
 | 节号 | 标题 | 主要数据源 | 为空时行为 |
 |---|---|---|---|
-| 3.1 | 能源资源管理机构职责 | `proj.management.management_org` | 通用兜底句；author 可再按机构类型模板填充 |
-| 3.2 | 能源资源管理目标和方针 | `proj.management.management_policy` + `es.energy_management` | 无数据时：**仿写同类报告 3.2**（首选）或通用兜底句 |
-| 3.3 | 能源资源管理成效与问题 | `proj.management.honors` + `es.has_awards` / `award_name` / `energy_pain_points` | 通用兜底句 |
+| 3.1 | 能源资源管理机构职责 | `proj.management.management_org` | 按 `institution_category` 选用下方四套模板（党政/医疗/教育/通用） |
+| 3.2 | 能源资源管理目标和方针 | `proj.management.management_policy` + `es.energy_management` | 无数据时：**仿写同类报告 3.2**（首选）或本指南「方针+管理目标」兜底模板 |
+| 3.3 | 能源资源管理问题与成效 | `proj.management.honors` + `es.has_awards` / `award_name` / `energy_pain_points` | 本指南两段式兜底模板（成效段 + 问题段） |
 | 3.4 | 节能改造与管理措施 | `es` 各改造字段（见下） | **无数据时不渲染该节** |
 | 图片 | 管理文件 / 荣誉证书照片 | `es.management_file_images` + `award_certificate_images` + `images[]` 分类 | 无则跳过 |
 
-> ⚠️ **3.4 是最容易漏的一节**：`build_chapter3()` 会渲染 `section_3_4`，凡节能管理信息（`ts_institution_energy_saving`）中有改造措施字段即自动生成该节。写作时必须包含 3.4。
+> ⚠️ **3.4 是最容易漏的一节**：凡节能管理信息（`ts_institution_energy_saving`）中有改造措施字段，写作时就必须包含 3.4。
 
 ---
 
 ## 生成模式
 
-**第3章文本由 `load_from_project()` 自动从项目数据组装**，author 的职责是：在自动文本偏单薄或缺失时，基于字段数据 + 模板 + 参考句式增强为自然段落。三种方式：
+**第3章文本由 author（LLM）基于项目数据写作**：读取 `project.management` 与最新一条 `project.energy_saving`（按 `statistical_year` 降序取第一条），按本节模板与字段规则逐节写作。采集阶段 `enrich_management_info` 已由制度文件 LLM 提炼正文，通常可直接采用。三种方式：
 
-1. **自动组装（默认）**：`load_from_project()` 读取 `project.management` 与最新一条 `project.energy_saving`（按 `statistical_year` 降序取第一条），组装 `report_data.chapter3` 的 `section_3_1`~`section_3_4` 与 `images`。采集阶段 `enrich_management_info` 已由制度文件 LLM 提炼正文，通常无需 author 重写。
+1. **直接采用提炼正文（默认）**：`project.management.management_org` / `management_policy` 非空时，直接作为 3.1/3.2 正文；`es` 改造字段生成 3.4。
 2. **仿写参考（参考同类报告）**：调用 `energy_audit_imitate_paragraph` 工具或 `/api/energy-audit/imitate` 接口，检索同类报告第3章并按段落结构仿写正文：
    ```python
    # 直接调用（项目名 = proj.base.unit_name）
@@ -37,9 +36,9 @@
    python -m tools.energy_audit.imitate_pipeline --project 莘县县政府 --chapter 第3章
    ```
    章节上下文：`imitate_pipeline.CHAPTER_CONTEXTS["第3章"] = "能源资源管理状况"`；`normalize_chapter("3.1")` 会自动归一为 `(第3章, 3.1)`。
-3. **LLM 增强写作**：自动文本不足时，author 基于「数据来源」字段 + 本指南模板/句式，用 `set_report_data()` 或直接覆盖 `report_data['chapter3']['section_3_X']` 重写该节（写法：先 `load_project()` → `load_from_project()` 组装 → 覆盖薄弱节 → 再传给生成器）。
+3. **LLM 增强写作**：提炼文本不足时，author 基于「数据来源」字段 + 本指南模板/句式重写该节（写作原则：先有字段值才有段落，字段空则按模板/兜底）。
 
-**必须提供照片**：管理文件截图、节能荣誉证书等现场照片（数据模型按分类路由，见「图片路由」节）。嵌入方式同第2章（`_add_image_with_caption`）。
+**必须提供照片**：管理文件截图、节能荣誉证书等现场照片（数据模型按分类路由，见「图片路由」节）。嵌入方式同第2章（office_editor 插入 + 图注）。
 
 ---
 
@@ -48,7 +47,7 @@
 **数据源（优先）**：`proj.management.management_org` —— 采集阶段 `enrich_management_info()` 已下载制度文件并 LLM 提炼组织架构/岗位/职责分工，回填此字段。
 
 - **非空**：直接作为 3.1 正文。段落组织参考：落实节能国策与上级会议精神 → 引用制度文件名称 → 管理机构设置 → 职责表述（取自提炼结果）。
-- **为空**：`build_chapter3()` 会输出通用兜底句（"按《公共机构节能条例》要求，设立能源管理岗位和责任人…"）。author 可按下表按机构类型填充模板，占位符 `XX` 替换为被审计单位实际名称，并结合单位实际微调（禁止照抄其他单位的具体名称）。
+- **为空**：author 按 `institution_category` 选用下方模板（2026-09-04 对齐正式报告口径），结合单位实际微调（禁止照抄其他单位的具体名称）。
 
 **机构类型映射**（`proj.base.institution_category` 取值：医疗/教育/党政机关/场馆机构/体育/政务服务中心）：
 
@@ -106,12 +105,12 @@
 **数据源（两段合并，优先级从上到下）**：
 
 1. `proj.management.management_policy` —— `enrich_management_info()` 由制度文件 LLM 提炼的「管理目标 + 管理方针」**合并为一段**回填（`summarize_management_docs` 返回的 `goals_policy`）。非空时作为正文。
-2. `es.energy_management`（`_energy_saving_chapter3_sections` 生成「管理制度」句，**仅当上面 `management_policy` 为空时**叠加，`report_generator.py:2844`）：
+2. `es.energy_management` 判定「管理制度」句（**仅当上面 `management_policy` 为空时**叠加）：
    - `energy_management == 1`：`"{unit}已建立能源管理制度，将节能管理纳入日常运营，通过制度建设、定期监督等方式落实节能责任。"`
    - `energy_management == 0`：`"{unit}目前尚未建立完善的能源管理制度，节能管理仍有提升空间。"`
    - `None`（未填写）：不生成，走兜底。
 
-> ⚠️ `management_goals` 字段**当前流水线未消费**（`load_from_project()` 只读 `management_policy`）。若某项目单独填了 `management_goals`，author 可将其并入正文；但不要假设它会自动出现。
+> ⚠️ `management_goals` 字段**当前流水线未消费**（author 写作只读 `management_policy`）。若某项目单独填了 `management_goals`，author 可将其并入正文；但不要假设它会自动出现。
 
 **为空时的兜底与增强**：
 
@@ -122,7 +121,15 @@
 - 仿写后仍需与字段互核：`es.energy_management == 0` 时不得写成"已建立完善制度"，`== None` 时不得虚构制度名
 - 仿写不可用时（无同类报告），再走下面兜底：
 
-`build_chapter3()` 输出通用兜底句（"坚持'节约优先、高效利用'的能源管理方针…"）。author 可模板填充：
+本指南兜底模板（2026-09-04 对齐正式报告口径），结构为：
+
+> **一、管理方针**：`{unit}以"节约优先、高效利用"为核心方针，将能源资源管理融入单位日常运营和发展规划，通过制度规范、全员参与、及时监督，实现能源消耗合理控制、资源循环利用。`
+>
+> **二、管理目标**：
+> 1．管理与意识目标——（1）制度建设：完善能源资源计量、监测、考核制度，实现能耗数据深度管理；（2）宣传教育：主题活动+新媒体宣传，形成"节能光荣、浪费可耻"单位文化。
+> 2.重点用能系统节能目标——（1）照明系统：杜绝"长明灯""白昼灯"；（2）办公系统：电子设备节电模式、下班断电；（3）空调与供暖：夏≥26℃/冬≤20℃；（4）用水系统：杜绝跑冒滴漏、水资源二次利用；（5）节能改造：调研高耗能环节、提出改造方案。
+
+author 想进一步扩展时，可用下面的引言段句式与编号列表（根据单位实际选择）：
 
 **引言段参考句式**：
 
@@ -143,14 +150,15 @@
 
 ---
 
-## 3.3 能源资源管理成效与问题
+## 3.3 能源资源管理问题与成效
 
-**结构：成效 + 问题**。
+**结构：成效段 + 问题段**（标题顺序对齐正式报告「问题与成效」，正文先成效后问题）。
 
 **数据源**：
 
-- **成效**：`proj.management.honors`（已获节能荣誉）；另 `es.has_awards == 1` 且 `es.award_name` 非空时生成 `"{unit}节能工作取得成效，{award_name}。"`（`report_generator.py:3054`）。
-- **问题**：`es.energy_pain_points`（能源利用痛点字段，`report_generator.py:3056` 生成 `"目前能源利用方面存在的主要痛点：{energy_pain_points}。"`）。
+- **成效**：`proj.management.honors`（已获节能荣誉）；另 `es.has_awards == 1` 且 `es.award_name` 非空时写 `"{unit}节能工作取得成效，{award_name}。"`。
+- **问题**：`es.energy_pain_points`（能源利用痛点字段），句式 `"目前能源利用方面存在的主要痛点：{energy_pain_points}。"`。
+- **为空时**：本指南兜底模板（2026-09-04 对齐正式报告口径）两段式——成效段（建立定期检查与考核机制、干部职工节能习惯养成、取得初步成效）+ 问题段（"但…管理人员未进行系统性的能源资源指标分析…节能决策滞后…"通用化表述）。
 - author 增强时，可将上述真实数据组织为连贯段落，参考句式：
 
 > XX在推进节能工作的进程中，已获得了XXX等荣誉。但对照节能工作要求，仍存在一定改进空间：一是XXX；二是XXX；三是XXX。
@@ -162,7 +170,7 @@
 
 ## 3.4 节能改造与管理措施
 
-**数据源**：最新一条 `es`（`ts_institution_energy_saving`）的改造字段，无对应数据时**不生成、不渲染此节**。各字段生成规则（`_energy_saving_chapter3_sections`）：
+**数据源**：最新一条 `es`（`ts_institution_energy_saving`）的改造字段，无对应数据时**不写此节**。各字段写作规则：
 
 | 字段 | 条件 | 生成文案 |
 |---|---|---|
@@ -181,31 +189,27 @@
 
 ## 图片路由
 
-第3章图片来源共三处（`load_from_project` 自动合并，`report_generator.py:2847-2854`）：
+第3章图片来源共三处（author 汇总）：
 
 1. `es.management_file_images`（管理制度附件解析下载后的**本地路径列表**）
 2. `es.award_certificate_images`（获奖证书附件下载后的本地路径）
 3. `proj.images[]` 中 `category == '管理文件/荣誉'` 的 `ImageItem`（数据采集阶段已分类）
 
-caption 自动编号（图3-1、图3-2…），嵌入用 `_add_image_with_caption(path, caption)`。`PHOTO_CATEGORIES` 中该分类名为 **`'管理文件/荣誉'`**（不是"管理文件截图"），路由键必须一致。
+caption 自动编号（图3-1、图3-2…），用 office_editor 嵌入。`PHOTO_CATEGORIES` 中该分类名为 **`'管理文件/荣誉'`**（不是"管理文件截图"），路由键必须一致。
 
 ---
 
-## report_data.chapter3 结构
+## 写作数据映射
 
-`load_from_project()` 组装，author 可用 `set_report_data()` 覆盖或直接改 `report_data['chapter3']`：
+| 节 | 数据来源 |
+|---|---|
+| 3.1 机构职责 | `project.management.management_org` |
+| 3.2 目标方针 | `project.management.management_policy`（+ energy_management 制度句合并） |
+| 3.3 成效 | `project.management.honors`（+ es 成效/痛点合并） |
+| 3.4 改造措施 | es 改造字段（有数据才写） |
+| 图片 | es 图片路径 + `proj.images` 分类 `'管理文件/荣誉'` |
 
-```python
-chapter3 = {
-    'section_3_1': project.management.management_org,   # 3.1 机构职责
-    'section_3_2': project.management.management_policy, # 3.2 目标方针（+ energy_management 制度句合并）
-    'section_3_3': project.management.honors,           # 3.3 成效（+ es 成效/痛点合并）
-    'section_3_4': <es 改造措施生成>,                     # 3.4 有数据才有该键
-    'images': [{'path': ..., 'caption': ...}, ...],      # 图片列表（可选）
-}
-```
-
-> ⚠️ **已无 `config.chapter_texts` 机制**：`chapter_texts` 仅存在于 `rag/energy_audit_importer.py`（知识库导入器），`report_generator.py` 不消费。第3章文本一律从 `project.management` + `project.energy_saving` 组装；author 要覆盖某节，直接改 `report_data['chapter3'][key]`。
+> ⚠️ **已无 `config.chapter_texts` 机制**：`chapter_texts` 仅存在于 `rag/energy_audit_importer.py`（知识库导入器）。第3章文本一律从 `project.management` + `project.energy_saving` 写作。
 
 ---
 
@@ -213,7 +217,7 @@ chapter3 = {
 
 - 3.1 机构职责：`proj.management.management_org`（采集阶段 `enrich_management_info` 由制度文件 LLM 提炼）；为空按 `proj.base.institution_category` 选模板。
 - 3.2 目标方针：`proj.management.management_policy`（目标+方针合并段）；`es.energy_management`（1=有制度，0=无制度，None=未填写）判定的制度句在 `management_policy` 为空时叠加。`management_goals` 当前未消费。
-- 3.3 成效/问题：`proj.management.honors`；`es.has_awards` / `es.award_name` / `es.energy_pain_points`。
+- 3.3 问题/成效：`proj.management.honors`；`es.has_awards` / `es.award_name` / `es.energy_pain_points`。
 - 3.4 改造：`es.lighting_replacement` / `ac_replacement` / `water_saving_fixture_replacement` / `central_ac_control` / `other_measures` / `third_party_system` / `charging_pile` / `charging_settlement` / `charging_installation` / `third_party_outsource` / `outsource_content` / `outsource_settlement`。
 - 制度文件图片：`es.management_file_images` + `es.award_certificate_images`（本地路径，采集阶段已下载）；`proj.images[]` 分类 `'管理文件/荣誉'`。
 - 最新一条节能管理信息：`es = max((e for e in proj.energy_saving if e), key=lambda e: e.statistical_year or 0, default=None)`。
@@ -226,10 +230,10 @@ chapter3 = {
 
 | 错误 | 后果 | 正确做法 |
 |---|---|---|
-| 只写 3.1/3.2/3.3，漏 3.4 | `build_chapter3` 有 4 节，3.4 改造措施缺失 | 凡 es 有改造字段，必须写 3.4 |
-| 用 `config.chapter_texts` 传第3章文本 | 不被消费，静默丢失 | 用 `report_data['chapter3']` 覆盖 |
+| 只写 3.1/3.2/3.3，漏 3.4 | 第3章共 4 节，3.4 改造措施缺失 | 凡 es 有改造字段，必须写 3.4 |
+| 用 `config.chapter_texts` 传第3章文本 | 机制已废弃，静默丢失 | author 直接写作 |
 | 引用旧编排 `agent_xiaocheng` / `search_for_chapter` 仿写 | 已废弃 | 用 `energy_audit_imitate_paragraph` 工具 / `/api/energy-audit/imitate` |
 | 把 `management_files`（文件ID串）当本地路径 | 图片缺失/路径错误 | 用 `management_file_images` 本地路径；ID 串只供 `file_resolver` |
-| 3.2 只取 `management_policy`，忽略 `energy_management` 制度句 | 管理制度有无未表述 | 空时叠加 `_energy_saving_chapter3_sections` 的制度句 |
+| 3.2 只取 `management_policy`，忽略 `energy_management` 制度句 | 管理制度有无未表述 | 空时按本指南叠加制度句模板 |
 | 3.3 编造荣誉/问题 | 报告含虚假数据 | 只用 `honors` / `has_awards` / `award_name` / `energy_pain_points` 实际字段 |
 | 3.4 扩写未记录的改造措施 | 与数据矛盾 | 只用 es 各改造字段展开 |

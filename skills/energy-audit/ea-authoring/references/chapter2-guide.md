@@ -9,7 +9,7 @@
 - 生成 2.1 公共机构基本情况、2.2 建筑物概况、2.3 能源资源利用情况
 - 判断需要生成哪些建筑参数表（`table_type: building_basic_info`）
 - 判断需要插入哪些建筑图片（`type: building_exterior`）
-- 输出结构化章节结果（Chapter 2 Result JSON，字段对齐 `report_generator.build_chapter2()` 消费的 `report_data['chapter2']`）
+- 输出第2章正文与建筑参数表数据（字段口径见「数据来源」节）
 
 **不负责（office_editor 工具集相关职责）：**
 
@@ -83,7 +83,7 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 > XX院内主要建筑物包括A、B等N栋建筑。各建筑均采用框架结构，设有外墙保温，外窗采用中空双层玻璃窗；全部2栋建筑设有屋面保温，2栋建筑配备能耗在线监测系统。
 
-共性特征判定规则（对齐 `build_chapter2()`）：
+共性特征判定规则：
 - `structure` / `insulation` / `window_type`：**全部建筑相同**才写"均…"；structure 字段已含"结构"二字时不再重复拼接后缀；insulation 提示"其它"时描述为有保温即可；window_type 含"—"/"无"时跳过
 - `roof_insulation == '有'` → "全部{N}栋建筑设有屋面保温"；部分建筑用"{N}栋（{X}%）建筑设有屋面保温"
 - `monitoring == '有'` → "全部{N}栋/N栋（X%）建筑配备能耗在线监测系统"
@@ -117,7 +117,7 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 用电系统: XX用电系统主要包括[空调设备]、[照明设备]、[办公设备]；用水系统: XX用水系统主要为生活用水、卫生清洁用水等，由市政自来水供水；燃气系统: XX用气系统主要为厨房设备([具体设备名])；用油系统: XX用油系统主要为公务用车燃油消耗；供暖: XX供暖采用市政集中供热，按面积缴费。（仅当有heating数据时）
 ```
 
-**设备名称和数量（按 category，对齐 `build_chapter2()`）：**
+**设备名称和数量（按 category）：**
 
 | category | 表述 | 示例 |
 |---|---|---|
@@ -131,7 +131,7 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 ## 7. 建筑基本信息表定义（结构化）
 
-每栋建筑一张 `building_basic_info` 表。**LLM 输出 building 字段数据，不输出表格行/列宽/字体**；4 列键值对布局（16 行）、标签加粗、内容居中、表题在表格上方等由 office_editor 工具集按统一样式绘制（对齐 `report_generator._add_building_param_table()`，格式见 `references/report-format-spec.md`）。
+每栋建筑一张 `building_basic_info` 表。**LLM 输出 building 字段数据，不输出表格行/列宽/字体**；4 列键值对布局（16 行）、标签加粗、内容居中、表题在表格上方等由 office_editor 工具集按统一样式绘制（格式见 `references/report-format-spec.md`）。
 
 ```yaml
 table_type: building_basic_info
@@ -174,7 +174,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
   garage_area: 地下车库面积
 ```
 
-> field_mapping 须与 `tools/energy_audit/project_data.py` 的 `BuildingInfo` 字段保持一致（此处即 `_add_building_param_table()` 的 16 行渲染契约，字段缺失/为空时该行留空）；后续第3~6章表格（energy_consumption / equipment_parameter / monthly_energy / energy_balance / saving_measure / investment_analysis）沿用同一机制。
+> field_mapping 须与 `tools/energy_audit/project_data.py` 的 `BuildingInfo` 字段保持一致（16 行渲染契约，字段缺失/为空时该行留空）；后续第3~6章表格（energy_consumption / equipment_parameter / monthly_energy / energy_balance / saving_measure / investment_analysis）沿用同一机制。
 
 ## 8. 图片规则
 
@@ -187,7 +187,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 
 ## 9. 输出 — Chapter 2 Result JSON
 
-字段对齐 `build_chapter2()` 消费的 `report_data['chapter2']`：
+字段口径：
 
 ```json
 {
@@ -211,7 +211,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 ```
 
 **输出规则：**
-- `section_2_1` / `section_2_2` / `section_2_3` 为完整正文段落（段间空行由渲染层处理；为空时 `build_chapter2()` 走自动生成兜底）
+- `section_2_1` / `section_2_2` / `section_2_3` 为完整正文段落（author 写作，字段空时按模板兜底）
 - 表格只声明 `table_type` + 原始 `building` 字段（`BuildingInfo`，见 §7），**禁止**输出行内容、列宽、字体等排版信息
 - 图片只声明 `type` / `path` / `caption`，**禁止**输出宽度、对齐等排版信息
 - 表号/图号（表2-1、图2-1）由 office_editor 按出现顺序统一编号；正文"见表2-1至表2-N"由 LLM 按建筑数量 N 生成
