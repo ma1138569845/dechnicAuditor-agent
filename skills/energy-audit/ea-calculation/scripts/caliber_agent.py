@@ -76,6 +76,7 @@ try:
         calc_unit_area_electricity,
         calc_per_capita_energy,
         calc_water_indicator,
+        calc_unit_area_heating_energy,
         calc_baseline,
         resolve_coefficient,
         resolve_benchmark,
@@ -103,7 +104,7 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
             water_m3=float(getattr(ey, 'water_m3', 0) or 0),
             natural_gas_m3=float(getattr(ey, 'natural_gas_m3', 0) or 0),
             heating_energy_heat=float(getattr(ey, 'heating_energy_heat_gj', 0) or 0),
-            heating_energy_kwh=0,       # 需从 sub_items 拆分，此处默认0
+            heating_energy_kwh=float(getattr(ey, 'heating_energy_kwh', 0) or 0),
             heating_energy_gas=0,
             transportation_petrol_kg=float(getattr(ey, 'petrol_kg', 0) or 0),
             transportation_diesel_kg=float(getattr(ey, 'diesel_kg', 0) or 0),
@@ -176,6 +177,16 @@ def calc_all_indicators(
     r4 = calc_water_indicator(latest, inst_type, bed_count=bed_count)
     results['water_indicator'] = r4
 
+    # ── 指标 (5): 单位采暖建筑面积供暖能耗（有供暖能耗的项目必算）──
+    has_heating = any((getattr(d, 'heating_energy_heat', 0) or 0) > 0 or
+                      (getattr(d, 'heating_energy_kwh', 0) or 0) > 0 for d in yearly_data)
+    if has_heating:
+        heating_area = sum(float(getattr(b, 'heating_area', 0) or 0)
+                           for b in getattr(proj, 'buildings', []) or [])
+        r5 = calc_unit_area_heating_energy(latest, heating_area=heating_area,
+                                           institution_type=inst_type)
+        results['unit_area_heating'] = r5
+
     # ── 5.4: 建筑能耗基准 ──
     baseline = calc_baseline(yearly_data)
     results['baseline'] = baseline
@@ -236,10 +247,19 @@ def format_indicators_report(results: dict) -> str:
     lines.append(f"   标准: {bm4.get('标准','-')} | 来源: {bm4.get('来源','-')}")
     lines.append("")
 
+    # 指标(5) 供暖指标（有供暖能耗才打印）
+    r5 = results.get('unit_area_heating') or {}
+    if r5.get('kgce_per_m2') is not None and r5.get('heating_area_m2'):
+        bm5 = r5.get('benchmark') or {}
+        lines.append(f"5. 单位采暖建筑面积供暖能耗: {r5.get('kgce_per_m2','-')} kgce/(m²·a)")
+        lines.append(f"   对标: {bm5.get('评价结果','-')}")
+        lines.append(f"   采暖建筑面积: {r5.get('heating_area_m2',0):,.0f} m²")
+        lines.append("")
+
     # 基准
     baseline = results.get('baseline', {})
     if baseline and 'usage' in baseline:
-        lines.append(f"5. 建筑能耗基准 ({'、'.join(map(str, baseline.get('years', [])))}年):")
+        lines.append(f"6. 建筑能耗基准 ({'、'.join(map(str, baseline.get('years', [])))}年):")
         for label, info in baseline.get('usage', {}).items():
             lines.append(f"   {label}: {info['基准值']:,.2f}{info['单位']} [{info['方法']}]")
 
@@ -309,6 +329,34 @@ def run_caliber(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        # 费用数据（万元）：proj.energy_yearly 费用字段 → chapter5_agent cost_data 格式
+        # 表5.1 + 费用占比饼图依赖此数据，缺则 5.2 费用节空壳（2026-09-05 修复）
+        cost_data = {}
+        for ey in getattr(proj, 'energy_yearly', []):
+            cost_data[str(ey.year)] = {
+                'electricity': {'name': '电费', 'unit': '万元',
+                                'total': float(getattr(ey, 'electricity_cost_wan', 0) or 0),
+                                'monthly': [0] * 12},
+                'water': {'name': '水费', 'unit': '万元',
+                          'total': float(getattr(ey, 'water_cost_wan', 0) or 0),
+                          'monthly': [0] * 12},
+                'natural_gas': {'name': '天然气费', 'unit': '万元',
+                                'total': float(getattr(ey, 'natural_gas_cost_wan', 0) or 0),
+                                'monthly': [0] * 12},
+                'heat': {'name': '热费', 'unit': '万元',
+                         'total': float(getattr(ey, 'heating_cost_wan', 0) or 0),
+                         'monthly': [0] * 12},
+                'gasoline': {'name': '汽油费', 'unit': '万元',
+                             'total': float(getattr(ey, 'petrol_cost_wan', 0) or 0),
+                             'monthly': [0] * 12},
+                'diesel': {'name': '柴油费', 'unit': '万元',
+                           'total': float(getattr(ey, 'diesel_cost_wan', 0) or 0),
+                           'monthly': [0] * 12},
+            }
+        # 供暖电耗明细（kWh）：energy_data dict 无法承载"总电的子集"，走 config 顶层 map 通道
+        heating_energy_kwh_map = {str(d.year): float(getattr(d, 'heating_energy_kwh', 0) or 0)
+                                  for d in yearly_data}
+        energy_data_dict = _build_energy_data_dict(yearly_data, proj)
         config = {
             'building_area': getattr(proj.base, 'building_area', 0),
             'people_count': getattr(proj.base, 'people_count', 0),
@@ -318,9 +366,10 @@ def run_caliber(
             # 缺失/全 0 时 generate_chapter5_md 走建筑总面积兜底）
             'heating_area': sum(float(getattr(b, 'heating_area', 0) or 0)
                                 for b in getattr(proj, 'buildings', []) or []),
+            'heating_energy_kwh_map': heating_energy_kwh_map,
             'manual': {
-                'energy_data': _build_energy_data_dict(yearly_data, proj),
-                'cost_data': {},
+                'energy_data': energy_data_dict,
+                'cost_data': cost_data,
                 'sub_items': {},
             },
         }
@@ -329,7 +378,9 @@ def run_caliber(
 
         # 图表
         if not skip_charts:
-            data = {'energy_data': _build_energy_data_dict(yearly_data, proj)}
+            data = {'energy_data': energy_data_dict,
+                    'cost_data': cost_data,
+                    'heating_energy_kwh_map': heating_energy_kwh_map}
             try:
                 generate_charts(data, config, str(out_dir / 'charts'))
                 print(f"  ✅ 图表: {out_dir / 'charts/'}")
@@ -391,6 +442,19 @@ def _build_energy_data_dict(yearly_data: List[YearlyEnergyData], proj: AuditProj
                 'monthly': [0]*12,
             },
         }
+        # 汽油/柴油（kg）：>0 才写入，避免 0 值类型污染 5.1/5.2 输出
+        if getattr(d, 'transportation_petrol_kg', 0) > 0:
+            energy_data[y]['gasoline'] = {
+                'name': '汽油', 'unit': 'kg',
+                'total': d.transportation_petrol_kg,
+                'monthly': [0]*12,
+            }
+        if getattr(d, 'transportation_diesel_kg', 0) > 0:
+            energy_data[y]['diesel'] = {
+                'name': '柴油', 'unit': 'kg',
+                'total': d.transportation_diesel_kg,
+                'monthly': [0]*12,
+            }
     return energy_data
 
 

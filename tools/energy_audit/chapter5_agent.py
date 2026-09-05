@@ -161,6 +161,8 @@ def load_from_user(config: dict) -> dict:
         'cost_data': manual.get('cost_data', {}),
         'sub_items': manual.get('sub_items', {}),
         'heating_area': float(config.get('heating_area', 0) or 0),
+        # 供暖电耗明细（kWh，总电的子集，须从总电量剔除后计非供暖能耗）
+        'heating_energy_kwh_map': config.get('heating_energy_kwh_map', {}) or {},
         'from_db': False,
     }
 
@@ -407,6 +409,14 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     institution_type = institution_category_to_type(config.get('institution_category', ''))
     bed_count = config.get('beds_count', 0) or 0
     yd_list = _convert_to_yearly_energy_data(en, config)
+
+    # 注入供暖电耗明细（energy_data dict 无法承载"总电的子集"，走 data 顶层 map 通道；
+    # 缺失该 map 时供暖电耗=0 → 非供暖能耗未剔除供暖电耗，与 indicators.json 口径不一致）
+    hk_map = data.get('heating_energy_kwh_map') or {}
+    for yd in yd_list:
+        hk = hk_map.get(str(yd.year))
+        if hk:
+            yd.heating_energy_kwh = float(hk)
 
     if not yd_list:
         md += "（无可用能耗数据，无法计算指标）\n\n"
