@@ -84,6 +84,21 @@ def _build_omath(symbol):
             _run("="),
             _frac([_ssub("V", "k")], [_ssub("N", "p")]),
         ]
+    elif symbol == "Vz":
+        # 医疗：Vz = Vk × 1000 / (Nbed × 365)
+        children = [
+            _ssub("V", "z"),
+            _run("="),
+            _frac([_ssub("V", "k"), _run("×1000")],
+                  [_ssub("N", "bed"), _run("×365")]),
+        ]
+    elif symbol == "Vam":
+        # 政务/场馆：Vam = Vk / M
+        children = [
+            _ssub("V", "am"),
+            _run("="),
+            _frac([_ssub("V", "k")], [_run("M")]),
+        ]
     elif symbol == "Egnm":
         children = [
             _ssub("E", "gnm"),
@@ -97,7 +112,7 @@ def _build_omath(symbol):
     return om
 
 
-SYMBOLS = ["Ejfgn", "Ejd", "Er", "Vuc", "Egnm"]
+SYMBOLS = ["Ejfgn", "Ejd", "Er", "Vuc", "Vz", "Vam", "Egnm"]
 
 
 def _match_symbol(p_text):

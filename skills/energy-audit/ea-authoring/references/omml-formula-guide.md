@@ -27,10 +27,10 @@ Ejfgn——单位建筑面积非供暖能耗，单位为千克标准煤每平方
 | 单位建筑面积非供暖能耗 5.3.1 | Ejfgn = (E − Egn − Ejt) / M | E 综合能耗 kgce/a；Egn 供暖能耗；Ejt 交通能耗；M 建筑面积 m² |
 | 常规用能系统单位建筑面积电耗 5.3.2 | Ejd = ED / M | ED 电量总和 kWh/a（已剔供暖电耗）；M 建筑面积 |
 | 人均综合能耗 5.3.3 | Er = E / P | E 综合能耗 kgce/a；P 用能人数 p |
-| 取水指标 5.3.4（标题按机构类型自适应） | 党政：Vuc = Vk / Np（Vk 年机关取水量 m³/a；Np 机关人数）；医疗：单位开放床日用水量；政务/场馆：单位建筑面积年取水量；教育：人均用水量 | 指标名映射见 core/references/standards-values.md |
+| 取水指标 5.3.4（标题与公式按机构类型自适应） | 党政：Vuc = Vk / Np（m³/(p·a)）；教育：Vuc = Vk / Np（m³/(p·a)）；医疗：Vz = Vk × 1000 / (Nbed × 365)（L/(床·d)）；政务/场馆：Vam = Vk / M（L/(m²·a)） | 指标名映射与变量口径见 core/references/standards-values.md；不对标：政务/场馆（4452 无面积定额） |
 | 单位采暖建筑面积供暖能耗 5.3.5 | Egn_m2 = Egn / Mgn | Egn 供暖能耗 kgce/a；Mgn 采暖建筑面积 m² |
 
-> 变量符号（Ejfgn/Ejd/Er/Vuc/Egnm）以正式报告为准（2026-09-05 用户确认对齐）；报告中的符号不可自行改名。
+> 变量符号（Ejfgn/Ejd/Er/Vuc/Egnm + 取水按类型 Vz/Vam）以正式报告为准（2026-09-05 用户确认对齐）；报告中的符号不可自行改名。
 
 ## 方案 A：文本公式写法（python-docx）
 
