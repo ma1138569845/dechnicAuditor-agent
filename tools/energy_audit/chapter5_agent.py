@@ -163,6 +163,8 @@ def load_from_user(config: dict) -> dict:
         'heating_area': float(config.get('heating_area', 0) or 0),
         # 供暖电耗明细（kWh，总电的子集，须从总电量剔除后计非供暖能耗）
         'heating_energy_kwh_map': config.get('heating_energy_kwh_map', {}) or {},
+        # 折标系数（data.json 持久化）：md 与 indicators.json 同口径
+        'coefficients': config.get('coefficients', {}) or {},
         'from_db': False,
     }
 
@@ -383,7 +385,13 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             cost_header += f" {str(y)[:4]}年(万元) |"
             cost_sep += "------|"
         md += cost_header + "\n" + cost_sep + "\n"
-        for code in all_codes:
+        # 行遍历 cost_data 键并集（有费用的类型必显示行；
+        # 2026-09-05 修复：原遍历 energy_data 键，某年"有费用无用量"会静默丢行；
+        # 行序按 _MAJOR_ORDER 对齐正式报告，未知类型追加尾部）
+        _cost_set = set().union(*[set(yd.keys()) for yd in co.values()])
+        cost_codes = [c for c in _MAJOR_ORDER if c in _cost_set] + \
+                     [c for c in sorted(_cost_set) if c not in _MAJOR_ORDER]
+        for code in cost_codes:
             c = _coeff_info(code)
             row = f"| {c['name']}费 |"
             for y in years:
@@ -418,13 +426,21 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if hk:
             yd.heating_energy_kwh = float(hk)
 
+    # 注入持久化折标系数（data.json coefficients，与 indicators.json 同口径；
+    # 空 dict 跳过，indicators 内部走四级兜底）
+    coeff = data.get('coefficients') or {}
+    if coeff:
+        for yd in yd_list:
+            yd.coefficients = dict(coeff)
+
     if not yd_list:
         md += "（无可用能耗数据，无法计算指标）\n\n"
     else:
         table_no = 2  # 表5.1 = 各项能源费用统计表（5.2 费用节）
         # 5.3.1 单位建筑面积非供暖能耗
         md += "### 5.3.1 单位建筑面积非供暖能耗\n\n"
-        md += "单位建筑面积非供暖能耗 = (综合能耗 - 供暖能耗 - 交通能耗) / 建筑面积\n\n"
+        md += "单位建筑面积非供暖能耗 Ejrcn = (E − Egn − Ejt) / M（式中 E 综合能耗、Egn 供暖能耗、Ejt 交通能耗、M 建筑面积）。\n\n"
+        md += "注：党政机关内的数据中心、厨房炊事、专业用途设备等特定功能用能不纳入非供暖能耗，计算时应同时剔除特殊用能系统对应的建筑面积（天然气/水/油不计入非供暖能耗）。\n\n"
         md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
         table_no += 1
         md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
@@ -471,16 +487,21 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         md += "\n"
 
         # 5.3.4 取水指标（公式按机构类型自适应，DB37/T 4452-2021）
-        if institution_type == 'medical' and bed_count:
-            md += "### 5.3.4 卫生业单位用水量\n\n"
-            md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
-            md += f"**表5.{table_no} 卫生业单位用水量**\n\n"
-            table_no += 1
-            md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
-            md += "|------|-----------|--------|---------------------------|----------|\n"
-            for yd in yd_list:
-                r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
-                md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        if institution_type == 'medical':
+            md += "### 5.3.4 单位开放床日用水量\n\n"
+            if bed_count:
+                md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
+                md += f"**表5.{table_no} 单位开放床日用水量**\n\n"
+                table_no += 1
+                md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
+                md += "|------|-----------|--------|---------------------------|----------|\n"
+                for yd in yd_list:
+                    r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
+                    md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
+            else:
+                # 医院缺床位数：不降级成机关口径，标注待补充（2026-09-05 修复）
+                md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)）\n\n"
+                md += "床位数【待补充】：采集侧无床位数数据，暂无法计算单位开放床日用水量。\n\n"
         elif institution_type in ('venue', 'service') and area:
             md += "### 5.3.4 单位建筑面积年取水量\n\n"
             md += "单位建筑面积年取水量 = 年取水量 × 1000 / 建筑面积（L/(m²·a)，4452 式(6)；4452 无面积口径取水定额，不对标）\n\n"

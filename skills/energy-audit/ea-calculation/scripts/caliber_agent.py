@@ -80,6 +80,7 @@ try:
         calc_baseline,
         resolve_coefficient,
         resolve_benchmark,
+        institution_category_to_type,
     )
     from tools.energy_audit.chapter5_agent import generate as gen_chapter5, generate_charts
     TOOLS_AVAILABLE = True
@@ -116,16 +117,9 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
     return sorted(data_list, key=lambda x: x.year)
 
 
-def resolve_institution_type(proj: AuditProject) -> str:
-    """解析机构类型 → medical/government/education"""
-    cat = (getattr(proj.base, 'institution_category', '') or '').lower()
-    if '医疗' in cat or '医院' in cat:
-        return 'medical'
-    if '机关' in cat or '党政' in cat:
-        return 'government'
-    if '教育' in cat or '学校' in cat:
-        return 'education'
-    return 'medical'  # 默认医疗
+# 机构类型解析统一用 indicators.institution_category_to_type（唯一权威，
+# 含 venue/service 全分支；2026-09-05 前本地简化版缺 venue/service 且默认 medical，
+# 导致政务服务中心类项目在 indicators.json 中被误判为医院）
 
 
 # ================================================================
@@ -141,7 +135,7 @@ def calc_all_indicators(
         return {'error': '无年度能耗数据'}
 
     latest = yearly_data[-1]
-    inst_type = resolve_institution_type(proj)
+    inst_type = institution_category_to_type(getattr(proj.base, 'institution_category', '') or '')
     bed_count = getattr(proj.base, 'beds_count', 0) or 0
 
     results = {
@@ -362,6 +356,13 @@ def run_caliber(
             'people_count': getattr(proj.base, 'people_count', 0),
             'unit_name': getattr(proj.base, 'unit_name', project_name),
             'chart_dir': str(out_dir / 'charts'),
+            # 机构类型与床位数：5.3.4 取水公式分支依据（2026-09-05 修复：
+            # 漏传导致非机关项目 md 按机关口径，与 indicators.json 打架）
+            'institution_category': getattr(proj.base, 'institution_category', '') or '',
+            'beds_count': getattr(proj.base, 'beds_count', 0) or 0,
+            # 折标系数（data.json 持久化，三年一致取最新年）：md 与
+            # indicators.json 同口径（2026-09-05 修复）
+            'coefficients': dict(getattr(yearly_data[-1], 'coefficients', {}) or {}),
             # 采暖建筑面积：建筑表 heat_area 聚合（5.3.5 供暖指标分母；
             # 缺失/全 0 时 generate_chapter5_md 走建筑总面积兜底）
             'heating_area': sum(float(getattr(b, 'heating_area', 0) or 0)
@@ -427,7 +428,7 @@ def _build_energy_data_dict(yearly_data: List[YearlyEnergyData], proj: AuditProj
                 'monthly': _get_monthly(proj, d.year, 'monthly_electricity_kwh'),
             },
             'water': {
-                'name': '水', 'unit': 't',
+                'name': '水', 'unit': 'm³',
                 'total': d.water_m3,
                 'monthly': _get_monthly(proj, d.year, 'monthly_water_m3'),
             },

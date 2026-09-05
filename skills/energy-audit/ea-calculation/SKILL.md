@@ -68,7 +68,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 
 - 公式：单位采暖建筑面积供暖能耗 kgce/(m²·a) = 供暖能耗 kgce ÷ 采暖建筑面积
 - 供暖能耗 = 供暖电耗×0.31 + 供热量(GJ)×34.12 + 供暖燃气×1.2143（口径见 energy-audit-core/references/coefficient-caliber.md）
-- 采暖建筑面积：建筑表 heat_area 合计，缺失/全 0 时用建筑面积兜底（用户 2026-09-02 确认）
+- 采暖建筑面积（2026-09-05 修正描述）：生产路径 = caliber 从建筑表 heat_area 聚合 → config.heating_area → data 顶层（缺失/全 0 时 generate_chapter5_md 用建筑总面积兜底，用户 2026-09-02 确认）；直调 generate_chapter5_md 时另有 data['buildings'] 聚合级（生产 data 无 buildings 键，实际不经过）
 - 定额（DB37/T 2672-2019 表2，按供暖类型，不分机构等级）：市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
 - 代码：tools/energy_audit/indicators.py::calc_unit_area_heating_energy；预计算值在 data.json indicators[].unit_area_heating
 - 定额矩阵权威：energy-audit-core/references/standards-values.md（勿在本 skill 复制数值）
@@ -121,8 +121,8 @@ proj = load_project(unit_name)
 ### 关键公式
 
 ```
-非供暖能耗:  Ejfgn = (总电 − 供暖电) × 折标煤系数/ 面积      kgce/(m²·a)
-常规电耗:    Ejd   = (总电 − 供暖电) / 面积             kWh/(m²·a)
+非供暖能耗:  Ejrcn = (总电 − 供暖电) × 折标煤系数/ 面积      kgce/(m²·a)
+常规电耗:    Eja   = (总电 − 供暖电) / 面积             kWh/(m²·a)
 人均能耗:    Er    = 综合能耗 × 1000 / 用能人数          kgce/(人·a)
 取水指标（DB37/T 4452-2021，按机构类型）:
   机关:      Vuc   = 年机关取水量 / 机关人数              m³/(人·a)（式7）

@@ -424,7 +424,7 @@ def calc_unit_area_non_heating_energy(
     """
     单位建筑面积非供暖能耗
 
-    公式: Ejfgn = (E - Egn - Ejt) / M
+    公式: Ejrcn = (E - Egn - Ejt) / M
     式中:
       E    = 综合能耗 (kgce/a)
       Egn  = 供暖能耗 (kgce/a)
@@ -452,7 +452,7 @@ def calc_unit_area_non_heating_energy(
         'total_energy_tce': data.total_energy_tce,
         'heating_energy_tce': data.heating_energy_tce,
         'transportation_energy_tce': data.transportation_energy_tce,
-        'formula': 'Ejfgn = (E - Egn - Ejt) / M',
+        'formula': 'Ejrcn = (E - Egn - Ejt) / M',
     }
 
 

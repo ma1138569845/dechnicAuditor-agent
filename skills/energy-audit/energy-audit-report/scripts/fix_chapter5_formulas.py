@@ -6,11 +6,11 @@
     python fix_chapter5_formulas.py <报告.docx> [--dry-run]
 
 背景（2026-09-05）:
-- 当前生成报告的 5.3 节公式是纯文本（如 `Ejfgn=（E−Egn−Ejt）/M`），
+- 当前生成报告的 5.3 节公式是纯文本（如 `Ejrcn=（E−Egn−Ejt）/M`），
   正式报告为 OMML 公式（m:f 分数线 + m:sSub 下标）。
 - officecli equation 元素不支持分式（实测 \\frac 不解析、m:f=0），
   故本脚本用 zip+lxml 直接注入 OMML XML，结构按正式报告 dump 修正。
-- 符号以正式报告为准: Ejfgn / Ejd / Er / Vuc / Egnm。
+- 符号以正式报告为准: Ejrcn / Eja / Er / Vuc / Egnm。
 """
 import argparse
 import re
@@ -69,16 +69,16 @@ def _frac(num_children, den_children):
 def _build_omath(symbol):
     """五个公式的 OMML 构造（符号对齐正式报告）"""
     om = etree.Element(M + "oMath")
-    if symbol == "Ejfgn":
+    if symbol == "Ejrcn":
         children = [
-            _ssub("E", "jfgn"),
+            _ssub("E", "jrcn"),
             _run("="),
             _frac([_run("E−"), _ssub("E", "gn"), _run("−"), _ssub("E", "jt")],
                   [_run("M")]),
         ]
-    elif symbol == "Ejd":
+    elif symbol == "Eja":
         children = [
-            _ssub("E", "jd"),
+            _ssub("E", "ja"),
             _run("="),
             _frac([_ssub("E", "D")], [_run("M")]),
         ]
@@ -150,7 +150,7 @@ def _build_omath(symbol):
     return om
 
 
-SYMBOLS = ["Ejfgn", "Ejd", "Er", "Vuc", "Vui", "Vu", "Vs", "Vz", "Egnm"]  # 长符号在前防前缀误匹配
+SYMBOLS = ["Ejrcn", "Eja", "Er", "Vuc", "Vui", "Vu", "Vs", "Vz", "Egnm"]  # 长符号在前防前缀误匹配
 
 
 def _match_symbol(p_text):

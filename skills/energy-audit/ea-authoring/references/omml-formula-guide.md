@@ -14,7 +14,7 @@
 格式为：
 
 ```
-Ejfgn——单位建筑面积非供暖能耗，单位为千克标准煤每平方米年，kgce/(m²·a)；
+Ejrcn——单位建筑面积非供暖能耗，单位为千克标准煤每平方米年，kgce/(m²·a)；
 ```
 
 **不用**：Word 的"插入公式"图形对象（不可批处理、样式不可控）、
@@ -24,13 +24,13 @@ Ejfgn——单位建筑面积非供暖能耗，单位为千克标准煤每平方
 
 | 指标 | 公式 | 变量 |
 |------|------|------|
-| 单位建筑面积非供暖能耗 5.3.1 | Ejfgn = (E − Egn − Ejt) / M | E 综合能耗 kgce/a；Egn 供暖能耗；Ejt 交通能耗；M 建筑面积 m² |
-| 常规用能系统单位建筑面积电耗 5.3.2 | Ejd = ED / M | ED 电量总和 kWh/a（已剔供暖电耗）；M 建筑面积 |
+| 单位建筑面积非供暖能耗 5.3.1 | Ejrcn = (E − Egn − Ejt) / M | E 综合能耗 kgce/a；Egn 供暖能耗；Ejt 交通能耗；M 建筑面积 m² |
+| 常规用能系统单位建筑面积电耗 5.3.2 | Eja = ED / M | ED 电量总和 kWh/a（已剔供暖电耗）；M 建筑面积 |
 | 人均综合能耗 5.3.3 | Er = E / P | E 综合能耗 kgce/a；P 用能人数 p |
 | 取水指标 5.3.4（标题与公式按机构类型自适应，DB37/T 4452-2021） | 机关(7)：Vuc = Vk / Np（m³/(人·a)）；高校(3)：Vu = Wu / Nu（Nu=统招生+留学生+0.5×教职工）；中小学/幼儿园(4)：Vs = Wu / Ns（Ns=非住宿生+2×住宿生+教职工）；医院(5)：Vz = Wz / ΣNi × 10³（L/(床·日)，ΣNi=全年实际开放床日数）；政务/场馆(6)：Vui = Vj / Nc × 1000（L/(m²·a)） | 变量定义见 core/references/standards-values.md；不对标：政务/场馆（4452 无面积定额） |
 | 单位采暖建筑面积供暖能耗 5.3.5 | Egn_m2 = Egn / Mgn | Egn 供暖能耗 kgce/a；Mgn 采暖建筑面积 m² |
 
-> 变量符号（Ejfgn/Ejd/Er/Vuc/Egnm + 取水按类型 Vuc/Vu/Vs/Vz/Vui）以正式报告与 DB37/T 4452-2021 为准（2026-09-05 用户确认对齐）；报告中的符号不可自行改名。
+> 变量符号（Ejrcn/Eja/Er/Vuc/Egnm + 取水按类型 Vuc/Vu/Vs/Vz/Vui）以正式报告与 DB37/T 4452-2021 为准（2026-09-05 用户确认对齐；2026-09-05 晚按烟台法院正式版勘误：5.3.1=Ejrcn、5.3.2=Eja，此前 Ejfgn/Ejd 为误记）；报告中的符号不可自行改名。
 
 ## 方案 A：文本公式写法（python-docx）
 
@@ -39,7 +39,7 @@ from docx import Document
 doc = Document()
 # 公式行：段首变量符号（TNR 斜体可选）+ 全角破折号 + 中文定义
 p = doc.add_paragraph()
-r = p.add_run("Ejfgn")
+r = p.add_run("Ejrcn")
 r.italic = True          # 变量符号用斜体（与正式版一致）
 r.font.name = "Times New Roman"
 p.add_run("——单位建筑面积非供暖能耗，单位为千克标准煤每平方米年，kgce/(m²·a)；")
@@ -79,13 +79,13 @@ OMML 结构要点：`m:oMath` > `m:r`（含 `w:rPr` + `m:t`）表示普通文本
 
 ## 附录：常见 OMML 片段
 
-分式（Ejfgn = 分子/分母，下标 E 在 m:e、jfgn 在 m:sub，2026-09-05 按正式报告修正）：
+分式（Ejrcn = 分子/分母，下标 E 在 m:e、jrcn 在 m:sub，2026-09-05 按正式报告修正）：
 
 ```xml
 <m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
   <m:sSub>
     <m:e><m:r><m:t>E</m:t></m:r></m:e>
-    <m:sub><m:r><m:t>jfgn</m:t></m:r></m:sub>
+    <m:sub><m:r><m:t>jrcn</m:t></m:r></m:sub>
   </m:sSub>
   <m:r><m:t>=</m:t></m:r>
   <m:f>
