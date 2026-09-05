@@ -89,6 +89,15 @@ def load_from_db(config: dict) -> dict:
         # 新两表结构统一查询：value1..value12 由 period_code 展开生成（见 pg_query）
         rows = db.get_institution_energy(customer_id=customer_id)
 
+        # 建筑表：聚合供热面积（5.3.5 采暖建筑面积；部分建筑供暖项目不能拿总面积兜底）
+        # 权威源 ts_institution_build.heat_area；查询失败/全 0 时上层再走建筑总面积兜底
+        heating_area = 0.0
+        try:
+            buildings = db.get_institution_build(customer_id=customer_id)
+            heating_area = sum(float(b.get('heat_area') or 0) for b in buildings)
+        except Exception:
+            heating_area = 0.0
+
     def _in_range(r):
         try:
             y = int(r.get('year') or 0)
@@ -139,6 +148,7 @@ def load_from_db(config: dict) -> dict:
         'energy_data': energy_data,
         'cost_data': cost_data,
         'sub_items': sub_items,
+        'heating_area': heating_area,
         'from_db': True,
     }
 
@@ -150,6 +160,7 @@ def load_from_user(config: dict) -> dict:
         'energy_data': manual.get('energy_data', {}),
         'cost_data': manual.get('cost_data', {}),
         'sub_items': manual.get('sub_items', {}),
+        'heating_area': float(config.get('heating_area', 0) or 0),
         'from_db': False,
     }
 
@@ -493,7 +504,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                           (getattr(yd, 'heating_energy_kwh', 0) or 0) > 0 or
                           (getattr(yd, 'heating_energy_gas', 0) or 0) > 0 for yd in yd_list)
         if has_heating:
-            heating_area = config.get('heating_area', 0) or area
+            # 采暖建筑面积三级兜底：data(load_from_db 聚合 ts_institution_build.heat_area)
+            # → config.heating_area → 建筑总面积（2026-09-02 用户确认口径）
+            heating_area = (data.get('heating_area', 0) or 0) or config.get('heating_area', 0) or area
             md += "### 5.3.5 单位采暖建筑面积供暖能耗\n\n"
             md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
             md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
