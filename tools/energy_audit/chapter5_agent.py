@@ -34,6 +34,12 @@ _ENERGY_CN_MAP = {
     'heat': '热', 'diesel': '柴油', 'gasoline': '汽油',
 }
 
+# 5.2 小节标题用名（正式报告"用电/用水/用热/用气情况分析"）
+_TITLE_NAME = {
+    'electricity': '电', 'water': '水', 'natural_gas': '气',
+    'heat': '热', 'diesel': '油', 'gasoline': '油',
+}
+
 # 原始 energy_code → indicators 标准 key 的映射
 def _normalize_energy_code(code: str) -> str:
     code = str(code or '').strip().lower()
@@ -256,12 +262,14 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "## 5.1 能源资源消费/消耗概况\n\n"
     md += f"{unit_name}主要用能类型包括"
     md += "、".join([_coeff_info(c)['name'] for c in all_codes])
-    md += "。能源资源消费结构如图5.1所示。\n\n"
-    md += "![图5.1 能源消费结构](charts/chart_structure.png)\n\n"
+    md += "。能源资源流向如图5.1所示。\n\n"
+    chart_dir = config.get('chart_dir', './charts')
+    if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
+        md += "![图5.1 能源资源流向图](charts/energy_flow.png)\n\n"
 
-    # 各类型消费总量表
+    # 各类型消费总量（写作参考，正式报告 5.1 无此表）
     latest_year = years[-1]
-    md += f"**表5.1 {latest_year}年能源消费结构**\n\n"
+    md += f"**能源消费结构（写作参考，不占正式表号）**\n\n"
     md += "| 能源类型 | 消耗量 | 单位 | 折标系数 | 折标煤量(tce) | 占比 |\n"
     md += "|----------|--------|------|----------|---------------|------|\n"
     total_tce = year_tce[latest_year]
@@ -269,7 +277,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         info = en.get(latest_year, {}).get(code, {})
         total = info.get('total', 0)
         c = _coeff_info(code)
-        tce_val = round(total * c['coeff'] / 1000, 2)
+        std = _normalize_energy_code(code)
+        coeff = c['coeff'] * 1000 if std == 'heat' else c['coeff']
+        tce_val = round(total * coeff / 1000, 2)
         pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
         md += f"| {c['name']} | {total:,.2f} | {c['unit']} | {c['display']} | {tce_val:,.2f} | {pct}% |\n"
     md += f"\n综合能耗总量：**{total_tce:,.2f} tce**\n\n"
@@ -277,9 +287,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     # ===== 合署办公追溯说明 =====
     md += _co_location_note(en, latest_year, all_codes, unit_name)
 
-    # 逐年对比
+    # 逐年对比（写作参考）
     if len(years) > 1:
-        md += f"**表5.2 逐年能耗对比**\n\n"
+        md += f"**逐年能耗对比（写作参考，不占正式表号）**\n\n"
         header = "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
         sep = "|------|" + "|".join(["------"] * len(years)) + "|\n"
         md += header + sep
@@ -289,61 +299,84 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
     # ===== 5.2 数据（按类型动态H3） =====
     md += "## 5.2 能源资源消耗/消费数据\n\n"
-    months_cn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+    chart_dir = config.get('chart_dir', './charts')
     fig_no = 2  # 图5.1 已用于 5.1 概况；5.2 内图号连续递增
 
-    for code in all_codes:
+    # 主要能源分类（对齐正式报告 5.2 小节划分，公共函数）
+    major_codes, minor_codes = _classify_energy_types(en, years)
+
+    section_idx = 1
+    for code in major_codes:
         c = _coeff_info(code)
-        section_num = f"5.2.{list(all_codes).index(code)+1}"
-        md += f"### {section_num} {c['name']}消耗分析\n\n"
+        std = _normalize_energy_code(code)
+        title_name = _TITLE_NAME.get(std, c['name'])
+        section_num = f"5.2.{section_idx}"
+        section_idx += 1
+        md += f"### {section_num} 用{title_name}情况分析\n\n"
 
-        # 逐年总量
-        md += f"**表{section_num} 逐年{c['name']}消耗量**\n\n"
-        header = "| 年度 | " + " | ".join(f"{c['name']}消耗量({c['unit']})" for _ in years) + " |\n"
-        sep = "|------|" + "|".join(["------"] * len(years)) + "|\n"
-        md += header + sep
-        row = "| 总量 |"
+        # 逐年总量（写作参考数据行，正式报告 5.2 无表，author 转文字）
+        vals_txt = "；".join(
+            f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):,.2f} {c['unit']}"
+            for y in years)
+        md += f"**数据参考**：{vals_txt}\n\n"
+
+        # 三年总量柱状图 + 逐月分组柱状图（对齐正式报告：仅有月度数据的主要类型画图）
+        monthly_ok = False
         for y in years:
-            val = en.get(y, {}).get(code, {}).get('total', 0)
-            row += f" {val:,.2f} |"
-        md += row + "\n\n"
+            m = en.get(y, {}).get(code, {}).get('monthly', [])
+            if any(float(v or 0) > 0 for v in (m or [])):
+                monthly_ok = True
+                break
+        if monthly_ok:
+            if os.path.exists(os.path.join(chart_dir, f'chart_{code}_total.png')):
+                y1, y3 = str(years[0])[:4], str(years[-1])[:4]
+                md += f"![图5.{fig_no} {y1}年-{y3}年总用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_total.png)\n\n"
+                fig_no += 1
+            if os.path.exists(os.path.join(chart_dir, f'chart_{code}_monthly.png')):
+                y1, y3 = str(years[0])[:4], str(years[-1])[:4]
+                md += f"![图5.{fig_no} {y1}年-{y3}年逐月用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_monthly.png)\n\n"
+                fig_no += 1
 
-        # 月度趋势（最新年）
-        info = en.get(latest_year, {}).get(code, {})
-        monthly = info.get('monthly', [0]*12)
-        if any(monthly):
-            md += f"**{unit_name}{latest_year}年逐月{c['name']}消耗量**\n\n"
-            md += "| 月份 | " + " | ".join(months_cn) + " |\n"
-            md += "|------|" + "|".join(["------"]*12) + "|\n"
-            md += "| 消耗量 | " + " | ".join(f"{v:,.2f}" for v in monthly) + " |\n\n"
-
-            # 图表引用
-            md += f"![图5.{fig_no} {latest_year}年逐月{c['name']}消耗趋势](charts/chart_{code}_monthly.png)\n\n"
-            fig_no += 1
+    # 其他用能分析（次要能源合并小节，正式报告 5.2.4 结构）
+    if minor_codes:
+        section_num = f"5.2.{section_idx}"
+        section_idx += 1
+        md += f"### {section_num} 其他用能分析\n\n"
+        for code in minor_codes:
+            c = _coeff_info(code)
+            vals_txt = "；".join(
+                f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):,.2f} {c['unit']}"
+                for y in years)
+            md += f"- {c['name']}：{vals_txt}\n"
+        md += "\n"
 
     # 费用分析（最后一节）
-    cost_section_num = f"5.2.{len(all_codes)+1}"
+    cost_section_num = f"5.2.{section_idx}"
     md += f"### {cost_section_num} 能源资源费用分析\n\n"
     if co:
-        md += f"**表{cost_section_num} 逐年能源费用**\n\n"
-        cost_header = "| 年度 |"
+        md += f"**表5.1 各项能源费用统计表**\n\n"
+        cost_header = "| 费用类型 |"
         cost_sep = "|------|"
         for y in years:
-            cost_header += f" {y}年(万元) |"
+            cost_header += f" {str(y)[:4]}年(万元) |"
             cost_sep += "------|"
         md += cost_header + "\n" + cost_sep + "\n"
         for code in all_codes:
             c = _coeff_info(code)
-            row = f"| {c['name']}费用 |"
+            row = f"| {c['name']}费 |"
             for y in years:
                 val = co.get(y, {}).get(code, {}).get('total', 0)
                 row += f" {val:,.2f} |"
             md += row + "\n"
         md += "\n"
-        # 能源费用占比饼图（每年一张，连号 3 张，与正式报告图5.6~5.8 一致）
-        for i, y in enumerate(years):
+        # 能源费用占比饼图（每年一张，连号，与正式报告一致）
+        pie_no = fig_no
+        for y in years:
             y4 = str(y)[:4]
-            md += f"![图5.{fig_no + i} {y4}年能源费用占比](charts/cost_pie_{y4}.png)\n\n"
+            if not os.path.exists(os.path.join(chart_dir, f'cost_pie_{y4}.png')):
+                continue
+            md += f"![图5.{pie_no} {y4}年能源费用占比](charts/cost_pie_{y4}.png)\n\n"
+            pie_no += 1
     else:
         md += "（费用数据待用户提供）\n\n"
 
@@ -358,10 +391,12 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     if not yd_list:
         md += "（无可用能耗数据，无法计算指标）\n\n"
     else:
+        table_no = 2  # 表5.1 = 各项能源费用统计表（5.2 费用节）
         # 5.3.1 单位建筑面积非供暖能耗
         md += "### 5.3.1 单位建筑面积非供暖能耗\n\n"
         md += "单位建筑面积非供暖能耗 = (综合能耗 - 供暖能耗 - 交通能耗) / 建筑面积\n\n"
-        md += "**表5.3 单位建筑面积非供暖能耗**\n\n"
+        md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
+        table_no += 1
         md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
         md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
         row_nh = ["| 非供暖能耗(tce) |"]
@@ -383,6 +418,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         md += "### 5.3.2 常规用能系统单位建筑面积电耗\n\n"
         md += "常规用能系统单位建筑面积电耗 = 年总用电量 / 建筑面积\n\n"
         if area:
+            md += f"**表5.{table_no} 常规用能系统单位建筑面积电耗**\n\n"
+            table_no += 1
             md += "| 年度 | 用电量(kWh) | 单位面积电耗(kWh/m²) | 评价结果 |\n"
             md += "|------|-------------|---------------------|----------|\n"
             for yd in yd_list:
@@ -394,6 +431,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         md += "### 5.3.3 人均综合能耗\n\n"
         md += "人均综合能耗 = 综合能耗 / 用能人数\n\n"
         if people:
+            md += f"**表5.{table_no} 人均综合能耗**\n\n"
+            table_no += 1
             md += "| 年度 | 综合能耗(kgce) | 用能人数 | 人均综合能耗(kgce/人) | 评价结果 |\n"
             md += "|------|---------------|----------|----------------------|----------|\n"
             for yd in yd_list:
@@ -405,6 +444,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if institution_type == 'medical' and bed_count:
             md += "### 5.3.4 卫生业单位用水量\n\n"
             md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
+            md += f"**表5.{table_no} 卫生业单位用水量**\n\n"
+            table_no += 1
             md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
             md += "|------|-----------|--------|---------------------------|----------|\n"
             for yd in yd_list:
@@ -413,6 +454,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         elif institution_type in ('venue', 'service') and area:
             md += "### 5.3.4 单位建筑面积年取水量\n\n"
             md += "单位建筑面积年取水量 = 年取水量 × 1000 / 建筑面积（L/(m²·a)，4452 式(6)；4452 无面积口径取水定额，不对标）\n\n"
+            md += f"**表5.{table_no} 单位建筑面积年取水量**\n\n"
+            table_no += 1
             md += "| 年度 | 取水量(m³) | 建筑面积(m²) | 单位建筑面积年取水量(L/(m²·a)) | 评价结果 |\n"
             md += "|------|-----------|--------------|--------------------------------|----------|\n"
             for yd in yd_list:
@@ -426,12 +469,34 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             else:
                 md += "人均机关取水量 = 年机关取水量 / 机关人数（m³/(人·a)，4452 式(7)）\n\n"
             if people:
+                md += f"**表5.{table_no} {title}**\n\n"
+                table_no += 1
                 md += f"| 年度 | 取水量(m³) | 用能人数 | {title}(m³/(人·a)) | 评价结果 |\n"
                 md += "|------|-----------|----------|-------------------|----------|\n"
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type)
                     md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {people} | {r['m3_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
         md += "\n"
+
+        # 5.3.5 单位采暖建筑面积供暖能耗（有供暖能耗的项目必写；无供暖跳过）
+        from tools.energy_audit.indicators import calc_unit_area_heating_energy
+        has_heating = any((getattr(yd, 'heating_energy_heat', 0) or 0) > 0 or
+                          (getattr(yd, 'heating_energy_kwh', 0) or 0) > 0 or
+                          (getattr(yd, 'heating_energy_gas', 0) or 0) > 0 for yd in yd_list)
+        if has_heating:
+            heating_area = config.get('heating_area', 0) or area
+            md += "### 5.3.5 单位采暖建筑面积供暖能耗\n\n"
+            md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
+            md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
+            table_no += 1
+            md += "| 年度 | 供暖能耗(tce) | 采暖建筑面积(m²) | 单位面积供暖能耗(kgce/m²) | 评价结果 |\n"
+            md += "|------|---------------|------------------|---------------------------|----------|\n"
+            for yd in yd_list:
+                r = calc_unit_area_heating_energy(yd, heating_area=heating_area,
+                                                  institution_type=institution_type)
+                ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
+                md += f"| {yd.year}年 | {r['heating_energy_kgce']/1000:,.2f} | {r['heating_area_m2']:,.0f} | {r['kgce_per_m2']:,.2f} | {ev} |\n"
+            md += "\n"
 
     # ===== 5.4 建筑能耗基准（复用 indicators.calc_baseline） =====
     md += "## 5.4 建筑能耗基准\n\n"
@@ -441,7 +506,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "根据《山东省公共建筑节能改造节能量核定办法》（试行），各年能耗波动范围在±10%以内时，"
     md += "取三年平均值作为基准年能耗。\n\n"
     bl = calc_baseline(yd_list) if yd_list else {'usage': {}, 'cost': {}}
-    md += "**表5.4 能源资源用量基准**\n\n"
+    md += f"**表5.{table_no} 能源资源用量基准表**\n\n"
+    table_no += 1
     md += "| 能源类型 | 用量基准 | 单位 | 计算方法 |\n"
     md += "|----------|----------|------|----------|\n"
     for label, info in bl.get('usage', {}).items():
@@ -457,7 +523,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     # 5.4.2 费用基准
     md += "### 5.4.2 能源资源费用基准\n\n"
     if co:
-        md += "**表5.5 能源资源费用基准**\n\n"
+        md += f"**表5.{table_no} 能源资源费用基准表**\n\n"
         md += "| 能源类型 | 费用基准(万元) | 计算方法 |\n"
         md += "|----------|---------------|----------|\n"
         for label, info in bl.get('cost', {}).items():
@@ -476,54 +542,182 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
 
 # ============================================================
-# 图表（matplotlib）
+# 图表（matplotlib + graphviz）
 # ============================================================
 
-def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
+# chapter5_agent 标准 key → 流向图 key（energy_flow_chart）
+_FLOW_KEY_MAP = {
+    'electricity': 'electricity_kwh',
+    'water': 'water_m3',
+    'natural_gas': 'natural_gas_m3',
+    'heat': 'heating_energy_heat_gj',
+    'gasoline': 'petrol_kg',
+    'diesel': 'diesel_kg',
+}
+
+
+def _generate_flow_diagram(en: dict, config: dict, output_dir: str) -> str:
+    """5.1 能源资源流向图（graphviz 全动态）。失败返回 ''。"""
+    try:
+        from tools.energy_audit.energy_flow_chart import draw_energy_flow_diagram
+    except Exception:
+        return ''
+    codes = set()
+    for y_data in en.values():
+        codes.update(y_data.keys())
+    flow_keys = []
+    for c in sorted(codes):
+        fk = _FLOW_KEY_MAP.get(_normalize_energy_code(c))
+        if fk and fk not in flow_keys:
+            flow_keys.append(fk)
+    if not flow_keys:
+        return ''
+    try:
+        return draw_energy_flow_diagram(
+            energy_types=flow_keys,
+            equipment=config.get('equipment') or None,
+            unit_name=config.get('unit_name', ''),
+            output_path=os.path.join(output_dir, 'energy_flow'),
+        )
+    except Exception:
+        return ''
+
+
+def _generate_total_bar_chart(years, totals, name_cn, unit, output_dir, fname) -> bool:
+    """三年总量对比柱状图（正式报告 图5.N  Y1年-Y3年总XX量）。"""
     try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         setup_chart_font(plt)
     except ImportError:
-        return
+        return False
+    y_labels = [str(y)[:4] for y in years]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    bars = ax.bar(y_labels, totals, color='#4C8BF5', width=0.5)
+    for b, v in zip(bars, totals):
+        ax.text(b.get_x() + b.get_width() / 2, b.get_height(), f'{v:,.2f}',
+                ha='center', va='bottom', fontsize=9)
+    ax.set_title(chart_text(f'{y_labels[0]}年-{y_labels[-1]}年总{name_cn}量（单位：{unit}）'))
+    ax.grid(True, alpha=0.3, axis='y')
+    fig.savefig(os.path.join(output_dir, fname), dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    return True
 
+
+def _generate_monthly_grouped_bar(years, series_map, name_cn, unit, output_dir, fname) -> bool:
+    """三年逐月分组柱状图（正式报告 图5.N  Y1年-Y3年逐月XX量）。"""
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import numpy as np
+        setup_chart_font(plt)
+    except ImportError:
+        return False
+    months_cn = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+    y_labels = [str(y)[:4] for y in years]
+    x = np.arange(12)
+    n = max(len(years), 1)
+    width = 0.8 / n
+    fig, ax = plt.subplots(figsize=(12, 4.5))
+    for i, y in enumerate(years):
+        vals = [float(v or 0) for v in (series_map.get(y) or [0] * 12)[:12]]
+        ax.bar(x + (i - (n - 1) / 2) * width, vals, width, label=f'{str(y)[:4]}年')
+    ax.set_xticks(x)
+    ax.set_xticklabels(months_cn)
+    ax.legend()
+    ax.set_title(chart_text(f'{y_labels[0]}年-{y_labels[-1]}年逐月{name_cn}量（单位：{unit}）'))
+    ax.grid(True, alpha=0.3, axis='y')
+    fig.savefig(os.path.join(output_dir, fname), dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    return True
+
+
+def _type_tce_3y(en: dict, years: list, code: str) -> float:
+    """某能源类型三年折标煤量(tce)。heat 系数 0.03412 已为 tce/GJ 量纲，×1000 转 kgce 统一口径。"""
+    c = _coeff_info(code)
+    std = _normalize_energy_code(code)
+    coeff = c['coeff'] * 1000 if std == 'heat' else c['coeff']
+    return sum(
+        float(en.get(y, {}).get(code, {}).get('total', 0) or 0) for y in years
+    ) * coeff / 1000
+
+
+# 主要能源小节固定顺序（对齐正式报告 5.2：电→水→气→热→油）
+_MAJOR_ORDER = ['electricity', 'water', 'natural_gas', 'heat', 'gasoline', 'diesel']
+
+
+def _classify_energy_types(en: dict, years: list):
+    """主要/次要能源分类（对齐正式报告 5.2 小节划分）：
+    主要 = 折标能耗占比≥5% 或 水；其余归"其他用能分析"。
+    返回 (major_codes, minor_codes)，major 按固定顺序电→水→气→热→油。"""
+    all_codes = set()
+    for y_data in en.values():
+        all_codes.update(y_data.keys())
+    type_tce = {code: _type_tce_3y(en, years, code) for code in all_codes}
+    total_tce_all = sum(type_tce.values()) or 1
+    major_codes, minor_codes = [], []
+    for code in sorted(all_codes):
+        std = _normalize_energy_code(code)
+        if std == 'water' or (type_tce.get(code, 0) / total_tce_all >= 0.05):
+            major_codes.append(code)
+        else:
+            minor_codes.append(code)
+    major_codes.sort(key=lambda c: _MAJOR_ORDER.index(_normalize_energy_code(c))
+                     if _normalize_energy_code(c) in _MAJOR_ORDER else 99)
+    return major_codes, minor_codes
+
+
+def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
+    """生成第5章全部图表：
+    - energy_flow.png（5.1 流向图）
+    - chart_{code}_total.png（各能源类型三年总量柱，5.2）
+    - chart_{code}_monthly.png（各能源类型三年逐月分组柱，有月度数据才画）
+    - cost_pie_{year}.png（各年费用占比饼图，5.2 费用节）
+    """
     os.makedirs(output_dir, exist_ok=True)
     en = data.get('energy_data', {})
     years = sorted(en.keys())
+    if not years:
+        return
 
-    # 饼图（最新年）
-    if years:
-        y = years[-1]
-        codes = sorted(en[y].keys())
-        labels = [_coeff_info(c)['name'] for c in codes]
-        values = [en[y][c]['total'] * _coeff_info(c)['coeff'] / 1000 for c in codes]
-        if values and any(v > 0 for v in values):
-            fig, ax = plt.subplots(figsize=(7, 7))
-            ax.pie(values, labels=labels, autopct='%1.1f%%')
-            ax.set_title(chart_text(f'{y}年能源消费结构'))
-            fig.savefig(os.path.join(output_dir, 'chart_structure.png'), dpi=150, bbox_inches='tight')
-            plt.close(fig)
+    # 5.1 能源资源流向图
+    _generate_flow_diagram(en, config, output_dir)
 
-    # 月度趋势图（每能源类型一张）
-    months_cn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
-    if years:
-        latest = years[-1]
-        for code in sorted(en[latest].keys()):
-            monthly = en[latest][code].get('monthly', [0]*12)
-            if any(monthly):
-                fig, ax = plt.subplots(figsize=(10, 4))
-                ax.plot(range(12), monthly, marker='o')
-                ax.set_xticks(range(12))
-                ax.set_xticklabels(months_cn)
-                ax.set_title(chart_text(f'{latest}年逐月{_coeff_info(code)["name"]}消耗趋势'))
-                ax.grid(True, alpha=0.3)
-                fig.savefig(os.path.join(output_dir, f'chart_{code}_monthly.png'), dpi=150, bbox_inches='tight')
-                plt.close(fig)
+    # 5.2 各能源类型：总量柱 + 逐月分组柱
+    # （对齐正式报告：仅有月度抄表数据的主要类型画图，如热力无逐月数据则不画图）
+    major_codes, _minor = _classify_energy_types(en, years)
+    for code in major_codes:
+        c = _coeff_info(code)
+        totals = []
+        series_map = {}
+        has_monthly = False
+        for y in years:
+            info = en.get(y, {}).get(code, {})
+            total = float(info.get('total', 0) or 0)
+            totals.append(total)
+            monthly = info.get('monthly', [0] * 12) or []
+            series_map[y] = monthly
+            if any(float(v or 0) > 0 for v in monthly):
+                has_monthly = True
+        if not has_monthly:
+            continue
+        _generate_total_bar_chart(years, totals, c['name'], c['unit'], output_dir,
+                                  f'chart_{code}_total.png')
+        _generate_monthly_grouped_bar(years, series_map, c['name'], c['unit'], output_dir,
+                                      f'chart_{code}_monthly.png')
 
     # ===== 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）=====
     co = data.get('cost_data', {})
     if co:
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            setup_chart_font(plt)
+        except ImportError:
+            return
         cost_colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#795548']
         for y in years:
             labels, values = [], []

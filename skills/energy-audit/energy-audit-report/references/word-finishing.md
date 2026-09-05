@@ -85,24 +85,30 @@ office_open/office_render（editor_sdk/OnlyOffice）打开 docx 后，settings.x
 
 ```
 [[图:flow|图5.1 能源资源流向图]]
-[[图:monthly_electricity_kwh|图5.2 2022年-2024年逐月用电量（单位：kWh）]]
-[[图:monthly_water_m3|图5.3 2022年-2024年逐月用水量（单位：m³）]]
-[[图:monthly_natural_gas_m3|图5.4 2022年-2024年逐月天然气用量（单位：m³）]]
-[[图:trend|图5.5 2022年-2024年逐年综合能耗趋势（单位：tce）]]
-[[图:cost_pie|图5.6 2022年能源费用占比]]
-[[图:cost_pie|图5.7 2023年能源费用占比]]
-[[图:cost_pie|图5.8 2024年能源费用占比]]
+[[图:total_electricity|图5.2 2023年-2025年总用电量（单位：kWh）]]
+[[图:monthly_electricity_kwh|图5.3 2023年-2025年逐月用电量（单位：kWh）]]
+[[图:total_water|图5.4 2023年-2025年总用水量（单位：m³）]]
+[[图:monthly_water_m3|图5.5 2023年-2025年逐月用水量（单位：m³）]]
+[[图:cost_pie|图5.6 2023年能源费用占比]]
+[[图:cost_pie|图5.7 2024年能源费用占比]]
+[[图:cost_pie|图5.8 2025年能源费用占比]]
 ```
 
-支持类型：`flow`（graphviz 流向图）、`trend`（逐年折标柱状图）、`pie`（能源结构饼图）、
+支持类型：`flow`（graphviz 流向图）、
+`total_*`（各能源类型三年总量柱，图题"Y1年-Y3年总用X量（单位：U）"）、
+`monthly_electricity_kwh` / `monthly_water_m3` / `monthly_natural_gas_m3`（三年逐月分组柱）、
 `cost_pie`（**每年一张费用占比饼图，三年三张连号**；数据来自各年费用项
-`*_cost_wan`（电/水/气/热/油/柴油，万元），**仅 >0 入图**，标题"{year}年能源费用占比"）、
-`monthly_electricity_kwh` / `monthly_water_m3` / `monthly_natural_gas_m3`（逐月柱状图）。
+`*_cost_wan`（电/水/气/热/油/柴油，万元），**仅 >0 入图**，标题"{year}年能源费用占比"）。
+
+> ⚠ `trend`/`pie`（0.1229 折标口径）与正文 0.31 等价口径矛盾，**勿用于指标展示**；
+> 画图范围对齐正式报告：仅"有月度抄表数据的主要能源类型"画总量+逐月图
+> （如市政供暖热力无逐月数据 → 不画图，仅文字描述）。
 
 ### 渲染实现
 
 - `_write_imitated_body` 识别 `[[图:…]]` 行 → `_render_imitated_chart()`。
-- trend/pie 用 `YearlyEnergyData` 构造；cost_pie 用 `_generate_cost_pie_chart(years_data)`；
+- trend/pie 用 `YearlyEnergyData` 构造（⚠ 0.1229 口径，勿用）；cost_pie 按图注解析年份后
+  调模块级 `_generate_cost_pie_chart(year, labels, values, output_dir)`；
   monthly_* 用模块级 `_generate_monthly_bar_chart`；
   flow 用 `tools.energy_audit.energy_flow_chart.draw_energy_flow_diagram`。
 - 输出到 `./charts/`，flow 用**时间戳文件名**（`energy_flow_<ts>.png`）避免用户已打开旧图时的文件锁。
