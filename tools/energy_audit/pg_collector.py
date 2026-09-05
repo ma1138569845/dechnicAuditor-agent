@@ -248,7 +248,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'auditor': proj.get('audit_dept_name', ''),
     }
     # 审计时间：DB 创建项目时间 ~ 报告生成时间（2026-09-03 用户确认）
-    # 审计期/基准期：项目表 audit_year / reference_year，格式 YYYY年M月-YYYY年M月
+    # 审计期/基准期：项目表 audit_year / reference_year，格式 YYYY年M月—YYYY年M月（全角破折号，2026-09-05 用户确认）
     def _fmt_ym(dt):
         try:
             return f"{dt.year}年{dt.month}月"
@@ -265,12 +265,12 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         if not ct and a_start:
             result['found']['project']['audit_start'] = a_start
         if a_start and a_end:
-            result['found']['project']['audit_period'] = f"{a_start}-{a_end}"
+            result['found']['project']['audit_period'] = f"{a_start}—{a_end}"
     if proj.get('reference_year'):
         result['found']['project']['data_year'] = proj['reference_year']
         r_start, r_end = parse_audit_year_range(proj['reference_year'])
         if r_start and r_end:
-            result['found']['project']['base_period'] = f"{r_start}-{r_end}"
+            result['found']['project']['base_period'] = f"{r_start}—{r_end}"
     data_start, data_end = parse_data_period(
         proj.get('reference_year'), proj.get('audit_year')
     )

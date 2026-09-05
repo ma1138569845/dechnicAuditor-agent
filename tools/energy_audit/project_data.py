@@ -54,8 +54,8 @@ class ProjectBase:
     contact_phone: str = ""            # 联系电话
     audit_start: str = ""              # 审计起始时间 ex: "2025年6月"
     audit_end: str = ""                # 审计结束时间 ex: "2025年7月"
-    audit_period: str = ""             # 审计期 ex: "2025年1月-2026年9月"（audit_year）
-    base_period: str = ""               # 基准期 ex: "2023年1月-2024年1月"（reference_year）
+    audit_period: str = ""             # 审计期 ex: "2025年1月—2026年9月"（audit_year）
+    base_period: str = ""               # 基准期 ex: "2023年1月—2024年1月"（reference_year）
     data_start: str = ""               # 数据起始年份 ex: "2022-01-01"
     data_end: str = ""                 # 数据结束年份 ex: "2024-12-31"
     building_area: float = 0           # 总建筑面积 m²

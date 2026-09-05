@@ -20,7 +20,7 @@ def _iso_to_cn(date_str: str) -> str:
 
 ## 使用位置
 
-- `load_from_project()`: `'audit_period': b.audit_period`、`'base_period': b.base_period`（项目表审计期/基准期，YYYY年M月-YYYY年M月）
+- `load_from_project()`: `'audit_period': b.audit_period`、`'base_period': b.base_period`（项目表审计期/基准期，YYYY年M月—YYYY年M月）
 - audit_start/end 同理（如果使用了ISO格式）
 
 ## Pitfall
