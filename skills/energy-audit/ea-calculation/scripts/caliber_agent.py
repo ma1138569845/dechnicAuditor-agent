@@ -314,6 +314,10 @@ def run_caliber(
             'people_count': getattr(proj.base, 'people_count', 0),
             'unit_name': getattr(proj.base, 'unit_name', project_name),
             'chart_dir': str(out_dir / 'charts'),
+            # 采暖建筑面积：建筑表 heat_area 聚合（5.3.5 供暖指标分母；
+            # 缺失/全 0 时 generate_chapter5_md 走建筑总面积兜底）
+            'heating_area': sum(float(getattr(b, 'heating_area', 0) or 0)
+                                for b in getattr(proj, 'buildings', []) or []),
             'manual': {
                 'energy_data': _build_energy_data_dict(yearly_data, proj),
                 'cost_data': {},

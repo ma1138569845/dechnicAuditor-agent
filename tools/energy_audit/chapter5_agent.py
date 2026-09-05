@@ -504,9 +504,12 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                           (getattr(yd, 'heating_energy_kwh', 0) or 0) > 0 or
                           (getattr(yd, 'heating_energy_gas', 0) or 0) > 0 for yd in yd_list)
         if has_heating:
-            # 采暖建筑面积三级兜底：data(load_from_db 聚合 ts_institution_build.heat_area)
-            # → config.heating_area → 建筑总面积（2026-09-02 用户确认口径）
-            heating_area = (data.get('heating_area', 0) or 0) or config.get('heating_area', 0) or area
+            # 采暖建筑面积兜底链：data 顶层(load_from_db 聚合) → data['buildings'] 聚合
+            # (生产 data.json 权威) → 建筑总面积（2026-09-02 用户确认口径）
+            heating_area = ((data.get('heating_area', 0) or 0)
+                            or sum(float(b.get('heating_area') or 0)
+                                   for b in (data.get('buildings') or []))
+                            or area)
             md += "### 5.3.5 单位采暖建筑面积供暖能耗\n\n"
             md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
             md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
