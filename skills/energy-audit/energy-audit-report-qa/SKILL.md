@@ -94,11 +94,11 @@ DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱
 现象：生成版报告只有图表、无任何现场照片（建筑外观/计量器具/设备照片全缺）。图片**在 DB 里存在**，根因是采集链路四层断点，不是数据缺失：
 
 1. **工具链断链（根因）**：kanban worker profile（datacollection）config.yaml 的 `toolsets` 只有 `hermes-cli`，未加载 energy_audit toolset；`terminal.cwd` 指向不存在/错误的仓库目录 → worker 看不到也 import 不到 `tools/energy_audit/*`（pg_collector/photo_manager/file_resolver 全部失效）→ agent 现场手写 psycopg2 直连脚本（collect_final.py 等）自建劣化链路，`images: []` 硬编码空数组
-2. **采集不查图**：劣化脚本只查业务数据表，未查图片字段——而 DB 里都有：`ts_institution_build.build_img`（建筑外观）、`ts_institution_energy_meter.device_img`（电/水表照片）、meter.ledger_files/year_files/month_files（计量台账）、设备分类表 ledger_files
+2. **采集不查图**：劣化脚本只查业务数据表，未查图片字段——而 DB 里都有：`ts_institution_scene.scene_img_id`（单位整体外观，2.1 图2.1）、`ts_institution_build.build_img`（建筑外观）、`ts_institution_energy_meter.device_img`（电/水表照片）、meter.ledger_files/year_files/month_files（计量台账）、设备分类表 ledger_files
 3. **file id 解析缺失**：build_img/device_img 存的是 `ts_attachment.group_id`（**列名是 group_id 不是 id**，按 id 查直接 UndefinedColumn）；attach_url 为相对路径（/20260207/xxx.png），需 `get_file_base_url()` 拼 base_url
 4. **base_url 未配置**：config.yaml 的 energy_audit 段只有 database 无 file 段 → `file_resolver` 静默跳过下载（不报错）
 
-修复模式：①profile config 修 toolsets+cwd（datacollection/datava/caliber/author 四个 worker 都要查）；②skill/SOUL.md 加硬规则"采集必须走 repo 工具链，import 失败停下来报告断链，禁止手写直连脚本";③pg_collector 采集 build_img/device_img → file_resolver 解析下载 → ImageItem(category=建筑外观/计量器具) 写入 proj.images；④photo_manager.check_photos 按 PHOTO_CATEGORIES 校验各章照片。落地细节见 energy-audit-pg-data skill 与 repo `tools/energy_audit/photo_manager.py`。
+修复模式：①profile config 修 toolsets+cwd（datacollection/datava/caliber/author 四个 worker 都要查）；②skill/SOUL.md 加硬规则"采集必须走 repo 工具链，import 失败停下来报告断链，禁止手写直连脚本";③pg_collector 采集 scene_img_id/build_img/device_img → file_resolver 解析下载 → ImageItem(category=单位整体外观/建筑外观/计量器具) 写入 proj.images；④photo_manager.check_photos 按 PHOTO_CATEGORIES 校验各章照片（'各建筑外观' 为可选项，缺失不阻塞）。落地细节见 energy-audit-pg-data skill 与 repo `tools/energy_audit/photo_manager.py`。
 
 ## 基本信息三张表【待补充】根因链（烟台法院实证 2026-09）
 

@@ -27,7 +27,7 @@
 | `proj.buildings[]` | 每栋建筑的 `BuildingInfo` 字段（见 §7 field_mapping） |
 | `proj.equipment[]` | 用能设备（category: 空调/照明/办公/厨房…） |
 | `proj.energy_yearly[]` | 各能源字段（electricity_kwh/water_m3/…）>0 判定用能类型 |
-| `proj.images[]` | 照片（`ImageItem`，category `单位整体外观`（scene_img_id）进 2.1 段落后，`建筑外观`/`各建筑外观` 进第2章） |
+| `proj.images[]` | 照片（`ImageItem`，category `单位整体外观`（scene_img_id）→ 2.1 段落后图2.1；`建筑外观`/`各建筑外观` → 2.2 每栋照（可选）） |
 | rag_reference[] | 同类报告写作参考 |
 
 数据缺失时按 ea-authoring 主 SKILL.md「输入内容」回退流程处理，禁止编造。
@@ -108,6 +108,10 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 > 各建筑详细参数见表2-1至表2-N。
 
+图片（可选，不硬性要求——正式报告 2.2 通常无图）：
+- 每栋建筑单独外观照（`proj.images[]` 中 category=`建筑外观`/`各建筑外观`）可插在收口句前，按建筑逐一配图（caption 写建筑名），图号接续图2.1（图2.2、图2.3…）
+- 无法判断照片归属哪栋建筑、或无每栋照时，不插图，仅保留文字 + 表
+
 **注意事项：**
 - 段1和段2之间空行分隔
 - 每栋建筑对应一张 `building_basic_info` 参数表（LLM 只声明表类型，不绘制表格）
@@ -184,6 +188,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 | type | 用途 | 数量 | 数据来源 |
 |---|---|---|---|
 | building_exterior | 2.1 单位整体外观照片（紧跟段落之后） | 1 张 | `proj.images[]` 中 category=`单位整体外观`（ts_institution_scene.scene_img_id），无则 `建筑外观` 兜底 |
+| building_photo | 2.2 每栋建筑单独外观照（可选） | 按建筑数 | `proj.images[]` 中 category ∈ {`建筑外观`, `各建筑外观`}，图号接续图2.1；无图/无法归属则不插 |
 
 - 图片路径取自 `proj.images[].path`（`ImageItem`，带分类），禁止虚构
 - 图片宽度（12cm）、居中、图注（10pt 宋体居中）由 office_editor 工具集统一处理
@@ -208,7 +213,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
     {"table_type": "building_basic_info", "building": {"name": "北楼", "year": 2019, "floors": "地上2层", "area": 3000, "structure": "框架结构"}}
   ],
   "images": [
-    {"type": "building_exterior", "path": "xxx.jpg", "caption": "图2-1 莘县县政府建筑外观"}
+    {"type": "building_exterior", "path": "xxx.jpg", "caption": "图2-1 莘县县政府单位整体外观"}
   ]
 }
 ```
@@ -226,6 +231,6 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 | 事实 | 所有名称/数字必须来自输入数据（`proj.*` 字段），禁止编造；数据缺失走回退流程 |
 | 结构 | 2.1/2.2/2.3 齐全；2.2 含总览段、共性特征、面积汇总、逐栋段、收口句 |
 | 表格 | 每栋建筑对应一张 building_basic_info；building 字段与 field_mapping（BuildingInfo）一致，关键字段无缺失 |
-| 图片 | 仅 building_exterior，1 张（单位整体外观=scene_img_id，无则建筑外观兜底），取自 images[]，路径真实存在 |
+| 图片 | building_exterior 1 张（单位整体外观=scene_img_id，无则建筑外观兜底）；building_photo（每栋照）可选不强制；路径真实存在 |
 | 逻辑 | 用能系统段与 energy_types 一一对应，无多余/遗漏系统；设备数量表述符合 §6 category 规则 |
 | 格式 | 不属于本章职责，由 office_editor 与报告格式规范保证 |

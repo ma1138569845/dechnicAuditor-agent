@@ -783,9 +783,11 @@ class WordReportBuilder:
 
         os.makedirs(output_dir, exist_ok=True)
         latest = yd_objects[-1]
-        labels = [self._ENERGY_TYPE_CN.get(et, et) for et in energy_types]
-        coeff_map = {'electricity_kwh':0.1229,'water_m3':0.2571,'natural_gas_m3':1.33,'petrol_kg':1.4714,'diesel_kg':1.4571}
-        values = [getattr(latest, et, 0) * coeff_map.get(et, 1) / 1000 for et in energy_types]
+        # 2026-09-05 口径：折标系数与 indicators.COEFICIENTS 单点一致；水不折标，不进 tce 图
+        coeff_map = {'electricity_kwh': 0.31, 'natural_gas_m3': 1.2143, 'petrol_kg': 1.4714, 'diesel_kg': 1.4571}
+        ets = [et for et in energy_types if et in coeff_map]
+        labels = [self._ENERGY_TYPE_CN.get(et, et) for et in ets]
+        values = [getattr(latest, et, 0) * coeff_map[et] / 1000 for et in ets]
         if not any(v > 0 for v in values):
             return None
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -808,11 +810,13 @@ class WordReportBuilder:
 
         os.makedirs(output_dir, exist_ok=True)
         years = [str(yd.year) for yd in yd_objects]
-        # 只显示 top 3 能源类型
-        coeff_map = {'electricity_kwh':0.1229,'water_m3':0.2571,'natural_gas_m3':1.33,'petrol_kg':1.4714,'diesel_kg':1.4571}
+        # 只显示 top 3 能源类型；2026-09-05 口径：系数与 indicators.COEFICIENTS 一致，水不折标不进图
+        coeff_map = {'electricity_kwh': 0.31, 'natural_gas_m3': 1.2143, 'petrol_kg': 1.4714, 'diesel_kg': 1.4571}
         et_values = {}
         for et in energy_types:
-            vals = [getattr(yd, et, 0) * coeff_map.get(et, 1) / 1000 for yd in yd_objects]
+            if et not in coeff_map:
+                continue  # 水等不折标类型不进 tce 图
+            vals = [getattr(yd, et, 0) * coeff_map[et] / 1000 for yd in yd_objects]
             if any(v > 0 for v in vals):
                 et_values[et] = vals
         if not et_values:
@@ -911,7 +915,7 @@ class WordReportBuilder:
             rFonts.set(_qn("w:eastAsia"), "宋体")
 
         def _add_field(fld_type: str):
-            """插入 PAGE / NUMPAGES 域"""
+            """插入单个 Word 域（PAGE 等）"""
             run = p.add_run()
             _set_font_run(run)
             r = run._r
@@ -923,11 +927,9 @@ class WordReportBuilder:
             e = OxmlElement("w:fldChar"); e.set(_qn("w:fldCharType"), "end")
             r.append(b); r.append(instr); r.append(s); r.append(t); r.append(e)
 
-        r1 = p.add_run("第 "); _set_font_run(r1)
+        # 2026-09-05 对齐正式版（法院 docx 实测）：页脚仅 PAGE 域纯页码，
+        # 无"第X页 共Y页"文字、无 NUMPAGES 域
         _add_field("PAGE")
-        r2 = p.add_run(" 页 共 "); _set_font_run(r2)
-        _add_field("NUMPAGES")
-        r3 = p.add_run(" 页"); _set_font_run(r3)
 
         doc.save(output_path)
 
@@ -1124,8 +1126,8 @@ class ReportGenerator:
                                'run_time':bg.run_time, 'storey_metrology':bg.storey_metrology,
                                'garage':bg.garage, 'garage_area':bg.garage_area}
                               for i, bg in enumerate(project.buildings)],
-                # 建筑照片：分类（建筑外观/各建筑外观）+ 未分类兜底
-                'images': _chapter_imgs('建筑外观', '各建筑外观', '', prefix='图2'),
+                # 建筑照片：单位整体外观（图2.1）+ 分类（建筑外观/各建筑外观）+ 未分类兜底
+                'images': _chapter_imgs('单位整体外观', '建筑外观', '各建筑外观', '', prefix='图2'),
             },
             'chapter3': chapter3,
             'chapter4': {

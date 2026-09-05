@@ -747,7 +747,7 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     pg_institution_category = classified_cat if classified_cat != '未分类' else ''
     pg_specific_type = classified_spec if classified_spec != '其他' else ''
 
-    # ---- 图片采集：建筑外观（build_img）/ 计量器具照片（device_img）----
+    # ---- 图片采集：单位整体外观（scene_img_id）/ 建筑外观（build_img）/ 计量器具照片（device_img）----
     # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
     # base_url 未配置时返回空列表，不阻塞采集（照片缺失由 photo_manager 检查提示）。
     photo_items: List[ImageItem] = []

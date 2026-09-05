@@ -74,7 +74,7 @@ result = collect_from_pg(project_name)
 | 计量器具 | ts_institution_scene(计量基本情况)/ts_institution_energy_meter(表具详细) | 现场确认 |
 | 节能管理 | ts_institution_energy_saving | 管理文件/制度/奖项 |
 | 人员信息 | ts_project_audit_user / ts_project_audited_user | 审计组/被审计方 |
-| 图片 | ts_institution_build.build_img（建筑外观）/ ts_institution_energy_meter.device_img（电水表照片）/ 设备分表 _img 列（第6章设备照片）/ ts_institution_energy_invoice+invoice_image（缴费发票照片，record_id 关联）/ meter.ledger_files·year_files·month_files（计量台账）/ 设备分类表 ledger_files | 现场照片补充 |
+| 图片 | **单位整体外观=ts_institution_scene.scene_img_id（→2.1 段落后图2.1，group_id 单值）**；ts_institution_build.build_img（建筑外观，→2.2 每栋照可选）/ ts_institution_energy_meter.device_img（电水表照片）/ 设备分表 _img 列（第6章设备照片）/ ts_institution_energy_invoice+invoice_image（缴费发票照片，record_id 关联）/ meter.ledger_files·year_files·month_files（计量台账）/ 设备分类表 ledger_files | 现场照片补充 |
 
 ### 能耗表版本机制（⚠️ 取数铁律）
 
@@ -90,7 +90,7 @@ result = collect_from_pg(project_name)
 
 原单表 `ts_institution_energy`（value1-value12 月度列）已拆分为两表：
 
-- **ts_institution_energy_main**：元数据 + 年度总量。关键字段：`year`、`data_type`（1=能耗/2=费用/3=供冷能耗/4=供热能耗/5=交通能耗）、`energy_code`/`energy_name`、`energy_unit`、`total_value`（年度合计）、`real_value`(单位实际的用能量)、`standard_coal_coefficient`（折标系数）、`granularity`（记录粒度：1=月/2=双月/3=季度/4=半年）
+- **ts_institution_energy_main**：元数据 + 年度总量。关键字段：`year`、`data_type`（代码实际：1=能耗/2=费用/3=供冷（采集侧不映射）/4=供热能耗/5=交通能耗/7=供热费用/8=交通费用）、`energy_code`/`energy_name`、`energy_unit`、`total_value`（年度合计）、`real_value`(单位实际用能量/费用金额)、`standard_coal_coefficient`（折标系数）、`granularity`（记录粒度：1=月/2=双月/3=季度/4=半年）
 - **ts_institution_energy_data**：周期明细。`main_id` 外键关联主表，`period_code` 与粒度对应（`'01'`=单月、`'01~02'`=双月、`'01~03'`=季度、`'01~06'`=半年），`energy_value` 为该周期总量
 
 采集逻辑（`pg_query.py` 的 `PgDataQuery.get_institution_energy`）：
@@ -113,7 +113,7 @@ WHERE (m.deleted IS NULL OR m.deleted = 0)
 '01~06'  → [1..6]      每月 = 周期值 ÷ 6
 ```
 
-注意：本 Skill 的采集仅消费 `data_type=1`（能耗）与 `data_type=2`（费用）；`data_type=3/4/5`（供冷/供热/交通分项）由下游第5章 Agent 处理。
+采集映射（`pg_collector.py` 实际分支）：dt=1 实物量（total=unit_total_value；building_total_value 更大时另存 building_* 字段）；dt=2 费用取 unit_total_value÷10000 → *_cost_wan（万元）；dt=4 供热能耗（GJ→heating_energy_heat_gj，电 kWh→heating_energy_kwh 供暖电耗）；dt=5 交通能耗（DB 存吨 t，×1000 → kg）；dt=7/8 供热/交通费用；dt=3 供冷不映射（历史分项容器，生产数据不在其中）。
 
 ---
 
@@ -198,7 +198,7 @@ proj = build_and_save_project(project_name, excel_data=excel_data, pg_result=res
 
 ### 单位转换
 
-- **费用**：PG 中的 `total_value`（单位：元）统一 **÷10000 转成万元**，存入 `xxx_cost_wan` 字段（如 `electricity_cost_wan`、`water_cost_wan`）。
+- **费用**：PG 费用金额取 `real_value`（SQL 别名 `unit_total_value`，单位：元）统一 **÷10000 转成万元**，存入 `xxx_cost_wan` 字段（如 `electricity_cost_wan`、`water_cost_wan`）。注意：`total_value`（SQL 别名 `building_total_value`）是整栋口径，费用一律不用它。
 
 ---
 

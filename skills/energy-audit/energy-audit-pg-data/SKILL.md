@@ -71,7 +71,7 @@ conn.autocommit = True  # 必须！否则单条查询报错会 abort 整个事�
 | 场景/人数 | ts_institution_scene（work_staff 用能人数/heat_price 热价；⚠️ heat_area/heat_day 常为 NULL） | customer_id |
 | 供热面积 | **权威源 ts_institution_build.heat_area（每栋建筑供热面积，法院=24300 有值）**，非 scene.heat_area；指标计算供暖能耗定额时聚合 build.heat_area，缺失/全 0 时用建筑面积兑底（2026-09-02 用户确认） | customer_id |
 | 设备分类 | ts_institution_device_{air,light,office,power,hygiene,hotwater,steam,special,other,td} | customer_id |
-| 图片/附件 | 建筑外观=ts_institution_build.build_img；电水表照片=ts_institution_energy_meter.device_img；**设备照片=设备分表 _img 列（device_img/system_img/tower_img/pump_img 等）**；**发票照片=ts_institution_energy_invoice（主表）+ ts_institution_energy_invoice_image（明细，record_id 关联，file_id→ts_attachment.group_id）**；计量台账=meter.ledger_files/year_files/month_files；管理制度/奖项=ts_institution_energy_saving.management_files/award_certificate | 均为 ts_attachment.group_id |
+| 图片/附件 | **单位整体外观=ts_institution_scene.scene_img_id（2.1 段落后图2.1）**；建筑外观=ts_institution_build.build_img（2.2 每栋照可选）；电水表照片=ts_institution_energy_meter.device_img；**设备照片=设备分表 _img 列（device_img/system_img/tower_img/pump_img 等）**；**发票照片=ts_institution_energy_invoice（主表）+ ts_institution_energy_invoice_image（明细，record_id 关联，file_id→ts_attachment.group_id）**；计量台账=meter.ledger_files/year_files/month_files；管理制度/奖项=ts_institution_energy_saving.management_files/award_certificate | 均为 ts_attachment.group_id |
 
 > 图片 file id 落在 **ts_attachment（列名 group_id，无 id 列**，按 id 查报 UndefinedColumn）；attach_url 为相对路径（/日期目录/xxx.png），拼 `db_config.get_file_base_url()` 得完整 URL（config.yaml energy_audit 段需配 file.base_url）。⚠️ 验证 base_url 时用**本项目实际 attach_url**（法院是 /20260731、/20260801 目录）——全库样例里常见的 /20260207 目录是**别租户旧文件**，拿它测 404 会误判 base_url 失效。
 
@@ -201,17 +201,19 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   89.61 元/GJ）比：三年一致的那套版本即正确。烟台法院草稿 2024=3575 GJ、
   2025=3246 GJ → 320355.76/3575=89.61 ✓、290874.06/3246=89.61 ✓；正式版
   颠倒后热价变 98.7/81.4 ✗。水价同理（水费÷水量 5.02 元/m³ 三年一致）。
-- **费用行 real_value 恒 0（⚠️ 取费用必须用 total_value）**：energy_main 费用记录
-  （data_type=2 电/水/气费、7=供热费、8=交通费）的 real_value 常为 0.00，实际金额
-  在 total_value。pg_query 映射：building_total_value=total_value、
-  unit_total_value=real_value——取费用一律用 building_total_value/10000（元→万元），
-  用 unit_total_value 会全得 0（2026-09-02 impl 修复实证：费用 9 项全 0 即此因）。
+- **费用字段取数（2026-09-05 实测修正，推翻 09-02 旧断言）**：energy_main 费用记录
+  （data_type=2 电/水/气费、7=供热费、8=交通费）的 real_value 在草稿与最新正式版本
+  已补齐（=total_value），旧版 PL2026080401/0402 的 real_value=0 是历史错值。
+  pg_query 映射：building_total_value=total_value、unit_total_value=real_value。
+  **取费用用 unit_total_value/10000（元→万元）**，与 pg_collector.py 代码一致
+  （法院实测：2023 电费 801503.54 元 → 80.15 万元 ✓）。"real_value 恒 0 必须用
+  building_total_value"是 2026-09-02 修复前的旧数据状态，现版本归一（草稿优先）取到
+  的最新记录 real_value 有值，旧断言失效。
   实物量（dt=1/4/5）则 real_value=total_value，两者皆可用。
 - **费用单位陷阱**：`ts_institution_energy_main` 费用行（data_type=2/7/8）
-  energy_unit 常误标"万元"但 total_value 实为"元"（烟台法院 2024 电
-  752854.00"万元"实为 75.29 万元；同款 deleted=1 的旧草稿记录才是正确万元
-  值）。判别：实物量×合理单价≈费用（电价≈0.7 元/kWh、水价≈5 元/m³、
-  气价≈4~4.6 元/m³），量级对不上即单位标错。
+  energy_unit 标签不可信（烟台法院 2023 标"元"、2024/2025 标"万元"，但值全部实为
+  "元"，如 2024 电 752860.98"万元"实为 75.29 万元）。判别：实物量×合理单价≈费用
+  （电价≈0.7 元/kWh、水价≈5 元/m³、气价≈4~4.6 元/m³），量级对不上即单位标错。
 - **用户平台修改可能只落草稿版本**（2026-09-02 电梯实证）：用户在平台改设备功率
   （电梯 120→12），仅更新草稿（is_draft=1, version_code=NULL），正式版本
   PL2026080401/0402 仍是旧值；2026-09-04 起版本归一已改"草稿优先"（草稿=最新编辑数据，发布才是快照），取草稿即取新值。

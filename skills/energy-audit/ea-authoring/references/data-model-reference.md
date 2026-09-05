@@ -70,7 +70,7 @@ AuditProject
 ├─ management: ManagementInfo        # 能源管理（第3章，含 LLM 提炼结果）
 ├─ energy_saving: List[EnergySaving] # 节能管理信息（按统计年）
 ├─ indoor_env: IndoorEnv
-├─ images: List[str]                 # 图片路径列表
+├─ images: List[ImageItem]          # 照片列表（带 category，路由第2~7章；单位整体外观→2.1 图2.1）
 ├─ data_sources: Dict[str,str]       # 字段→来源追溯
 └─ indicators: Dict[str,Any]         # 预计算能耗指标
 ```

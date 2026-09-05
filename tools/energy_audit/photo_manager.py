@@ -14,7 +14,7 @@ PHOTO_REQUIREMENTS = {
     '第2章': [
         ('单位整体外观', '被审计单位整体外观照（图2.1，紧跟2.1段落后，scene_img_id）', 'chapter2.images'),
         ('建筑外观', '被审计单位建筑全景或主立面照片', 'chapter2.images'),
-        ('各建筑外观', '每栋建筑单独外观照', 'chapter2.images'),
+        ('各建筑外观', '每栋建筑单独外观照（2.2 可选，缺失不阻塞）', 'chapter2.images'),
     ],
     '第3章': [
         ('管理文件/荣誉', '能源管理制度文件、节能荣誉证书等', 'chapter3.images'),
@@ -39,6 +39,10 @@ PHOTO_REQUIREMENTS = {
 }
 
 
+# 可选照片分类：缺失不阻塞 check_photos（如 2.2 每栋建筑外观照，正式报告可无图）
+PHOTO_OPTIONAL_CATEGORIES = ('各建筑外观',)
+
+
 def check_photos(data) -> Tuple[bool, List[str]]:
     """检查各章节照片是否齐全。返回 (齐全?, 缺失清单)
 
@@ -61,7 +65,7 @@ def _check_by_category(project) -> Tuple[bool, List[str]]:
     missing = []
     for chapter, requirements in PHOTO_REQUIREMENTS.items():
         for name, desc, _path_hint in requirements:
-            if name not in have:
+            if name not in have and name not in PHOTO_OPTIONAL_CATEGORIES:
                 missing.append(f"{chapter} → {name}（{desc}）")
 
     return (len(missing) == 0, missing)
@@ -73,6 +77,8 @@ def _check_by_path(report_data: dict) -> Tuple[bool, List[str]]:
 
     for chapter, requirements in PHOTO_REQUIREMENTS.items():
         for name, desc, path_hint in requirements:
+            if name in PHOTO_OPTIONAL_CATEGORIES:
+                continue
             found = _find_photo(report_data, path_hint)
             if not found:
                 missing.append(f"{chapter} → {name}（{desc}）")
