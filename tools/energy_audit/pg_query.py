@@ -654,7 +654,7 @@ class PgDataQuery:
                     s.other_special_meter, s.construction_elec_meter, s.construction_water_meter,
                     s.install_position, s.position_reasonable, s.metering_standard,
                     s.partition_payment, s.electric_pay_type, s.service_staff,
-                    s.scene_desc, s.record_attach_id,
+                    s.scene_desc, s.record_attach_id, s.scene_img_id,
                     s.aircon_staff_num, s.light_staff_num, s.power_room_staff_num
                  FROM ts_institution_scene s
                  WHERE (s.deleted IS NULL OR s.deleted = 0)

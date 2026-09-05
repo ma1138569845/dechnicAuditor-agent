@@ -12,6 +12,7 @@ from typing import List, Dict, Tuple
 # 各章节期望的照片（名称与 project_data.PHOTO_CATEGORIES 一一对应）
 PHOTO_REQUIREMENTS = {
     '第2章': [
+        ('单位整体外观', '被审计单位整体外观照（图2.1，紧跟2.1段落后，scene_img_id）', 'chapter2.images'),
         ('建筑外观', '被审计单位建筑全景或主立面照片', 'chapter2.images'),
         ('各建筑外观', '每栋建筑单独外观照', 'chapter2.images'),
     ],

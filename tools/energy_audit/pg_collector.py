@@ -576,6 +576,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
 
     # ---- 6. 用能场景（计量/供暖） ----
     scenes = pg.get_institution_scene(customer_id=customer_id)
+    result['found']['scenes'] = scenes or []  # 含 scene_img_id（单位整体外观，图2.1）
     if scenes:
         scene = scenes[0]
         metering = {
@@ -750,7 +751,13 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
     # base_url 未配置时返回空列表，不阻塞采集（照片缺失由 photo_manager 检查提示）。
     photo_items: List[ImageItem] = []
-    _photo_id_map = []  # [(file_id, category)]
+    _photo_id_map = []  # [(group_id, category)]
+    # 单位整体外观（ts_institution_scene.scene_img_id → 图2.1，2026-09-05 用户确认）
+    # scene_img_id 即 ts_attachment.group_id（bigint 单值）；scenes 按 year DESC，
+    # 取最新年份第一个非空值，避免多年份同图重复
+    _scene_img = next((sc.get('scene_img_id') for sc in pg_result['found'].get('scenes', []) if sc.get('scene_img_id')), None)
+    if _scene_img:
+        _photo_id_map.append((int(_scene_img), '单位整体外观'))
     for bi in pg_result['found'].get('building_images', []) or []:
         for fid in parse_file_ids(bi.get('build_img') or ''):
             _photo_id_map.append((fid, '建筑外观'))
