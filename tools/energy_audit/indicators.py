@@ -682,6 +682,9 @@ def calc_water_indicator(
 
     # 医院：单位开放床日用水量
     if institution_type == 'medical' and bed_count and bed_count > 0:
+        # Wz 口径（2026-09-05 注明）：4452 式(5) 的 Wz=住院部年用水总量
+        # （含住院部/医技部/教学科研/后勤/行政管理，不含洗衣/制药/试验/家属区）；
+        # 采集侧无住院部用水拆分字段，暂用全院总水量 water_m3 近似。
         water_total = data.water_m3
         L_per_bed_day = round(water_total * 1000 / (bed_count * 365), 2)  # m³→L, year→day
         benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark)
