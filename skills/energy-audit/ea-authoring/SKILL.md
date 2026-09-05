@@ -96,7 +96,7 @@ author: 马天远
 5. **加水印（强制）**：注入被审计单位名称水印，再预览。做法见 `references/docx-watermark.md`。无水印不得交付。
 6. 排版预览用 `office_preview`；确认引擎用 `office_status`
 
-**附录编写（officecli，2026-09-03 定）**：附录1~5（建筑基本信息及设备统计表/能耗数据信息表/室内环境测量/室内空气质量指标及要求/折标准煤参考系数）用 `office_cli_command` 追加——`add ... --type heading/table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**全链路禁用 python-docx，附录无例外**；清单与数据来源详见 `energy-audit-report/references/assembly-workflow.md`
+**附录编写（officecli，2026-09-05 定）**：附录1~7（建筑基本信息及设备统计表/能耗数据信息表/电费水费油费燃气费充值发票/室内环境测量表/空气质量判定方法/室内空气质量指标及要求/折标准煤参考系数）用 `office_cli_command` 追加——`add ... --type heading/table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**全链路禁用 python-docx，附录无例外**；清单与数据来源详见 `energy-audit-report/references/assembly-workflow.md`。**无发票照片时无附录3，后续序号依次前移（4→3、5→4、6→5、7→6）**；附录4 如有室内环境测量表的附件图片则展示。
 
 **引擎与回退**：
 - 首选 **editor_sdk**（本地二进制，MCP 协议）：`office_edit` 的 199 个 MCP 编辑操作全可用。
