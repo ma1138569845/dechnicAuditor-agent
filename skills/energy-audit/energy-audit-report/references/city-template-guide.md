@@ -100,7 +100,7 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 表格 12pt 居中、行高 1.01cm（AT_LEAST）、垂直居中、表头加粗、Table Grid 边框
 - 表注（`>` 引用块）灰色 12pt 无缩进；表题（**表X-X**）居中加粗
 - 页脚居中页码域（PAGE）、目录 TOC 域（`TOC \o "1-3" \h \z \u` + outlineLvl），打开 Word 后 Ctrl+A → F9 更新
-- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**，VML 曾用 468pt/opacity 0.15 被批"不明显"，后按 repo 规范改为 DrawingML）；③ 页脚页码——"第 X 页 共 Y 页"（PAGE+NUMPAGES 域）10.5pt 居中。用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
+- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**，VML 曾用 468pt/opacity 0.15 被批"不明显"，后按 repo 规范改为 DrawingML）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（2026-09-04 起不再写"第 X 页 共 Y 页"；页眉文字+分隔线由 `scripts/fix_header_footer.py` 注入，见 `word-finishing.md` §3/§4）。用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
 - 封面：单位名 22pt + "能源审计报告" 26pt 居中 + 报告信息表（md 第一个表格）
 - 运行：`D:/develop/anaconda3/python.exe scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`
 

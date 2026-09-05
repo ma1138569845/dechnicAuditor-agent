@@ -137,6 +137,7 @@ author: 马天远
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
 5. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-watermark.md`。
 6. **落盘后、加水印前必须有正文首行缩进**：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。禁止 python-docx，禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-first-line-indent.md`。
+7. **页眉必须：单段落文字（单位全称+两空格+"能源审计报告"，右对齐宋体10.5pt）+ 下方分隔线**。分隔线用 `officecli set <docx> /header/p[N] --prop pbdr.bottom=single\;6\;000000`（或 OOXML `<w:pBdr><w:bottom w:val="single" w:color="000000" w:sz="6"/></w:pBdr>`）。交付前 `officecli get <docx> /header` 自检：单段落、`pbdr.bottom=single`、无重复单位名。细则见 `references/docx-ooxml-techniques.md` 页眉小节。
 
 ## 常见错误
 

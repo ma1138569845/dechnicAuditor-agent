@@ -52,8 +52,9 @@ def oc(*args):
 # 创建文档
 oc('create', 'report.docx')
 
-# 设置页眉
-oc('set', 'report.docx', '/header/default', '--prop', 'text=同方德诚能源审计报告')
+# 设置页眉（文字 + 分隔线；单位全称替换为实际名称）
+oc('set', 'report.docx', '/header/default', '--prop', 'text=<被审计单位全称>  能源审计报告', '--prop', 'font=宋体', '--prop', 'size=10.5', '--prop', 'align=right')
+oc('set', 'report.docx', '/header/p[1]', '--prop', 'pbdr.bottom=single;6;000000')
 
 # 添加公式
 oc('add', 'report.docx', '/body', '--type', 'equation',
@@ -75,12 +76,13 @@ oc('close', 'report.docx')
 officecli create report.docx
 
 # 页眉（首页不同 + 奇偶页不同可选；对齐右对齐，单位全称替换为实际名称）
-officecli set report.docx /header/default --prop text="<被审计单位全称>  能源审计报告" --prop font=宋体 --prop size=10.5
+officecli set report.docx /header/default --prop text="<被审计单位全称>  能源审计报告" --prop font=宋体 --prop size=10.5 --prop align=right
+# 页眉分隔线（pbdr.bottom；颜色 6 位 hex 不带 #，6=0.75pt）
+officecli set report.docx /header/p[1] --prop pbdr.bottom=single\;6\;000000
 
-# 页脚 + 页码
-officecli set report.docx /footer/default --prop text="第 " --prop font=宋体 --prop size=10
+# 页脚 + 页码（仅 PAGE 域数字，居中；不再写"第 X 页 共 Y 页"）
+officecli set report.docx /footer/default --prop text="" --prop font=宋体 --prop size=10.5
 officecli add report.docx /footer/default --type pageNumber
-officecli add report.docx /footer/default --text " 页"
 
 # 页码从正文开始（封面无页码）
 officecli set report.docx /sectPr --prop titlePg=true

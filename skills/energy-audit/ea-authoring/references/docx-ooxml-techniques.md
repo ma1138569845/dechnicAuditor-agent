@@ -21,6 +21,24 @@
 | 行距     | 单倍行距                                         |
 | 分隔线   | 页眉下方横线                                     |
 
+**分隔线实现方法**（officecli 或 OOXML 二选一，交付前必验）：
+
+```bash
+# officecli：给页眉文字段落加底边线（颜色用 6 位 hex，不带 #；6 = 0.75pt 标准细线）
+officecli set <报告>.docx "/header/p[2]" --prop pbdr.bottom=single\;6\;000000
+```
+
+OOXML 校验标准（`word/header*.xml` 内页眉文字段落的 `w:pPr` 下必须有）：
+
+```xml
+<w:pBdr><w:bottom w:val="single" w:color="000000" w:sz="6" /></w:pBdr>
+```
+
+**页眉结构硬约束**：
+- 页眉**只允许一个段落**（文字段落；水印 DrawingML 与其共存但为独立段落）。多段落会导致文字重复显示。
+- `evenAndOddHeaders` 默认关闭；除封面节（页眉空白）外各节均引用同一个 default 页眉。
+- 交付前自检：`officecli get <报告>.docx /header` 应显示单段落 + `pbdr.bottom=single`，文本无重复单位名。
+
 **覆盖范围**：除“第 1 节的首页（封面页）页眉为空白”外，其余所有页面均显示上述页眉。
 
 ###  页脚（内容 + 格式）
