@@ -19,11 +19,12 @@
   5.3.1 单位建筑面积非供暖能耗 → 表5.{next_table}   (公式+DB37对标)
   5.3.2 常规用能系统单位建筑面积电耗 → 表5.{next_table+1}
   5.3.3 人均综合能耗 → 表5.{next_table+2}
-  5.3.4 人均取水量 → 表5.{next_table+3}
+  5.3.4 取水指标（标题按机构类型自适应，映射见 core/references/standards-values.md） → 表5.{next_table+3}
+  5.3.5 单位采暖建筑面积供暖能耗 → 表5.{next_table+4}（有供暖能耗的项目必写；无供暖跳过）
 
 5.4  建筑能耗基准
-  用量基准 → 表5.{next_table+4}
-  费用基准 → 表5.{next_table+5}
+  用量基准 → 表5.{next_table+5}
+  费用基准 → 表5.{next_table+6}
 ```
 
 ## 各节规则
