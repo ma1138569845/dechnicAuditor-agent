@@ -378,26 +378,36 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     cost_section_num = f"5.2.{section_idx}"
     md += f"### {cost_section_num} 能源资源费用分析\n\n"
     if co:
+        # 表5.1 对齐正式报告：年份行 ×（电费/供暖费/水费/油费/燃气费/合计）列，
+        # 单位元（万元×10000）；油费=汽油费+柴油费；任一年>0 的列才显示（无 0 值列）
+        cost_cols = [
+            ('electricity', '电费'),
+            ('heat', '供暖费'),
+            ('water', '水费'),
+            (('gasoline', 'diesel'), '油费'),
+            ('natural_gas', '燃气费'),
+        ]
+        cols_ok = []
+        for codes, label in cost_cols:
+            codes_l = codes if isinstance(codes, tuple) else (codes,)
+            if any(float(co.get(y, {}).get(c, {}).get('total', 0) or 0) > 0
+                   for y in years for c in codes_l):
+                cols_ok.append((codes_l, label))
         md += f"**表5.1 各项能源费用统计表**\n\n"
-        cost_header = "| 费用类型 |"
-        cost_sep = "|------|"
+        header = "| 类型\\时间 |" + "".join(f" {label}（元） |" for _, label in cols_ok) + " 合计（元） |"
+        sep = "|------|" + "".join("------|" for _ in cols_ok) + "------|"
+        md += header + "\n" + sep + "\n"
         for y in years:
-            cost_header += f" {str(y)[:4]}年(万元) |"
-            cost_sep += "------|"
-        md += cost_header + "\n" + cost_sep + "\n"
-        # 行遍历 cost_data 键并集（有费用的类型必显示行；
-        # 2026-09-05 修复：原遍历 energy_data 键，某年"有费用无用量"会静默丢行；
-        # 行序按 _MAJOR_ORDER 对齐正式报告，未知类型追加尾部）
-        _cost_set = set().union(*[set(yd.keys()) for yd in co.values()])
-        cost_codes = [c for c in _MAJOR_ORDER if c in _cost_set] + \
-                     [c for c in sorted(_cost_set) if c not in _MAJOR_ORDER]
-        for code in cost_codes:
-            c = _coeff_info(code)
-            row = f"| {c['name']}费 |"
-            for y in years:
-                val = co.get(y, {}).get(code, {}).get('total', 0)
-                row += f" {val:,.2f} |"
-            md += row + "\n"
+            y4 = str(y)[:4]
+            vals = []
+            total = 0.0
+            for codes_l, _label in cols_ok:
+                v = sum(float(co.get(y, {}).get(c, {}).get('total', 0) or 0)
+                        for c in codes_l)
+                vals.append(v)
+                total += v
+            md += f"| {y4}年 |" + "".join(f" {v*10000:,.2f} |" for v in vals) \
+                  + f" {total*10000:,.2f} |\n"
         md += "\n"
         # 能源费用占比饼图（每年一张，连号，与正式报告一致）
         pie_no = fig_no

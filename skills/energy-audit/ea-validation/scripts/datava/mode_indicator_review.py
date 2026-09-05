@@ -86,6 +86,13 @@ METRIC_SPECS: Tuple[MetricSpec, ...] = (
         "L/(床·d) 或 m³/(人·a) 或 m³/(m²·a)",
         "water",
     ),
+    MetricSpec(
+        "unit_area_heating",
+        "单位采暖建筑面积供暖能耗",
+        ("kgce_per_m2",),
+        "kgce/(m²·a)",
+        "energy",
+    ),
 )
 
 
@@ -255,21 +262,26 @@ def load_indicators(
             return adapted, f"indicators.json ({payload_path}) (caliber by_year schema, adapter 映射)", ""
 
     raw = read_json(project_data_path(project))
-    if isinstance(raw, dict):
-        embedded = raw.get("indicators") or {}
-        if embedded.get("yearly"):
-            return embedded, "data.json → indicators", ""
 
+    # 2026-09-05: compute 现算优先于 data.json 嵌块——嵌块是采集时快照可能陈旧
+    # （实例：水三元组改口径后，嵌块旧值 约束10/基准25 掩盖现算新值 25/10，
+    # 致 WATER_SEMANTICS 误报 P0）。datava 是审查工具，应对最新口径现算核对。
     try:
         from tools.energy_audit.indicators import compute_project_indicators
         from tools.energy_audit.project_data import load_project
-    except ImportError as exc:
-        return None, "", f"indicators.json 不存在且依赖导入失败: {exc}"
+        proj = load_project(project)
+        if proj is not None:
+            return compute_project_indicators(proj), "compute_project_indicators() 现算", ""
+    except ImportError:
+        pass
 
-    proj = load_project(project)
-    if proj is None:
-        return None, "", f"项目 '{project}' 的 data.json 不存在，无法计算指标"
-    return compute_project_indicators(proj), "compute_project_indicators() 现算", ""
+    # 兜底：data.json 内嵌 indicators 快照（仅当现算不可用时）
+    if isinstance(raw, dict):
+        embedded = raw.get("indicators") or {}
+        if embedded.get("yearly"):
+            return embedded, "data.json → indicators（compute 不可用时的兜底快照）", ""
+
+    return None, "", f"indicators 不存在且现算失败（项目 '{project}'）"
 
 
 def metric_value(metric: dict, spec: MetricSpec) -> Tuple[str, Optional[float]]:

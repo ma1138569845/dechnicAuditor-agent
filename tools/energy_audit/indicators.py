@@ -51,7 +51,7 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_elec': (73.1, 53.0, 34.9),
         'per_capita_energy': (907.4, 556.9, 428.3),
         # 用水: DB37/T 4452-2021, 二级医院, 单位开放床日用水量 L/(床·d)
-        'water_per_bed_day': (340, 540, 0),     # 先进值, 通用值（约束值）, —
+        'water_per_bed_day': (540, 340, 0),     # 约束值(通用值), 基准值(先进值), 引导值(无)
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -63,7 +63,7 @@ _DEFAULT_BENCHMARKS = {
         # 市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
         'unit_area_heating': (12.7, 11.1, 8.3),  # 默认市政集中供暖（按热计量）口径
         # 用水: DB37/T 4452-2021, 机关
-        'water_per_person': (10, 25, 0),        # 先进值, 通用值（约束值）, — m³/(人·a)
+        'water_per_person': (25, 10, 0),        # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'standard_name': 'DB37/T 2672-2019《党政机关能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -72,7 +72,7 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_elec': (35.0, 25.0, 18.0),
         'per_capita_energy': (400, 300, 200),
         # 用水: DB37/T 4452-2021, 教育业单位取水量 m³/(p·a)
-        'water_per_person': (8, 14, 0),          # 先进值, 通用值（约束值）, —
+        'water_per_person': (14, 8, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
         'standard_name': 'DB37/T 2674-2019《教育机构能源消耗定额标准》',
     },
@@ -104,7 +104,7 @@ _DEFAULT_BENCHMARKS = {
         # 用水：DB37/T 3780-2019 无取水定额 → 不对标（面积口径 benchmark 为空）
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         # 用水: DB37/T 4452-2021, 场馆类
-        'water_per_person': (8, 18, 0),          # 先进值, 通用值（约束值）, — m³/(人·a)
+        'water_per_person': (18, 8, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -114,7 +114,7 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_elec': (48.0, 36.0, 26.0),
         'per_capita_energy': (850, 620, 420),
         # 用水: DB37/T 4452-2021, 政务服务
-        'water_per_person': (9, 22, 0),          # 先进值, 通用值（约束值）, — m³/(人·a)
+        'water_per_person': (22, 9, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'standard_name': 'DB37/T 3781-2019《政务服务中心能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -383,7 +383,9 @@ class YearlyEnergyData:
         天然气（厨房）、水、汽油（交通）不纳入非供暖能耗计算。
         """
         non_heat_elec = self.electricity_kwh - self.heating_energy_kwh
-        return round(non_heat_elec * ELEC_COEFF_NON_HEATING, 4)
+        # 2026-09-05: 固定 0.31 → get_coefficient('electricity')，与供暖/综合能耗
+        # 同一折标来源（持久化系数 ≠ 默认时避免内部不一致）
+        return round(non_heat_elec * self.get_coefficient('electricity'), 4)
 
     @property
     def heating_energy_tce(self) -> float:
@@ -683,10 +685,10 @@ def calc_water_indicator(
         water_total = data.water_m3
         L_per_bed_day = round(water_total * 1000 / (bed_count * 365), 2)  # m³→L, year→day
         benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark)
-        # 水三元组字段语义与能耗相反：约束值=先进值(340), 基准值=通用值(540), 引导值=0
-        if L_per_bed_day <= benchmark['约束值']:
+        # 水三元组槽序与能耗一致：引导值(无)=0, 约束值=通用值, 基准值=先进值（越小越好）
+        if L_per_bed_day <= benchmark['基准值']:
             evaluation = '低于先进值'
-        elif L_per_bed_day <= benchmark['基准值']:
+        elif L_per_bed_day <= benchmark['约束值']:
             evaluation = '低于通用值'
         else:
             evaluation = '高于通用值（需整改）'
@@ -725,10 +727,10 @@ def calc_water_indicator(
     benchmark = resolve_benchmark(institution_type, 'water_per_person', user_benchmark)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         evaluation = '暂无定额标准可对标'
-    elif per_person <= benchmark['约束值']:
-        # 水三元组字段语义与能耗相反：约束值=先进值, 基准值=通用值, 引导值=0
-        evaluation = '低于先进值'
     elif per_person <= benchmark['基准值']:
+        # 水三元组槽序与能耗一致：引导值(无)=0, 约束值=通用值, 基准值=先进值
+        evaluation = '低于先进值'
+    elif per_person <= benchmark['约束值']:
         evaluation = '低于通用值'
     else:
         evaluation = '高于通用值（需整改）'
