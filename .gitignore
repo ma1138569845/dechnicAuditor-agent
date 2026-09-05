@@ -264,3 +264,4 @@ $tmp
 
 # Disposable profile created by scripts/probe_active_session_exclusivity.py
 .probe-home/
+!skills/energy-audit/energy-audit-report/references/examples/
