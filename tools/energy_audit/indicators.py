@@ -699,13 +699,15 @@ def calc_water_indicator(
             'benchmark': {**benchmark, '实际值': L_per_bed_day, '评价结果': evaluation, '单位': 'L/(床·d)'},
         }
 
-    # 政务服务中心/场馆：单位建筑面积年取水量 = 年取水量 / 建筑面积（m³/(m²·a)）
-    # DB37/T 4452-2021 无面积口径取水定额 → benchmark 为空，评价结果显示 "—"（标准待用户确认）
+    # 政务服务中心/场馆：单位建筑面积年取水量 Vui = Vj/Nc × 1000（L/(m²·a)）
+    # DB37/T 4452-2021 式(6)（用户 2026-09-05 确认 ×1000 口径）；
+    # DB37/T 4452-2021 无政务服务中心/场馆面积口径取水定额 → benchmark 为空，评价结果显示 "—"（标准待用户确认）
     if institution_type in ('venue', 'service') and building_area and building_area > 0:
         water_total = data.water_m3
-        m3_per_area = round(water_total / building_area, 4)
+        # ×1000: m³→L，单位 L/(m²·a)（与 4452 式(6) 一致）
+        L_per_area = round(water_total * 1000 / building_area, 2)
         return {
-            'm3_per_area': m3_per_area,
+            'L_per_area': L_per_area,
             'total_water_m3': water_total,
             'building_area': building_area,
             'metric': '单位建筑面积年取水量',

@@ -45,6 +45,16 @@ def _ssub(base, sub):
     return el
 
 
+def _ssup(base, sup):
+    """m:sSup: 上标（×10³ 的 3）"""
+    el = etree.Element(M + "sSup")
+    e = etree.SubElement(el, M + "e")
+    e.append(_run(base))
+    s = etree.SubElement(el, M + "sup")
+    s.append(_run(sup))
+    return el
+
+
 def _frac(num_children, den_children):
     el = etree.Element(M + "f")
     num = etree.SubElement(el, M + "num")
@@ -85,19 +95,47 @@ def _build_omath(symbol):
             _frac([_ssub("V", "k")], [_ssub("N", "p")]),
         ]
     elif symbol == "Vz":
-        # 医疗：Vz = Vk × 1000 / (Nbed × 365)
+        # 医疗 4452式(5)：Vz = Wz / ΣNi × 10³（i=1..365，求和上下标）
+        sum_op = etree.Element(M + "nary")
+        sum_pr = etree.SubElement(sum_op, M + "naryPr")
+        chr_ = etree.SubElement(sum_pr, M + "chr")
+        chr_.attrib[M + "val"] = "∑"
+        lim_low = etree.SubElement(sum_pr, M + "limLoc")
+        lim_low.attrib[M + "val"] = "undOvr"
+        sub = etree.SubElement(sum_op, M + "sub")
+        sub.append(_run("i=1"))
+        sup = etree.SubElement(sum_op, M + "sup")
+        sup.append(_run("365"))
+        e = etree.SubElement(sum_op, M + "e")
+        e.append(_ssub("N", "i"))
         children = [
             _ssub("V", "z"),
             _run("="),
-            _frac([_ssub("V", "k"), _run("×1000")],
-                  [_ssub("N", "bed"), _run("×365")]),
+            _frac([_ssub("W", "z")], [sum_op]),
+            _run("×"),
+            _ssup("10", "3"),
         ]
-    elif symbol == "Vam":
-        # 政务/场馆：Vam = Vk / M
+    elif symbol == "Vui":
+        # 政务/场馆 4452式(6)：Vui = Vj / Nc × 1000
         children = [
-            _ssub("V", "am"),
+            _ssub("V", "ui"),
             _run("="),
-            _frac([_ssub("V", "k")], [_run("M")]),
+            _frac([_ssub("V", "j")], [_ssub("N", "c")]),
+            _run("×1000"),
+        ]
+    elif symbol == "Vu":
+        # 高校 4452式(3)：Vu = Wu / Nu
+        children = [
+            _ssub("V", "u"),
+            _run("="),
+            _frac([_ssub("W", "u")], [_ssub("N", "u")]),
+        ]
+    elif symbol == "Vs":
+        # 中小学/幼儿园 4452式(4)：Vs = Wu / Ns
+        children = [
+            _ssub("V", "s"),
+            _run("="),
+            _frac([_ssub("W", "u")], [_ssub("N", "s")]),
         ]
     elif symbol == "Egnm":
         children = [
@@ -112,7 +150,7 @@ def _build_omath(symbol):
     return om
 
 
-SYMBOLS = ["Ejfgn", "Ejd", "Er", "Vuc", "Vz", "Vam", "Egnm"]
+SYMBOLS = ["Ejfgn", "Ejd", "Er", "Vuc", "Vui", "Vu", "Vs", "Vz", "Egnm"]  # 长符号在前防前缀误匹配
 
 
 def _match_symbol(p_text):

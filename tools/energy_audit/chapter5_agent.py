@@ -395,20 +395,32 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += f"| {yd.year}年 | {r['total_kgce']:,.2f} | {people} | {r['kgce_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
         md += "\n"
 
-        # 5.3.4 人均取水量 / 单位开放床日用水量
+        # 5.3.4 取水指标（公式按机构类型自适应，DB37/T 4452-2021）
         if institution_type == 'medical' and bed_count:
             md += "### 5.3.4 卫生业单位用水量\n\n"
-            md += "单位开放床日用水量 = 年用水总量 / (床位数 × 365)\n\n"
+            md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
             md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
             md += "|------|-----------|--------|---------------------------|----------|\n"
             for yd in yd_list:
                 r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
                 md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
+        elif institution_type in ('venue', 'service') and area:
+            md += "### 5.3.4 单位建筑面积年取水量\n\n"
+            md += "单位建筑面积年取水量 = 年取水量 × 1000 / 建筑面积（L/(m²·a)，4452 式(6)；4452 无面积口径取水定额，不对标）\n\n"
+            md += "| 年度 | 取水量(m³) | 建筑面积(m²) | 单位建筑面积年取水量(L/(m²·a)) | 评价结果 |\n"
+            md += "|------|-----------|--------------|--------------------------------|----------|\n"
+            for yd in yd_list:
+                r = calc_water_indicator(yd, institution_type=institution_type, building_area=area)
+                md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {area:,.0f} | {r['L_per_area']:,.2f} | — |\n"
         else:
-            md += "### 5.3.4 人均取水量\n\n"
-            md += "人均取水量 = 年总取水量 / 用能人数\n\n"
+            title = "人均用水量" if institution_type == 'education' else "人均机关取水量"
+            md += f"### 5.3.4 {title}\n\n"
+            if institution_type == 'education':
+                md += "人均用水量 = 年取水量 / 标准人数（m³/(人·a)，4452 式(3)/(4)；高校标准人数=统招生+留学生+0.5×教职工，中小学/幼儿园标准人数=非住宿生+2×住宿生+教职工；人数细分数据缺失时用用能人数近似）\n\n"
+            else:
+                md += "人均机关取水量 = 年机关取水量 / 机关人数（m³/(人·a)，4452 式(7)）\n\n"
             if people:
-                md += "| 年度 | 取水量(m³) | 用能人数 | 人均取水量(m³/人) | 评价结果 |\n"
+                md += f"| 年度 | 取水量(m³) | 用能人数 | {title}(m³/(人·a)) | 评价结果 |\n"
                 md += "|------|-----------|----------|-------------------|----------|\n"
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type)
