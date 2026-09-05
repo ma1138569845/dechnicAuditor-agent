@@ -320,13 +320,22 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             for y in years)
         md += f"**数据参考**：{vals_txt}\n\n"
 
-        # 三年总量柱状图 + 逐月分组柱状图（对齐正式报告：仅有月度数据的主要类型画图）
+        # 逐月数据参考行（有月度数据才输出，author 写逐月分析需精确值）
         monthly_ok = False
+        monthly_rows = []
         for y in years:
-            m = en.get(y, {}).get(code, {}).get('monthly', [])
-            if any(float(v or 0) > 0 for v in (m or [])):
+            m = en.get(y, {}).get(code, {}).get('monthly', []) or []
+            if any(float(v or 0) > 0 for v in m):
                 monthly_ok = True
-                break
+            monthly_rows.append((m + [0] * 12)[:12])
+        if monthly_ok:
+            fmt = ',.2f' if 'm³' in c['unit'] else ',.0f'
+            for y, m in zip(years, monthly_rows):
+                m_txt = " / ".join(f"{i + 1}月 {float(v or 0):{fmt}}" for i, v in enumerate(m))
+                md += f"**逐月参考**：{str(y)[:4]}年 {m_txt}\n"
+            md += "\n"
+
+        # 三年总量柱状图 + 逐月分组柱状图（对齐正式报告：仅有月度数据的主要类型画图）
         if monthly_ok:
             if os.path.exists(os.path.join(chart_dir, f'chart_{code}_total.png')):
                 y1, y3 = str(years[0])[:4], str(years[-1])[:4]

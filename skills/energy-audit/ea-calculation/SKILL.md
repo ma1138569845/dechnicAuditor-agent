@@ -205,7 +205,7 @@ resolve_benchmark(institution_type, metric, user_values, children_func, climate_
 ```python
 from tools.energy_audit.chapter5_agent import generate, generate_charts
 
-md = generate(config, str(out_dir / 'chapter5.md'))   # 输出 5.1~5.4 的表格 + 图表引用（数值零差错）
+md = generate(config, str(out_dir / 'chapter5.md'))   # 输出 5.1~5.4 的表格/数据参考行 + 图表引用（数值零差错）
 generate_charts(data, config, str(out_dir / 'charts'))
 ```
 

@@ -31,9 +31,10 @@
 ## 图表函数
 | 函数 | 用途 |
 |------|------|
-| draw_energy_flow_diagram() | Graphviz流向图 |
-| _generate_single_energy_chart() | 逐年柱状图 |
-| _generate_monthly_bar_chart() | 逐月分组柱状图 |
+| draw_energy_flow_diagram() | Graphviz流向图（图5.1） |
+| _generate_total_bar_chart() | 三年总量柱状图（图5.N） |
+| _generate_monthly_grouped_bar() | 三年逐月分组柱状图（图5.N+1，有月度数据才画） |
+| _generate_cost_pie_*() | 各年能源费用占比饼图（每年一张连号） |
 
 ## 子Agent脚本
 
@@ -65,12 +66,12 @@
     
     5.2.2 用水情况分析 → 同上，设备描述用"用水系统主要为..."
     5.2.3 用气情况分析 → 同上，设备描述用"用气系统主要为厨房炉灶设备用气"
-    5.2.N+1 能源资源费用分析（最后一节固定，仅文字无表）
+    5.2.N+1 能源资源费用分析（最后一节固定：表5.1 费用统计表 + 各年费用占比饼图）
   
   关键规则:
-  - 每个小节无表格（仅文字+柱状图），表号留给5.3/5.4
+  - 每个小节无表格（仅文字+柱状图），表号：表5.1=费用统计表，5.3 指标表从表5.2 起连号
   - 设备描述必须按能源类型区分（不能说水/气小节"主要用电设备为..."）
-  - 柱状图用 _generate_single_energy_chart() 生成
+  - 柱状图用 _generate_total_bar_chart() / _generate_monthly_grouped_bar() 生成
   - 趋势分析必须有"由图5.X分析"开头
   - 数值需展示精确值（含逗号千分位）
 
