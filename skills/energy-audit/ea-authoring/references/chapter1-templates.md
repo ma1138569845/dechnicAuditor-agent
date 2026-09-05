@@ -50,13 +50,16 @@
 
 ## 1.3 审计周期
 
-固定格式：
+固定格式（三段式，2026-09-05 用户确认）：
 ```
 审计时间
 {YYYY年M月—YYYY年M月}
 
-审计周期
-{YYYY年M月D日—YYYY年M月D日}
+审计期
+{YYYY年M月—YYYY年M月}
+
+基准期
+{YYYY年M月—YYYY年M月}
 ```
 
 > **取值**：审计时间 → `proj.base.audit_start`（project.create_time）— `proj.base.audit_end`（报告生成时间），YYYY年M月；审计期 → `proj.base.audit_period`（audit_year）；基准期 → `proj.base.base_period`（reference_year），格式 YYYY年M月-YYYY年M月。

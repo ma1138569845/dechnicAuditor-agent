@@ -17,7 +17,7 @@
 
 | 输入 | 内容（第一章所需） | 数据模型来源 | 第一章消费点 |
 | ---- | ---- | ---- | ---- |
-| `base` | 项目基本信息（审计主体与周期）：审计类型 `unit_type`（公共机构/公共建筑/工业企业）、审计机构 `auditor`、审计项目负责人 `project_manager`、审计起止时间 `audit_start`/`audit_end`、数据统计周期 `data_start`/`data_end`、省份 `province`、报告日期 `report_date`、客户ID `customer_id` | `AuditProject.base`（`ProjectBase`） | 1.1 审计目的（委托机构）；1.3 审计周期（`audit_time`/`audit_cycle`）；1.6 审计依据（省份 → 地方规章检索） |
+| `base` | 项目基本信息（审计主体与周期）：审计类型 `unit_type`（公共机构/公共建筑/工业企业）、审计机构 `auditor`、审计项目负责人 `project_manager`、审计起止时间 `audit_start`/`audit_end`、数据统计周期 `data_start`/`data_end`、省份 `province`、报告日期 `report_date`、客户ID `customer_id` | `AuditProject.base`（`ProjectBase`） | 1.1 审计目的（委托机构）；1.3 审计周期（`audit_time`/`audit_period`/`base_period`）；1.6 审计依据（省份 → 地方规章检索） |
 | `project_context` | 被审计单位概况：单位全称 `unit_name`、简称 `unit_short`、行政归属 `admin_affiliation`、地址 `address`、内设机构/科室 `department_count`、用能人数 `people_count`、床位数 `beds_count`、机构类别 `institution_category`（医疗/教育/党政机关/场馆…）、具体类型 `specific_type`、单位基本情况 `basic_situation`、总建筑面积 `building_area`、建筑数量 `building_count` | `AuditProject.base` + `AuditProject.buildings` 汇总 | 1.1 审计目的（单位简称）；1.2 审计范围（地址、N 栋建筑）；tags → 1.6 审计依据的机构类型 |
 | `building_data[]` | 建筑列表（每栋）：`name` 建筑名称、`address` 地址、`year` 竣工年份、`function` 建筑功能、`floors` 层数（地上X层/地下Y层）、`height` 高度、`structure` 结构形式、`area` 建筑面积、`use_area` 使用面积、`function_zoning` 功能分区 | `AuditProject.buildings`（`BuildingInfo`） | 1.2 审计范围（"位于…的 N 栋建筑"）；派生汇总：`building_count = len(building_data)`、`total_area = Σ area` |
 | `rag_reference[]`（未接入） | 同类报告写作参考；检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')` | `rag.rag_search.search_for_chapter()` 仍可用，**第1章写作不读取此字段** | 历史「参考模式」遗留；不得当作第一章输入 |
@@ -40,7 +40,8 @@
 | `address` | `base.address` | 直接引用 |
 | `buildings` | `building_data[]` | `f"{len(buildings)}栋建筑"` |
 | `audit_time` | `base.audit_start` / `base.audit_end` | `f"{audit_start}—{audit_end}"` |
-| `audit_cycle` | `base.data_start` / `base.data_end` | ISO 转中文后拼接 |
+| `audit_period` | `base.audit_period` | 直接引用（审计期） |
+| `base_period` | `base.base_period` | 直接引用（基准期） |
 | `energy_types` | `energy_yearly` 非零能源项 | `['electricity_kwh','water_m3',…]` 自动识别 |
 | `province` | `base.province` | 默认 `山东` |
 | `audit_org` | `base.auditor` | 封面 `audit_organization` 兜底 |
@@ -54,7 +55,7 @@
 
 1. `audited_unit_short` — 1.1 被审计单位简称
 2. `address` — 1.2 地址
-3. `audit_cycle` — 1.3 审计周期
+3. `audit_period` / `base_period` — 1.3 审计周期（审计期/基准期）
 4. `energy_types` — 1.2 能源类型（电/水/气/…）
 
 建议补齐（否则正文出现【审计单位】/【地址】等占位符）：
