@@ -89,12 +89,14 @@ office_open/office_render（editor_sdk/OnlyOffice）打开 docx 后，settings.x
 [[图:monthly_water_m3|图5.3 2022年-2024年逐月用水量（单位：m³）]]
 [[图:monthly_natural_gas_m3|图5.4 2022年-2024年逐月天然气用量（单位：m³）]]
 [[图:trend|图5.5 2022年-2024年逐年综合能耗趋势（单位：tce）]]
-[[图:cost_pie|图5.6 2024年能源费用占比（单位：%）]]
+[[图:cost_pie|图5.6 2022年能源费用占比]]
+[[图:cost_pie|图5.7 2023年能源费用占比]]
+[[图:cost_pie|图5.8 2024年能源费用占比]]
 ```
 
 支持类型：`flow`（graphviz 流向图）、`trend`（逐年折标柱状图）、`pie`（能源结构饼图）、
-`cost_pie`（最新年费用占比，数据来自各年 `electricity_cost_wan` / `water_cost_wan` /
-`natural_gas_cost_wan` / `heating_cost_wan`，万元，>0 才入图）、
+`cost_pie`（**每年一张费用占比饼图，三年三张连号**；数据来自各年费用项
+`*_cost_wan`（电/水/气/热/油/柴油，万元），**仅 >0 入图**，标题"{year}年能源费用占比"）、
 `monthly_electricity_kwh` / `monthly_water_m3` / `monthly_natural_gas_m3`（逐月柱状图）。
 
 ### 渲染实现

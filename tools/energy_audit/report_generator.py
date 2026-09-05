@@ -685,7 +685,36 @@ class WordReportBuilder:
                     return self._generate_yearly_trend_chart(yd_objects, energy_types, output_dir)
                 return self._generate_energy_pie_chart(yd_objects, energy_types, output_dir)
             if chart_type == "cost_pie":
-                return self._generate_cost_pie_chart(years_data, output_dir)
+                # 每年一张；从图注解析年份（如"图5.6 2022年能源费用占比"）
+                import re
+                m = re.search(r"(\d{4})年", inner)
+                if not m:
+                    return None
+                year = int(m.group(1))
+                target = None
+                for d in years_data:
+                    if str(d.get("year", ""))[:4] == str(year):
+                        target = d
+                        break
+                if target is None:
+                    return None
+                cost_fields = [
+                    ("electricity_cost_wan", "电费"),
+                    ("water_cost_wan", "水费"),
+                    ("natural_gas_cost_wan", "天然气费"),
+                    ("heating_cost_wan", "热力费"),
+                    ("petrol_cost_wan", "油费"),
+                    ("diesel_cost_wan", "柴油费"),
+                ]
+                labels, values = [], []
+                for key, label in cost_fields:
+                    v = float(target.get(key, 0) or 0)
+                    if v > 0:
+                        labels.append(label)
+                        values.append(v)
+                if not values:
+                    return None
+                return _generate_cost_pie_chart(year, labels, values, output_dir)
             if chart_type.startswith("monthly_"):
                 et_key = chart_type.replace("monthly_", "")
                 monthly_attr = {"electricity_kwh": "monthly_electricity_kwh",
@@ -741,43 +770,6 @@ class WordReportBuilder:
     # 第1章模板
     # ============================================================
 
-
-    @staticmethod
-    def _generate_cost_pie_chart(self, years_data, output_dir: str = './charts'):
-        """最新年能源费用占比饼图（电费/水费/天然气费/热力费，单位：万元）"""
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-            setup_chart_font(plt)
-        except ImportError:
-            return None
-
-        os.makedirs(output_dir, exist_ok=True)
-        latest = years_data[-1]
-        cost_fields = [
-            ("electricity_cost_wan", "电费"),
-            ("water_cost_wan", "水费"),
-            ("natural_gas_cost_wan", "天然气费"),
-            ("heating_cost_wan", "热力费"),
-        ]
-        labels = []
-        values = []
-        for key, label in cost_fields:
-            v = float(latest.get(key, 0) or 0)
-            if v > 0:
-                labels.append(label)
-                values.append(v)
-        if not values:
-            return None
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90,
-               colors=['#4CAF50', '#2196F3', '#FF9800', '#F44336'])
-        ax.set_title(chart_text(f'{latest.get("year", "")}年能源费用占比'))
-        path = os.path.join(output_dir, 'chart_cost_structure.png')
-        fig.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
-        plt.close(fig)
-        return path
 
     def _generate_energy_pie_chart(self, yd_objects, energy_types, output_dir: str = './charts'):
         """生成最新年能源结构的饼图"""

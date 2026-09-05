@@ -290,6 +290,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     # ===== 5.2 数据（按类型动态H3） =====
     md += "## 5.2 能源资源消耗/消费数据\n\n"
     months_cn = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月']
+    fig_no = 2  # 图5.1 已用于 5.1 概况；5.2 内图号连续递增
 
     for code in all_codes:
         c = _coeff_info(code)
@@ -317,7 +318,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += "| 消耗量 | " + " | ".join(f"{v:,.2f}" for v in monthly) + " |\n\n"
 
             # 图表引用
-            md += f"![图5.{2+list(all_codes).index(code)} {latest_year}年逐月{c['name']}消耗趋势](charts/chart_{code}_monthly.png)\n\n"
+            md += f"![图5.{fig_no} {latest_year}年逐月{c['name']}消耗趋势](charts/chart_{code}_monthly.png)\n\n"
+            fig_no += 1
 
     # 费用分析（最后一节）
     cost_section_num = f"5.2.{len(all_codes)+1}"
@@ -338,6 +340,10 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 row += f" {val:,.2f} |"
             md += row + "\n"
         md += "\n"
+        # 能源费用占比饼图（每年一张，连号 3 张，与正式报告图5.6~5.8 一致）
+        for i, y in enumerate(years):
+            y4 = str(y)[:4]
+            md += f"![图5.{fig_no + i} {y4}年能源费用占比](charts/cost_pie_{y4}.png)\n\n"
     else:
         md += "（费用数据待用户提供）\n\n"
 
@@ -514,6 +520,28 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
                 ax.grid(True, alpha=0.3)
                 fig.savefig(os.path.join(output_dir, f'chart_{code}_monthly.png'), dpi=150, bbox_inches='tight')
                 plt.close(fig)
+
+    # ===== 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）=====
+    co = data.get('cost_data', {})
+    if co:
+        cost_colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#795548']
+        for y in years:
+            labels, values = [], []
+            for code, entry in (co.get(y) or {}).items():
+                v = float(entry.get('total', 0) or 0)
+                if v > 0:
+                    label = entry.get('name') or _coeff_info(code)['name'] + '费'
+                    labels.append(label)
+                    values.append(v)
+            if not values:
+                continue
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90,
+                   colors=cost_colors[:len(values)])
+            ax.set_title(chart_text(f'{y[:4]}年能源费用占比'))
+            fig.savefig(os.path.join(output_dir, f'cost_pie_{y[:4]}.png'), dpi=150,
+                        bbox_inches='tight', facecolor='white')
+            plt.close(fig)
 
 
 # ============================================================
