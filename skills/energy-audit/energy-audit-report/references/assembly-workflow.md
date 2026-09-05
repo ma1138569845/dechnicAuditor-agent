@@ -41,16 +41,29 @@ python "$HERMES_HOME/skills/productivity/energy-audit-imitate/scripts/assemble_r
 ## 3. 附录追加（assemble 只生成 8 章；2026-09-03 起统一用 officecli，禁用 python-docx）
 
 **工具**：`office_cli_command`（officecli）——与 ea-authoring 全链一致，python-docx 禁令无例外。
-追加方式：对生成后的 docx 依次执行（只改 body，水印/TOC/页码域自动保留）：
+追加方式：对生成后的 docx 依次执行（只改 body，水印/TOC/页码域自动保留）。
+
+**附录标题格式（对齐正式报告，2026-09-05 用户确认）**：
+
+1. **附录总目录页**（第8章之后、各附录之前）：`附录：` 用 Heading 1 样式但 **宋体 12pt 不加粗**；其下逐条列 `附录N：<名称>`（Normal，宋体 12pt 不加粗）。
+2. **各附录实际标题**：用 **Heading 2（宋体 14pt 加粗）**，文本 `附录N：<名称>`（**中文冒号**，不是空格）。
 
 ```bash
-# 标题
-officecli add report.docx /body --type heading --prop level=1 --prop text="附录1 建筑基本信息及设备统计表"
+# 附录总目录页（第8章之后；Heading1 样式但显式降为宋体12pt不加粗）
+officecli add report.docx /body --type paragraph --prop style=Heading1 --prop text="附录：" --prop size=12 --prop bold=false --prop font=宋体
+officecli add report.docx /body --type paragraph --prop text="附录1：建筑基本信息及设备统计表"
+officecli add report.docx /body --type paragraph --prop text="附录2：建筑能耗数据信息表"
+# ... 逐条列出全部附录（按动态编号规则）
+
+# 各附录标题（Heading2 样式 + 显式宋体14pt加粗，中文冒号）
+officecli add report.docx /body --type paragraph --prop style=Heading2 --prop text="附录1：建筑基本信息及设备统计表" --prop size=14 --prop font=宋体
 # 表格（N行M列）
 officecli add report.docx /body --type table --prop rows=N --prop cols=M
 officecli set report.docx '/body/table[K]/row[1]/cell[1]' --prop text="..."
 officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
 ```
+
+⚠ officecli **不支持 `--type heading`**（会报 Unknown element type）；标题一律 `--type paragraph --prop style=HeadingN` + 显式 `--prop size/font/bold`（模板默认样式如 Heading2=13pt 与规范 14pt 不符，必须显式覆盖）。
 
 **附录清单（7 个，2026-09-05 用户确认；无发票时 6 个）**：
 
