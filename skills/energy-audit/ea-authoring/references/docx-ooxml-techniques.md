@@ -276,7 +276,7 @@ pPr.append(outlineLvl)
    - H1：宋体 15pt 加粗 居中
    - H2：宋体 14pt 加粗
    - H3：宋体 12pt 加粗
-3. **表格修复**：对每张表 `doc_set_table_properties`（边框全网格、对齐 center、行高 1.01cm exactly、垂直居中 cell_v_align=center）+ `doc_set_table_layout`（mode=auto 列宽自适应）；表头加粗
+3. **表格修复**：对每张表 `doc_set_table_properties`（边框全网格、对齐 center、垂直居中 cell_v_align=center）+ `doc_set_table_layout`（行高：**mode=manual + row_heights_dxa=[573,573,...]，1.01cm=573 twips/行**，col_widths_dxa 与 row_heights 同传；mode=auto 对已 100% 宽表格报空命令错，勿用）+ 表格字体 12pt 宋体走 `doc_update_text_property`（ranges 覆盖表格区间）；表头加粗。**注意 `doc_modify_paragraph` 定位用 ranges 数组，勿猜 paragraph_id**（PoC 实测 p_0 不存在）
 4. **正文修复**：正文自然段 `doc_modify_paragraph`（`alignment`=两端对齐、`line_spacing_rule`+`line_spacing`=1.5 倍）
 5. **首行缩进**：仍走 officecli 批处理（`docx-first-line-indent.md`，firstLineChars=200），不在此链内
 
