@@ -357,7 +357,7 @@ echo "    → ${v2_var}"''')
 - 第1~4章 LLM 分 1~2 批生成章节 markdown，落盘 {CH_MD}/ch1.md ~ ch4.md
 - 用 office_create 创建 docx: {RPT}
 - 每章 1 次 office_edit(operation="doc_insert_markdown") 整章导入（idx 用 doc_get_last_operable_pos）
-- 全部导入后跑格式修复链（doc_get_outline 定位 → doc_modify_paragraph 批量标题样式 → doc_set_font 批量字体 → doc_set_table_properties/doc_set_table_layout 批量表格格式），操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」
+- 全部导入后跑格式修复链（doc_get_outline 定位 → doc_modify_paragraph 批量标题样式 → doc_update_text_property 批量字体 → doc_set_table_properties/doc_set_table_layout 批量表格格式），操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」
 - 图片单独 doc_insert_image 嵌入（第2章建筑图）
 - 完成后 office_save 落盘
 

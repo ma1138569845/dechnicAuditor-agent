@@ -80,7 +80,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 卡 | 章节 | 参考文件 | 写法 |
 |---|------|---------|------|
 | 卡1 | 封面/审计信息表 | `references/building-param-table-spec.md`、`references/docx-ooxml-techniques.md` | 模板占位注入（不落 chapter_md） |
-| 卡1 | 第1章 | `references/chapter1-templates.md` | 模板替换式（占位符→实际值，1.7 留占位符），落 `chapter_md/ch1.md` |
+| 卡1 | 第1章 | `references/chapter1-templates.md` | 模板替换式（占位符→实际值，1.1~1.6），落 `chapter_md/ch1.md` |
 | 卡1 | 第2章 | `references/chapter2-guide.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
 | 卡1 | 第3章 | `references/chapter3-guide.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
 | 卡1 | 第4章 | `references/chapter4-guide.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
@@ -111,7 +111,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
    - 图片仍单独 `doc_insert_image` 嵌入（第2章建筑图/第6章设备照片），图注用 md 段落写入
    - 封面/审计信息表维持模板占位注入
 3. **格式修复链（每章导入后或每卡导入完成后统一跑）**：md 导入的默认样式 ≠ 格式规范，按序修复——操作序列与参数见 `references/docx-ooxml-techniques.md`「md 导入与格式修复链」小节：
-   - `doc_get_outline` 定位标题/表格 → `doc_modify_paragraph` 批量设 Heading 样式 → `doc_set_font` 批量设宋体/字号/加粗 → `doc_set_table_properties`/`doc_set_table_layout` 批量设表格格式
+   - `doc_get_outline` 定位标题/表格 → `doc_modify_paragraph` 批量设 Heading 样式 → `doc_update_text_property` 批量设宋体/字号/加粗 → `doc_set_table_properties`/`doc_set_table_layout` 批量设表格格式
    - 此修复链是**固定操作序列**（author 调用 office_editor 工具），不是脚本，不触红线4
 4. `office_save(file_id=..., save_path="<绝对路径>")` 落盘（高层参数是 `save_path`，handler 内部映射为 editor_sdk 的 `file_path`）
 5. **正文首行缩进（强制）**：对刚保存的 .docx，用 **`office_cli_command`（officecli）** 给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。做法见 `references/docx-first-line-indent.md`。禁止 python-docx。标题/表题/图注/单元格/列表不缩进。无缩进不得交付。
