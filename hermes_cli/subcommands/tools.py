@@ -43,9 +43,7 @@ def build_tools_parser(subparsers, *, cmd_tools: Callable) -> None:
             "KittenTTS/Piper, ddgs, Spotify, Langfuse, xAI, officecli). Stable,\n"
             "non-interactive target the dashboard spawns to drive backend\n"
             "setup. Keys: agent_browser, camofox, cua_driver, kittentts,\n"
-            "piper, ddgs, spotify, langfuse, xai_grok, officecli."
-        ),
-    )
+            "piper, ddgs, spotify, langfuse, xai_grok, officecli.")
     tools_postsetup_p.add_argument(
         "post_setup_key", metavar="KEY",
         help="Post-setup hook key (e.g. agent_browser, camofox, kittentts)")
