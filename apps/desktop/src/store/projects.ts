@@ -15,6 +15,7 @@ import { isUnderPath } from '@/lib/path-compare'
 import { persistentAtom } from '@/lib/persisted'
 import { $gateway, activeGateway, ensureActiveGatewayOpen } from '@/store/gateway'
 import { setSidebarAgentsGrouped } from '@/store/layout'
+import { revealFile } from '@/store/file-actions'
 import { notify } from '@/store/notifications'
 import {
   $activeGatewayProfile,
@@ -1283,7 +1284,7 @@ export async function removeWorktreePath(
 // Reveal a project/worktree path in the OS file manager (git-GUI standard).
 export async function revealPath(path: null | string): Promise<void> {
   if (path) {
-    await window.hermesDesktop?.revealPath?.(path)
+    await revealFile(path)
   }
 }
 

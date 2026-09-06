@@ -12,6 +12,7 @@ import {
   readDesktopFileDataUrl,
   readDesktopFileDataUrlLocalFirst,
   readDesktopFileText,
+  revealDesktopPath,
   selectDesktopPaths,
   setDesktopFsRemotePicker
 } from './desktop-fs'
@@ -20,6 +21,7 @@ const readDir = vi.fn(async () => ({ entries: [{ name: 'local', path: '/local', 
 const readFileText = vi.fn(async () => ({ path: '/local/file.txt', text: 'local', byteSize: 5 }))
 const readFileDataUrl = vi.fn(async () => 'data:text/plain;base64,bG9jYWw=')
 const gitRoot = vi.fn(async () => '/local')
+const revealPath = vi.fn(async () => true)
 const selectPaths = vi.fn(async () => ['/local'])
 
 const api = vi.fn(async ({ path }: { path: string }) => {
@@ -58,6 +60,7 @@ function stubBridge() {
       readDir,
       readFileDataUrl,
       readFileText,
+      revealPath,
       selectPaths
     }
   })
@@ -76,6 +79,17 @@ describe('desktop filesystem facade', () => {
     $connection.set(null)
     setApiRequestConnection(null)
     setDesktopFsRemotePicker(null)
+  })
+
+  it('treats a missing reveal bridge or a false IPC result as failure', async () => {
+    await expect(revealDesktopPath('C:/out/报告.docx')).resolves.toBe(true)
+    expect(revealPath).toHaveBeenCalledWith('C:/out/报告.docx')
+
+    revealPath.mockResolvedValueOnce(false)
+    await expect(revealDesktopPath('C:/out/missing.docx')).resolves.toBe(false)
+
+    vi.stubGlobal('window', { hermesDesktop: { revealPath: undefined } })
+    await expect(revealDesktopPath('C:/out/报告.docx')).resolves.toBe(false)
   })
 
   it('uses local Electron filesystem methods in local mode', async () => {

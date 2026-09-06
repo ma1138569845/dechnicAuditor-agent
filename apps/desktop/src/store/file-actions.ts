@@ -57,10 +57,16 @@ export function cancelInlineRename(): void {
 // ── Direct (no-dialog) actions ───────────────────────────────────────────────
 
 export async function revealFile(path: string): Promise<void> {
+  const failed = translateNow('assistant.thread.revealFileFailed')
+
   try {
-    await revealDesktopPath(path)
+    const ok = await revealDesktopPath(path)
+
+    if (!ok) {
+      notifyError(new Error(failed), failed)
+    }
   } catch (error) {
-    notifyError(error, translateNow('errors.genericFailure'))
+    notifyError(error, failed)
   }
 }
 

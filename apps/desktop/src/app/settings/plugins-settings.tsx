@@ -26,6 +26,7 @@ import {
   loadAgentPlugins,
   toggleAgentPlugin
 } from '@/store/agent-plugins'
+import { revealFile } from '@/store/file-actions'
 import { notifyError } from '@/store/notifications'
 import { $activeGatewayProfile } from '@/store/profile'
 import { $connection, $gatewayState } from '@/store/session'
@@ -45,7 +46,7 @@ const agentPluginRowKey = (row: AgentPluginRow) =>
 export const pluginElementId = (target: string) => `plugin-${target}`
 
 function reveal(file: string) {
-  void window.hermesDesktop?.revealPath?.(file)?.catch(() => undefined)
+  void revealFile(file)
 }
 
 async function revealPluginsDir() {

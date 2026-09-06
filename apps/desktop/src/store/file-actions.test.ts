@@ -6,10 +6,18 @@ vi.mock('@/lib/media', () => ({
   downloadGatewayMediaFile: vi.fn()
 }))
 
+vi.mock('@/lib/desktop-fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/desktop-fs')>()
+
+  return { ...actual, revealDesktopPath: vi.fn() }
+})
+
 const media = await import('@/lib/media')
 const downloadGatewayMediaFile = vi.mocked(media.downloadGatewayMediaFile)
+const desktopFs = await import('@/lib/desktop-fs')
+const revealDesktopPath = vi.mocked(desktopFs.revealDesktopPath)
 
-const { downloadRemoteFile, shouldOfferRemoteFileDownload } = await import('./file-actions')
+const { downloadRemoteFile, revealFile, shouldOfferRemoteFileDownload } = await import('./file-actions')
 
 describe('shouldOfferRemoteFileDownload', () => {
   it('is only for files on a remote backend', () => {
@@ -17,6 +25,36 @@ describe('shouldOfferRemoteFileDownload', () => {
     expect(shouldOfferRemoteFileDownload(true, true)).toBe(false)
     expect(shouldOfferRemoteFileDownload(false, false)).toBe(false)
     expect(shouldOfferRemoteFileDownload(true, false)).toBe(false)
+  })
+})
+
+describe('revealFile', () => {
+  beforeEach(() => {
+    clearNotifications()
+    revealDesktopPath.mockReset()
+  })
+
+  afterEach(() => {
+    clearNotifications()
+  })
+
+  it('stays quiet when the OS file manager reveals the path', async () => {
+    revealDesktopPath.mockResolvedValue(true)
+
+    await revealFile('C:/out/报告.docx')
+
+    expect(revealDesktopPath).toHaveBeenCalledWith('C:/out/报告.docx')
+    expect($notifications.get()).toEqual([])
+  })
+
+  it('toasts reveal copy when the main process cannot show the file', async () => {
+    revealDesktopPath.mockResolvedValue(false)
+
+    await revealFile('~/projects/energy-audit/output/报告.docx')
+
+    expect($notifications.get()[0]?.kind).toBe('error')
+    expect($notifications.get()[0]?.title).toBe('Could not reveal the file')
+    expect($notifications.get()[0]?.message).toBe('Could not reveal the file')
   })
 })
 

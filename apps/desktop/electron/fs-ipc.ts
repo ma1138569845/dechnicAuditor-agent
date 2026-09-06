@@ -9,6 +9,7 @@ import { ipcMain, shell } from 'electron'
 
 import { installDesktopPluginFromGit, probePluginRepo } from './desktop-plugin-install'
 import { readDirForIpc } from './fs-read-dir'
+import { revealPathForIpc } from './fs-reveal'
 import { gitRootForIpc } from './git-root'
 
 export interface FsIpcDeps {
@@ -33,21 +34,20 @@ export function registerFsIpc({
   ipcMain.handle('hermes:fs:gitRoot', async (_event, startPath) => gitRootForIpc(startPath))
 
   // Reveal a path in the OS file manager (Finder / Explorer / Files).
-  ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) => {
-    const target = String(targetPath || '').trim()
-
-    if (!target) {
-      return false
-    }
-
-    try {
-      shell.showItemInFolder(target)
-
-      return true
-    } catch {
-      return false
-    }
-  })
+  // Missing paths must return false — `showItemInFolder` silently no-ops on
+  // them, and the renderer treats `true` as success (no error surfaced).
+  ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) =>
+    revealPathForIpc(targetPath, {
+      dirname: value => path.dirname(value),
+      existsSync: value => fs.existsSync(value),
+      expandUserPath,
+      normalize: value => path.normalize(value),
+      openPath: value => shell.openPath(value),
+      showItemInFolder: value => {
+        shell.showItemInFolder(value)
+      }
+    })
+  )
 
   // Open a DIRECTORY in the OS file manager, creating it first if needed. Unlike
   // `reveal` (which selects an existing item and silently no-ops on a missing

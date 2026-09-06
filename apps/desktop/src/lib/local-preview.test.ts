@@ -177,6 +177,21 @@ describe('PDF previews', () => {
     })
   })
 
+  it('does not prefix cwd onto home-relative or Windows absolute paths', () => {
+    const cwd = 'C:/work/energy-audit'
+
+    expect(localPreviewTarget('~/projects/energy-audit/output/报告.docx', cwd)?.path).toBe(
+      '~/projects/energy-audit/output/报告.docx'
+    )
+    expect(localPreviewTarget('~\\projects\\energy-audit\\output\\报告.docx', cwd)?.path).toBe(
+      '~\\projects\\energy-audit\\output\\报告.docx'
+    )
+    expect(localPreviewTarget('C:/Users/me/projects/energy-audit/output/报告.docx', cwd)?.path).toBe(
+      'C:/Users/me/projects/energy-audit/output/报告.docx'
+    )
+    expect(localPreviewTarget('output/报告.docx', cwd)?.path).toBe('C:/work/energy-audit/output/报告.docx')
+  })
+
   it('classifies office files whose path leaked markdown bold as office previews', () => {
     expect(localPreviewTarget('C:/out/烟台经济技术开发区人民法院能源审计报告.docx**')).toMatchObject({
       label: '烟台经济技术开发区人民法院能源审计报告.docx',

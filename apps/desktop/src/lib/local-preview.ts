@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 
 import { isDesktopFsRemoteMode, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
+import { isFileMediaPath } from '@/lib/media'
 import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import type { PreviewTarget } from '@/store/preview'
 
@@ -206,7 +207,7 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
     } catch {
       path = raw.replace(/^file:\/\//i, '')
     }
-  } else if (!raw.startsWith('/') && cwd) {
+  } else if (!isFileMediaPath(raw) && cwd) {
     path = joinPath(cwd, raw)
   }
 

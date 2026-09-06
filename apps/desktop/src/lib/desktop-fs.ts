@@ -159,8 +159,12 @@ export async function desktopDefaultCwd(): Promise<{ branch: string; cwd: string
 }
 
 // Reveal a path in the OS file manager (Finder / Explorer / Files). Local only.
-export async function revealDesktopPath(path: string): Promise<void> {
-  await bridge().revealPath?.(path)
+// Resolves to false when the bridge is absent or the main process reports the
+// path could not be revealed (e.g. the file no longer exists).
+export async function revealDesktopPath(path: string): Promise<boolean> {
+  const ok = await bridge().revealPath?.(path)
+
+  return ok === true
 }
 
 // Rename a file/folder in place; returns the new absolute path. Local only.

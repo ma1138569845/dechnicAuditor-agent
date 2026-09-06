@@ -93,7 +93,7 @@ export function isInlineMediaSrc(path: string): boolean {
 }
 
 export function isFileMediaPath(path: string): boolean {
-  return /^(?:file:|\/|~\/|[a-z]:[\\/]|\\\\)/i.test(path)
+  return /^(?:file:|\/|~[/\\]|[a-z]:[\\/]|\\\\)/i.test(path)
 }
 
 export async function resolveMediaDisplaySrc(path: string): Promise<string> {
