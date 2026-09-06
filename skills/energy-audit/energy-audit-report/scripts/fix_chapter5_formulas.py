@@ -178,10 +178,8 @@ def process_docx(path, dry_run=False):
             entries = {n: zin.read(n) for n in names}
 
         root = etree.fromstring(entries["word/document.xml"])
-        # 根元素注册 m 前缀（若未声明）
-        if M_NS not in (root.nsmap or {}).values():
-            prefix = (root.nsmap or {}).get(M_NS, "m")
-            root.attrib[f"xmlns:{prefix}"] = M_NS
+        # OMML 元素由 lxml 自动生成前缀并自带 xmlns 声明（合法 OOXML，Word 兼容），
+        # 勿手动向根元素注入 xmlns:m 伪声明（会产生 ns0 伪装属性导致 Word 拒开）
 
         body = root.find(f"{{{W_NS}}}body")
         if body is None:
