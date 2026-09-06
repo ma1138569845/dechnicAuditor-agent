@@ -3772,6 +3772,7 @@ export const en: Translations = {
       viewAllArtifacts: count => `View all artifacts (${count})`,
       openFilePreview: name => `Open ${name}`,
       openFileFailed: 'Could not open the file',
+      revealFileFailed: 'Could not reveal the file',
       readAloudFailed: 'Read aloud failed',
       preparingAudio: 'Preparing audio...',
       stopReading: 'Stop reading',

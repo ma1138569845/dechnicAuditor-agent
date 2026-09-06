@@ -4,12 +4,35 @@ import { MemoryRouter } from 'react-router'
 
 import { ChangedFilesCard } from '@/components/assistant-ui/thread/changed-files-card'
 import { I18nProvider } from '@/i18n'
+import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
+import { revealFile } from '@/store/file-actions'
+import { notifyError } from '@/store/notifications'
 import { $previewTabs, closeRightRail } from '@/store/preview'
 
 vi.mock('@/lib/local-preview', () => ({
   normalizeOrLocalPreviewTarget: vi.fn()
 }))
+
+vi.mock('@/lib/desktop-fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/lib/desktop-fs')>()
+
+  return { ...actual, isDesktopFsRemoteMode: vi.fn(() => false) }
+})
+
+vi.mock('@/store/file-actions', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/store/file-actions')>()
+
+  return { ...actual, revealFile: vi.fn(async () => undefined) }
+})
+
+vi.mock('@/store/notifications', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/store/notifications')>()
+
+  return { ...actual, notifyError: vi.fn() }
+})
+
+const REVEAL_LABEL = /Reveal in File Explorer|Reveal in Finder|Open containing folder/
 
 const PATCH_DIFF = '--- a/src/demo.ts\n+++ b/src/demo.ts\n@@ -1 +1 @@\n-old\n+new\n'
 
@@ -36,6 +59,9 @@ describe('ChangedFilesCard', () => {
   beforeEach(() => {
     closeRightRail()
     window.localStorage.clear()
+    vi.mocked(isDesktopFsRemoteMode).mockReturnValue(false)
+    vi.mocked(revealFile).mockClear()
+    vi.mocked(notifyError).mockClear()
     vi.mocked(normalizeOrLocalPreviewTarget).mockImplementation(async (path: string) => ({
       kind: 'file' as const,
       label: path.split(/[\\/]/).pop() || path,
@@ -76,6 +102,44 @@ describe('ChangedFilesCard', () => {
       path: 'notes.md',
       previewKind: 'text'
     })
+  })
+
+  it('reveals the file in the OS file manager without opening a preview', async () => {
+    renderCard([writePart('C:/out/报告.docx', 'hello world')])
+
+    const reveal = screen.getByRole('button', { name: REVEAL_LABEL })
+
+    expect(reveal.getAttribute('title')).toMatch(REVEAL_LABEL)
+
+    fireEvent.click(reveal)
+
+    await waitFor(() => {
+      expect(revealFile).toHaveBeenCalledWith('C:/out/报告.docx')
+    })
+
+    expect($previewTabs.get()).toHaveLength(0)
+  })
+
+  it('reports a reveal failure without preview copy', async () => {
+    vi.mocked(normalizeOrLocalPreviewTarget).mockResolvedValueOnce(null)
+    renderCard([writePart('C:/out/报告.docx', 'hello world')])
+
+    fireEvent.click(screen.getByRole('button', { name: REVEAL_LABEL }))
+
+    await waitFor(() => {
+      expect(notifyError).toHaveBeenCalledWith(expect.any(Error), 'Could not reveal the file')
+    })
+
+    expect(revealFile).not.toHaveBeenCalled()
+    expect($previewTabs.get()).toHaveLength(0)
+  })
+
+  it('hides the reveal button against a remote gateway', () => {
+    vi.mocked(isDesktopFsRemoteMode).mockReturnValue(true)
+    renderCard([writePart('notes.md', 'hello world')])
+
+    expect(screen.queryByRole('button', { name: REVEAL_LABEL })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open notes.md' })).toBeTruthy()
   })
 
   it('marks html files as live-previewable and opens them as a rendered preview', async () => {

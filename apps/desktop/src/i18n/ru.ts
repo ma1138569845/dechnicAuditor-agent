@@ -3383,6 +3383,7 @@ export const ru = defineLocale({
       dismissError: 'Скрыть ошибку',
       filesChanged: count => `${count} ${RU_PLURAL(count, 'файл изменён', 'файла изменено', 'файлов изменено')}`,
       reviewChanges: 'Проверить',
+      revealFileFailed: 'Не удалось показать файл',
       readAloudFailed: 'Не удалось зачитать вслух',
       preparingAudio: 'Подготовка аудио...',
       stopReading: 'Остановить чтение',

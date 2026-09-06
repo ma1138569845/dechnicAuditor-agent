@@ -3912,6 +3912,7 @@ export const zh: Translations = {
       viewAllArtifacts: count => `查看所有产物 (${count})`,
       openFilePreview: name => `打开 ${name}`,
       openFileFailed: '无法打开文件',
+      revealFileFailed: '无法在文件夹中显示',
       readAloudFailed: '朗读失败',
       preparingAudio: '正在准备音频...',
       stopReading: '停止朗读',

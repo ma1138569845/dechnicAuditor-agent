@@ -3204,6 +3204,7 @@ export const zhHant = defineLocale({
       viewAllArtifacts: count => `查看所有產物 (${count})`,
       openFilePreview: name => `開啟 ${name}`,
       openFileFailed: '無法開啟檔案',
+      revealFileFailed: '無法在資料夾中顯示',
       readAloudFailed: '朗讀失敗',
       preparingAudio: '正在準備音訊...',
       stopReading: '停止朗讀',

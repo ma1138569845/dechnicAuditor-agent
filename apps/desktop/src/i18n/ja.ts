@@ -3313,6 +3313,7 @@ export const ja = defineLocale({
       viewAllArtifacts: count => `すべての成果物を表示 (${count})`,
       openFilePreview: name => `${name} を開く`,
       openFileFailed: 'ファイルを開けませんでした',
+      revealFileFailed: 'フォルダで表示できませんでした',
       readAloudFailed: '読み上げに失敗しました',
       preparingAudio: '音声を準備中...',
       stopReading: '読み上げを停止',

@@ -3307,6 +3307,7 @@ export interface Translations {
       viewAllArtifacts: (count: number) => string
       openFilePreview: (name: string) => string
       openFileFailed: string
+      revealFileFailed: string
       readAloudFailed: string
       preparingAudio: string
       stopReading: string

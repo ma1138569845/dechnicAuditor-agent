@@ -2866,6 +2866,7 @@ export const ar = defineLocale({
       viewAllArtifacts: count => `عرض كل المخرجات (${count})`,
       openFilePreview: name => `فتح ${name}`,
       openFileFailed: 'تعذر فتح الملف',
+      revealFileFailed: 'تعذر إظهار الملف',
       readAloudFailed: 'فشلت القراءة بصوت عال',
       preparingAudio: 'جار تجهيز الصوت',
       stopReading: 'إيقاف القراءة',
