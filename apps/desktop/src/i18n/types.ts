@@ -480,6 +480,8 @@ export interface Translations {
       }
       backdropTitle: string
       backdropDesc: string
+      userBubbleTitle: string
+      userBubbleDesc: string
       introSplashTitle: string
       introSplashDesc: string
       reactionsTitle: string
