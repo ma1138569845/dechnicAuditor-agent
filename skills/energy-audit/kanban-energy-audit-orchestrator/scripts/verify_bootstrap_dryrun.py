@@ -66,9 +66,15 @@ def assert_setup(path: str) -> None:
     assert s.count("禁逐段") == 3, "禁逐段铁律（简写）应 ×3"
     assert "格式修复链" in s, "格式修复链指令缺失"
     assert "pdf_path" in s, "双文件交付 metadata 缺失"
+    # assignee 断言（2026-09-06 定时炸弹修复后）：三卡固定 reporter，Director 用 director
+    m_cards = re.findall(r'"报告卡(\d)[^"]*" \\\s+--assignee (\w+)', s)
+    assert len(m_cards) == 3 and all(a == "author" for _, a in m_cards), f"三卡 assignee 错误: {m_cards}"
+    m_dir = re.findall(r'"\[D\] 汇总[^"]*" \\\s+--assignee (\w+)', s)
+    assert m_dir and all(a == "editor" for a in m_dir), f"Director assignee 错误: {m_dir}"
     print(f"  ✓ 任务链: {' -> '.join(parents)}")
     print("  ✓ 无 1.7 占位符/回填；章节标题对齐正式报告；第1章 1.1~1.6")
     print("  ✓ md 导入×4 + 禁逐段铁律 + 格式修复链 + 双文件 metadata")
+    print(f"  ✓ assignee: 三卡={[a for _, a in m_cards]}（reporter），Director={m_dir}")
 
 
 def main() -> int:

@@ -337,7 +337,7 @@ echo "    → ${v2_var}"''')
         kanban_fn_lines.append(f'''echo "  📋 [R1] 报告卡1-基础章: {name}"
 {r1_var}=$(hermes kanban create \\
     "报告卡1-基础章 - {name}" \\
-    --assignee {profiles.get("director") or profiles["reporter"]} \\
+    --assignee {profiles["reporter"]} \\
     --parents "${{{v2_var}}}" \\
     --workspace dir:"{W}" \\
     --tenant {tenant} \\
@@ -381,7 +381,7 @@ echo "    → ${r1_var}"''')
         kanban_fn_lines.append(f'''echo "  📋 [R2] 报告卡2-数据章: {name}"
 {r2_var}=$(hermes kanban create \\
     "报告卡2-数据章 - {name}" \\
-    --assignee {profiles.get("director") or profiles["reporter"]} \\
+    --assignee {profiles["reporter"]} \\
     --parents "${{{r1_var}}}" \\
     --workspace dir:"{W}" \\
     --tenant {tenant} \\
@@ -423,7 +423,7 @@ echo "    → ${r2_var}"''')
         kanban_fn_lines.append(f'''echo "  📋 [R3] 报告卡3-收尾章: {name}"
 {r3_var}=$(hermes kanban create \\
     "报告卡3-收尾章 - {name}" \\
-    --assignee {profiles.get("director") or profiles["reporter"]} \\
+    --assignee {profiles["reporter"]} \\
     --parents "${{{r2_var}}}" \\
     --workspace dir:"{W}" \\
     --tenant {tenant} \\
