@@ -348,8 +348,8 @@ echo "    → ${v2_var}"''')
 
 本卡职责（只写以下内容，禁止越界写后续章节）:
 1. 封面 + 审计信息表（模板占位注入）
-2. 第1章 审计执行概要（1.6 法规需 web_search 验证；1.7 审计结论暂不写，插入占位符文本「【1.7审计结论—待第3卡回填】」）
-3. 第2章 公共机构基本情况（建筑参数表每栋一张 4 列键值对）
+2. 第1章 审计执行概要（1.1~1.6，1.6 法规需 web_search 验证）
+3. 第2章 公共机构概况（2.1 基本情况/2.2 建筑物概况/2.3 能源资源利用情况；建筑参数表每栋一张 4 列键值对）
 4. 第3章 能源资源管理状况
 5. 第4章 能源资源计量及统计状况（4.2/4.3 从数据推断，禁止虚构计量缺失）
 
@@ -390,12 +390,12 @@ echo "    → ${r1_var}"''')
     --body "$(cat <<'BODY_EOF'
 你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 2 卡 / 共 3 卡：数据章】。
 
-上游已完成: 封面+第1~4章已写入 {RPT}（第1章1.7为占位符，勿动）。
+上游已完成: 封面+第1~4章已写入 {RPT}，勿动。
 
 本卡职责（只写以下内容，禁止越界写后续章节）:
-1. 第5章 能耗指标分析——Caliber 产出的 {CH5} 用 doc_insert_markdown 直接导入（禁重算任何数值），charts/ 图表 doc_insert_image 嵌入
-2. 第6章 主要用能系统分析——6.1 用电 / 6.2 用水 / 6.3 用热 / 6.4 其他用能 / 6.5 室内环境；分系统有数据才写段，按类别嵌设备照片
-3. 第7章 节能效果与潜力分析——从数据推断问题，每个问题至少对应一条建议
+1. 第5章 能源资源消费/消耗指标分析——Caliber 产出的 {CH5} 用 doc_insert_markdown 直接导入（禁重算任何数值），charts/ 图表 doc_insert_image 嵌入
+2. 第6章 主要能源资源利用系统分析——6.1 用电 / 6.2 用水 / 6.3 用热 / 6.4 其他用能 / 6.5 室内环境；分系统有数据才写段，按类别嵌设备照片
+3. 第7章 节能效果与节能潜力分析——从数据推断问题，每个问题至少对应一条建议
 
 写入方式（md 整章导入，禁逐段插入）:
 - 第6~7章 LLM 1 次批生成章节 markdown，落盘 {CH_MD}/ch6.md、ch7.md
@@ -419,7 +419,7 @@ BODY_EOF
 )" 2>&1 | {_GREP_TASK_ID} || echo "SKIP")
 echo "    → ${r2_var}"''')
 
-        # ── Task 5c: Report Card 3 (收尾章: 第8章+1.7回填+附录+交付) ──
+        # ── Task 5c: Report Card 3 (收尾章: 第8章+附录+交付) ──
         kanban_fn_lines.append(f'''echo "  📋 [R3] 报告卡3-收尾章: {name}"
 {r3_var}=$(hermes kanban create \\
     "报告卡3-收尾章 - {name}" \\
@@ -432,16 +432,15 @@ echo "    → ${r2_var}"''')
     --body "$(cat <<'BODY_EOF'
 你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 3 卡 / 共 3 卡：收尾章+附录+交付】。
 
-上游已完成: 第1~7章已写入 {RPT}（第1章1.7为占位符）。
+上游已完成: 第1~7章已写入 {RPT}，勿动。
 
 本卡职责:
 1. 第8章 审计结论——LLM 自然语言综合，拉前7章数据（数值以 {DATA}/{IND} 为准），生成 markdown 落盘 {CH_MD}/ch8.md，用 doc_insert_markdown 整章导入（禁逐段插入）
-2. 回填第1章 1.7 审计结论——office_edit 定点替换占位符「【1.7审计结论—待第3卡回填】」，完成后自检占位符已消失
-3. 格式修复链（同卡1/卡2，操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」）
-4. 附录1~7（无发票照片则无附录3，后续序号依次前移）——officecli 追加，标题 H2 宋体14pt 中文冒号，Table Grid 12pt 居中行高1.01cm
-5. 收尾三件套: 目录刷新 updateFields=true + 正文首行缩进 firstLineChars=200 + 页眉单段落（单位全称+两空格+能源审计报告，右对齐宋体10.5pt）+分隔线 pbdr.bottom=single 自检
-6. 水印: 页眉 DrawingML 注入单位全称（behindDoc=1）
-7. PDF 转换 + 默认签章: {RPT_PDF}（office_render format=pdf + seal_text=审计机构名）
+2. 格式修复链（同卡1/卡2，操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」）
+3. 附录1~7（无发票照片则无附录3，后续序号依次前移）——officecli 追加，标题 H2 宋体14pt 中文冒号，Table Grid 12pt 居中行高1.01cm
+4. 收尾三件套: 目录刷新 updateFields=true + 正文首行缩进 firstLineChars=200 + 页眉单段落（单位全称+两空格+能源审计报告，右对齐宋体10.5pt）+分隔线 pbdr.bottom=single 自检
+5. 水印: 页眉 DrawingML 注入单位全称（behindDoc=1）
+6. PDF 转换 + 默认签章: {RPT_PDF}（office_render format=pdf + seal_text=审计机构名）
 
 输入:
 - 项目数据: {DATA}

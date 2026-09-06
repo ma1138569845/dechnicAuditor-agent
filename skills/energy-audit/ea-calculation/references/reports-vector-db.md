@@ -66,7 +66,7 @@ report_data['tags'] = {'institution_category': '医疗', 'specific_type': '医�
 # LLM生成某章前检索参考
 builder = WordReportBuilder('公共机构')
 builder.set_data(report_data)
-ref = builder.get_chapter_reference('第2章', '公共机构基本情况')
+ref = builder.get_chapter_reference('第2章', '公共机构概况')
 # → 返回 Markdown 参考文本，嵌入 LLM prompt
 ```
 

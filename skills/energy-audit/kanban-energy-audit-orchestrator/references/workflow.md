@@ -60,7 +60,7 @@ Director ←──────────────────────�
 
 - **Worker:** author Profile（技能: ea-authoring + energy-audit-core + energy-audit-report + energy-audit-imitate）
 - **输入:** data.json + validation.json + indicators.json + indicator_review.json
-- **产出:** 第1~4章 LLM 分 1~2 批生成 md 落盘 `chapter_md/ch1~ch4.md` → `office_create` 建 docx + `doc_insert_markdown` 整章导入（封面/审计信息表模板注入，第1章 1.7 结论留占位符「【1.7审计结论—待第3卡回填】」）→ 格式修复链 → `office_save` 落盘
+- **产出:** 第1~4章 LLM 分 1~2 批生成 md 落盘 `chapter_md/ch1~ch4.md` → `office_create` 建 docx + `doc_insert_markdown` 整章导入（封面/审计信息表模板注入，第1章 1.1~1.6）→ 格式修复链 → `office_save` 落盘
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
 
 ### Step 5b — 报告卡2（数据章）

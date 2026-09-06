@@ -51,16 +51,15 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|
-| 卡1 基础章 | 封面+审计信息表、第1章（1.7 结论留占位符「【1.7审计结论—待第3卡回填】」）、第2/3/4章 | 1~2 次（1-2章一批、3-4章一批），每章 md 落盘 `chapter_md/chN.md` | `office_create` 建 docx → 每章 1 次 `doc_insert_markdown` 整章导入 | data.json 等上游产出 |
+| 卡1 基础章 | 封面+审计信息表、第1章（1.1~1.6）、第2/3/4章 | 1~2 次（1-2章一批、3-4章一批），每章 md 落盘 `chapter_md/chN.md` | `office_create` 建 docx → 每章 1 次 `doc_insert_markdown` 整章导入 | data.json 等上游产出 |
 | 卡2 数据章 | 第5章装配（禁重算）、第6/7章 | 1 次（6-7章一批，md 落盘 `chapter_md/`）；第5章不生成 | `office_open` 接续 → 第5章 chapter5.md **直接 md 导入** + 第6/7章 md 导入 + 设备照片 `doc_insert_image` | 卡1 落盘 docx |
-| 卡3 收尾章 | 第8章、`office_edit` 回填 1.7 占位符（自检已消失）、附录1~7、收尾三件套（目录/缩进/页眉分隔线）、水印、PDF+签章 | 1 次（第8章，md 落盘 `chapter_md/ch8.md`） | `office_open` 接续 → 第8章 md 导入 → 占位符定点替换 → 附录（officecli）→ 收尾链 | 卡2 落盘 docx |
+| 卡3 收尾章 | 第8章审计结论、附录1~7、收尾三件套（目录/缩进/页眉分隔线）、水印、PDF+签章 | 1 次（第8章，md 落盘 `chapter_md/ch8.md`） | `office_open` 接续 → 第8章 md 导入 → 附录（officecli）→ 收尾链 | 卡2 落盘 docx |
 
 **三卡铁律（防口径分裂）**：
 
 1. 所有数值一律从 data.json / indicators.json / chapter5.md 读取，**禁止从前序章节文本提取数值**
 2. 卡2/卡3 用 `office_open` 接续编辑，**禁止重建文件**；每卡完成必须 `office_save` 落盘后再 `kanban_complete`
-3. 占位符「【1.7审计结论—待第3卡回填】」只能由卡3 替换，卡1/卡2 不得写入 1.7 正文
-4. **正文写入禁用逐段 `doc_insert_paragraph_with_text`**（2026-09-06 定：几百次 MCP 往返是纯 I/O 损耗），一律 `doc_insert_markdown` 整章导入；仅图片嵌入、占位符替换、封面表模板注入例外。每章导入后跑格式修复链（见 `references/docx-ooxml-techniques.md`「md 导入与格式修复链」小节）
+3. **正文写入禁用逐段 `doc_insert_paragraph_with_text`**（2026-09-06 定：几百次 MCP 往返是纯 I/O 损耗），一律 `doc_insert_markdown` 整章导入；仅图片嵌入、封面表模板注入例外。每章导入后跑格式修复链（见 `references/docx-ooxml-techniques.md`「md 导入与格式修复链」小节）
 
 ## 写作主工作流（LLM 逐章写作 + office_editor 组装）
 

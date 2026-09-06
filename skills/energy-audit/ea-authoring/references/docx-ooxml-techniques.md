@@ -272,7 +272,7 @@ pPr.append(outlineLvl)
 ### 11.2 格式修复链操作序列（每卡导入完成后统一跑，非脚本）
 
 1. **定位**：`doc_get_outline` 拿全部标题（层级/位置）与表格位置
-2. **标题修复**：对每个标题段 `doc_modify_paragraph`（`paragraph_style` = Heading 1/2/3，ranges 数组尽量批量）+ `doc_set_font` 设字体：
+2. **标题修复**：对每个标题段 `doc_modify_paragraph`（`paragraph_style` = Heading 1/2/3，ranges 数组尽量批量）+ `doc_update_text_property`（ranges 数组批量设字体，一次调用覆盖多段，PoC 实测生效）：
    - H1：宋体 15pt 加粗 居中
    - H2：宋体 14pt 加粗
    - H3：宋体 12pt 加粗
@@ -286,4 +286,6 @@ pPr.append(outlineLvl)
 2. 表格：12pt 宋体居中、行高 1.01cm、垂直居中（抽查 2~3 张）
 3. V3 格式检查通过 + 正式报告对照（PoC 阶段逐项比对）
 4. 红线不触：本链是 author 调用 office_editor 工具的**固定操作序列**，不是脚本生成正文（红线4）；禁 python-docx
+
+**⚠️ 渲染陷阱（2026-09-06 PoC 实测）**：`office_render` / `office_preview` 渲染的是**磁盘保存状态**，未 `office_save` 前渲染输出纯白页。凡需渲染验证（视觉检查/V3 预览），必须先 `office_save` 再 render，否则误判文档为空。
 
