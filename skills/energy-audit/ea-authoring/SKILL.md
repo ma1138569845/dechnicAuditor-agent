@@ -138,8 +138,8 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 技术 | 参考文件 |
 |------|---------|
 | office_editor 工具集 | 见「Office 编辑（office_editor 工具集）」节 |
-| OMML 公式 | `references/omml-formula-guide.md` |
-| OfficeCLI 集成 | `references/officecli-guide.md`（LaTeX 公式/目录/页眉页脚，python-docx 的替代工具） |
+| OMML 公式（doc_insert_math 原生路径） | `references/omml-formula-guide.md` |
+| OfficeCLI 集成 | `references/officecli-guide.md`（目录/页眉页脚，python-docx 的替代工具；⚠ equation 元素不支持分式，第5章公式禁用） |
 | Word 生成技巧 | `references/word-generation-tips.md` |
 | 正文首行缩进 2 字符 | `references/docx-first-line-indent.md`（落盘后、加水印前必做） |
 | 项目名称水印（OnlyOffice 兼容） | `references/docx-watermark.md`（落盘前必做） |
