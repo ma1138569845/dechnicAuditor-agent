@@ -243,6 +243,35 @@ def check_monthly_consistency(
     return findings
 
 
+def check_heating_cost_without_usage(energy_yearly: Sequence[dict]) -> List[Finding]:
+    """供暖费存在但供暖用量（热力+供暖电）全年为零 → P1 数据缺失。
+
+    混合供暖医院常见：费用台账有值、用量未录入（如 PG 热力行缺失）。
+    2026-09-05 新增：省立医院东院 2022/2023 供暖费 120 万/年但热力=0，此前无检查覆盖。
+    """
+    findings: List[Finding] = []
+    for row in energy_yearly:
+        year = int(safe_float(row.get("year")))
+        cost = safe_float(row.get("heating_cost_wan"))
+        heat_gj = safe_float(row.get("heating_energy_heat_gj"))
+        heat_kwh = safe_float(row.get("heating_energy_kwh"))
+        if cost and cost > 0 and (heat_gj or 0) + (heat_kwh or 0) <= 0:
+            findings.append(
+                Finding(
+                    code="V1.HEATING.COST_NO_USAGE",
+                    category="数据完整性",
+                    severity=SEV_P1,
+                    title=f"{year}年供暖费用存在但供暖用量未录入",
+                    detail=f"供暖费 {fmt_num(cost)} 万元/年，热力与供暖电耗均为 0",
+                    location=f"{year}年 · 供暖",
+                    expected="费用与用量同录（热力 GJ 或供暖电耗 kWh）",
+                    actual="用量 = 0",
+                    suggestion="补录市政热力/供暖电耗用量；若该年确无供暖，费用也应核销",
+                )
+            )
+    return findings
+
+
 # ================================================================
 #  Config/Schema 校验（源自早期 config_validator.py，已适配 AuditProject）
 # ================================================================
@@ -539,6 +568,7 @@ def run(
         findings += check_missing(missing)
 
     findings += check_monthly_consistency(energy_yearly)
+    findings += check_heating_cost_without_usage(energy_yearly)
     findings += check_config_schema(proj)
 
     analysis = analyze_with_diagnosis(energy_yearly, project)

@@ -31,7 +31,7 @@ python "$HERMES_HOME/skills/productivity/energy-audit-imitate/scripts/assemble_r
 | flow | 能源流向图（graphviz） | 实物量 | ✅ 与正文一致 |
 | monthly_electricity_kwh / monthly_water_m3 / monthly_natural_gas_m3 | 三年逐月对比柱 | 实物量 | ✅ 与正文一致 |
 | cost_pie | 各年费用占比饼图（每年一张，三年三张连号） | 万元 | ✅ 费用类型仅含>0 项（含油费/柴油费），逐年标题"{year}年能源费用占比" |
-| trend / pie | 逐年 tce 柱 / 能源结构饼 | **0.1229 折标** | ❌ 与正文 0.31 等价口径矛盾，勿用于指标展示 |
+| trend / pie | 逐年 tce 柱 / 能源结构饼 | **2026-09-05 已修复：0.31/1.2143 等价口径，水不折标不进图**（旧版 0.1229 当量已废弃，历史报告中的旧图勿复用） | ✅ 与正文一致 |
 
 - `flow` 的 energy_types 支持 electricity_kwh/water_m3/natural_gas_m3/
   heating_energy_heat_gj/petrol_kg/diesel_kg；equipment 可选（按 category 归类）。

@@ -63,6 +63,10 @@ PLAUSIBLE_RANGE: Dict[str, Tuple[float, float]] = {
     "kgce_per_person": (50.0, 8000.0),
     "L_per_bed_day": (50.0, 2000.0),
     "m3_per_person": (1.0, 300.0),
+    # 2026-09-05：供暖能耗低值不误报。混合供暖（空调+市政热力补充）医院热力占比小，
+    # 数值低是真实场景；真正要抓的高异常仍由上限 200 拦截。低值缺量（费用有、用量无）
+    # 由 V1.HEATING.COST_NO_USAGE 检查负责。
+    "heating_kgce_per_m2": (0.0, 200.0),
 }
 
 
@@ -474,7 +478,8 @@ def check_evaluation(year: int, spec: MetricSpec, value: float, benchmark: dict)
 
 
 def check_plausibility(year: int, spec: MetricSpec, field_name: str, value: float) -> List[Finding]:
-    low, high = PLAUSIBLE_RANGE.get(field_name, (0.0, float("inf")))
+    rng_key = "heating_kgce_per_m2" if spec.key == "unit_area_heating" else field_name
+    low, high = PLAUSIBLE_RANGE.get(rng_key, (0.0, float("inf")))
     if low <= value <= high:
         return []
     return [
@@ -605,7 +610,7 @@ def check_consistency(indicators: dict, raw: Optional[dict]) -> List[Finding]:
                 code="V2.CONSISTENCY.NO_BEDS",
                 category="数据一致性",
                 severity=SEV_P1,
-                title="医疗机构缺床位数，单位开放床日用水量降级为人均取水量",
+                title="医疗机构缺床位数，单位开放床日用水量待补充（不降级人均口径）",
                 expected="beds_count > 0",
                 actual=f"beds_count={fmt_num(beds, 0)}",
                 suggestion="补录 base.beds_count 以对标 DB37/T 4452-2021 床日用水定额",
@@ -748,15 +753,19 @@ def run(project: str, *, output_dir: Optional[str] = None) -> ReviewResult:
         for spec in METRIC_SPECS:
             metric = _row_metric(row, spec)
             if metric.get("error"):
+                # 2026-09-05：区分"数据缺失待补充"（error_kind=missing_input，P1 不阻塞）
+                # 与"计算失败"（P0 阻塞）。医院缺 bed_count 属于前者。
+                is_missing = metric.get("error_kind") == "missing_input"
                 findings.append(
                     Finding(
-                        code="V2.METRIC.ERROR",
+                        code="V2.METRIC.MISSING" if is_missing else "V2.METRIC.ERROR",
                         category="数据一致性",
-                        severity=SEV_P0,
-                        title=f"{spec.label} 计算失败",
+                        severity=SEV_P1 if is_missing else SEV_P0,
+                        title=f"{spec.label} 待补充数据" if is_missing else f"{spec.label} 计算失败",
                         detail=str(metric.get("error")),
                         location=f"{year}年 · {spec.label}",
-                        suggestion="修正输入参数后重算指标",
+                        suggestion=("补采缺失字段后重算指标（如医院 bed_count）"
+                                    if is_missing else "修正输入参数后重算指标"),
                     )
                 )
                 continue

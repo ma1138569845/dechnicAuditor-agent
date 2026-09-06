@@ -608,6 +608,21 @@ class WordReportBuilder:
                 pending_title = None
                 i += 1
                 continue
+            # 真实图片标记：[[IMG:路径|图注]] / [[IMAGE:路径|图注]] —— 直接嵌入已有 PNG/JPG
+            # （兼容旧稿缺省结尾 ]]，只要求行首为前缀且含可解析路径）
+            if line.startswith("[[IMG:") or line.startswith("[[IMAGE:"):
+                inner = line[len("[[IMAGE:"):] if line.startswith("[[IMAGE:") else line[len("[[IMG:"):]
+                inner = inner.rstrip("]").strip()
+                path, _, caption = inner.partition("|")
+                path = path.strip()
+                caption = caption.strip()
+                if path and os.path.exists(path):
+                    self._add_image_with_caption(path, caption)
+                elif path:
+                    self._chart_errors = getattr(self, "_chart_errors", []) + [f"missing image file: {path}"]
+                pending_title = None
+                i += 1
+                continue
             # 表格标题行（表X.Y 开头）——预留给后续表格块
             if re.match(r"^表\d+\.\d+", line) and len(line) < 80:
                 # 若该行后紧跟表格块则作为表格标题，否则作为正文（如"表5.1 所示"）

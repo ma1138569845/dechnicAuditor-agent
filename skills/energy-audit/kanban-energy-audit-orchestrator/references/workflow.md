@@ -21,7 +21,7 @@ Director ←──────────────────────�
 
 - **纵向**（同一项目）：严格串行，前一步完成 → 后一步自动晋升 ready
 - **横向**（不同项目）：完全并行，互不依赖
-- **Director**：所有项目报告完成后触发，assignee = profiles["director"]（推荐 editor 专职汇总审查，与 author 写作分离；缺省回退 reporter）
+- **Director**：所有项目报告完成后触发，assignee = profiles["director"]（推荐 editor——编排入口 + Director 终审，与 author 写作分离；缺省回退 reporter）
 
 ## 每步任务详解
 

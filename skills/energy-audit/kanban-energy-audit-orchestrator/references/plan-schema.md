@@ -12,7 +12,7 @@
   "slug": "string — URL 友好的标识符（可选，自动生成）",
   "config": "string — config.json 路径（含全部建筑数据）",
   "audit_type": "string — 'public_institution' | 'public_building' | 'industrial'",
-  "institution_category": "string — '医疗' | '党政' | '教育'",
+  "institution_category": "string — '医疗' | '党政' | '教育' | '政务服务中心' | '场馆'（缺失时默认按医疗泛化基线处理，与 indicators.py 一致）",
   "audit_years": "number[] — 审计年度，如 [2022, 2023, 2024]",
   
   "profiles": {

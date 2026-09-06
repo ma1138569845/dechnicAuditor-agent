@@ -1,5 +1,8 @@
 # 能源审计Agent架构模式：独立Profile vs delegate_task子Agent
 
+> ⚠️【已降级 2026-09-05】本文档为 v2.0 时期架构记录（小方/小德=delegate_task 子 Agent、"只保留 2 个技能"）。
+> 现行架构：11 个 energy-audit 技能 + kanban 多 Agent 编排（见 `kanban-energy-audit-orchestrator`），角色映射见该技能 `references/role-definitions.md`。本文档仅供历史参考。
+
 ## 背景
 
 能源审计流水线涉及多个Agent协作。有两种实现方式，适用场景不同。

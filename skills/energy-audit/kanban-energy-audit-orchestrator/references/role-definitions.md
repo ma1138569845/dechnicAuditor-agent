@@ -3,7 +3,7 @@
 能源审计 Kanban 编排器使用 4 个固定的 Profile 角色。每个角色是一个独立的 Hermes Profile，有专属的 SOUL.md、技能和工具集。
 
 > **knowledger（辅助角色，不在流水线任务图内）**：另有 `knowledger` profile 专职
-> 能源审计知识库维护/检索/问答（RAG `energy_audit_rag_search` + LLM Wiki + KG 因果诊断），
+> 能源审计知识库维护/检索/问答（RAG `energy_audit_rag_search` + LLM Wiki，KG 因果诊断限问答场景），
 > 技能为 `energy-audit-knowledge-tools` 等。**6+1 任务图不含 knowledger**——流水线内
 > KG 因果推理由 datava V1 本地执行（`energy_kg.py`），knowledger 面向用户专业问答与
 > 知识库建设，不接收 kanban 任务。2026-09 复位确认。
@@ -82,19 +82,21 @@ DataCollection → DataVA      → Caliber        → author
 - 省级规章是否需 web_search 验证
 - 照片路径（如有）
 
-## 5. 汇总审查 Agent (Director = editor)
+## 5. 编排入口 + Director 终审（= editor）
 
 | 项 | 值 |
 |----|-----|
 | Profile 名 | `editor` |
+| 定位 | **编排入口 + Director 终审**：接收 default 转交的任务、创建 kanban 任务图、终审汇总；运行时任务调度归 kanban dispatcher（editor 不逐任务派发） |
 | 技能 | `kanban-energy-audit-orchestrator` + `energy-audit-core` + `energy-audit-report-qa` |
 | 工具集 | kanban, hermes-cli, terminal, file, vision（不装 energy_audit，跨项目审查读各项目产出文件） |
 | 输入 | 全部项目的 report_review.json + 报告 |
 | 输出 | review_report.md + all_reports.json（Director 汇总工作区） |
 | SOUL | "专职汇总审查员：只审查不写作，跨项目指标对比，P0 阻塞裁决" |
 
-> 2026-09-03 复位：Director 汇总任务 assignee = profiles["director"]（推荐 editor），
-> 与 author（写作）职责分离，保证审查独立性。director 缺省回退 reporter。
+> 2026-09-05 定位统一：editor = 编排入口 + Director 终审（调度归 dispatcher），
+> 与 author（写作）职责分离，保证审查独立性。Director 任务 assignee = profiles["director"]
+> （推荐 editor，缺省回退 reporter——代码兼容键，非第三套命名）。
 
 ## 关键约束
 

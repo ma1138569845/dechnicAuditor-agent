@@ -30,6 +30,9 @@ the scripted REST/pipeline path (`energy_audit_imitate_report`).
 > 正式 Kanban 交付走它）。格式基准两模式共用 `energy-audit-core/references/report-format-spec.md`；
 > 本技能自带 copies 供仿写快速查阅，权威以 core 版为准（本技能 `references/report-format-spec.md`
 > 为扩展版，含 assemble 专属细节，勿在正式流水线中作为格式依据）。
+> **PG 反查边界例外声明（2026-09-05）**：仿写模式是 kanban"写作主流程禁反查 PG"的
+> **唯一例外路径**——`imitate_pipeline.py` 内部经 `pg_collector` 全量取数（数据来源=DB 快照），
+> 见 kanban `tools-reference.md` PG 反查边界；标准流水线 author 仍禁反查。
 
 Don't use for: 标准模板 generation (desktop 脚本实现 + 标准模板), a single
 paragraph (then `energy_audit_imitate_paragraph` is enough), or editing an

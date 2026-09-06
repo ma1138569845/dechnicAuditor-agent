@@ -28,14 +28,14 @@ metadata:
 4. **监控执行** — 轮询 kanban 状态，检测卡住/超时/重复重试
 5. **质量审查** — 报告生成后进行跨章交叉校验
 
-实际的采集/验证/计算/报告工作由以下四个 Profile 完成（第 5 个 editor 专职 Director 汇总审查）：
+实际的采集/验证/计算/报告工作由以下四个 Profile 完成（第 5 个 editor = 编排入口 + Director 终审）：
 
 | Profile | 职责 | 工具集 |
 |---------|------|--------|
-| `datacollection` | PG数据库 + config +Excel识别多源数据采集 | terminal, file |
-| `datava` | 数据完整性检查 + KG因果诊断 | terminal, file |
-| `caliber` | 5项指标计算 + 定额对标 + 图表 + 第5章 | terminal, file |
-| `author` | 第1/2/3/4/6/7/8章 + 最终报告组装 | terminal, file |
+| `datacollection` | PG数据库 + config +Excel识别多源数据采集 | hermes-cli + energy_audit |
+| `datava` | 数据完整性检查 + KG因果诊断 | hermes-cli + energy_audit |
+| `caliber` | 5项指标计算 + 定额对标 + 图表 + 第5章 | hermes-cli + energy_audit |
+| `author` | 第1/2/3/4/6/7/8章 + 最终报告组装 | hermes-cli + energy_audit |
 
 ## 何时使用
 
@@ -144,7 +144,7 @@ Kanban dispatcher 自动：
 
 ## 关键规则
 
-1. **Profile 不动态创建。** 五个 Profile（datacollection/datava/caliber/author/editor）必须已存在；editor 专职 Director 汇总审查；技能由 repo 根 `scripts/sync_ea_skills.py` 按角色矩阵发布（发任务前必须跑，见 references/kanban-setup.md）。
+1. **Profile 不动态创建。** 五个 Profile（datacollection/datava/caliber/author/editor）必须已存在；editor = 编排入口 + Director 终审（运行时调度归 kanban dispatcher）；技能由 repo 根 `scripts/sync_ea_skills.py` 按角色矩阵发布（发任务前必须跑，见 references/kanban-setup.md）。
 2. **一个项目一个 workspace。** 每个项目有独立子目录，避免文件冲突。
 3. **父子任务严格串行。** 采集→验证→计算→报告，不可跳跃。
 4. **不同项目之间完全并行。** 互不依赖，dispatcher 自动调度。

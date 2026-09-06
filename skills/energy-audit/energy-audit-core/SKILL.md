@@ -20,20 +20,11 @@ author: 马天远
 调用：
 - 单项目/批量: `kanban-energy-audit-orchestrator` 技能（editor Agent 内）
 
-### ⚠️ Step 4 异常确认阻塞（必读）
+### 异常确认机制（datava 验证阶段）
 
-首次运行时 Step 4 检测到异常后会**阻塞**并提示：
-> "共发现 N 项异常，其中 N 项待确认。请编辑 analysis_result.json..."
-
-**pipeline 直接 return None，不生成报告。** 原因是 `analysis.anomalies[].confirmed` 初始为 `null`，`pending_count > 0` 时退出。
-
-**自动化跳过方法**（用户偏好全自动时使用）：
-
-1. 编辑项目的 `analysis_result.json`（项目数据目录为 `~/projects/energy-audit/<单位名>/`，由 `project_data.py::save_project` 写入；`analysis_result.json` 由 `data_analysis.py::save_analysis_result` 落盘——当前代码未见生产调用方，实际路径以落盘位置为准）
-2. 将每项的 `confirmed` 设为 `true`，`is_data_error` 设为 `false`，`reason` 填写说明
-3. 重新触发异常分析（`run_pipeline.py` 已移除；入口为 `tools/energy_audit/data_analysis.py::analyze_energy_data` / `analyze_with_diagnosis`），此时 `pending_count == 0`，流程继续
-
-此设计意在强制人工审核——用户同意后直接批量确认即可。
+datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed` 初始 `null`），
+需人工确认（`confirmed=true` + `reason`）后指标复核与报告装配才继续——强制人工审核异常项，防止脏数据进报告。
+批量流水线场景可在用户确认后由 editor 批量确认再继续下游。
 
 ##  公共机构能源审计报告章节结构
 
@@ -60,7 +51,7 @@ author: 马天远
 
 - 1.6 省级规章需 web_search 验证，不可字符串替换
 - **批量生成：`kanban-energy-audit-orchestrator` 技能**。利用 Hermes Kanban 实现并行调度。
-  一个公共机构 = 一个项目 = 一份报告。每项目 4 步串行（采集→验证→计算→报告），不同项目完全并行。
+  一个公共机构 = 一个项目 = 一份报告。每项目 6 步串行（采集→V1验证→计算→V2复核→报告→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
 - 报告章节细节与编写规范见 `references/` 目录（report-format-spec、chapter-writing-specs、public-institution-report-structure 等）。
@@ -75,17 +66,15 @@ author: 马天远
 | `energy-audit-core/references/coefficient-caliber.md（权威单点）` | ★权威·折标系数口径（电0.31/热34.12kgce每GJ/气1.2143/油1.4714/水不折算） |
 | `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |
 | `report-format-spec.md` | 报告格式总规范 |
-| `public-institution-report-structure.md` | 公共机构报告 8 章结构 |
+| `public-institution-report-structure.md` | ⚠️旧通用 8 章骨架（2026-09-05 降级：仅历史参考；现行章节指南以 energy-audit-report 技能的模板骨架+机构实例库为准） |
 | `chapter-writing-specs.md` | 章节写作通用规范 |
 | `audit-info-tables.md` | 审计信息表结构（ts_register_dept 等数据源链路） |
 | `config-schema.md` | config JSON 结构（采集/计算/报告均依赖） |
 | `three-layer-fallback.md` | 三级兜底原则 |
-| `agent-profile-architecture.md` | Profile-Skill 架构文档 |
+| `agent-profile-architecture.md` | ⚠️v2.0 历史文档（"只保留 2 个技能/小方小德"为旧架构；现行=11 技能多 Agent + kanban 编排，见 `kanban-energy-audit-orchestrator`） |
 | `soul-purity-principle.md` | SOUL.md 编写原则 |
 | `hermes-operations.md` | Hermes 操作通用知识 |
-| `complete-markdown-workflow.md` | Markdown 工作流 |
 | `pipeline-architecture.md` | 流水线架构 |
-| `agent-startup-workflow.md` | Agent 启动流程 |
 | `project-granularity.md` | 项目粒度定义 |
 | `iso-date-to-cn.md` | 日期转换工具 |
 | `patch-replace-all-danger.md` | 编辑安全警示 |

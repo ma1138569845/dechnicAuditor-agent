@@ -2,10 +2,11 @@
 第5章子Agent v2 —— 能源资源消费/消耗指标分析
 
 完整结构：
-  总述 → 5.1概况(流向图+饼图) → 5.2数据(按类型动态H3+费用) → 5.3指标 → 5.4建筑能耗基准
+  总述 → 5.1概况(流向图) → 5.2数据(按类型动态H3+费用) → 5.3指标 → 5.4建筑能耗基准
 
-数据来源：ts_institution_energy_main + ts_institution_energy_data (data_type: 1=能耗,2=费用,3=供冷,4=供热,5=交通)
-备选：Excel / 手动输入
+数据来源：
+  生产路径 = ea-calculation/scripts/caliber_agent.py（data.json → manual dict → load_from_user）
+  备用路径 = load_from_db 直查 ts_institution_energy_main/data（dt 旧分类 1=能耗,2=费用,3=供冷,4=供热,5=交通；仅 CLI 调试用）
 """
 
 import argparse, json, os, sys
@@ -277,10 +278,10 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "## 5.1 能源资源消费/消耗概况\n\n"
     md += f"{unit_name}主要用能类型包括"
     md += "、".join([_coeff_info(c)['name'] for c in all_codes])
-    md += "。能源资源流向如图5.1所示。\n\n"
+    md += "。能源流向如图5.1所示。\n\n"
     chart_dir = config.get('chart_dir', './charts')
     if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
-        md += "![图5.1 能源资源流向图](charts/energy_flow.png)\n\n"
+        md += "![图5.1 能源流向图](charts/energy_flow.png)\n\n"
 
     # 各类型消费总量（写作参考，正式报告 5.1 无此表）
     latest_year = years[-1]
@@ -297,7 +298,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         tce_val = round(total * coeff / 1000, 2)
         pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
         md += f"| {c['name']} | {total:,.2f} | {c['unit']} | {c['display']} | {tce_val:,.2f} | {pct}% |\n"
-    md += f"\n综合能耗总量：**{total_tce:,.2f} tce**\n\n"
+    # 2026-09-05 口径：5.1 不列综合能耗数值（铁律：综合能耗数值只在 5.3.3 给出）
 
     # ===== 合署办公追溯说明 =====
     md += _co_location_note(en, latest_year, all_codes, unit_name)
@@ -350,16 +351,16 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += f"**逐月参考**：{str(y)[:4]}年 {m_txt}\n"
             md += "\n"
 
-        # 三年总量柱状图 + 逐月分组柱状图（对齐正式报告：仅有月度数据的主要类型画图）
-        if monthly_ok:
-            if os.path.exists(os.path.join(chart_dir, f'chart_{code}_total.png')):
-                y1, y3 = str(years[0])[:4], str(years[-1])[:4]
-                md += f"![图5.{fig_no} {y1}年-{y3}年总用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_total.png)\n\n"
-                fig_no += 1
-            if os.path.exists(os.path.join(chart_dir, f'chart_{code}_monthly.png')):
-                y1, y3 = str(years[0])[:4], str(years[-1])[:4]
-                md += f"![图5.{fig_no} {y1}年-{y3}年逐月用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_monthly.png)\n\n"
-                fig_no += 1
+        # 三年总量柱状图（主要类型无条件绘制）+ 逐月分组柱状图（仅有月度数据才画）
+        # 2026-09-05 口径：热无月度数据时也须画总量图，不得随 monthly_ok 一起丢弃
+        if os.path.exists(os.path.join(chart_dir, f'chart_{code}_total.png')):
+            y1, y3 = str(years[0])[:4], str(years[-1])[:4]
+            md += f"![图5.{fig_no} {y1}年-{y3}年总用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_total.png)\n\n"
+            fig_no += 1
+        if monthly_ok and os.path.exists(os.path.join(chart_dir, f'chart_{code}_monthly.png')):
+            y1, y3 = str(years[0])[:4], str(years[-1])[:4]
+            md += f"![图5.{fig_no} {y1}年-{y3}年逐月用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_monthly.png)\n\n"
+            fig_no += 1
 
     # 其他用能分析（次要能源合并小节，正式报告 5.2.4 结构）
     if minor_codes:
@@ -374,10 +375,16 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += f"- {c['name']}：{vals_txt}\n"
         md += "\n"
 
-    # 费用分析（最后一节）
-    cost_section_num = f"5.2.{section_idx}"
-    md += f"### {cost_section_num} 能源资源费用分析\n\n"
-    if co:
+    # 费用分析（最后一节；仅当至少一项费用 > 0 且 ≥1 年有数据才生成，2026-09-05 口径：
+    # 避免费用全空项目出现空壳费用节）
+    has_any_cost = any(
+        float(co.get(y, {}).get(c, {}).get('total', 0) or 0) > 0
+        for y in years for c in co.get(y, {})
+    )
+    if has_any_cost:
+        cost_section_num = f"5.2.{section_idx}"
+        md += f"### {cost_section_num} 能源资源费用分析\n\n"
+    if has_any_cost:
         # 表5.1 对齐正式报告：年份行 ×（电费/供暖费/水费/油费/燃气费/合计）列，
         # 单位元（万元×10000）；油费=汽油费+柴油费；任一年>0 的列才显示（无 0 值列）
         cost_cols = [
@@ -417,8 +424,6 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 continue
             md += f"![图5.{pie_no} {y4}年能源费用占比](charts/cost_pie_{y4}.png)\n\n"
             pie_no += 1
-    else:
-        md += "（费用数据待用户提供）\n\n"
 
     # ===== 5.3 指标（统一复用 indicators.py） =====
     md += "## 5.3 能耗资源消耗/消费指标\n\n"
@@ -450,7 +455,16 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         # 5.3.1 单位建筑面积非供暖能耗
         md += "### 5.3.1 单位建筑面积非供暖能耗\n\n"
         md += "单位建筑面积非供暖能耗 Ejrcn = (E − Egn − Ejt) / M（式中 E 综合能耗、Egn 供暖能耗、Ejt 交通能耗、M 建筑面积）。\n\n"
-        md += "注：党政机关内的数据中心、厨房炊事、专业用途设备等特定功能用能不纳入非供暖能耗，计算时应同时剔除特殊用能系统对应的建筑面积（天然气/水/油不计入非供暖能耗）。\n\n"
+        # 注文按机构类型自适应（2026-09-05 修复：原硬编码"党政机关"）
+        _special_notes = {
+            'medical': '大型医疗设备、数据中心、厨房炊事、洗衣房',
+            'service': '数据中心、厨房炊事',
+            'venue': '数据中心、厨房炊事、专业设备',
+            'education': '数据中心、实验室、厨房炊事',
+            'government': '数据中心、厨房炊事、专业用途设备',
+        }
+        _sn = _special_notes.get(institution_type, _special_notes['government'])
+        md += f"注：本机构内{_sn}等特定功能用能不纳入非供暖能耗，计算时应同时剔除特殊用能系统对应的建筑面积（天然气/水/油不计入非供暖能耗）。\n\n"
         md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
         table_no += 1
         md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
@@ -472,7 +486,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
         # 5.3.2 常规用能系统单位建筑面积电耗
         md += "### 5.3.2 常规用能系统单位建筑面积电耗\n\n"
-        md += "常规用能系统单位建筑面积电耗 = 年总用电量 / 建筑面积\n\n"
+        md += "常规用能系统单位建筑面积电耗 = （年总用电量 − 供暖耗电量）/ 建筑面积\n\n"
         if area:
             md += f"**表5.{table_no} 常规用能系统单位建筑面积电耗**\n\n"
             table_no += 1
@@ -767,12 +781,12 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
             series_map[y] = monthly
             if any(float(v or 0) > 0 for v in monthly):
                 has_monthly = True
-        if not has_monthly:
-            continue
+        # 2026-09-05 口径：总量柱无条件生成（热无月度数据也画）；逐月分组柱仅 has_monthly 才画
         _generate_total_bar_chart(years, totals, c['name'], c['unit'], output_dir,
                                   f'chart_{code}_total.png')
-        _generate_monthly_grouped_bar(years, series_map, c['name'], c['unit'], output_dir,
-                                      f'chart_{code}_monthly.png')
+        if has_monthly:
+            _generate_monthly_grouped_bar(years, series_map, c['name'], c['unit'], output_dir,
+                                          f'chart_{code}_monthly.png')
 
     # ===== 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）=====
     co = data.get('cost_data', {})

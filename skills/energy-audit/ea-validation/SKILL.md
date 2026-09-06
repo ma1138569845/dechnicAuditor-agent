@@ -241,7 +241,7 @@ PG 连接失败时统计异常检测照常执行，KG 诊断可能部分降级�
 | datacollection | 数据采集 | datava 消费其产出的 data.json（V1） |
 | caliber | 指标计算+第5章 | datava 在其后运行 V2 复核指标 |
 | author | 报告文本生成 | datava 在其后运行 V3 审查报告；V1 的 KG 诊断素材注入第7章 |
-| knowledger | 知识库/因果诊断 | datava 调用其 KG 做因果推理 |
+| knowledger | 知识库/问答辅助（不在流水线任务图内） | 面向用户专业问答与知识库建设；流水线 KG 因果诊断由 datava 本体本地执行（`energy_kg.py`），不调用 knowledger |
 | editor | 主编总控 | 按检查点派发 datava，依据退出码裁决流程；**将 datava 的 `kanban_block(reason)` 转派回对应上游 Agent**（如 reason 指 datacollection 则转 datacollection，指开发者则转开发工单） |
 
 ### 工单流转（datava 视角）

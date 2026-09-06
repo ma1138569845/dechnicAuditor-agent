@@ -30,16 +30,20 @@
 | 工具 | datacollection | datava | caliber | author | editor |
 |------|:-:|:-:|:-:|:-:|:-:|
 | search_projects | ● | ○ | | ○ | |
-| get_project | ● | ● | | ● | ○ |
-| get_buildings | ● | ● | | ○ | ○ |
-| get_energy | ● | ● | ● | ● | ○ |
-| get_energy_meter | ● | ● | | ○ | ○ |
-| get_equipment | ● | ● | | ● | ○ |
+| get_project | ● | ○ | | ○ | ○ |
+| get_buildings | ● | ○ | | ○ | ○ |
+| get_energy | ● | ○ | ○ | ○ | ○ |
+| get_energy_meter | ● | ○ | | ○ | ○ |
+| get_equipment | ● | ○ | | ○ | ○ |
 | **rag_search** | ○ | ● | ● | ● | |
 | imitate_paragraph | | | | ● | |
 | imitate_report | | | | ● | |
 
-● 主要使用　○ 复核/交叉核对时使用
+● 主要使用　○ 仅在允许场景使用（见下节"PG 反查边界"：①采集后核实断链 ②采集前定位项目；写作/验证/计算主流程禁止）
+
+> 2026-09-05 矩阵收权：datava/caliber/author 的 PG 查询工具原为 ●"主要使用"，
+> 与各 skill 的"不连 PG/读 data.json"口径矛盾（会诱发写作中途重查库）。
+> 现全部降为 ○ 并受"PG 反查边界"约束；datacollection 保持 ●（采集本职）。
 
 ## RAG 检索（energy_audit_rag_search）使用场景
 
@@ -68,6 +72,23 @@ RAG 检索知识库内容（历史审计报告、法规标准文档、机构资�
 - **单点查询/核对**：energy_audit_* 工具（worker 中途反查 DB、验证某个值）。
 - 规则：worker 禁止手写 psycopg2 脚本直连 DB（2026-08 断链事故），
   一律走工具或 CLI；DB 写操作只由主会话执行（带备份）。
+
+## PG 反查边界（2026-09-05 定，防重复取数）
+
+主链路数据流是**文件接力**：`data.json → validation.json → indicators.json → chapter5.md → docx`，
+各 worker 只消费上游落盘文件，**写作/验证/计算主流程禁止反查 PG**。
+`energy_audit_get_*` 工具只在以下两种情况下允许使用：
+
+| 允许场景 | 示例 | 禁止场景（反例） |
+|---------|------|----------------|
+| ① 采集后核实断链：datacollection 产出 data.json 后，发现某字段可疑，用它核对"PG 里到底有没有" | 重采后确认 2024 热费是否 PG 三版本全 0 | author 写第6章时顺手查 get_equipment 拿设备数（应读 proj.equipment） |
+| ② 采集前定位项目：确认项目存在/项目名/PG project_id | 用 search_projects 反查单位名 | caliber 算指标时查 get_energy 重新取能耗（应读 data.json） |
+
+判定口诀：**"上游文件里有的，读文件；文件里没有且影响正确性，先报断链由 datacollection 补采，不自己查库补"**。
+违反即"复查数据"，与 pipeline-architecture.md"不再各查各的数据"原则冲突。
+
+**唯一例外：仿写模式（energy-audit-imitate）**——`imitate_pipeline.py` 内部经 `pg_collector`
+全量取数（数据来源=DB 快照，非上游文件接力），不走标准流水线主链路；标准流水线 author 仍禁反查。
 
 ## 各角色工具集配置（config.yaml 实际值）
 

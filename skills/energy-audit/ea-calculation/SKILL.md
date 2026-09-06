@@ -32,13 +32,14 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 |------|------|
 | `indicators-guide.md` | 5 项指标计算指南 + DB37 定额默认值（含验证示例：日照市人民医院） |
 | `chapter5-writing-logic.md` | 第5章写作逻辑（四段式5.2/五要素5.3/三档评价规则/供暖电耗剔除·口径统一·交叉校验三铁律） |
-| `chapter5-writing-guide.md` | 第5章生成逻辑（结构/各节规则/动态表号） |
+| `chapter5-writing-guide.md` | 第5章生成逻辑（结构/各节规则/图号表号） |
 | `chapter5-agent-guide.md` | 第5章 Agent 指南（5.1–5.4 + 图表函数） |
-| `chapter5-52-spec.md` / `chapter5-52-final-spec.md` | 5.2 节规范与最终版 |
-| `chapter5-52-writing-spec.md` | 5.2 写作规范（分节结构/趋势判断/±30% 异常标注） |
-| `chapter5-52-writing-lessons.md` | 5.2 写作教训（踩坑记录，16KB 最详） |
-| `chapter5-52-reference-style.md` | 5.2 参考样式 |
-| `chapter5-53-templates.md` | 5.3 指标模板 |
+| `chapter5-52-final-spec.md` | ★5.2 节规范【结构权威单点】（2026-09-05 定） |
+| `chapter5-52-writing-lessons.md` | ★5.2 写作教训【细节权威单点】（踩坑记录，16KB 最详） |
+| `chapter5-52-spec.md` | ⚠️已废弃（v3.4，并入 final-spec） |
+| `chapter5-52-writing-spec.md` | ⚠️已废弃（并入 writing-lessons） |
+| `chapter5-52-reference-style.md` | ⚠️已废弃（参考样式，图号/费用节为旧口径） |
+| `chapter5-53-templates.md` | 5.3 指标模板（5.3.1 模板唯一权威） |
 | `chapter5-structured-tables.md` | 第5章结构化表格 |
 | `energy-flow-diagram-spec.md` | 能流图规范（graphviz 动态，非 matplotlib） |
 | `reports-vector-db.md` | 报告向量库 |
@@ -52,7 +53,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 ```
 1. 加载数据（data.json + validation.json）
    ↓
-2. 构建 YearlyEnergyData（提取 building_area/people_count/beds_count）
+2. 构建 YearlyEnergyData（提取 building_area/people_count；bed_count 由 calc_water_indicator 另行传参，YearlyEnergyData 无此字段）
    ↓
 3. 计算 5 项核心指标（折标系数四级兜底：data.json → DB → 用户 → 默认）：
    单位面积非供暖能耗 / 常规电耗 / 人均综合能耗 / 人均取水 / **单位采暖建筑面积供暖能耗**（DB37/T 2672 表2 定额，有供暖能耗的项目必算）
@@ -68,7 +69,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 
 - 公式：单位采暖建筑面积供暖能耗 kgce/(m²·a) = 供暖能耗 kgce ÷ 采暖建筑面积
 - 供暖能耗 = 供暖电耗×0.31 + 供热量(GJ)×34.12 + 供暖燃气×1.2143（口径见 energy-audit-core/references/coefficient-caliber.md）
-- 采暖建筑面积（2026-09-05 修正描述）：生产路径 = caliber 从建筑表 heat_area 聚合 → config.heating_area → data 顶层（缺失/全 0 时 generate_chapter5_md 用建筑总面积兜底，用户 2026-09-02 确认）；直调 generate_chapter5_md 时另有 data['buildings'] 聚合级（生产 data 无 buildings 键，实际不经过）
+- 采暖建筑面积（2026-09-05 定，三级兜底）：①caliber 从建筑表 heat_area 聚合 → config.heating_area → data 顶层；②缺失/全 0 → generate_chapter5_md 用建筑总面积兜底；③直调 generate_chapter5_md 且 data 无顶层 heating_area 时用 data['buildings'] 聚合级（生产路径 data 无 buildings 键，实际不经过）
 - 定额（DB37/T 2672-2019 表2，按供暖类型，不分机构等级）：市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
 - 代码：tools/energy_audit/indicators.py::calc_unit_area_heating_energy；预计算值在 data.json indicators[].unit_area_heating
 - 定额矩阵权威：energy-audit-core/references/standards-values.md（勿在本 skill 复制数值）
@@ -101,8 +102,8 @@ proj = load_project(unit_name)
 
 要点：
 
-- `heating_energy_kwh` 需从 sub_items 拆分，缺失时默认为 0（即非供暖电耗 = 总电耗）
-- 机构类型解析：`institution_category` → medical / government / education / venue / service_center
+- 供暖电耗：从 `EnergyYearly.heating_energy_kwh` 读取，经 caliber 组装的 `config.heating_energy_kwh_map`（逐年 dict，data 顶层）传入；`sub_items` 为 dt=3 供冷等分项的历史容器，生产路径传空 `{}`，**不得**从 sub_items 找供暖电耗。缺失时供暖电耗=0（即非供暖电耗=总电耗，DataVA V2 会标 HEATING_NOT_SPLIT）
+- 机构类型解析：`institution_category` → medical / government / education / venue / service（2026-09-05 默认 medical=医院泛化基线）
 
 ---
 
@@ -110,10 +111,10 @@ proj = load_project(unit_name)
 
 | # | 指标 | 函数 | 说明 |
 |---|------|------|------|
-| 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | (总电 − 供暖电) / 面积 |
-| 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | 电量总和/面积 |
+| 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | Ejrcn=(综合−供暖−交通)/面积，全口径 |
+| 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | (总电−供暖电)/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数 = 在岗 + 编外 + 门诊折算 + 床位折算 |
-| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆=单位建筑面积年取水量） | `calc_water_indicator(bed_count=N, building_area=A)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用 |
+| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆·政务=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, user_benchmark, bed_count, building_area)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均） |
 | 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 
 另：`calc_baseline(yearly_data)` 计算 5.4 节建筑能耗基准（用量基准 + 费用基准，多年区间/趋势）。
@@ -121,7 +122,7 @@ proj = load_project(unit_name)
 ### 关键公式
 
 ```
-非供暖能耗:  Ejrcn = (总电 − 供暖电) × 折标煤系数/ 面积      kgce/(m²·a)
+非供暖能耗:  Ejrcn = (E − Egn − Ejt) / M                  kgce/(m²·a)（E综合、Egn供暖、Ejt交通）
 常规电耗:    Eja   = (总电 − 供暖电) / 面积             kWh/(m²·a)
 人均能耗:    Er    = 综合能耗 × 1000 / 用能人数          kgce/(人·a)
 取水指标（DB37/T 4452-2021，按机构类型）:
@@ -147,11 +148,11 @@ Layer 3: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy
 
 ### 内置默认值与合理性范围（超出范围跳过 Layer 1）
 
-| 能源 | 默认系数 (kgce/单位) | 合理性范围 |
+| 能源 | 默认系数 (kgce/单位) | 合理性范围（超出跳过 Layer 1，防 DB 旧错值） |
 |------|---------------------|-----------|
-| 电 | 0.31 | 0.1 ~ 1.0 |
+| 电 | 0.31 | 0.2 ~ 0.5（0.1229 当量旧值拒收） |
 | 水 | —（不折标） | — |
-| 天然气 | 1.2143 | 0.5 ~ 2.5 |
+| 天然气 | 1.2143 | 1.15 ~ 1.30（1.33 当量旧错值拒收） |
 | 热 | 0.03412 | 0.01 ~ 0.05 |
 | 汽油 | 1.4714 | 1.0 ~ 2.0 |
 | 柴油 | 1.4571 | 1.0 ~ 2.0 |
@@ -165,32 +166,25 @@ resolve_benchmark(institution_type, metric, user_values, children_func, climate_
 # → {约束值, 基准值, 引导值, 标准, 来源}
 ```
 
-### 机构类型 → DB group_func 码
+### 机构类型 → DB field_types 码（代码实际，`indicators.py::_STANDARD_SCOPE` 附近）
 
-| 机构类型 | group_func |
-|----------|-----------|
-| 政务服务中心 service_center | A |
-| 场馆 venue | B |
-| 医疗 medical | C |
-| 机关 government | D |
-| 教育 education | E |
+| 机构类型 | field_types 值 |
+|----------|---------------|
+| 机关 government | 10 |
+| 医疗 medical | 20 |
+| 教育 education | 30 |
+| 政务/场馆 | 无专用码，走 Layer 2/3 兜底（政务用机关定额、场馆用其默认定额） |
 
-### 指标 → DB limit_type 码
+### 指标 → DB 查询维度（代码实际）
 
-| 指标 | limit_type |
-|------|-----------|
-| 单位建筑面积非供暖能耗 | A |
-| 单位采暖建筑面积供暖能耗 | B |
-| 人均综合能耗 | C |
-| 常规用能系统单位建筑面积电耗 | D |
-| 数据中心 PUE | E |
-| 人均用水量 / 单位开放床日用水量 | F（床日靠 children_func 区分） |
+DB 查询按「机构类型 field_types 码 × 标准表 std_category」过滤，取 ORDER BY 最新一条；
+不设 limit_type 编码体系。医疗 children_func 传医院等级（A/B/C）、climate_type 传气候区域。
 
 ### DB 查询规则
 
-- **标准类型优先级：地方(3) > 国家(1) > 行业(4) > 国际(2)** — ORDER BY 按此取第一条，确保山东项目优先匹配 DB37/T 地标
-- `children_func`（二级分类，如医院等级 A/B/C）与 `climate_type`（气候区域 A/B）按项目属性传入
 - DB 返回标准名与机构类型不匹配时，忽略 DB 走 Layer 2/3
+- `children_func`（二级分类，如医院等级 A/B/C）与 `climate_type`（气候区域 A/B）按项目属性传入
+- 取不到/不匹配 → Layer 2 用户值 → Layer 3 内置默认
 
 ### 标准名透传
 
@@ -231,7 +225,7 @@ generate_charts(data, config, str(out_dir / 'charts'))
 | indicators.json | 5 项指标 + 定额对标（含标准名/来源）+ 能耗基准 |
 | chapter5.md | 第5章完整 Markdown |
 | indicators_report.txt | 可读指标报告 |
-| charts/*.png | 能耗结构图 / 逐年柱状图 / 逐月趋势图 |
+| charts/*.png | 能源流向图 / 总量柱状图 / 逐月分组柱状图 / 费用饼图 |
 
 indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，author装配报告时引用它。
 
@@ -247,13 +241,13 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 年度: 2024 | 类型: medical
 面积: 67,636 m² | 人数: 3,200
 
-1. 单位建筑面积非供暖能耗: 21.5 kgce/(m²·a)
+1. 单位建筑面积非供暖能耗: 21.50 kgce/(m²·a)（2 位小数）
    对标: 低于基准值（合理水平）
    标准: DB37/T 2673-2019《医疗机构能源消耗定额标准》 | 来源: DB
-2. 常规用能系统单位面积电耗: 69.4 kWh/(m²·a)
-3. 人均综合能耗: 1,435 kgce/(人·a)
-4. 取水指标: 486 L/(床·d)（医院床日口径）
-5. 单位采暖建筑面积供暖能耗: 8.2 kgce/(m²·a)（有供暖项目）
+2. 常规用能系统单位面积电耗: 69.40 kWh/(m²·a)
+3. 人均综合能耗: 1435.00 kgce/(人·a)
+4. 取水指标: 486.00 L/(床·d)（医院床日口径；缺床位 → 【待补充】占位）
+5. 单位采暖建筑面积供暖能耗: 8.20 kgce/(m²·a)（有供暖项目）
 6. 建筑能耗基准 (2022、2023、2024年): ...
 ```
 
@@ -272,10 +266,10 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 ## Pitfalls
 
 - **供暖电与非供暖电分离** — 依赖 `heating_energy_kwh`，缺失时假设为 0（非供暖指标会被高估，DataVA V2 会标 `HEATING_NOT_SPLIT`）
-- **医院用水用 bed_count** — 算床日用水量，不用人均；缺床位数时降级人均取水量
+- **医院用水用 bed_count** — 算床日用水量，不用人均；缺 bed_count 返回 error 占位（【待补充】标注，不降级人均取水量，防与 md 层/正式报告打架）
 - **定额来源标注** — Default/User 来源的定额在报告中必须注明（DataVA V2 记 `SOURCE_FALLBACK` P2）
-- **用水定额字段语义** — 内置默认表用水三元组为（先进值, 通用值, 0)，与能耗（约束/基准/引导）口径不同，报告表述按先进值/通用值
-- **5.2 分节** — 按用能类型动态 H3，只有有数据的类型才生成；5.2/5.3/5.4 共用动态表号，不可硬编码表号
+- **用水定额字段语义** — 内置默认表用水三元组为（通用值, 先进值, 0)，与能耗（约束/基准/引导）口径不同，报告表述按通用值/先进值
+- **5.2 分节** — 按用能类型动态 H3，只有有数据的类型才生成；表号固定：表5.1 费用统计表 / 5.2 无表 / 5.3 从表5.2 起，图号 5.1 起动态连号
 - **5.1 极简** — 只有一句话概述 + 能源流向图，不要饼图/趋势柱状图/能源结构表（已移除）
 - **graphviz 依赖** — 系统需安装 graphviz 二进制（pip 包只是 wrapper），否则流向图失败
 - **占比计算** — `type_tce` key 是英文，用中文 `row[0]` 去 `.get()` 会返回 0 导致占比崩
@@ -304,7 +298,9 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 
 ## 关键数据库表
 
-- `ts_institution_energy_main` + `ts_institution_energy_data`: data_type=1能耗/2费用/3供冷/4供热/5交通，关联键 customer_id；明细按 period_code 展开（granularity: 1=月/2=双月/3=季度/4=半年）
+> ⚠️ 备用路径（load_from_db，仅 --db 模式）；生产路径为 caliber_agent.py 读 data.json。dt 旧分类（1=能耗/2=费用/3=供冷/4=供热/5=交通）为历史代码口径，生产数据不在其中。
+
+- `ts_institution_energy_main` + `ts_institution_energy_data`: 关联键 customer_id；明细按 period_code 展开（granularity: 1=月/2=双月/3=季度/4=半年）
 - `ts_institution_project`: institution_project_id → customer_id
 - `ts_institution_build`: 关联键 project_id（非 customer_id），数据经常缺失
 

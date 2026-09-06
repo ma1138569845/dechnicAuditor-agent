@@ -4,7 +4,7 @@ Caliber Agent — 能耗指标计算与第5章生成
 
 输入: ~/projects/energy-audit/<project_name>/data.json (AuditProject)
 输出: ~/projects/energy-audit/<project_name>/
-       ├── indicators.json     # 4项指标 + 定额对标 + 基准
+       ├── indicators.json     # 5项指标 + 定额对标 + 基准
        ├── chapter5.md         # 第5章完整Markdown
        └── charts/             # 图表文件
 
@@ -130,7 +130,7 @@ def calc_all_indicators(
     proj: AuditProject,
     yearly_data: List[YearlyEnergyData],
 ) -> dict:
-    """计算全部4项指标 + 定额对标 + 能耗基准"""
+    """计算全部5项指标 + 定额对标 + 能耗基准"""
     if not yearly_data:
         return {'error': '无年度能耗数据'}
 
@@ -168,7 +168,8 @@ def calc_all_indicators(
     results['per_capita_energy'] = r3
 
     # ── 指标 (4): 取水指标（医院=床日/机关教育=人均/场馆=面积）──
-    r4 = calc_water_indicator(latest, inst_type, bed_count=bed_count)
+    r4 = calc_water_indicator(latest, inst_type, bed_count=bed_count,
+                              building_area=latest.building_area)  # venue/service 面积口径必传
     results['water_indicator'] = r4
 
     # ── 指标 (5): 单位采暖建筑面积供暖能耗（有供暖能耗的项目必算）──
@@ -300,7 +301,7 @@ def run_caliber(
     print(f"  ✅ {len(yearly_data)} 年 ({', '.join(map(str, years))})")
 
     # Step 3: 计算指标
-    print("[3/5] 🧮 计算4项指标 + 定额对标 + 能耗基准...")
+    print("[3/5] 🧮 计算5项指标 + 定额对标 + 能耗基准...")
     results = calc_all_indicators(proj, yearly_data)
 
     # 输出指标预览

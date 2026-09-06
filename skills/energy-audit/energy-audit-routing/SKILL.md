@@ -16,11 +16,11 @@ metadata:
 
 用户提出涉及**某单位能源审计**的任务（数据收集/校验/核算/分析/报告编制）时，default（当前会话）**不自派执行**，统一转交 `editor` 编排。default 只做：日常对话、咨询答疑、任务转交、结果核验汇报。
 
-## 调度边界（唯一调度者）
+## 调度边界（2026-09-05 定位统一）
 
-- **editor = 能源审计流水线唯一调度者**：编排 datacollection→datava→caliber→author 流水线、kanban 任务图、补采回路、Director 终审。
+- **editor = 编排入口 + Director 终审**：接收 default 转交、启动 kanban 任务图流水线、终审汇总；运行时任务调度归 kanban dispatcher（editor 不逐任务派发）。
 - **default = 用户日常入口 + 转交通道**：不自行拆派任务给执行 profile；判定任务需要实操时，唤醒 editor。
-- **同一任务同一时间只有一个调度者：editor**。default 不创建 kanban 任务图、不直接唤醒执行 profile 干活。
+- **同一任务同一时间只有一个调度者：kanban dispatcher**。default 不创建 kanban 任务图、不直接唤醒执行 profile 干活。
 - 接收default委派的能源审计项目报告的编制任务，并启动一个kanban任务图流水线，完成编制。
 
 ## 执行角色（由 editor 调度，default 不直接唤醒）
@@ -29,8 +29,8 @@ metadata:
 |---|---|---|
 | datacollection | 采集 | PG/Excel/Config 多源采集 → data.json |
 | datava | 验证 | 完整性检查 + 异常 + KG 诊断（V1/V2/V3） |
-| caliber | 指标计算 | 5项指标 + 定额对标 + 图表 + 第5章（待建） |
-| author | 报告生成 | 8 章报告 docx（映射原设计 xiaode） |
+| caliber | 指标计算 | 5项指标 + 定额对标 + 图表 + 第5章 |
+| author | 报告生成 | 8 章报告 docx |
 
 ## 转交操作模板
 
@@ -49,7 +49,7 @@ editor 完成后，default 回读核验再向用户汇报：
 
 ## 硬约定
 
-- **单位目录统一**：`C:\Users\Dechnic\projects\energy-audit\<单位全称>\`
+- **单位目录统一**：`~/projects/energy-audit/<单位全称>/`（Windows 本机即 `C:\Users\<当前用户>\projects\energy-audit\`，勿写死机器名）
 - **数据真实性**：所有数字必须来自原始台账/账单，禁止编造
 - **跨 profile 进程级隔离**：不共享上下文，靠文件 + 会话库交接，default 负责对账
 - **成本透明**：每次唤醒是真实模型调用

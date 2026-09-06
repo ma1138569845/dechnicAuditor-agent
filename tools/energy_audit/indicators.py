@@ -33,10 +33,9 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 COEFFICIENTS = {
-    'electricity': 0.31,   # kgce/kWh（等效电折标系数 0.31 用于非供暖能耗计算）
-    'water':       0.2571,   # kgce/t
-    'natural_gas': 1.3300,   # kgce/m³
-    'heat':        0.03412,  # kgce/MJ （供暖用）
+    'electricity': 0.31,   # kgce/kWh（终端电力等价值，2026-09-05 统一：禁 0.1229 当量值）
+    'natural_gas': 1.2143,   # kgce/m³（DB37/T 2672-2019 附录B；1.33 为 GB/T 当量旧错值）
+    'heat':        0.03412,  # tce/GJ（直乘 GJ 数；勿统一 /1000）
     'diesel':      1.4571,   # kgce/kg
     'gasoline':    1.4714,   # kgce/kg
 }
@@ -50,6 +49,8 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_non_heating': (22.6, 15.3, 9.4),
         'unit_area_elec': (73.1, 53.0, 34.9),
         'per_capita_energy': (907.4, 556.9, 428.3),
+        # 供暖定额 DB37/T 2672-2019 表2 不分机构等级（按供暖类型），医疗机构同样适用
+        'unit_area_heating': (12.7, 11.1, 8.3),  # 默认市政集中供暖（按热计量）口径
         # 用水: DB37/T 4452-2021, 二级医院, 单位开放床日用水量 L/(床·d)
         'water_per_bed_day': (540, 340, 0),     # 约束值(通用值), 基准值(先进值), 引导值(无)
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
@@ -204,12 +205,14 @@ def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) ->
     Layer 2: 用户提供
     Layer 3: 内置默认 (COEFFICIENTS)
 
-    合理性范围（超出则跳过 Layer 1）：
-      电 0.1~1.0, 水 0.01~1.0, 气 0.5~2.5, 热 0.01~0.05, 油 1.0~2.0
+    合理性范围（超出则跳过 Layer 1，防 DB 旧错值被采信）：
+      电 0.2~0.5（只接受 0.31 等价值口径；0.1229 当量旧值拒收）,
+      气 1.15~1.30（只接受 1.2143；1.33 当量旧错值拒收）,
+      热 0.01~0.05, 油 1.0~2.0。水不折标，无系数查询。
     """
-    # 合理性范围
+    # 合理性范围（水不折标，无范围）
     _ranges = {
-        'electricity': (0.1, 1.0), 'water': (0.01, 1.0), 'natural_gas': (0.5, 2.5),
+        'electricity': (0.2, 0.5), 'natural_gas': (1.15, 1.30),
         'heat': (0.01, 0.05), 'diesel': (1.0, 2.0), 'gasoline': (1.0, 2.0),
     }
 
@@ -229,17 +232,13 @@ def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) ->
         logger.info(f"Layer2 User: energy_type={energy_type} coeff={user_value}")
         return user_value
 
-    # Layer 3
-    defaults = {
-        'electricity': 0.1229, 'water': 0.2571, 'natural_gas': 1.3300,
-        'heat': 0.03412, 'diesel': 1.4571, 'gasoline': 1.4714,
-    }
-    val = defaults.get(energy_type, 0)
+    # Layer 3（权威默认与 COEFFICIENTS 单点一致，2026-09-05 删独立 defaults 防漂移）
+    val = COEFFICIENTS.get(energy_type, 0)
     logger.info(f"Layer3 Default: energy_type={energy_type} coeff={val}")
     return val
 
 
-def resolve_benchmark(institution_type: str = 'government',
+def resolve_benchmark(institution_type: str = 'medical',
                        metric: str = 'unit_area_non_heating',
                        user_values: Optional[Tuple[float, float, float]] = None,
                        sub_type: Optional[str] = None) -> dict:
@@ -308,7 +307,8 @@ def institution_category_to_type(institution_category: str) -> str:
       党政/政府/机关/法院/公安 等 → government
     """
     if not institution_category:
-        return 'government'
+        # 2026-09-05 口径统一：医院=泛化基线，默认 medical（原为 government）
+        return 'medical'
     cat = str(institution_category).lower()
     if any(k in cat for k in ('医疗', '医院', '卫生', '床')):
         return 'medical'
@@ -376,11 +376,11 @@ class YearlyEnergyData:
 
     @property
     def non_heating_energy_kgce(self) -> float:
-        """非供暖能耗 kgce（等效电系数 0.31，仅计算电耗）
-        
-        根据《公共机构能源审计技术导则》(GB/T 31342-2014)：
-        医院非供暖能耗 = (总用电量 - 供暖用电) × 0.31
-        天然气（厨房）、水、汽油（交通）不纳入非供暖能耗计算。
+        """非供暖能耗 kgce（等效电系数 0.31，仅计算电耗）——【旧口径，已废弃于指标计算】
+
+        2026-09-05 口径统一：单位面积非供暖能耗公式 Ejrcn=(E−Egn−Ejt)/M 为全口径
+        （综合−供暖−交通），指标计算改用 non_heating_energy_tce；本属性仅作
+        历史兼容保留，禁止再用于指标计算。
         """
         non_heat_elec = self.electricity_kwh - self.heating_energy_kwh
         # 2026-09-05: 固定 0.31 → get_coefficient('electricity')，与供暖/综合能耗
@@ -444,7 +444,7 @@ def calc_unit_area_non_heating_energy(
                 'total_energy_tce': 0, 'heating_energy_tce': 0,
                 'transportation_energy_tce': 0, 'error': '建筑面积无效'}
 
-    non_heat_kgce = data.non_heating_energy_kgce
+    non_heat_kgce = round(data.non_heating_energy_tce * 1000, 4)  # tce→kgce，全口径（2026-09-05）
     kgce_per_m2 = round(non_heat_kgce / area, 2)
 
     return {
@@ -491,15 +491,15 @@ def calc_unit_area_electricity(
     """
     常规用能系统单位建筑面积电耗（三级兜底）
 
-    公式: Ed = (E_total_elec - E_heating_elec) / M
+    公式: Eja = (E_total_elec - E_heating_elec) / M
     式中:
       E_total_elec  = 年总用电量 (kWh)
       E_heating_elec = 供暖用电量 (kWh)
       M             = 建筑面积 (m²)
     注: 医疗设备、数据中心等特殊用能不计入常规用能系统。
 
-    DB37/T 2673-2019 定额（医疗机构）：
-      约束值 73.1、基准值 55.2、引导值 38.9 kWh/(m²·a)
+    DB37/T 2673-2019 定额（医疗机构，与 _DEFAULT_BENCHMARKS 一致）：
+      约束值 73.1、基准值 53.0、引导值 34.9 kWh/(m²·a)
 
     返回 {kwh_per_m2, total_electricity_kwh, building_area_m2, benchmark}；
     建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
@@ -534,7 +534,7 @@ def calc_unit_area_electricity(
 def calc_unit_area_heating_energy(
     data: YearlyEnergyData,
     heating_area: float = 0,
-    institution_type: str = 'government',
+    institution_type: str = 'medical',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
     sub_type: Optional[str] = None,  # venue 子类型
 ) -> dict:
@@ -595,8 +595,8 @@ def calc_per_capita_energy(
 
     医疗机构用能人数包括：在岗在编人员 + 编外工作人员 + 门诊人数折算 + 床位数折算。
 
-    DB37/T 2673-2019 定额（医疗机构，参考值）：
-      约束值 500、基准值 350、引导值 250 kgce/(人·a)
+    DB37/T 2673-2019 定额（医疗机构，与 _DEFAULT_BENCHMARKS 一致）：
+      约束值 907.4、基准值 556.9、引导值 428.3 kgce/(人·a)
     （注：该值因地区气候、医院等级差异较大，优先查 DB/用户）
 
     返回 {kgce_per_person, total_kgce, people_count, benchmark}；
@@ -640,7 +640,7 @@ def calc_per_capita_energy(
 
 def calc_water_indicator(
     data: YearlyEnergyData,
-    institution_type: str = 'government',
+    institution_type: str = 'medical',
     user_benchmark: Optional[Tuple[float, float, float]] = None,
     bed_count: Optional[int] = None,  # 医院使用
     building_area: Optional[float] = None,  # 政务服务中心/场馆使用（面积口径）
@@ -681,7 +681,17 @@ def calc_water_indicator(
     metric = metric_map.get(institution_type, 'water_per_person')
 
     # 医院：单位开放床日用水量
-    if institution_type == 'medical' and bed_count and bed_count > 0:
+    if institution_type == 'medical':
+        if not bed_count or bed_count <= 0:
+            # 2026-09-05 口径：缺床位不再降级人均取水量（会与 md 层/正式报告打架），
+            # 返回 error 占位，由上层标注【待补充】；error_kind=missing_input 供
+            # datava V2 识别为 P1（待补充）而非 P0（计算失败）阻塞
+            return {
+                'total_water_m3': data.water_m3, 'bed_count': bed_count or 0,
+                'metric': '单位开放床日用水量', 'benchmark': None,
+                'error': '医院取水指标缺少床位数（需补采 bed_count 后重算）',
+                'error_kind': 'missing_input',
+            }
         # Wz 口径（2026-09-05 注明）：4452 式(5) 的 Wz=住院部年用水总量
         # （含住院部/医技部/教学科研/后勤/行政管理，不含洗衣/制药/试验/家属区）；
         # 采集侧无住院部用水拆分字段，暂用全院总水量 water_m3 近似。
@@ -1022,6 +1032,7 @@ def compute_project_indicators(project) -> dict:
             yd,
             institution_type=institution_type,
             bed_count=base.beds_count if institution_type == 'medical' else None,
+            building_area=base.building_area,  # venue/service 面积口径必传（2026-09-05）
         )
 
         # 单位采暖建筑面积供暖能耗（表2 定额；项目有供暖能耗时计算，否则置 None）

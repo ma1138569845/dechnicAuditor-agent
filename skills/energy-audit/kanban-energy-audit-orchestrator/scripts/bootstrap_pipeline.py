@@ -96,7 +96,7 @@ def validate_plan(plan: dict) -> list[str]:
     for role in ["collector", "validator", "calculator", "reporter"]:
         if role not in pf or not pf[role]:
             errors.append(f"profiles 缺失角色: {role}")
-    # director 可选：缺省时 Director 汇总任务回退 reporter（editor 专职 Director 为推荐配置）
+    # director 可选：缺省时 Director 汇总任务回退 reporter（editor=编排入口+Director 终审，为推荐配置）
     return errors
 
 
