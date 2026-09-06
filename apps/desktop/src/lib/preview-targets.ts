@@ -1,3 +1,5 @@
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
+
 const PREVIEW_MARKDOWN_RE = /\[Preview:[^\]]+\]\((?<href>#preview[:/][^)]+)\)/gi
 
 export function stripPreviewTargets(text: string): string {
@@ -34,7 +36,7 @@ export function previewTargetFromMarkdownHref(href?: string): string | null {
   }
 
   try {
-    return decodeURIComponent(href.slice('#preview'.length + 1))
+    return sanitizeFsPath(decodeURIComponent(href.slice('#preview'.length + 1)))
   } catch {
     return null
   }

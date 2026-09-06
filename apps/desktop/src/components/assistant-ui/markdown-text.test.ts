@@ -173,6 +173,16 @@ describe('preprocessMarkdown', () => {
     )
   })
 
+  it('does not swallow trailing emphasis asterisks into a filesystem preview link', () => {
+    const input = '[报告](~/projects/energy-audit/output/报告.docx**)'
+
+    const output = preprocessMarkdown(input)
+
+    expect(output).toContain('#preview/')
+    expect(output).not.toContain('docx**')
+    expect(output).toContain(encodeURIComponent('~/projects/energy-audit/output/报告.docx'))
+  })
+
   it('does not swallow trailing emphasis asterisks into an autolinked url', () => {
     const input = '**PR opened: https://github.com/NousResearch/hermes-agent/pull/12345**'
 

@@ -1,4 +1,5 @@
 import { mediaExternalUrl, resolveMediaDisplaySrc } from '@/lib/media'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 
 export type ArtifactKind = 'image' | 'file' | 'link'
@@ -28,7 +29,7 @@ export interface ArtifactLoadResult {
 
 const MARKDOWN_IMAGE_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g
 const MARKDOWN_LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)/g
-const MEDIA_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
+const MEDIA_RE = /[`"'*_]{0,3}MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|[^\s`"'*]+)[`"'*]{0,3}/g
 const URL_RE = /https?:\/\/[^\s<>"')]+/g
 const PATH_RE = /(^|[\s("'`])((?:\/|~\/|\.\.?\/)[^\s"'`<>]+(?:\.[a-z0-9]{1,8})?)/gi
 const WINDOWS_PATH_RE = /(^|[\s("'`])([A-Za-z]:[\\/][^\s"'`<>]+(?:\.[a-z0-9]{1,8})?)/gi
@@ -55,20 +56,11 @@ function artifactSessionTitle(session: SessionInfo): string {
 }
 
 function normalizeValue(value: string): string {
-  return value.trim().replace(/[),.;]+$/, '')
+  return sanitizeFsPath(value)
 }
 
 function unquoteMediaValue(value: string): string {
-  let trimmed = value.trim()
-  const quote = trimmed[0]
-
-  if (quote && quote === trimmed.at(-1) && ['"', "'", '`'].includes(quote)) {
-    return trimmed.slice(1, -1)
-  }
-
-  trimmed = trimmed.replace(/[`"'*_]{1,3}$/, '')
-
-  return trimmed
+  return sanitizeFsPath(value)
 }
 
 function collectMediaValues(text: string, pushValue: (value: string) => void): void {

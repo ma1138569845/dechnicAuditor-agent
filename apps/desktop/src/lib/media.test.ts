@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mediaDisplayLabel, mediaKind, mediaName } from './media'
+import { mediaDisplayLabel, mediaKind, mediaName, mediaPathFromMarkdownHref } from './media'
 
 describe('mediaName', () => {
   it('takes the basename of a posix path', () => {
@@ -22,6 +22,12 @@ describe('mediaName', () => {
 
   it('still uses the URL pathname for http(s) media', () => {
     expect(mediaName('https://cdn.example/files/clip.mp4?token=1')).toBe('clip.mp4')
+  })
+})
+
+describe('mediaPathFromMarkdownHref', () => {
+  it('strips markdown bold leaked into a stored media href', () => {
+    expect(mediaPathFromMarkdownHref('#media:C%3A%2Fout%2F%E6%8A%A5%E5%91%8A.docx%2A%2A')).toBe('C:/out/报告.docx')
   })
 })
 

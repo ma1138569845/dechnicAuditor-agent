@@ -11,6 +11,7 @@ import {
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model'
 import { mediaKind, mediaPathFromMarkdownHref } from '@/lib/media'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import { firstStringField } from '@/lib/text'
 
 export interface ChangedFile {
@@ -38,7 +39,7 @@ const HTML_PATH_RE = /\.html?$/i
 const MARKDOWN_LINK_RE = /\[[^\]]*\]\(([^)\s]+)\)/g
 // Same shape as `parts.ts` MEDIA tags — Kanban wake prompts land raw
 // `MEDIA: path` on the preceding user message (user parts skip renderMediaTags).
-const RAW_MEDIA_RE = /[`"']?MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)/g
+const RAW_MEDIA_RE = /[`"'*_]{0,3}MEDIA:\s*(`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|[^\s`"'*]+)/g
 const utf8 = new TextEncoder()
 
 /** Office documents land via the office_editor toolset, not write_file
@@ -98,8 +99,10 @@ function artifactFilePath(args: Record<string, unknown>, result: Record<string, 
   ]
 
   for (const candidate of candidates) {
-    if (candidate && isLikelyFsPath(candidate)) {
-      return candidate
+    const cleaned = candidate ? sanitizeFsPath(candidate) : ''
+
+    if (cleaned && isLikelyFsPath(cleaned)) {
+      return cleaned
     }
   }
 
@@ -112,6 +115,7 @@ function rememberArtifact(
   stats?: { added: number; removed: number },
   byteSize?: number
 ) {
+  path = sanitizeFsPath(path)
   const existing = byPath.get(path)
 
   if (existing) {
@@ -147,16 +151,11 @@ function artifactPathFromMarkdownHref(href: string): string | null {
 }
 
 function unquoteMediaPath(value: string): string {
-  const trimmed = value.trim()
-  const quote = trimmed[0]
-
-  return quote && quote === trimmed.at(-1) && ['"', "'", '`'].includes(quote)
-    ? trimmed.slice(1, -1)
-    : trimmed
+  return sanitizeFsPath(value)
 }
 
 function rememberFileArtifactPath(path: string, byPath: Map<string, ChangedFile>) {
-  const cleaned = path.trim()
+  const cleaned = sanitizeFsPath(path)
 
   if (!cleaned || mediaKind(cleaned) !== 'file' || !isLikelyFsPath(cleaned)) {
     return

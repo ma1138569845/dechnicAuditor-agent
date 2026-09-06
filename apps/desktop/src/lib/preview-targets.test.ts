@@ -17,6 +17,9 @@ describe('preview target detection', () => {
     expect(previewTargetFromMarkdownHref('#preview/%2Ftmp%2Fdemo.html')).toBe('/tmp/demo.html')
     expect(previewTargetFromMarkdownHref('#preview:%2Ftmp%2Fdemo.html')).toBe('/tmp/demo.html')
     expect(previewTargetFromMarkdownHref('#media:%2Ftmp%2Fdemo.mp4')).toBeNull()
+    expect(previewTargetFromMarkdownHref('#preview/%2Ftmp%2F%E6%8A%A5%E5%91%8A.docx%2A%2A')).toBe(
+      '/tmp/报告.docx'
+    )
   })
 
   it('extracts preview targets from already-rendered preview markers', () => {

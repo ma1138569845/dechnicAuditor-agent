@@ -469,6 +469,8 @@ describe('renderMediaTags', () => {
       'audio: [Audio: voice.mp3](#media:%2Ftmp%2Fvoice.mp3) done'
     )
     expect(renderMediaTags('MEDIA:/tmp/demo.mp4')).toBe('[Video: demo.mp4](#media:%2Ftmp%2Fdemo.mp4)')
+    expect(renderMediaTags('**MEDIA: /tmp/报告.docx**')).toBe('[File: 报告.docx](#media:%2Ftmp%2F%E6%8A%A5%E5%91%8A.docx)')
+    expect(renderMediaTags('MEDIA:/tmp/报告.pdf**')).toBe('[File: 报告.pdf](#media:%2Ftmp%2F%E6%8A%A5%E5%91%8A.pdf)')
   })
 
   it('renders streamed assistant media once the tag is complete', () => {

@@ -136,6 +136,26 @@ describe('deriveChangedFiles', () => {
     ])
   })
 
+  it('strips markdown bold leaked onto MEDIA deliverable paths', () => {
+    const docx = 'C:/Users/Dechnic/projects/energy-audit/烟台经济技术开发区人民法院能源审计报告.docx'
+    const pdf = 'C:/Users/Dechnic/projects/energy-audit/烟台经济技术开发区人民法院能源审计报告.pdf'
+    const text = `交付物\n**MEDIA: ${docx}**\n**MEDIA: ${pdf}**`
+
+    expect(deriveChangedFiles([{ type: 'text', text }])).toEqual([
+      { added: 0, byteSize: undefined, name: '烟台经济技术开发区人民法院能源审计报告.docx', path: docx, removed: 0 },
+      { added: 0, byteSize: undefined, name: '烟台经济技术开发区人民法院能源审计报告.pdf', path: pdf, removed: 0 }
+    ])
+  })
+
+  it('strips trailing emphasis from already-rendered MEDIA hrefs', () => {
+    const path = 'C:/out/报告.docx'
+    const text = `[File: 报告.docx**](${mediaMarkdownHref(`${path}**`)})`
+
+    expect(deriveChangedFiles([{ type: 'text', text }])).toEqual([
+      { added: 0, byteSize: undefined, name: '报告.docx', path, removed: 0 }
+    ])
+  })
+
   it('does not treat inline MEDIA images as file artifacts', () => {
     expect(
       deriveChangedFiles([

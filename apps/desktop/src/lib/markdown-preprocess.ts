@@ -3,8 +3,8 @@ import { normalizeMathDelimiters } from '@assistant-ui/react-streamdown'
 import { isLikelyProseFence, sanitizeLanguageTag } from '@/lib/markdown-code'
 import { clampHtmlNestingDepth } from '@/lib/markdown-html-depth'
 import { mediaKind, mediaMarkdownHref } from '@/lib/media'
-import { previewMarkdownHref } from '@/lib/preview-targets'
-import { stripPreviewTargets } from '@/lib/preview-targets'
+import { previewMarkdownHref, stripPreviewTargets } from '@/lib/preview-targets'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import { linkifySessionRefs } from '@/lib/session-refs'
 
 const REASONING_BLOCK_RE = /<(think|thinking|reasoning|scratchpad|analysis)>[\s\S]*?<\/\1>\s*/gi
@@ -185,7 +185,7 @@ function autoLinkRawUrls(text: string): string {
 function routeFileLinksToPreview(text: string): string {
   return text.replace(FILE_LINK_RE, (match: string, ...args: unknown[]) => {
     const groups = args.at(-1) as { label: string; target: string }
-    const target = groups.target.replace(/^<|>$/g, '')
+    const target = sanitizeFsPath(groups.target.replace(/^<|>$/g, ''))
 
     const href = mediaKind(target) === 'file' ? previewMarkdownHref(target) : mediaMarkdownHref(target)
 

@@ -1,4 +1,5 @@
 import { mediaDisplayLabel, mediaMarkdownHref } from '@/lib/media'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 
 import type { ChatMessage, ChatMessagePart } from './types'
 
@@ -10,15 +11,13 @@ export function reasoningPart(text: string, timestamp?: number): ChatMessagePart
   return { type: 'reasoning', text, ...(timestamp !== undefined ? { timestamp } : {}) }
 }
 
-const MEDIA_LINE_RE = /(^|\n)[\t ]*[`"']?MEDIA:\s*(?<line>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?[\t ]*(\n|$)/g
+const MEDIA_LINE_RE =
+  /(^|\n)[\t ]*[`"'*_]{0,3}MEDIA:\s*(?<line>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|[^\s`"'*]+)[`"'*]{0,3}[\t ]*(\n|$)/g
 
-const MEDIA_TAG_RE = /[`"']?MEDIA:\s*(?<inline>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|\S+)[`"']?/g
+const MEDIA_TAG_RE = /[`"'*_]{0,3}MEDIA:\s*(?<inline>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|[^\s`"'*]+)[`"'*]{0,3}/g
 
 function unquoteMediaPath(value: string): string {
-  const trimmed = value.trim()
-  const quote = trimmed[0]
-
-  return quote && quote === trimmed.at(-1) && ['"', "'", '`'].includes(quote) ? trimmed.slice(1, -1) : trimmed
+  return sanitizeFsPath(value)
 }
 
 function mediaLink(value: string): string {

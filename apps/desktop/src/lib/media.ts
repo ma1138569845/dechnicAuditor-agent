@@ -1,4 +1,5 @@
 import { readDesktopFileDataUrl } from '@/lib/desktop-fs'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import { capitalize } from '@/lib/text'
 import { $connection } from '@/store/session'
 
@@ -184,7 +185,7 @@ export function mediaPathFromMarkdownHref(href?: string): string | null {
   }
 
   try {
-    return decodeURIComponent(href.slice('#media:'.length))
+    return sanitizeFsPath(decodeURIComponent(href.slice('#media:'.length)))
   } catch {
     return null
   }

@@ -177,6 +177,19 @@ describe('PDF previews', () => {
     })
   })
 
+  it('classifies office files whose path leaked markdown bold as office previews', () => {
+    expect(localPreviewTarget('C:/out/烟台经济技术开发区人民法院能源审计报告.docx**')).toMatchObject({
+      label: '烟台经济技术开发区人民法院能源审计报告.docx',
+      officeKind: 'docx',
+      path: 'C:/out/烟台经济技术开发区人民法院能源审计报告.docx',
+      previewKind: 'office'
+    })
+    expect(localPreviewTarget('/tmp/spec.pdf**')).toMatchObject({
+      path: '/tmp/spec.pdf',
+      previewKind: 'pdf'
+    })
+  })
+
   it('keeps ordinary text files on the source-preview path', () => {
     expect(localPreviewTarget('/tmp/spec.md')).toMatchObject({
       language: 'markdown',

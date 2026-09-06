@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 
 import { isDesktopFsRemoteMode, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
+import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import type { PreviewTarget } from '@/store/preview'
 
 const HTML_EXTENSIONS = new Set(['.htm', '.html'])
@@ -187,7 +188,7 @@ export async function openPreviewTargetInBrowser(target: PreviewTarget): Promise
 }
 
 export function localPreviewTarget(rawTarget: string, cwd?: string | null): PreviewTarget | null {
-  const raw = rawTarget.trim().replace(/^`|`$/g, '')
+  const raw = sanitizeFsPath(rawTarget)
 
   if (!raw) {
     return null
