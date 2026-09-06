@@ -60,24 +60,24 @@ Director ←──────────────────────�
 
 - **Worker:** author Profile（技能: ea-authoring + energy-audit-core + energy-audit-report + energy-audit-imitate）
 - **输入:** data.json + validation.json + indicators.json + indicator_review.json
-- **产出:** docx 创建 + 封面/审计信息表 + 第1章（1.7 结论留占位符「【1.7审计结论—待第3卡回填】」）+ 第2/3/4章，落盘后 `office_save`
+- **产出:** 第1~4章 LLM 分 1~2 批生成 md 落盘 `chapter_md/ch1~ch4.md` → `office_create` 建 docx + `doc_insert_markdown` 整章导入（封面/审计信息表模板注入，第1章 1.7 结论留占位符「【1.7审计结论—待第3卡回填】」）→ 格式修复链 → `office_save` 落盘
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
 
 ### Step 5b — 报告卡2（数据章）
 
 - **Worker:** author Profile（技能同上）
 - **输入:** data.json + indicators.json + chapter5.md + 卡1落盘的 docx
-- **产出:** `office_open` 续写第5章（只装配 caliber 产出，不重算）+ 第6章 + 第7章
+- **产出:** 第6~7章 LLM 1 次批生成 md 落盘 `chapter_md/ch6~ch7.md` → `office_open` 接续 → 第5章 chapter5.md 直接 `doc_insert_markdown` 导入（不重算）+ 第6/7章整章导入 + 设备照片 `doc_insert_image` → 格式修复链 → `office_save` 落盘
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
 
 ### Step 5c — 报告卡3（收尾章）
 
 - **Worker:** author Profile（技能同上）
 - **输入:** data.json + indicators.json + validation.json + 卡2落盘的 docx
-- **产出:** 第8章 + 回填 1.7 占位符 + 附录1~7 + 收尾三件套（目录/缩进/页眉分隔线）+ 水印 + PDF 签章（双文件交付）
+- **产出:** 第8章 LLM 生成 md 落盘 `chapter_md/ch8.md` 整章导入 → 回填 1.7 占位符 → 格式修复链 → 附录1~7（officecli）→ 收尾三件套（目录/缩进/页眉分隔线）→ 水印 → PDF 签章（双文件交付）
 - **完成标记:** `kanban_complete(metadata={"report_path": "...", "pdf_path": "..."})`
 
-**三卡铁律（防口径分裂）**：所有数值一律从 data.json / indicators.json / chapter5.md 读取，禁止从前序章节文本提取数值；每卡完成必须 `office_save` 落盘后再 `kanban_complete`；卡2/卡3 用 `office_open` 接续编辑，禁止重建文件。
+**三卡铁律（防口径分裂）**：所有数值一律从 data.json / indicators.json / chapter5.md 读取，禁止从前序章节文本提取数值；每卡完成必须 `office_save` 落盘后再 `kanban_complete`；卡2/卡3 用 `office_open` 接续编辑，禁止重建文件；**正文写入禁逐段 `doc_insert_paragraph_with_text`，一律 `doc_insert_markdown` 整章导入**（图片嵌入/占位替换/封面表模板注入例外），导入后跑格式修复链（序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」）。
 
 ### Step 6 — V3 报告审查（REPORT_REVIEW）
 

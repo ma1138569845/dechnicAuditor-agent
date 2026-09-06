@@ -258,3 +258,32 @@ pPr.append(outlineLvl)
 - 形态：DrawingML，禁止 VML `textpath`
 - 操作细则：`references/docx-watermark.md`
 
+## 十一、md 导入与格式修复链（2026-09-06 定）
+
+**背景**：正文写入由逐段 `doc_insert_paragraph_with_text` 改为 `doc_insert_markdown` 整章导入（几百次 MCP 往返 → 每章 1 次）。md 导入的默认样式 ≠ 格式规范，必须跑下面的修复链。
+
+### 11.1 导入规范
+
+- 每章 1 次 `doc_insert_markdown`，idx 用 `doc_get_last_operable_pos().position`（卡2/卡3 接续编辑时同理，勿硬编码大数）
+- 表格随 md 表格语法导入；大表（如第5章指标表、附录2能耗数据信息表）可用 `doc_insert_table_by_csv`
+- 第5章直接导入 caliber 产出的 chapter5.md（不重写）
+- 图片不随 md 导入，仍单独 `doc_insert_image`（宽度 12cm 居中，图注 10pt 宋体居中）
+
+### 11.2 格式修复链操作序列（每卡导入完成后统一跑，非脚本）
+
+1. **定位**：`doc_get_outline` 拿全部标题（层级/位置）与表格位置
+2. **标题修复**：对每个标题段 `doc_modify_paragraph`（`paragraph_style` = Heading 1/2/3，ranges 数组尽量批量）+ `doc_set_font` 设字体：
+   - H1：宋体 15pt 加粗 居中
+   - H2：宋体 14pt 加粗
+   - H3：宋体 12pt 加粗
+3. **表格修复**：对每张表 `doc_set_table_properties`（边框全网格、对齐 center、行高 1.01cm exactly、垂直居中 cell_v_align=center）+ `doc_set_table_layout`（mode=auto 列宽自适应）；表头加粗
+4. **正文修复**：正文自然段 `doc_modify_paragraph`（`alignment`=两端对齐、`line_spacing_rule`+`line_spacing`=1.5 倍）
+5. **首行缩进**：仍走 officecli 批处理（`docx-first-line-indent.md`，firstLineChars=200），不在此链内
+
+### 11.3 验收
+
+1. Word「视图 → 导航窗格」标题树完整（H1/H2/H3 层级正确）
+2. 表格：12pt 宋体居中、行高 1.01cm、垂直居中（抽查 2~3 张）
+3. V3 格式检查通过 + 正式报告对照（PoC 阶段逐项比对）
+4. 红线不触：本链是 author 调用 office_editor 工具的**固定操作序列**，不是脚本生成正文（红线4）；禁 python-docx
+
