@@ -32,7 +32,7 @@
 1. **环境检查** — hermes CLI 存在、5 个 profile 存在（4 执行 + editor Director）、kanban board 已初始化
 2. **创建工作区** — 按上表建目录树
 3. **复制配置** — config.json 复制进 workspace
-4. **创建 Kanban 任务图** — 每项目 6 步串行任务 + 1 个 Director 汇总（见 workflow.md）
+4. **创建 Kanban 任务图** — 每项目 8 步串行任务（报告环节拆 3 卡）+ 1 个 Director 汇总（见 workflow.md）
 5. **完成提示** — 监控命令/报告收集路径
 
 ## Profile 配置规则

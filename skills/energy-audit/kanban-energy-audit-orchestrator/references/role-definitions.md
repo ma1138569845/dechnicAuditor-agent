@@ -72,15 +72,17 @@ DataCollection → DataVA      → Caliber        → author
 | Profile 名 | `author` |
 | 技能 | `ea-authoring` + `energy-audit-core` + `energy-audit-report`（共享资产库：实例/模板/装配/导出，Word 成品主链在 ea-authoring） + `energy-audit-imitate`（仿写模式，可选） |
 | 工具集 | hermes-cli + energy_audit（9 工具：PG 查询/RAG/仿写，详见 references/tools-reference.md） |
-| 输入 | `indicators.json`, `chapter5.md` (上游产出) |
-| 输出 | `能源审计报告.docx` (完整 8 章) |
+| 输入 | `indicators.json`, `chapter5.md`, `data.json`, `validation.json` (上游产出，三卡共用) |
+| 输出 | `能源审计报告.docx` (完整 8 章) + `能源审计报告.pdf`（三卡串行：卡1 基础章 → 卡2 数据章 → 卡3 收尾章，每卡完成即落盘） |
 | SOUL | "用自然语言写出专业的能源审计报告" |
 
 **任务 Body 要素:**
 - 上游产出路径
+- 三卡分工（卡1 封面+第1/2/3/4章、卡2 第5章装配+第6/7章、卡3 第8章+1.7回填+附录+收尾+PDF）
 - 格式规范（H1宋体15pt/H2宋体14pt/正文12pt）
 - 省级规章是否需 web_search 验证
 - 照片路径（如有）
+- 三卡铁律：数值一律从数据文件读取，禁止从前序章节文本提取；office_open 接续编辑勿重建；每卡 office_save 落盘后再 kanban_complete
 
 ## 5. 编排入口 + Director 终审（= editor）
 

@@ -4,8 +4,8 @@
 
 ## 任务图结构
 
-每个公共机构项目生成 6 个父子链接的 Kanban 任务 + 1 个汇总 Director
-（DataVA 在三个检查点各介入一次，与 bootstrap_pipeline.py 一致）：
+每个公共机构项目生成 8 个父子链接的 Kanban 任务 + 1 个汇总 Director
+（DataVA 在三个检查点各介入一次；报告环节由 author 拆 3 张串行卡，与 bootstrap_pipeline.py 一致）：
 
 ```
 Director (汇总审查)
@@ -13,15 +13,18 @@ Director (汇总审查)
       └─ V1 验证 DATA_CHECK (datava)
           └─ 计算 (caliber)
               └─ V2 指标复核 INDICATOR_REVIEW (datava)
-                  └─ 报告 (author)
-                      └─ V3 报告审查 REPORT_REVIEW (datava) ──┐
-  ...（各项目并行）                                            │
-Director ←────────────────────────────────────────────────────┘
+                  └─ 报告卡1 基础章 (author)
+                      └─ 报告卡2 数据章 (author)
+                          └─ 报告卡3 收尾章 (author)
+                              └─ V3 报告审查 REPORT_REVIEW (datava) ──┐
+  ...（各项目并行）                                                  │
+Director ←──────────────────────────────────────────────────────────┘
 ```
 
 - **纵向**（同一项目）：严格串行，前一步完成 → 后一步自动晋升 ready
 - **横向**（不同项目）：完全并行，互不依赖
 - **Director**：所有项目报告完成后触发，assignee = profiles["director"]（推荐 editor——编排入口 + Director 终审，与 author 写作分离；缺省回退 reporter）
+- **报告三卡拆分的动机**：单卡写 8 章曾致上下文膨胀（~50 万 token）与迭代预算耗尽（90/90 超时）。拆卡后每卡 3~4 章、上下文不膨胀；任一卡失败仅重跑该卡（前卡产物已落盘 docx）。
 
 ## 每步任务详解
 
@@ -53,12 +56,28 @@ Director ←──────────────────────�
 - **产出:** indicator_review.json（指标年际对比+对标合理性+数据一致性）
 - **完成标记:** `kanban_complete(metadata={"indicator_review_path": "..."})`
 
-### Step 5 — 报告生成
+### Step 5a — 报告卡1（基础章）
 
 - **Worker:** author Profile（技能: ea-authoring + energy-audit-core + energy-audit-report + energy-audit-imitate）
-- **输入:** chapter5.md + validation.json + data.json
-- **产出:** 完整 8 章 .docx 能源审计报告
+- **输入:** data.json + validation.json + indicators.json + indicator_review.json
+- **产出:** docx 创建 + 封面/审计信息表 + 第1章（1.7 结论留占位符「【1.7审计结论—待第3卡回填】」）+ 第2/3/4章，落盘后 `office_save`
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
+
+### Step 5b — 报告卡2（数据章）
+
+- **Worker:** author Profile（技能同上）
+- **输入:** data.json + indicators.json + chapter5.md + 卡1落盘的 docx
+- **产出:** `office_open` 续写第5章（只装配 caliber 产出，不重算）+ 第6章 + 第7章
+- **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
+
+### Step 5c — 报告卡3（收尾章）
+
+- **Worker:** author Profile（技能同上）
+- **输入:** data.json + indicators.json + validation.json + 卡2落盘的 docx
+- **产出:** 第8章 + 回填 1.7 占位符 + 附录1~7 + 收尾三件套（目录/缩进/页眉分隔线）+ 水印 + PDF 签章（双文件交付）
+- **完成标记:** `kanban_complete(metadata={"report_path": "...", "pdf_path": "..."})`
+
+**三卡铁律（防口径分裂）**：所有数值一律从 data.json / indicators.json / chapter5.md 读取，禁止从前序章节文本提取数值；每卡完成必须 `office_save` 落盘后再 `kanban_complete`；卡2/卡3 用 `office_open` 接续编辑，禁止重建文件。
 
 ### Step 6 — V3 报告审查（REPORT_REVIEW）
 

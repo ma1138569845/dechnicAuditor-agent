@@ -3,11 +3,12 @@
 能源审计 Kanban 编排器 — 从 plan.json 生成 setup.sh。
 
 一个公共机构 = 一个项目 = 一份能源审计报告。
-每项目 6 步任务 + 1 汇总 Director。
+每项目 8 步任务（报告环节拆 3 卡）+ 1 汇总 Director。
 
 任务图:
   Collect → DataVA(DATA_CHECK) → Calculate → DataVA(INDICATOR_REVIEW)
-    → Report → DataVA(REPORT_REVIEW) → Director(editor, 专职汇总审查)
+    → Report卡1(基础章) → Report卡2(数据章) → Report卡3(收尾章)
+    → DataVA(REPORT_REVIEW) → Director(editor, 专职汇总审查)
 
 Director assignee = profiles["director"]（推荐 editor 专职），缺省回退 reporter。
 
@@ -161,7 +162,9 @@ def render_setup_sh(plan: dict) -> str:
         v1_var = f'T{idx:03d}_V1'
         a_var = f'T{idx:03d}_A'
         v2_var = f'T{idx:03d}_V2'
-        r_var = f'T{idx:03d}_R'
+        r1_var = f'T{idx:03d}_R1'
+        r2_var = f'T{idx:03d}_R2'
+        r3_var = f'T{idx:03d}_R3'
         v3_var = f'T{idx:03d}_V3'
 
         W = f"{BASE}/{slug}"
@@ -173,6 +176,7 @@ def render_setup_sh(plan: dict) -> str:
         CH5 = f"{D}/chapter5.md"
         CHTS = f"{W}/charts"
         RPT = f"{W}/output/{name}_能源审计报告.docx"
+        RPT_PDF = f"{W}/output/{name}_能源审计报告.pdf"
         IND_REVIEW = f"{D}/indicator_review.json"
         RPT_REVIEW = f"{D}/report_review.json"
 
@@ -328,10 +332,10 @@ BODY_EOF
 )" 2>&1 | {_GREP_TASK_ID} || echo "SKIP")
 echo "    → ${v2_var}"''')
 
-        # ── Task 5: Report ──
-        kanban_fn_lines.append(f'''echo "  📋 [R] 报告: {name}"
-{r_var}=$(hermes kanban create \\
-    "生成报告 - {name}" \\
+        # ── Task 5a: Report Card 1 (基础章: 封面+第1/2/3/4章) ──
+        kanban_fn_lines.append(f'''echo "  📋 [R1] 报告卡1-基础章: {name}"
+{r1_var}=$(hermes kanban create \\
+    "报告卡1-基础章 - {name}" \\
     --assignee {profiles.get("director") or profiles["reporter"]} \\
     --parents "${{{v2_var}}}" \\
     --workspace dir:"{W}" \\
@@ -339,43 +343,110 @@ echo "    → ${v2_var}"''')
     --max-runtime {int(max_runtime)}s \\
     --priority 2 \\
     --body "$(cat <<'BODY_EOF'
-你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成完整报告。
+你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 1 卡 / 共 3 卡：基础章】。
+
+本卡职责（只写以下内容，禁止越界写后续章节）:
+1. 封面 + 审计信息表
+2. 第1章 审计执行概要（1.6 法规需 web_search 验证；1.7 审计结论暂不写，插入占位符文本「【1.7审计结论—待第3卡回填】」）
+3. 第2章 公共机构基本情况（建筑参数表每栋一张 4 列键值对）
+4. 第3章 能源资源管理状况
+5. 第4章 能源资源计量及统计状况（4.2/4.3 从数据推断，禁止虚构计量缺失）
 
 输入:
+- 项目数据: {DATA}
+- 数据验证: {VAL}
 - 指标: {IND}
-- 第5章: {CH5}
-- 验证: {VAL}
 - 指标审查: {IND_REVIEW}
-- 配置: {DATA}
 
-报告结构（8章 .docx）:
-1. 审计执行概要（1.6 法规需 web_search 验证）
-2. 公共机构基本情况
-3. 能源资源管理状况
-4. 能源资源计量及统计状况
-5. 能耗指标分析（使用 Caliber 产出，不做二次计算）
-6. 主要用能系统分析（有数据才写段）
-7. 节能效果与潜力分析（从数据推断问题，引用 V1 诊断结果）
-8. 审计结论（LLM 自然语言综合，拉前7章数据）
+铁律:
+- 所有数值一律从 {DATA} / {IND} 读取，禁止从前序章节文本或 memory 提取数值
+- 用 office_create 创建 docx: {RPT}
+- 每写完一章必须 office_save 落盘
+- 缺失数据标注【待补充】，禁止编造
 
-格式规范:
-- H1 宋体15pt居中加粗 | H2 宋体14pt加粗 | H3 宋体12pt加粗
-- 正文 宋体+TNR 12pt | 表格 宋体12pt 居中对齐 行高1.01cm 垂直居中
-- LLM 自然文本，拒绝死板模板填充
-
-输出: {RPT}
-
-完成后调用 kanban_complete(summary="...", metadata={{"report_path":"{RPT}"}})。
+完成后调用 kanban_complete(summary="基础章完成(封面+第1-4章)", metadata={{"report_path":"{RPT}"}})。
 BODY_EOF
 )" 2>&1 | {_GREP_TASK_ID} || echo "SKIP")
-echo "    → ${r_var}"''')
+echo "    → ${r1_var}"''')
+
+        # ── Task 5b: Report Card 2 (数据章: 第5/6/7章) ──
+        kanban_fn_lines.append(f'''echo "  📋 [R2] 报告卡2-数据章: {name}"
+{r2_var}=$(hermes kanban create \\
+    "报告卡2-数据章 - {name}" \\
+    --assignee {profiles.get("director") or profiles["reporter"]} \\
+    --parents "${{{r1_var}}}" \\
+    --workspace dir:"{W}" \\
+    --tenant {tenant} \\
+    --max-runtime {int(max_runtime)}s \\
+    --priority 2 \\
+    --body "$(cat <<'BODY_EOF'
+你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 2 卡 / 共 3 卡：数据章】。
+
+上游已完成: 封面+第1~4章已写入 {RPT}（第1章1.7为占位符，勿动）。
+
+本卡职责（只写以下内容，禁止越界写后续章节）:
+1. 第5章 能耗指标分析——只装配 Caliber 产出的 {CH5} 与 charts/ 图表，禁止重算任何数值
+2. 第6章 主要用能系统分析——6.1 用电 / 6.2 用水 / 6.3 用热 / 6.4 其他用能 / 6.5 室内环境；分系统有数据才写段，按类别嵌设备照片
+3. 第7章 节能效果与潜力分析——从数据推断问题，每个问题至少对应一条建议
+
+输入:
+- 项目数据: {DATA}
+- 指标: {IND}
+- 第5章: {CH5}
+
+铁律:
+- 用 office_open 打开 {RPT} 在末尾继续追加（勿重建文件，勿动已有内容）
+- 所有数值一律从 {DATA} / {IND} / {CH5} 读取
+- 写完必须 office_save 落盘
+
+完成后调用 kanban_complete(summary="数据章完成(第5-7章)", metadata={{"report_path":"{RPT}"}})。
+BODY_EOF
+)" 2>&1 | {_GREP_TASK_ID} || echo "SKIP")
+echo "    → ${r2_var}"''')
+
+        # ── Task 5c: Report Card 3 (收尾章: 第8章+1.7回填+附录+交付) ──
+        kanban_fn_lines.append(f'''echo "  📋 [R3] 报告卡3-收尾章: {name}"
+{r3_var}=$(hermes kanban create \\
+    "报告卡3-收尾章 - {name}" \\
+    --assignee {profiles.get("director") or profiles["reporter"]} \\
+    --parents "${{{r2_var}}}" \\
+    --workspace dir:"{W}" \\
+    --tenant {tenant} \\
+    --max-runtime {int(max_runtime)}s \\
+    --priority 2 \\
+    --body "$(cat <<'BODY_EOF'
+你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 3 卡 / 共 3 卡：收尾章+附录+交付】。
+
+上游已完成: 第1~7章已写入 {RPT}（第1章1.7为占位符）。
+
+本卡职责:
+1. 第8章 审计结论——LLM 自然语言综合，拉前7章数据（数值以 {DATA}/{IND} 为准）
+2. 回填第1章 1.7 审计结论——office_edit 定点替换占位符「【1.7审计结论—待第3卡回填】」，完成后自检占位符已消失
+3. 附录1~7（无发票照片则无附录3，后续序号依次前移）——officecli 追加，标题 H2 宋体14pt 中文冒号，Table Grid 12pt 居中行高1.01cm
+4. 收尾三件套: 目录刷新 updateFields=true + 正文首行缩进 firstLineChars=200 + 页眉单段落（单位全称+两空格+能源审计报告，右对齐宋体10.5pt）+分隔线 pbdr.bottom=single 自检
+5. 水印: 页眉 DrawingML 注入单位全称（behindDoc=1）
+6. PDF 转换 + 默认签章: {RPT_PDF}（office_render format=pdf + seal_text=审计机构名）
+
+输入:
+- 项目数据: {DATA}
+- 指标: {IND}
+- 数据验证: {VAL}
+
+铁律:
+- 用 office_open 打开 {RPT} 接续编辑（勿重建文件）
+- 全部完成后双文件（.docx + .pdf）落盘 output/ 并自检存在
+
+完成后调用 kanban_complete(summary="报告完成(第8章+附录+双文件)", metadata={{"report_path":"{RPT}", "pdf_path":"{RPT_PDF}"}})。
+BODY_EOF
+)" 2>&1 | {_GREP_TASK_ID} || echo "SKIP")
+echo "    → ${r3_var}"''')
 
         # ── Task 6: DataVA V3 (REPORT_REVIEW) ──
         kanban_fn_lines.append(f'''echo "  📋 [V3] 报告审查: {name}"
 {v3_var}=$(hermes kanban create \\
     "[V3] 报告审查 - {name}" \\
     --assignee {profiles["validator"]} \\
-    --parents "${{{r_var}}}" \\
+    --parents "${{{r3_var}}}" \\
     --workspace dir:"{W}" \\
     --tenant {tenant} \\
     --max-runtime {int(max_runtime)}s \\
@@ -500,7 +571,7 @@ def main() -> int:
     print(f"✓ setup.sh → {out_path}")
     print(f"  基础路径: {_resolve_base()}")
     print(f"  项目数: {len(_extract_projects(plan))}")
-    print(f"  总任务数: {len(_extract_projects(plan)) * 6 + 1}")
+    print(f"  总任务数: {len(_extract_projects(plan)) * 8 + 1}")
     print(f"  并行度: {plan.get('kanban', {}).get('max_concurrent_projects', 5)} 项目")
     return 0
 

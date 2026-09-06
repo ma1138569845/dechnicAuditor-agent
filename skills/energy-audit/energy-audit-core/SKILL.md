@@ -51,7 +51,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 
 - 1.6 省级规章需 web_search 验证，不可字符串替换
 - **批量生成：`kanban-energy-audit-orchestrator` 技能**。利用 Hermes Kanban 实现并行调度。
-  一个公共机构 = 一个项目 = 一份报告。每项目 6 步串行（采集→V1验证→计算→V2复核→报告→V3审查），不同项目完全并行。
+  一个公共机构 = 一个项目 = 一份报告。每项目 8 步串行（采集→V1验证→计算→V2复核→报告卡1基础章→报告卡2数据章→报告卡3收尾章→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
 - 报告章节细节与编写规范见 `references/` 目录（report-format-spec、chapter-writing-specs、public-institution-report-structure 等）。

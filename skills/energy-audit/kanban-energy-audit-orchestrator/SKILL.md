@@ -35,7 +35,7 @@ metadata:
 | `datacollection` | PG数据库 + config +Excel识别多源数据采集 | hermes-cli + energy_audit |
 | `datava` | 数据完整性检查 + KG因果诊断 | hermes-cli + energy_audit |
 | `caliber` | 5项指标计算 + 定额对标 + 图表 + 第5章 | hermes-cli + energy_audit |
-| `author` | 第1/2/3/4/6/7/8章 + 最终报告组装 | hermes-cli + energy_audit |
+| `author` | 报告三卡串行：卡1 基础章（封面+第1/2/3/4章）、卡2 数据章（第5章装配+第6/7章）、卡3 收尾章（第8章+附录+收尾+PDF） | hermes-cli + energy_audit |
 
 ## 何时使用
 
@@ -97,7 +97,7 @@ bash setup.sh
 1. 创建工作区 `~/projects/energy-audit/`
 2. 为每个项目创建子目录 `<slug>/`
 3. 复制对应 config.json
-4. **创建 kanban 任务图**（每项目 6 个父子链接任务 + 1 汇总 Director，见 workflow.md）
+4. **创建 kanban 任务图**（每项目 8 个父子链接任务 + 1 汇总 Director，报告环节拆 3 卡，见 workflow.md）
 5. 打印监控命令
 
 ### Step 4 — Execute（启动调度）
@@ -115,7 +115,7 @@ python scripts/monitor.py --tenant <slug>
 
 Kanban dispatcher 自动：
 - 最多同时运行 `max_concurrent_projects` 个项目
-- 每个项目的 6 步**严格串行**（父子依赖自动控制）
+- 每个项目的 8 步**严格串行**（父子依赖自动控制）
 - 不同项目之间**完全并行**
 - 任务失败**自动重试**（最多 2 次）
 
