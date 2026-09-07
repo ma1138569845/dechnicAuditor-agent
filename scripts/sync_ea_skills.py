@@ -31,6 +31,8 @@ ROLE_MATRIX = {
     "energy-audit-report": ["caliber", "author"],
     "energy-audit-report-qa": ["editor"],
     "energy-audit-imitate": ["author"],
+    "energy-audit-style": ["author", "editor"],
+    "energy-audit-style-extractor": [],
     "energy-audit-routing": [],
     "kanban-energy-audit-orchestrator": ["editor"],
     "ea-datacollection": ["datacollection"],
