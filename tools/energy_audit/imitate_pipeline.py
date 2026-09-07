@@ -667,6 +667,11 @@ def run_imitate(
         llm_fn=llm_fn,
     )
 
+    # 防抄查重闸门（anti-copy-gate 第 3 闸）：生成稿 vs 参考文本
+    from tools.energy_audit.similarity_gate import check_similarity, format_flags
+
+    similarity = check_similarity(paragraph, ref_texts) if paragraph else None
+
     sources = [
         {
             "filename": h.get("filename", ""),
@@ -688,6 +693,8 @@ def run_imitate(
         "sources": sources,
         "reference_source": rag.get("source", "none"),
         "reference_count": len(hits),
+        "similarity": similarity,
+        "similarity_flags": format_flags(similarity),
         "project": {
             "unit_name": facts.get("unit_name"),
             "institution_category": facts.get("institution_category"),
@@ -765,6 +772,9 @@ def run_imitate_report(
             "writer": result.get("writer"),
             "reference_source": result.get("reference_source"),
             "reference_count": result.get("reference_count", 0),
+            "similarity_flags": result.get("similarity_flags"),
+            "similarity_passed": bool((result.get("similarity") or {}).get("passed"))
+            if result.get("similarity") is not None else None,
             "notice": result.get("notice"),
         })
         for src in result.get("sources") or []:

@@ -313,6 +313,75 @@ class TestRunImitate:
         assert result["ok"] is False
         assert "chapter" in result["error"]
 
+    def test_similarity_gate_flags_copied_paragraph(self):
+        """仿写结果照抄参考文本时，similarity 字段必须标记不过。"""
+        copied = (
+            "根据《公共机构节能条例》，山东省人力资源和社会保障厅成立了节能工作领导小组，"
+            "办公室设在机关服务中心，明确各处室节能管理职责。该单位制定了《能源管理制度》，"
+            "将年度节能目标分解到责任处室，实行季度考核。"
+        )
+
+        def fake_search(query, tags, top_k=5):
+            return {
+                "results": [{
+                    "filename": "省人社厅能源审计报告.docx",
+                    "chapter": "第3章",
+                    "text": copied,
+                    "score": 0.91,
+                    "tags": {"institution_category": "党政机关"},
+                }],
+                "source": "qdrant_tags",
+                "count": 1,
+            }
+
+        result = run_imitate(
+            "莘县县政府",
+            "3.1",
+            project=_project(),
+            search_fn=fake_search,
+            llm_fn=lambda **k: copied,
+        )
+        assert result["ok"] is True
+        assert result["similarity"] is not None
+        assert result["similarity"]["passed"] is False
+        assert "疑似复述" in result["similarity_flags"]
+
+    def test_similarity_gate_passes_rewritten_paragraph(self):
+        """改写后的仿写结果通过查重。"""
+        ref = (
+            "根据《公共机构节能条例》，山东省人力资源和社会保障厅成立了节能工作领导小组，"
+            "办公室设在机关服务中心，明确各处室节能管理职责，实行季度考核。"
+        )
+        rewritten = (
+            "莘县县政府按照节能相关法规要求组建节能工作小组，由机关事务部门牵头，"
+            "把年度节电节水指标分解到各科室，每季度开展一次完成情况检查并通报结果。"
+        )
+
+        def fake_search(query, tags, top_k=5):
+            return {
+                "results": [{
+                    "filename": "省人社厅能源审计报告.docx",
+                    "chapter": "第3章",
+                    "text": ref,
+                    "score": 0.91,
+                    "tags": {"institution_category": "党政机关"},
+                }],
+                "source": "qdrant_tags",
+                "count": 1,
+            }
+
+        result = run_imitate(
+            "莘县县政府",
+            "3.1",
+            project=_project(),
+            search_fn=fake_search,
+            llm_fn=lambda **k: rewritten,
+        )
+        assert result["ok"] is True
+        assert result["similarity"] is not None
+        assert result["similarity"]["passed"] is True
+        assert "查重通过" in result["similarity_flags"]
+
 
 class TestLoadProjectData:
     def test_uses_local_project_when_present(self, monkeypatch):

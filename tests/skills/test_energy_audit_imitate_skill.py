@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SKILL_DIR = REPO_ROOT / "skills" / "productivity" / "energy-audit-imitate"
+SKILL_DIR = REPO_ROOT / "skills" / "energy-audit" / "energy-audit-imitate"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
 SCRIPT_PATH = SKILL_DIR / "scripts" / "assemble_report.py"
 
