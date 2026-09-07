@@ -490,11 +490,17 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if area:
             md += f"**表5.{table_no} 常规用能系统单位建筑面积电耗**\n\n"
             table_no += 1
-            md += "| 年度 | 用电量(kWh) | 单位面积电耗(kWh/m²) | 评价结果 |\n"
-            md += "|------|-------------|---------------------|----------|\n"
+            # 转置布局（指标项为行、年份为列，与 5.3.1 及 chapter5-53-templates 统一，2026-09-06）
+            cols_elec = {"用电量(kWh)": [], "单位面积电耗(kWh/m²)": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_unit_area_electricity(yd, institution_type=institution_type)
-                md += f"| {yd.year}年 | {r['total_electricity_kwh']:,.2f} | {r['kwh_per_m2']:,.2f} | {r['benchmark']['评价结果']} |\n"
+                cols_elec["用电量(kWh)"].append(f"{r['total_electricity_kwh']:,.2f}")
+                cols_elec["单位面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:,.2f}")
+                cols_elec["评价结果"].append(str(r['benchmark']['评价结果']))
+            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+            for name, vals in cols_elec.items():
+                md += f"| {name} | " + " | ".join(vals) + " |\n"
         md += "\n"
 
         # 5.3.3 人均综合能耗
@@ -503,11 +509,18 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if people:
             md += f"**表5.{table_no} 人均综合能耗**\n\n"
             table_no += 1
-            md += "| 年度 | 综合能耗(kgce) | 用能人数 | 人均综合能耗(kgce/人) | 评价结果 |\n"
-            md += "|------|---------------|----------|----------------------|----------|\n"
+            # 转置布局（指标项为行、年份为列，2026-09-06）
+            cols_pc = {"综合能耗(kgce)": [], "用能人数": [], "人均综合能耗(kgce/人)": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_per_capita_energy(yd, institution_type=institution_type)
-                md += f"| {yd.year}年 | {r['total_kgce']:,.2f} | {people} | {r['kgce_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
+                cols_pc["综合能耗(kgce)"].append(f"{r['total_kgce']:,.2f}")
+                cols_pc["用能人数"].append(f"{people}")
+                cols_pc["人均综合能耗(kgce/人)"].append(f"{r['kgce_per_person']:,.2f}")
+                cols_pc["评价结果"].append(str(r['benchmark']['评价结果']))
+            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+            for name, vals in cols_pc.items():
+                md += f"| {name} | " + " | ".join(vals) + " |\n"
         md += "\n"
 
         # 5.3.4 取水指标（公式按机构类型自适应，DB37/T 4452-2021）
@@ -517,11 +530,18 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
                 md += f"**表5.{table_no} 单位开放床日用水量**\n\n"
                 table_no += 1
-                md += "| 年度 | 取水量(m³) | 床位数 | 单位开放床日用水量(L/床·d) | 评价结果 |\n"
-                md += "|------|-----------|--------|---------------------------|----------|\n"
+                # 转置布局（指标项为行、年份为列，2026-09-06）
+                cols_bed = {"取水量(m³)": [], "床位数": [], "单位开放床日用水量(L/床·d)": [], "评价结果": []}
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
-                    md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {bed_count} | {r['L_per_bed_day']:,.2f} | {r['benchmark']['评价结果']} |\n"
+                    cols_bed["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
+                    cols_bed["床位数"].append(f"{bed_count}")
+                    cols_bed["单位开放床日用水量(L/床·d)"].append(f"{r['L_per_bed_day']:,.2f}")
+                    cols_bed["评价结果"].append(str(r['benchmark']['评价结果']))
+                md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+                for name, vals in cols_bed.items():
+                    md += f"| {name} | " + " | ".join(vals) + " |\n"
             else:
                 # 医院缺床位数：不降级成机关口径，标注待补充（2026-09-05 修复）
                 md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)）\n\n"
@@ -531,26 +551,40 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += "单位建筑面积年取水量 = 年取水量 × 1000 / 建筑面积（L/(m²·a)，4452 式(6)；4452 无面积口径取水定额，不对标）\n\n"
             md += f"**表5.{table_no} 单位建筑面积年取水量**\n\n"
             table_no += 1
-            md += "| 年度 | 取水量(m³) | 建筑面积(m²) | 单位建筑面积年取水量(L/(m²·a)) | 评价结果 |\n"
-            md += "|------|-----------|--------------|--------------------------------|----------|\n"
+            # 转置布局（指标项为行、年份为列，2026-09-06）
+            cols_va = {"取水量(m³)": [], "建筑面积(m²)": [], "单位建筑面积年取水量(L/(m²·a))": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_water_indicator(yd, institution_type=institution_type, building_area=area)
-                md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {area:,.0f} | {r['L_per_area']:,.2f} | — |\n"
+                cols_va["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
+                cols_va["建筑面积(m²)"].append(f"{area:,.0f}")
+                cols_va["单位建筑面积年取水量(L/(m²·a))"].append(f"{r['L_per_area']:,.2f}")
+                cols_va["评价结果"].append("—")
+            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+            for name, vals in cols_va.items():
+                md += f"| {name} | " + " | ".join(vals) + " |\n"
         else:
-            title = "人均用水量" if institution_type == 'education' else "人均机关取水量"
+            title = "标准人数年均取水量" if institution_type == 'education' else "人均机关取水量"
             md += f"### 5.3.4 {title}\n\n"
             if institution_type == 'education':
-                md += "人均用水量 = 年取水量 / 标准人数（m³/(人·a)，4452 式(3)/(4)；高校标准人数=统招生+留学生+0.5×教职工，中小学/幼儿园标准人数=非住宿生+2×住宿生+教职工；人数细分数据缺失时用用能人数近似）\n\n"
+                md += "标准人数年均取水量 = 年取水量 / 标准人数（m³/(人·a)，4452 式(3)/(4)；高校标准人数=统招生+留学生+0.5×教职工，中小学/幼儿园标准人数=非住宿生+2×住宿生+教职工；人数细分数据缺失时用用能人数近似）\n\n"
             else:
                 md += "人均机关取水量 = 年机关取水量 / 机关人数（m³/(人·a)，4452 式(7)）\n\n"
             if people:
                 md += f"**表5.{table_no} {title}**\n\n"
                 table_no += 1
-                md += f"| 年度 | 取水量(m³) | 用能人数 | {title}(m³/(人·a)) | 评价结果 |\n"
-                md += "|------|-----------|----------|-------------------|----------|\n"
+                # 转置布局（指标项为行、年份为列，2026-09-06）
+                cols_w = {"取水量(m³)": [], "用能人数": [], f"{title}(m³/(人·a))": [], "评价结果": []}
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type)
-                    md += f"| {yd.year}年 | {r['total_water_m3']:,.2f} | {people} | {r['m3_per_person']:,.2f} | {r['benchmark']['评价结果']} |\n"
+                    cols_w["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
+                    cols_w["用能人数"].append(f"{people}")
+                    cols_w[f"{title}(m³/(人·a))"].append(f"{r['m3_per_person']:,.2f}")
+                    cols_w["评价结果"].append(str(r['benchmark']['评价结果']))
+                md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+                for name, vals in cols_w.items():
+                    md += f"| {name} | " + " | ".join(vals) + " |\n"
         md += "\n"
 
         # 5.3.5 单位采暖建筑面积供暖能耗（有供暖能耗的项目必写；无供暖跳过）
@@ -569,13 +603,20 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
             md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
             table_no += 1
-            md += "| 年度 | 供暖能耗(tce) | 采暖建筑面积(m²) | 单位面积供暖能耗(kgce/m²) | 评价结果 |\n"
-            md += "|------|---------------|------------------|---------------------------|----------|\n"
+            # 转置布局（指标项为行、年份为列，2026-09-06）
+            cols_h = {"供暖能耗(tce)": [], "采暖建筑面积(m²)": [], "单位面积供暖能耗(kgce/m²)": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_unit_area_heating_energy(yd, heating_area=heating_area,
                                                   institution_type=institution_type)
                 ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
-                md += f"| {yd.year}年 | {r['heating_energy_kgce']/1000:,.2f} | {r['heating_area_m2']:,.0f} | {r['kgce_per_m2']:,.2f} | {ev} |\n"
+                cols_h["供暖能耗(tce)"].append(f"{r['heating_energy_kgce']/1000:,.2f}")
+                cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:,.0f}")
+                cols_h["单位面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:,.2f}")
+                cols_h["评价结果"].append(str(ev))
+            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
+            for name, vals in cols_h.items():
+                md += f"| {name} | " + " | ".join(vals) + " |\n"
             md += "\n"
 
     # ===== 5.4 建筑能耗基准（复用 indicators.calc_baseline） =====
