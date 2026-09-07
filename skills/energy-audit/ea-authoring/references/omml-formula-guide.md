@@ -16,6 +16,20 @@
 - 事后 zip+lxml 注入（缺根 xmlns:m 声明时 Word 静默按普通文本渲染；声明写法错误时 Word 直接拒开）
 - 截图/图片公式（模糊、不可检索、格式校验不过）
 
+## 符号定义段（"式中"）的下标处理（2026-09-06 定）
+
+公式对象（`doc_insert_math`）只覆盖分式本身。**定义段/符号段里的变量符号**（如 `Ejrcn——单位建筑面积非供暖能耗，……；E——综合能耗……`）也要有下标：
+
+- 正式报告样式（省人社厅0620 实测）：变量主体**正体**、下标部分用 **Word 下标格式**（w:vertAlign subscript），**不用 oMath**（oMath 会把变量渲染成数学斜体，与正式版不一致）。
+- 实现：文本照常写入后，用 `doc_update_text_property` 对下标部分设 `vertical_align: "subscript"`：
+  ```json
+  office_edit(file_id=…, operation="doc_update_text_property",
+    arguments={"ranges": [{"begin": 下标起点, "end": 下标终点}], "vertical_align": "subscript"})
+  ```
+- 下标范围定位：先 `doc_find`（`text="Egn——"` 等含下标符号+破折号串）拿 begin/end，下标部分 = begin+1 .. end-2（去掉主体首字符与"——"）。多匹配时按 `related_text` 上下文区分。
+- **下标清单**（第5章全部）：Ejrcn→jrcn、Egn→gn、Ejt→jt、Eja→ja、ED→D、Er→r、Vuc→uc、Vk→k、Np→p、Egnm→gnm、Mgn→gn（高校 Vu/Nu、Ws/Ns、医院 Vz/Ni、政务 Vui/Nc 同理：变量名主体之外的全小写部分设下标）。
+- 验证：渲染 PDF 后按 y 坐标比对——下标字符 y0 应比同行正文低约 4-5pt（fitz `search_for` 拿 rect），不得只凭"操作成功"下结论。
+
 ## doc_insert_math 调用方式
 
 ```json

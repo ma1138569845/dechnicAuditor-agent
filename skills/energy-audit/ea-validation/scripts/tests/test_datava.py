@@ -270,10 +270,10 @@ WATER_SPEC = v2.METRIC_SPECS[3]
 
 
 def test_expected_energy_evaluation_tiers():
-    assert v2.expected_energy_evaluation(8.0, ENERGY_BENCH) == "低于引导值（先进水平）"
-    assert v2.expected_energy_evaluation(12.0, ENERGY_BENCH) == "低于基准值（合理水平）"
-    assert v2.expected_energy_evaluation(20.0, ENERGY_BENCH) == "低于约束值（达标）"
-    assert v2.expected_energy_evaluation(30.0, ENERGY_BENCH) == "高于约束值（需整改）"
+    assert v2.expected_energy_evaluation(8.0, ENERGY_BENCH) == "低于引导值"
+    assert v2.expected_energy_evaluation(12.0, ENERGY_BENCH) == "低于基准值"
+    assert v2.expected_energy_evaluation(20.0, ENERGY_BENCH) == "低于约束值"
+    assert v2.expected_energy_evaluation(30.0, ENERGY_BENCH) == "高于约束值"
 
 
 def test_water_thresholds_restore_semantics():
@@ -284,19 +284,19 @@ def test_water_thresholds_restore_semantics():
 def test_expected_water_evaluation():
     assert v2.expected_water_evaluation(300.0, WATER_BENCH_SWAPPED) == "低于先进值"
     assert v2.expected_water_evaluation(500.0, WATER_BENCH_SWAPPED) == "低于通用值"
-    assert v2.expected_water_evaluation(600.0, WATER_BENCH_SWAPPED) == "高于通用值（需整改）"
+    assert v2.expected_water_evaluation(600.0, WATER_BENCH_SWAPPED) == "高于通用值"
     assert v2.expected_water_evaluation(1.0, {"约束值": 0, "基准值": 0, "引导值": 0}) == "暂无定额标准可对标"
 
 
 def test_benchmark_clean_energy_case_has_no_p0():
-    bench = {**ENERGY_BENCH, "实际值": 12.0, "评价结果": "低于基准值（合理水平）"}
+    bench = {**ENERGY_BENCH, "实际值": 12.0, "评价结果": "低于基准值"}
     findings = v2.check_benchmark_structure(ENERGY_SPEC, bench, "medical")
     findings += v2.check_evaluation(2023, ENERGY_SPEC, 12.0, bench)
     assert [f for f in findings if f.severity == SEV_P0] == []
 
 
 def test_benchmark_eval_mismatch_is_p0():
-    bench = {**ENERGY_BENCH, "评价结果": "低于引导值（先进水平）"}
+    bench = {**ENERGY_BENCH, "评价结果": "低于引导值"}
     findings = v2.check_evaluation(2023, ENERGY_SPEC, 20.0, bench)
     assert findings[0].code == "V2.BENCH.EVAL_MISMATCH"
     assert findings[0].severity == SEV_P0
@@ -348,7 +348,7 @@ def test_benchmark_no_quota_is_single_p1():
 
 
 def test_benchmark_default_source_is_p2_hint():
-    bench = {**ENERGY_BENCH, "来源": "Default", "评价结果": "低于基准值（合理水平）"}
+    bench = {**ENERGY_BENCH, "来源": "Default", "评价结果": "低于基准值"}
     findings = v2.check_benchmark_structure(ENERGY_SPEC, bench, "medical")
     assert [f.code for f in findings] == ["V2.BENCH.SOURCE_FALLBACK"]
     assert findings[0].severity == SEV_P2

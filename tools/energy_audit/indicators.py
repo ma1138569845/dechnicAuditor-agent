@@ -470,13 +470,13 @@ def compare_with_benchmark(kgce_per_m2: float, institution_type: str = 'medical'
     """
     bm = resolve_benchmark(institution_type, metric, user_benchmark)
     if kgce_per_m2 <= bm['引导值']:
-        level = '低于引导值（先进水平）'
+        level = '低于引导值'
     elif kgce_per_m2 <= bm['基准值']:
-        level = '低于基准值（合理水平）'
+        level = '低于基准值'
     elif kgce_per_m2 <= bm['约束值']:
-        level = '低于约束值（达标）'
+        level = '低于约束值'
     else:
-        level = '高于约束值（需整改）'
+        level = '高于约束值'
 
     return {**bm, '实际值': kgce_per_m2, '评价结果': level,}
 
@@ -515,13 +515,13 @@ def calc_unit_area_electricity(
     # 三级兜底对标
     benchmark = resolve_benchmark(institution_type, 'unit_area_elec', user_benchmark, sub_type)
     if kwh_per_m2 <= benchmark['引导值']:
-        evaluation = '低于引导值（先进水平）'
+        evaluation = '低于引导值'
     elif kwh_per_m2 <= benchmark['基准值']:
-        evaluation = '低于基准值（合理水平）'
+        evaluation = '低于基准值'
     elif kwh_per_m2 <= benchmark['约束值']:
-        evaluation = '低于约束值（达标）'
+        evaluation = '低于约束值'
     else:
-        evaluation = '高于约束值（需整改）'
+        evaluation = '高于约束值'
 
     return {
         'kwh_per_m2': kwh_per_m2,
@@ -563,13 +563,13 @@ def calc_unit_area_heating_energy(
 
     benchmark = resolve_benchmark(institution_type, 'unit_area_heating', user_benchmark, sub_type)
     if kgce_per_m2 <= benchmark['引导值']:
-        evaluation = '低于引导值（先进水平）'
+        evaluation = '低于引导值'
     elif kgce_per_m2 <= benchmark['基准值']:
-        evaluation = '低于基准值（合理水平）'
+        evaluation = '低于基准值'
     elif kgce_per_m2 <= benchmark['约束值']:
-        evaluation = '低于约束值（达标）'
+        evaluation = '低于约束值'
     else:
-        evaluation = '高于约束值（需整改）'
+        evaluation = '高于约束值'
 
     return {
         'kgce_per_m2': kgce_per_m2,
@@ -622,13 +622,13 @@ def calc_per_capita_energy(
         # 内置兜底也查不到时给提示
         evaluation = '暂无定额标准可对标'
     elif per_person <= benchmark['引导值']:
-        evaluation = '低于引导值（先进水平）'
+        evaluation = '低于引导值'
     elif per_person <= benchmark['基准值']:
-        evaluation = '低于基准值（合理水平）'
+        evaluation = '低于基准值'
     elif per_person <= benchmark['约束值']:
-        evaluation = '低于约束值（达标）'
+        evaluation = '低于约束值'
     else:
-        evaluation = '高于约束值（需整改）'
+        evaluation = '高于约束值'
 
     return {
         'kgce_per_person': per_person,
@@ -704,7 +704,7 @@ def calc_water_indicator(
         elif L_per_bed_day <= benchmark['约束值']:
             evaluation = '低于通用值'
         else:
-            evaluation = '高于通用值（需整改）'
+            evaluation = '高于通用值'
 
         return {
             'L_per_bed_day': L_per_bed_day,
@@ -746,7 +746,7 @@ def calc_water_indicator(
     elif per_person <= benchmark['约束值']:
         evaluation = '低于通用值'
     else:
-        evaluation = '高于通用值（需整改）'
+        evaluation = '高于通用值'
 
     return {
         'm3_per_person': per_person,

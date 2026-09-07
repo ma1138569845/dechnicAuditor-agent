@@ -302,12 +302,12 @@ def metric_value(metric: dict, spec: MetricSpec) -> Tuple[str, Optional[float]]:
 
 def expected_energy_evaluation(value: float, benchmark: dict) -> str:
     if value <= safe_float(benchmark.get("引导值")):
-        return "低于引导值（先进水平）"
+        return "低于引导值"
     if value <= safe_float(benchmark.get("基准值")):
-        return "低于基准值（合理水平）"
+        return "低于基准值"
     if value <= safe_float(benchmark.get("约束值")):
-        return "低于约束值（达标）"
-    return "高于约束值（需整改）"
+        return "低于约束值"
+    return "高于约束值"
 
 
 def water_thresholds(benchmark: dict) -> Tuple[float, float]:
@@ -335,7 +335,7 @@ def expected_water_evaluation(value: float, benchmark: dict) -> str:
         return "低于先进值"
     if value <= general:
         return "低于通用值"
-    return "高于通用值（需整改）"
+    return "高于通用值"
 
 
 def check_benchmark_structure(
