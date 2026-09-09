@@ -186,6 +186,10 @@ indicators.json → data.json 内嵌 indicators → compute_project_indicators()
 
 ## Capability 3: V3 REPORT_REVIEW（报告生成后）
 
+> **直跑模式人工确认（2026-09-06 定）**：default 直跑轨下 V3 由 default 自审，丧失跨角色独立性——V3 结论（P0/P1/P2 全列）**每次都必须向用户完整展示并请其确认**，用户未确认前不得交付；不得只报"通过"二字。kanban 轨（datava 独立审查）不受此限。
+>
+> **V3 运行前必须 office_save（2026-09-07 PoC 实测）**：V3 读取的是磁盘落盘 docx，未 save 就运行会漏检最新章节（PoC 曾报"缺第8章"P0 假阳性）。顺序：save → 跑 V3 → 出结论。
+
 ### 三条主线
 
 1. **跨章数据一致性**

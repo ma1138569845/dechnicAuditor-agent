@@ -289,3 +289,18 @@ pPr.append(outlineLvl)
 
 **⚠️ 渲染陷阱（2026-09-06 PoC 实测）**：`office_render` / `office_preview` 渲染的是**磁盘保存状态**，未 `office_save` 前渲染输出纯白页。凡需渲染验证（视觉检查/V3 预览），必须先 `office_save` 再 render，否则误判文档为空。
 
+**⚠️ 插图锚点坑（2026-09-07 PoC 实测，3 条铁律）**：
+
+1. `doc_insert_image(idx=标题begin)` 会把图片 inline 插进标题段落内部——标题文本被截断（"5.2"变".2"，V3 检出缺章/异常标题）。插图后**立即** `doc_insert_paragraph(idx=图片index+1)` 拆分段落，图片即独立成段；若标题已截断，用 `doc_find_and_replace` 补回残缺标题文本（残体".2 能源…"→"5.2 能源…"）。
+2. **任何写操作后旧 idx 全部失效**：插入图片/段落/图注都会膨胀文档，后续 `doc_insert_markdown`/`doc_insert_image` 的 idx 必须重新 `doc_get_last_operable_pos` 或重新 `doc_find`。用"插图前拿的锚点位置"去插下一段 = 内容错位（PoC 曾致第6章整章插进表5.8 中间，被迫全量删除重导）。
+3. 图片在图注段前插入时同样会被 inline 并入图注段——图后插段落符拆分，或图注用 `doc_insert_paragraph_with_text(idx=图片位置)` 紧跟图片段后插入。
+4. 批量插图时**从后往前**（锚点位置大的先插），或每插一张图立即拆分+重找锚点，避免位置漂移。
+
+**⚠️ 致命坑：`doc_update_text_property` 范围跨越表格时，save 导出会复制内容（2026-09-07 实验复现）**：
+
+- 症状：编辑器内存态干净（doc_find 每文本 1 处），但 office_save 落盘的 XML 里表格及后续内容被复制 3-7 份（"第5章"13 次、"峰值特征显著"5 次），文档从 48 页膨胀到 165 页，V3 检测到内容重复。
+- 触发条件（最小复现）：含表格 md 导入 → `doc_update_text_property` ranges **跨越表格**（如全文 0~END 设 12pt）→ save。仅 `doc_set_table_layout` 或标题级 ranges 不含表格时**不触发**。
+- 铁律：**editor_sdk 内所有 `doc_update_text_property` 的 ranges 必须只覆盖非表格区域**（标题段、独立正文段）。全文正文字号统一改用 **python-docx 后处理**（save 落盘后打开 docx，遍历 body 段落+表格 run 设字号，天然避开编辑器导出 bug）。
+- 注意：python-docx 后处理后再回 editor_sdk 编辑会使内存态与磁盘失同步（office_render 报"服务器运行失败"）——**python-docx 后处理必须是最后一步**，之后渲染用 Word COM 路径（docx-render-verify 技能 render_word_pdf.ps1），不用 office_render。
+- 验证手段：解包 docx 读 word/document.xml，`count('关键短语')` 应各为 1；页数用 Word COM 转 PDF + fitz 核对（正文 8 章约 28 页，加附录约 48 页）。
+
