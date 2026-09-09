@@ -23,7 +23,7 @@ import {
   generatedImageEchoSources,
   stripGeneratedImageEchoes
 } from '@/lib/generated-images'
-import { nextTodosFromToolEvent, parseTodoRevision } from '@/lib/todos'
+import { isTodoToolName, nextTodosFromToolEvent, parseTodoRevision } from '@/lib/todos'
 import { queueKanbanArtifacts, takeTurnBoundKanbanArtifacts } from '@/store/kanban-artifacts'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import { isDiskFullErrorMessage, notifyError } from '@/store/notifications'
@@ -462,7 +462,7 @@ export function useMessageStream({
 
       // The composer status stack owns todo display now (no inline panel) —
       // mirror every todo state the tool reports into its session store.
-      if (payload?.name === 'todo') {
+      if (payload && isTodoToolName(payload.name)) {
         const todos = nextTodosFromToolEvent($todosBySession.get()[sessionId] ?? [], payload)
 
         if (todos) {

@@ -10,6 +10,7 @@ export const SESSION_ROUTE_PREFIX = '/'
 export const NEW_CHAT_ROUTE = '/'
 export const SETTINGS_ROUTE = '/settings'
 export const COMMAND_CENTER_ROUTE = '/command-center'
+export const SESSION_IMPORT_ROUTE = '/session-import'
 export const SKILLS_ROUTE = '/skills'
 export const KNOWLEDGE_ROUTE = '/knowledge'
 export const MESSAGING_ROUTE = '/messaging'
@@ -22,6 +23,7 @@ export const STARMAP_ROUTE = '/starmap'
 export const OFFICE_ROUTE = '/office'
 
 export type AppView =
+  | 'session-import'
   | 'agents'
   | 'artifacts'
   | 'chat'
@@ -42,6 +44,7 @@ export type AppView =
   | 'webhooks'
 
 export type AppRouteId =
+  | 'session-import'
   | 'agents'
   | 'artifacts'
   | 'command-center'
@@ -63,6 +66,7 @@ export interface AppRoute {
 }
 
 export const APP_ROUTES = [
+  { id: 'session-import', path: SESSION_IMPORT_ROUTE, view: 'session-import' },
   { id: 'new', path: NEW_CHAT_ROUTE, view: 'chat' },
   { id: 'settings', path: SETTINGS_ROUTE, view: 'settings' },
   { id: 'command-center', path: COMMAND_CENTER_ROUTE, view: 'command-center' },
@@ -131,6 +135,7 @@ export interface SidebarNavContribution {
 // While one is open the app's titlebar control clusters must hide so they don't
 // bleed over the overlay (they sit at a higher z-index than the overlay card).
 export const OVERLAY_VIEWS: ReadonlySet<AppView> = new Set([
+  'session-import',
   'agents',
   'command-center',
   'cron',
