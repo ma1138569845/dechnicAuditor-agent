@@ -9,10 +9,11 @@
   4. CLI 入口串联整个流程
 
 用法:
-    python data_collection_cli.py <项目名>
+    python data_collection_cli.py <项目名> [--version-code PL2026080401]
 
 示例:
     python data_collection_cli.py 莘县县政府
+    python data_collection_cli.py 烟台法院 --version-code PL2026080401
 
 执行流程:
     collect_from_pg（PG 取数）
@@ -25,6 +26,7 @@
 prod - serial number - 2
 """
 
+import argparse
 import sys
 from dataclasses import asdict
 from typing import Dict, List, Optional
@@ -269,15 +271,24 @@ def format_collection_report(pg_result: dict, anomalies: List[dict],
 # 命令行入口
 # ============================================================
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("用法: python data_collection_cli.py <项目名>")
-        sys.exit(1)
+def parse_args(argv: List[str] | None = None):
+    parser = argparse.ArgumentParser(description="能源审计数据采集")
+    parser.add_argument("project_name", help="被审计单位名称")
+    parser.add_argument(
+        "--version-code",
+        default=None,
+        help="正式数据版本号；缺省则取草稿/最新数据",
+    )
+    return parser.parse_args(argv)
 
-    project_name = sys.argv[1]
+
+def main(argv: List[str] | None = None) -> int:
+    args = parse_args(argv)
+    project_name = args.project_name
+    version_code = args.version_code
 
     # 采集
-    pg_result = collect_from_pg(project_name)
+    pg_result = collect_from_pg(project_name, version_code=version_code)
     anomalies = detect_anomalies(pg_result.get('found', {}).get('energy_yearly', []))
     # 设备功率单位校验（W/kW 量级）
     anomalies += detect_equipment_power_unit_issue(
@@ -289,7 +300,9 @@ if __name__ == "__main__":
     print(report)
 
     # 构建并保存（复用第一轮采集结果，避免二次查询 PG）
-    proj = build_and_save_project(project_name, pg_result=pg_result)
+    proj = build_and_save_project(
+        project_name, pg_result=pg_result, version_code=version_code
+    )
     print(f"\n[DataCollection] 数据已持久化: {_PROJECTS_ROOT}")
 
     # 完整性检查
@@ -298,3 +311,8 @@ if __name__ == "__main__":
         print(f"\n⚠️ 数据完整性: {len(issues)} 项待补充:")
         for i in issues:
             print(f"  · {i}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

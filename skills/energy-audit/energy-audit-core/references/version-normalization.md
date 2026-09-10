@@ -13,15 +13,22 @@
 
 后端取数口径（`ExtractDataAgent.applyVersionOrDraft`）：报告生成指定版本号时按 `version_code` 取快照；未指定时取草稿（`is_draft=1`）。
 
+采集入口对齐同一口径：`collect_from_pg(..., version_code=)` / `data_collection_cli.py --version-code`。
+未指定时草稿优先；指定时 `is_draft=0 AND version_code=?`，不回退草稿。
+
 ## 归一规则（采集取数时）
 
 同一业务键并存多版本时，**只取一条**：
+
+未指定 version_code 时：
 
 1. **草稿优先**（is_draft=1，最新编辑数据）；
 2. 无草稿时，正式版本 version_code 字符串大者优先（PL2026080402 > PL2026080401）；
 3. 同版本号多条时 id 大者优先（历史垃圾兜底）。
 
-> ⚠️ 项目表 `ts_institution_project.version_code` 存在"锁定版本"字段，但采集**不按它过滤**（用户 2026-09-04 明确：不锁版本，一律取草稿=最新数据）。后端报告生成若锁了版本，其数据可能与采集的草稿不一致——以平台实际发布状态为准。
+指定 version_code 时：只取该正式快照（`is_draft=0`），同键多条 id 大者优先。
+
+> ⚠️ 项目表 `ts_institution_project.version_code` 存在"锁定版本"字段，采集**不自动按它过滤**。只有调用方显式传入 `version_code`（报告任务的 versionCode）才锁快照。
 
 ## 各表业务键
 

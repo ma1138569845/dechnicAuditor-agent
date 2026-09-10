@@ -67,7 +67,7 @@ RAG 检索知识库内容（历史审计报告、法规标准文档、机构资�
 
 ## 工具 vs CLI 脚本的分工
 
-- **采集主链路**：`python tools/energy_audit/data_collection_cli.py <项目名>`
+- **采集主链路**：`python tools/energy_audit/data_collection_cli.py <项目名> [--version-code <versionCode>]`
   （版本归一+异常检测+图片采集+指标预计算一体，输出 data.json）。
 - **单点查询/核对**：energy_audit_* 工具（worker 中途反查 DB、验证某个值）。
 - 规则：worker 禁止手写 psycopg2 脚本直连 DB（2026-08 断链事故），

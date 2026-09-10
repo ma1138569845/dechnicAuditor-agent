@@ -56,7 +56,8 @@ dc_energy_audit2
 from tools.energy_audit.pg_collector import collect_from_pg
 
 result = collect_from_pg(project_name)
-# → {'found': {...}, 'missing': [...], 'project_id': ...}
+# 指定正式版本：collect_from_pg(project_name, version_code="PL2026080401")
+# → {'found': {...}, 'missing': [...], 'project_id': ..., 'version_code': ...}
 ```
 
 输出结构化结果：找到 N 类数据、缺失 M 项（逐条列出，含字段名和 PG 表名）。
@@ -82,9 +83,10 @@ result = collect_from_pg(project_name)
 
 取数规则（`pg_query.py` 已内置 DISTINCT ON 版本归一，直接调用即可）：
 
-1. 同一键只取一条：**草稿优先**（is_draft=1=最新编辑数据），无草稿时 version_code 大者优先；
-2. **禁止多数投票消解冲突**；版本间数值不一致时必须输出冲突告警清单，人工核实后修正 DB；
-3. 年度总量与逐月加总交叉校验，费用÷单价=用量校验。
+1. 未指定版本：同一键只取一条，**草稿优先**（is_draft=1=最新编辑数据），无草稿时 version_code 大者优先；
+2. 指定 `--version-code` / `version_code=`：只取 `is_draft=0` 且版本号相等的正式快照，不回退草稿；
+3. **禁止多数投票消解冲突**；版本间数值不一致时必须输出冲突告警清单，人工核实后修正 DB；
+4. 年度总量与逐月加总交叉校验，费用÷单价=用量校验。
 
 ### 能耗表结构（main + data 两表）
 

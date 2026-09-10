@@ -20,12 +20,44 @@ from .db_config import get_pg_config
 class PgDataQuery:
     """PostgreSQL能源审计数据查询器"""
 
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: Dict = None, version_code: str | None = None):
         # 连接配置统一走 db_config 解析链（参数 > env > config.yaml > 默认值），
         # 密码不得硬编码，见 db_config.py 模块 docstring。
         self.config = get_pg_config(config)
         self.connection = None
         self.cursor = None
+        self.version_code = self.normalize_version_code(version_code)
+
+    @staticmethod
+    def normalize_version_code(raw) -> str | None:
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        if not text or text.lower() in {"null", "none", "undefined"}:
+            return None
+        return text
+
+    def _version_where(self, alias: str) -> tuple[str, list]:
+        """指定 version_code 时锁定正式快照；未指定则不加过滤（草稿优先）。"""
+        if not self.version_code:
+            return "", []
+        prefix = f"{alias}." if alias else ""
+        return (
+            f" AND COALESCE({prefix}is_draft, 0) = 0"
+            f" AND {prefix}version_code = %s",
+            [self.version_code],
+        )
+
+    def _version_order_tail(self, alias: str) -> str:
+        """DISTINCT ON 业务键之后的排序：锁版本时只按 id；否则草稿优先。"""
+        prefix = f"{alias}." if alias else ""
+        if self.version_code:
+            return f" {prefix}id DESC"
+        return (
+            f" COALESCE({prefix}is_draft, 0) DESC,"
+            f" {prefix}version_code DESC NULLS LAST,"
+            f" {prefix}id DESC"
+        )
 
     def connect(self):
         """建立数据库连接"""
@@ -261,9 +293,9 @@ class PgDataQuery:
         返回每条主表记录 + 按粒度展开的 12 个月列表，字段与旧单表结构对齐：
         value1..value12 由 ts_institution_energy_data 按 period_code 展开生成。
 
-        版本归一规则：同一 (year, data_type, energy_code) 只返回一条 ——
-        优先取草稿（is_draft=1，最新编辑数据）；无草稿时取正式版本（version_code 大者优先）
-        草稿优先（is_draft=1=最新编辑数据）；无草稿时取正式版本（version_code 大者优先）。
+        版本归一规则：同一 (year, data_type, energy_code) 只返回一条。
+        未指定 version_code：草稿优先（is_draft=1）；无草稿时 version_code 大者优先。
+        指定 version_code：只取 is_draft=0 且 version_code 相等的正式快照。
         """
         query = """
             SELECT m.id, m.year, m.data_type, m.energy_code, m.energy_name,
@@ -295,12 +327,13 @@ class PgDataQuery:
             sub_filters += " AND mm.year = %s"; sub_params.append(year)
         if data_type is not None:
             sub_filters += " AND mm.data_type = %s"; sub_params.append(data_type)
+        ver_sql, ver_params = self._version_where("mm")
+        sub_filters += ver_sql
+        sub_params.extend(ver_params)
         query += sub_filters + (
             " ORDER BY mm.year, mm.data_type, mm.energy_code,"
-            " COALESCE(mm.is_draft, 0) DESC,"
-            " mm.version_code DESC NULLS LAST,"
-            " mm.id DESC"
-            ")"
+            + self._version_order_tail("mm")
+            + ")"
             " ORDER BY m.year, m.data_type, m.energy_code, d.period_code"
         )
         params = params + sub_params
@@ -343,7 +376,8 @@ class PgDataQuery:
         版本归一规则（与 get_institution_energy 一致）：建筑表同一业务键
         (build_name, build_func) 并存草稿（is_draft=1, version_code=NULL）
         + 多个正式版本（is_draft=0, version_code 非空）。同一业务键只返回一条：
-        草稿优先（is_draft=1，最新编辑数据）、无草稿时取正式版本（version_code 大者优先）；
+        未指定 version_code：草稿优先；无草稿时 version_code 大者优先。
+        指定 version_code：只取该正式快照。
         归一键含 build_func，避免同名不同功能建筑被误并（2026-09-03）。
         """
         query = """SELECT
@@ -378,13 +412,13 @@ class PgDataQuery:
         sub_params = []
         if customer_id:
             sub_filters += " AND bb.customer_id = %s"; sub_params.append(customer_id)
+        ver_sql, ver_params = self._version_where("bb")
+        sub_filters += ver_sql
+        sub_params.extend(ver_params)
         query += sub_filters + (
-            # 版本归一：草稿(is_draft=1)优先（最新编辑数据），无草稿时 version_code 大者优先
             " ORDER BY bb.build_name, bb.build_func,"
-            " COALESCE(bb.is_draft, 0) DESC,"
-            " bb.version_code DESC NULLS LAST,"
-            " bb.id DESC"
-            ")"
+            + self._version_order_tail("bb")
+            + ")"
             " ORDER BY b.build_name"
         )
         params = params + sub_params
@@ -405,12 +439,21 @@ class PgDataQuery:
         if customer_id:
             base += " AND t.customer_id = %s"
             params.append(customer_id)
+        ver_sql, ver_params = self._version_where("t")
+        base += ver_sql
+        params.extend(ver_params)
+        if self.version_code:
+            order = self._version_order_tail("t")
+        else:
+            order = (
+                " CASE WHEN t.is_draft = 1 THEN 0 ELSE 1 END,"
+                " t.version_code DESC NULLS LAST"
+            )
         versioned = f"""
             SELECT * FROM (
                 SELECT t.*, ROW_NUMBER() OVER (
                     PARTITION BY COALESCE(t.device_name, 'id_' || t.id::text), t.power, t.power_unit
-                    ORDER BY CASE WHEN t.is_draft = 1 THEN 0 ELSE 1 END,
-                             t.version_code DESC NULLS LAST
+                    ORDER BY {order}
                 ) AS _rn
                 {base}
             ) x WHERE _rn = 1
@@ -643,8 +686,8 @@ class PgDataQuery:
     def get_institution_scene(self, customer_id: int = None) -> List[Dict]:
         """ts_institution_scene — 用能场景、计量与供暖信息。
 
-        版本归一：同一 (year) 并存草稿/多个正式版本，草稿优先、
-        无草稿时 version_code 大者优先（与 energy/build 取数规则一致）。
+        版本归一：未指定 version_code 时草稿优先、无草稿时 version_code 大者优先；
+        指定 version_code 时只取该正式快照。
         """
         query = """SELECT
                     s.id, s.year, s.mode, s.split_measure, s.split_payment,
@@ -669,12 +712,13 @@ class PgDataQuery:
         sub_params = []
         if customer_id:
             sub_filters += " AND ss.customer_id = %s"; sub_params.append(customer_id)
+        ver_sql, ver_params = self._version_where("ss")
+        sub_filters += ver_sql
+        sub_params.extend(ver_params)
         query += sub_filters + (
             " ORDER BY ss.year,"
-            " COALESCE(ss.is_draft, 0) DESC,"
-            " ss.version_code DESC NULLS LAST,"
-            " ss.id DESC"
-            ")"
+            + self._version_order_tail("ss")
+            + ")"
             " ORDER BY s.year DESC"
         )
         params = params + sub_params
@@ -737,8 +781,7 @@ class PgDataQuery:
             data_type: 1=电表，2=水表；不填则返回全部。
             year: 统计年份；不填则返回全部。
 
-        版本归一：同一 (data_type, statistical_year) 并存草稿/多个正式版本，
-        草稿优先（is_draft=1，最新编辑数据），无草稿时 version_code 大者优先。
+        版本归一：未指定 version_code 时草稿优先；指定时只取该正式快照。
         """
         query = """SELECT m.id, m.statistical_year, m.has_other_meter, m.meter_count,
                     m.sub_metering, m.other_metering_scenario, m.other_situation,
@@ -767,12 +810,13 @@ class PgDataQuery:
             sub_filters += " AND mm.data_type = %s"; sub_params.append(data_type)
         if year is not None:
             sub_filters += " AND mm.statistical_year = %s"; sub_params.append(year)
+        ver_sql, ver_params = self._version_where("mm")
+        sub_filters += ver_sql
+        sub_params.extend(ver_params)
         query += sub_filters + (
             " ORDER BY mm.data_type, mm.statistical_year,"
-            " COALESCE(mm.is_draft, 0) DESC,"
-            " mm.version_code DESC NULLS LAST,"
-            " mm.id DESC"
-            ")"
+            + self._version_order_tail("mm")
+            + ")"
             " ORDER BY m.statistical_year DESC, m.data_type, m.id"
         )
         params = params + sub_params
@@ -798,6 +842,9 @@ class PgDataQuery:
         if customer_id:
             query += " AND customer_id = %s"
             params.append(customer_id)
+        ver_sql, ver_params = self._version_where("")
+        query += ver_sql
+        params.extend(ver_params)
         query += """
             AND id IN (
                 SELECT DISTINCT ON (select_time, energy_type, payment_granularity) id
@@ -806,14 +853,20 @@ class PgDataQuery:
         """
         if customer_id:
             query += " AND customer_id = %s"
-        query += """
-                ORDER BY select_time, energy_type, payment_granularity,
-                         COALESCE(is_draft, 0) DESC, version_code DESC NULLS LAST, id DESC
+        query += ver_sql
+        query += (
+            " ORDER BY select_time, energy_type, payment_granularity,"
+            + self._version_order_tail("")
+            + """
             )
             ORDER BY select_time, energy_type, payment_granularity
         """
-        params2 = params + ([customer_id] if customer_id else [])
-        return self._execute(query, tuple(params2))
+        )
+        inner = []
+        if customer_id:
+            inner.append(customer_id)
+        inner.extend(ver_params)
+        return self._execute(query, tuple(params + inner))
 
     def get_institution_energy_invoice_images(self, record_ids: List[int] = None) -> List[Dict]:
         """ts_institution_energy_invoice_image — 发票图片明细（按 record_id 关联主表）。
@@ -862,12 +915,13 @@ class PgDataQuery:
             sub_filters += " AND ss.customer_id = %s"; sub_params.append(customer_id)
         if year is not None:
             sub_filters += " AND ss.statistical_year = %s"; sub_params.append(year)
+        ver_sql, ver_params = self._version_where("ss")
+        sub_filters += ver_sql
+        sub_params.extend(ver_params)
         query += sub_filters + (
             " ORDER BY COALESCE(ss.statistical_year, 0),"
-            " COALESCE(ss.is_draft, 0) DESC,"
-            " ss.version_code DESC NULLS LAST,"
-            " ss.id DESC"
-            ")"
+            + self._version_order_tail("ss")
+            + ")"
         )
         query += " ORDER BY statistical_year DESC, id"
         params = params + sub_params

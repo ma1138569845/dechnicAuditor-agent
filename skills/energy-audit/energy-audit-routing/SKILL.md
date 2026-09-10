@@ -39,13 +39,13 @@ metadata:
 
 1. 项目名模糊 → `energy_audit_search_projects` 反查确认单位全称
 2. 工具链可达：`EA_TOOLS_ROOT` 指向 repo 根（含 `tools/energy_audit`），或用绝对路径调用；缺省按 `_paths.py` 三级降级解析
-3. 确认项目目录 `~/projects/energy-audit/<单位全称>/`；data.json 已存在则跳过采集
+3. 确认项目目录 `~/projects/energy-audit/<单位全称>/`；未指定版本且 data.json 已存在则跳过采集。任务带了 `versionCode` / `--version-code` 时必须重采。
 
 ### 阶段 1：脚本链直跑（无 LLM 思考环节）
 
 ```bash
-# 1) 采集（仅 data.json 缺失时）
-python tools/energy_audit/data_collection_cli.py <项目名>
+# 1) 采集（未指定版本且 data.json 已存在可跳过；指定 --version-code 必须重采）
+python tools/energy_audit/data_collection_cli.py <项目名> [--version-code <versionCode>]
 # 2) V1 数据验证（exit 0=过 / 1=输入缺失 / 2=P0 阻塞）
 python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --mode DATA_CHECK --json
 # 3) 指标计算 + 第5章

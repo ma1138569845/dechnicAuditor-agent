@@ -42,6 +42,11 @@ def _check_energy_audit_available() -> bool:
         return False
 
 
+def _open_pg(args: dict) -> "PgDataQuery":
+    raw = (args.get("version_code") or "").strip() or None
+    return PgDataQuery(version_code=raw)
+
+
 def _pg_unavailable_result():
     return tool_error(
         f"能源审计数据库工具当前不可用。可能原因：{_PG_IMPORT_ERROR or 'PG 数据库未配置或无法连接'}。"
@@ -297,7 +302,7 @@ def _handle_search_projects(args: dict, **kwargs):
     if not keyword:
         return tool_error("keyword 不能为空")
     try:
-        with PgDataQuery() as db:
+        with _open_pg(args) as db:
             rows = db.get_institution_project(audited_name=keyword)
         if not rows:
             return tool_result({"count": 0, "projects": [], "message": f"未找到匹配 '{keyword}' 的项目"})
@@ -327,7 +332,10 @@ def _handle_get_project(args: dict, **kwargs):
     if not project_name:
         return tool_error("project_name 不能为空")
     try:
-        result = collect_from_pg(project_name)
+        result = collect_from_pg(
+            project_name,
+            version_code=(args.get("version_code") or "").strip() or None,
+        )
         if not result.get("project_id"):
             return tool_error(f"未找到项目：{project_name}")
         return _format_project_summary(result)
@@ -344,7 +352,7 @@ def _handle_get_equipment(args: dict, **kwargs):
     if not project_name:
         return tool_error("project_name 不能为空")
     try:
-        with PgDataQuery() as db:
+        with _open_pg(args) as db:
             proj = db.find_project_by_name(project_name)
             if not proj:
                 return tool_error(f"未找到项目：{project_name}")
@@ -366,7 +374,7 @@ def _handle_get_buildings(args: dict, **kwargs):
     if not project_name:
         return tool_error("project_name 不能为空")
     try:
-        with PgDataQuery() as db:
+        with _open_pg(args) as db:
             proj = db.find_project_by_name(project_name)
             if not proj:
                 return tool_error(f"未找到项目：{project_name}")
@@ -385,7 +393,7 @@ def _handle_get_energy(args: dict, **kwargs):
     if not project_name:
         return tool_error("project_name 不能为空")
     try:
-        with PgDataQuery() as db:
+        with _open_pg(args) as db:
             proj = db.find_project_by_name(project_name)
             if not proj:
                 return tool_error(f"未找到项目：{project_name}")
@@ -405,7 +413,7 @@ def _handle_get_energy_meter(args: dict, **kwargs):
     if not project_name:
         return tool_error("project_name 不能为空")
     try:
-        with PgDataQuery() as db:
+        with _open_pg(args) as db:
             proj = db.find_project_by_name(project_name)
             if not proj:
                 return tool_error(f"未找到项目：{project_name}")
@@ -458,6 +466,10 @@ ENERGY_AUDIT_GET_PROJECT_SCHEMA = {
                 "type": "string",
                 "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
             },
+            "version_code": {
+                "type": "string",
+                "description": "可选。正式数据版本号（如 PL2026080401）。不填则取草稿/最新数据。",
+            },
         },
         "required": ["project_name"],
     },
@@ -483,6 +495,10 @@ ENERGY_AUDIT_GET_EQUIPMENT_SCHEMA = {
                     "生活热水、其他设备、特殊设备、蒸汽。不填则返回全部。"
                 ),
             },
+            "version_code": {
+                "type": "string",
+                "description": "可选。正式数据版本号（如 PL2026080401）。不填则取草稿/最新数据。",
+            },
         },
         "required": ["project_name"],
     },
@@ -497,6 +513,10 @@ ENERGY_AUDIT_GET_BUILDINGS_SCHEMA = {
             "project_name": {
                 "type": "string",
                 "description": "项目名称或被审计单位名称，例如'省立医院东院'。支持模糊匹配。",
+            },
+            "version_code": {
+                "type": "string",
+                "description": "可选。正式数据版本号（如 PL2026080401）。不填则取草稿/最新数据。",
             },
         },
         "required": ["project_name"],
@@ -516,6 +536,10 @@ ENERGY_AUDIT_GET_ENERGY_SCHEMA = {
             "year": {
                 "type": "string",
                 "description": "可选，指定年份，例如'2023'。不填则返回所有年度。",
+            },
+            "version_code": {
+                "type": "string",
+                "description": "可选。正式数据版本号（如 PL2026080401）。不填则取草稿/最新数据。",
             },
         },
         "required": ["project_name"],
@@ -542,6 +566,10 @@ ENERGY_AUDIT_GET_ENERGY_METER_SCHEMA = {
             "year": {
                 "type": "string",
                 "description": "可选，指定统计年份，例如'2024'。不填则返回所有年度。",
+            },
+            "version_code": {
+                "type": "string",
+                "description": "可选。正式数据版本号（如 PL2026080401）。不填则取草稿/最新数据。",
             },
         },
         "required": ["project_name"],

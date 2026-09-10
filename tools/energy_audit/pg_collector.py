@@ -47,16 +47,20 @@ _FIELD_TYPE_UNIT = {
 # collect_from_pg — 从 PG 数据库采集项目数据
 # ============================================================
 
-def collect_from_pg(project_name: str) -> Dict[str, Any]:
+def collect_from_pg(project_name: str, version_code: str | None = None) -> Dict[str, Any]:
     """从PG数据库采集指定项目的全部数据。
 
-    返回: {found: {...}, missing: [...], project_id: ...}
+    version_code 为空则草稿优先（最新数据）；有值则锁定该正式快照。
+
+    返回: {found: {...}, missing: [...], project_id: ..., version_code: ...}
     连接生命周期由本函数统一管理：try/finally 保证任意分支/异常下均释放连接。
     """
-    pg = PgDataQuery()
+    pg = PgDataQuery(version_code=version_code)
     pg.connect()
     try:
-        return _collect_from_pg_impl(pg, project_name)
+        result = _collect_from_pg_impl(pg, project_name)
+        result["version_code"] = pg.version_code
+        return result
     finally:
         pg.disconnect()
 
@@ -700,7 +704,12 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     return result
 
 
-def build_and_save_project(project_name: str, excel_data: dict = None, pg_result: dict = None) -> AuditProject:
+def build_and_save_project(
+    project_name: str,
+    excel_data: dict = None,
+    pg_result: dict = None,
+    version_code: str | None = None,
+) -> AuditProject:
     """
     datacollection Agent v2：先查PG，缺失的用Excel补充。
 
@@ -710,10 +719,11 @@ def build_and_save_project(project_name: str, excel_data: dict = None, pg_result
     Args:
         pg_result: 可选的已采集结果（collect_from_pg 返回值）。
             传入时跳过内部二次查询，供调用方复用采集结果。
+        version_code: 未传 pg_result 时交给 collect_from_pg；空则最新数据。
     """
     print(f"[datacollection v2] 正在从PG查询项目: {project_name}")
     if pg_result is None:
-        pg_result = collect_from_pg(project_name)
+        pg_result = collect_from_pg(project_name, version_code=version_code)
 
     found_count = len(pg_result['found'])
     missing_count = len(pg_result['missing'])
