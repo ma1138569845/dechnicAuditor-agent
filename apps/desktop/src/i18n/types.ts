@@ -469,6 +469,21 @@ export interface Translations {
       kinds: { bundled: string; disk: string; runtime: string }
       agentHalfMissing: string
       agentHalfMissingTip: string
+      // FORK: our agent-plugins admin surface copy (en/zh keep the object;
+      // other locales omit it via the partial below).
+      agent?: {
+        title: string
+        blurb: string
+        appliesTo: string
+        empty: string
+        loadFailed: string
+        portable: string
+        search: string
+        noMatches: string
+        toggleFailed: (name: string) => string
+        updateBackendToManage: string
+        sources: { bundled: string; user: string; git: string; project: string; entrypoint: string }
+      }
       installModal: {
         installFromGit: string
         reviewRepository: string
