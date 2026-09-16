@@ -12,10 +12,12 @@ export type SettingsView =
   | 'keybinds'
   | 'keys'
   | 'notifications'
+// FORK: keep our 'onlyoffice' view. 'plugins' view was removed upstream
+// (one Plugins surface in app/skills now).
   | 'onlyoffice'
-  | 'plugins'
   | 'providers'
   | 'sessions'
+  | 'vault'
   | `config:${string}`
 export type EnvPatch = Partial<Pick<EnvVarInfo, 'is_set' | 'redacted_value'>>
 

@@ -10,9 +10,12 @@ import {
   numberValue,
   parseMaybeObject
 } from '@/components/assistant-ui/tool/fallback-model'
+// FORK: keep our media/sanitize/text imports (artifact extraction path) AND
+// adopt upstream's tool-result-metadata helpers.
 import { mediaKind, mediaPathFromMarkdownHref } from '@/lib/media'
 import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import { firstStringField } from '@/lib/text'
+import { type ToolResultMetadata, toolResultRecord } from '@/lib/tool-result-metadata'
 
 export interface ChangedFile {
   added: number
@@ -27,6 +30,7 @@ export interface ChangedFile {
 }
 
 interface ChangedFilePart {
+  toolResultMetadata?: ToolResultMetadata
   args?: unknown
   isError?: boolean
   result?: unknown
@@ -232,16 +236,16 @@ export function deriveChangedFiles(
       continue
     }
 
+    // FORK merge: our artifact-producer gate (broader than upstream's
+    // isFileEditTool) + upstream's toolResultRecord for metadata-backed results.
     if (part.type !== 'tool-call' || typeof part.toolName !== 'string' || !isArtifactProducerTool(part.toolName)) {
       continue
     }
 
-    if (part.result === undefined) {
-      continue
-    }
+    const result = toolResultRecord(part)
+    const diff = inlineDiffFromResult(result)
 
     const args = parseMaybeObject(part.args)
-    const result = parseMaybeObject(part.result)
 
     if (fileEditFailed(part, result)) {
       continue
@@ -253,7 +257,6 @@ export function deriveChangedFiles(
       continue
     }
 
-    const diff = inlineDiffFromResult(result)
     const stats = diff ? countDiffLineStats(diff) : { added: 0, removed: 0 }
 
     rememberArtifact(byPath, path, stats, fileEditByteSize(args, result))

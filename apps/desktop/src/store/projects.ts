@@ -15,8 +15,9 @@ import { isMissingRestEndpoint, isMissingRpcMethod } from '@/lib/gateway-rpc'
 import { isUnderPath } from '@/lib/path-compare'
 import { persistentAtom } from '@/lib/persisted'
 import { $gateway, activeGateway, ensureActiveGatewayOpen } from '@/store/gateway'
-import { setSidebarAgentsGrouped } from '@/store/layout'
+// FORK merge: keep our revealFile (artifact reveal) + upstream's $sidebarShowAllSessions.
 import { revealFile } from '@/store/file-actions'
+import { $sidebarShowAllSessions, setSidebarAgentsGrouped } from '@/store/layout'
 import { notify } from '@/store/notifications'
 import {
   $activeGatewayProfile,
@@ -380,7 +381,9 @@ interface ProjectTreePayload {
   scoped_session_ids: string[]
 }
 
-const PROJECT_TREE_PREVIEW_LIMIT = 3
+// Expanded previews need the complete existing tree window before the renderer
+// finds its two recency groups. Keep the normal three-row payload unchanged.
+const projectTreePreviewLimit = () => ($sidebarShowAllSessions.get() ? 2000 : 3)
 // The all-profiles fan-out reads one database per profile, so it is allowed the
 // same headroom as the cross-profile session list rather than the interactive
 // default.
@@ -422,7 +425,7 @@ async function refreshProjectTreeOn(context: ActiveProjectsContext): Promise<voi
       res = await gatewayRequestOn<ProjectTreePayload>(
         gateway,
         'projects.tree',
-        projectParams({ preview_limit: PROJECT_TREE_PREVIEW_LIMIT }, profile)
+        projectParams({ preview_limit: projectTreePreviewLimit() }, profile)
       )
     } catch (error) {
       // A remote source switch can leave the first read RPC on a newly-opened
@@ -436,7 +439,7 @@ async function refreshProjectTreeOn(context: ActiveProjectsContext): Promise<voi
       res = await gatewayRequestOn<ProjectTreePayload>(
         gateway,
         'projects.tree',
-        projectParams({ preview_limit: PROJECT_TREE_PREVIEW_LIMIT }, profile)
+        projectParams({ preview_limit: projectTreePreviewLimit() }, profile)
       )
     }
 
@@ -484,7 +487,7 @@ async function refreshProjectTreeAcrossProfiles(): Promise<void> {
 
   try {
     const res = await hermesApi<ProjectTreePayload>({
-      path: `/api/profiles/projects/tree?preview_limit=${PROJECT_TREE_PREVIEW_LIMIT}`,
+      path: `/api/profiles/projects/tree?preview_limit=${projectTreePreviewLimit()}`,
       timeoutMs: PROJECT_TREE_REQUEST_TIMEOUT_MS
     })
 
