@@ -27,7 +27,7 @@ def _frontmatter_and_body():
 def test_skill_file_exists():
     assert SKILL_PATH.is_file()
     assert (SKILL_DIR / "references" / "chapter-outlines.md").is_file()
-    assert (SKILL_DIR / "references" / "report-format-spec.md").is_file()
+    assert (SKILL_DIR / "references" / "assemble-format-notes.md").is_file()
     assert SCRIPT_PATH.is_file()
     assert (SKILL_DIR / "scripts" / "add_watermark.py").is_file()
 
@@ -125,13 +125,17 @@ def test_assemble_spec_requires_all_chapters():
 
 
 def test_format_spec_covers_toc_and_watermark():
-    spec = (SKILL_DIR / "references" / "report-format-spec.md").read_text(encoding="utf-8")
-    assert "目  录" in spec or "目录" in spec
-    assert "水印" in spec
-    assert "DrawingML" in spec
-    assert "TOC" in spec
+    # 格式权威在 core（2026-09-17 起 imitate 不再维护本地副本，本技能 references/assemble-format-notes.md 仅为实施注记）
+    core_spec = (
+        REPO_ROOT / "skills" / "energy-audit" / "energy-audit-core" / "references" / "report-format-spec.md"
+    ).read_text(encoding="utf-8")
+    assert "目  录" in core_spec or "目录" in core_spec
+    assert "水印" in core_spec
+    assert "DrawingML" in core_spec
+    assert "TOC" in core_spec
     _, body = _frontmatter_and_body()
-    assert "`references/report-format-spec.md`" in body
+    assert "energy-audit-core/references/report-format-spec.md" in body
+    assert "references/assemble-format-notes.md" in body
 
 
 def test_resolve_unit_name_strips_report_suffix():
