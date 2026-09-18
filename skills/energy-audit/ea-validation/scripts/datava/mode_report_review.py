@@ -44,6 +44,23 @@ ENERGY_TOLERANCE_PCT = 1.0
 FORMAT_SAMPLE_LIMIT = 3
 BODY_MIN_CHARS = 24  # 短于此长度的段落视为表题/图注，不参与正文格式判定
 
+# 合规占位登记表（可选）：<项目>/missing_items.json
+# 结构：{"items":[{"field":"beds_count","label":"床位数","location":"5.3.4","reason":"…"}]}
+# 命中登记的占位按 P1 记录（如实呈现数据缺失），未登记的仍按 P0 阻塞。
+MISSING_REGISTRY_FILE = "missing_items.json"
+
+# 图注/表题（居中），不参与正文对齐/行距/缩进判定；字号与加粗不判
+# （format-spec 与装配脚本对图注字号表述不一致，避免制造新的矛盾）
+RE_CAPTION = re.compile(r"^(图|表|附表)\s*\d+\s*[.\-–—]\s*\d+")
+FMT_CAPTION = {"align": 1}
+KIND_LABELS = {
+    "h1": "一级标题",
+    "h2": "二级标题",
+    "h3": "三级标题",
+    "body": "正文",
+    "caption": "图注/表题",
+}
+
 REQUIRED_TABLES: Tuple[str, ...] = (
     "能源审计机构信息表",
     "能源审计组人员名单",
@@ -390,7 +407,9 @@ def check_chapter8_summary(blocks: Sequence[Block]) -> List[Finding]:
     ]
 
 
-def check_tables_and_placeholders(blocks: Sequence[Block]) -> List[Finding]:
+def check_tables_and_placeholders(
+    blocks: Sequence[Block], registry: Sequence[Dict[str, str]] = ()
+) -> List[Finding]:
     findings: List[Finding] = []
     total_tables = sum(1 for b in blocks if b.kind == "tbl")
     if total_tables < MIN_TABLES:
@@ -421,19 +440,55 @@ def check_tables_and_placeholders(blocks: Sequence[Block]) -> List[Finding]:
             continue
     if _cell_texts:
         full_text = full_text + "\n" + "\n".join(_cell_texts)
+
+    # 占位符按"每段/每单元格"逐个归属，区分"已登记的数据缺失"与"真漏填"
+    scan_texts: List[str] = [b.text for b in blocks if b.kind == "p" and b.text] + _cell_texts
+    registered_keywords: List[str] = []
+    for item in registry:
+        for key in ("field", "label", "location"):
+            value = str(item.get(key) or "").strip()
+            if value:
+                registered_keywords.append(value)
+
     for token, label in PLACEHOLDERS:
-        occurrences = full_text.count(token)
-        if occurrences:
+        hits = [text for text in scan_texts if token in text]
+        if not hits:
+            continue
+        registered = [
+            text for text in hits
+            if any(keyword in text for keyword in registered_keywords)
+        ]
+        unregistered = [text for text in hits if text not in registered]
+        if unregistered:
             findings.append(
                 Finding(
                     code="V3.STRUCT.PLACEHOLDER",
                     category="章节完整性",
                     severity=SEV_P0,
-                    title=f"残留{label} {occurrences} 处",
+                    title=f"残留{label} {len(unregistered)} 处",
                     detail=f"标记='{token}'",
                     expected="0 处",
-                    actual=f"{occurrences} 处",
+                    actual=f"{len(unregistered)} 处",
                     suggestion="补齐对应数据或删除占位段落后重新生成",
+                )
+            )
+        if registered:
+            findings.append(
+                Finding(
+                    code="V3.STRUCT.PLACEHOLDER_REGISTERED",
+                    category="章节完整性",
+                    severity=SEV_P1,
+                    title=f"已登记的数据缺失占位 {len(registered)} 处（不阻塞交付）",
+                    detail=(
+                        f"标记='{token}'；已在 {MISSING_REGISTRY_FILE} 登记："
+                        + "、".join(
+                            str(item.get("label") or item.get("field") or "?")
+                            for item in registry
+                        )
+                    ),
+                    expected="报告中如实说明数据缺失，并告知用户补录",
+                    actual=f"{len(registered)} 处占位（已登记）",
+                    suggestion="按已登记缺失项处理：保留占位、交付时说明；补录数据后重算重出",
                 )
             )
 
@@ -498,11 +553,19 @@ def _classify(text: str) -> str:
         return "h3"
     if RE_H2.match(text):
         return "h2"
+    if RE_CAPTION.match(text.strip()):
+        return "caption"
     return "body" if len(text) >= BODY_MIN_CHARS else "skip"
 
 
 def check_format(blocks: Sequence[Block]) -> List[Finding]:
-    specs = {"h1": FMT_H1, "h2": FMT_H2, "h3": FMT_H3, "body": FMT_BODY}
+    specs = {
+        "h1": FMT_H1,
+        "h2": FMT_H2,
+        "h3": FMT_H3,
+        "body": FMT_BODY,
+        "caption": FMT_CAPTION,
+    }
     violations: Dict[str, Violation] = {}
 
     def record(key: str, label: str, expected: str, sample: str) -> None:
@@ -515,22 +578,23 @@ def check_format(blocks: Sequence[Block]) -> List[Finding]:
         if kind == "skip":
             continue
         spec = specs[kind]
+        kind_label = KIND_LABELS.get(kind, kind)
         excerpt = block.text[:24]
         name, size, bold = _paragraph_font(block.obj)
 
-        if name is not None and name != spec["font"]:
-            record(f"{kind}.font", f"{kind} 中文字体", str(spec["font"]), f"{excerpt} → {name}")
-        if size is not None and abs(size - float(spec["size"])) > 0.51:
-            record(f"{kind}.size", f"{kind} 字号", f"{spec['size']}pt", f"{excerpt} → {size}pt")
+        if spec.get("font") and name is not None and name != spec["font"]:
+            record(f"{kind}.font", f"{kind_label} 中文字体", str(spec["font"]), f"{excerpt} → {name}")
+        if spec.get("size") and size is not None and abs(size - float(spec["size"])) > 0.51:
+            record(f"{kind}.size", f"{kind_label} 字号", f"{spec['size']}pt", f"{excerpt} → {size}pt")
         if spec.get("bold") and bold is False:
-            record(f"{kind}.bold", f"{kind} 加粗", "加粗", excerpt)
+            record(f"{kind}.bold", f"{kind_label} 加粗", "加粗", excerpt)
 
         paragraph_format = block.obj.paragraph_format
         alignment = paragraph_format.alignment
         if alignment is not None and int(alignment) != int(spec["align"]):
             record(
                 f"{kind}.align",
-                f"{kind} 对齐",
+                f"{kind_label} 对齐",
                 str(spec["align"]),
                 f"{excerpt} → {int(alignment)}",
             )
@@ -612,6 +676,19 @@ def locate_report(
 #  主流程
 # ================================================================
 
+def load_missing_registry(
+    project: str, output_dir: Optional[str] = None
+) -> List[Dict[str, str]]:
+    """读 <项目>/missing_items.json（可选）。缺失返回空列表 → 占位符一律按 P0 处理。"""
+    path = project_dir(project, output_dir) / MISSING_REGISTRY_FILE
+    data = read_json(path)
+    items = data.get("items") if isinstance(data, dict) else None
+    out: List[Dict[str, str]] = []
+    for item in items or []:
+        if isinstance(item, dict):
+            out.append({str(k): str(v) for k, v in item.items() if v is not None})
+    return out
+
 def run(
     project: str,
     *,
@@ -643,8 +720,9 @@ def run(
     )
 
     findings: List[Finding] = []
+    registry = load_missing_registry(project, output_dir)
     findings += check_chapters(blocks)
-    findings += check_tables_and_placeholders(blocks)
+    findings += check_tables_and_placeholders(blocks, registry)
     findings += check_province_rules(blocks)
     findings += check_chapter6_h3(blocks)
     findings += check_chapter8_summary(blocks)
@@ -661,12 +739,17 @@ def run(
         inputs={
             "报告": str(path),
             "data.json": "已读取" if raw else "缺失（跳过与数据源比对）",
+            "missing_items.json": (
+                f"已登记 {len(registry)} 项缺失（占位按 P1 放行）" if registry
+                else "未提供（占位一律按 P0 阻塞）"
+            ),
         },
         extra={
             "paragraphs": sum(1 for b in blocks if b.kind == "p"),
             "tables": sum(1 for b in blocks if b.kind == "tbl"),
             "chapters": sorted({b.chapter for b in blocks if b.chapter}),
             "audit_years": years,
+            "missing_registry": len(registry),
         },
     )
 

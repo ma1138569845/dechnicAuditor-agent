@@ -39,22 +39,26 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 
 ## 格式规范
 
-| 元素 | 字体 | 字号 | 加粗 |
-|------|------|------|------|
-| H1一级标题 | 宋体 | 15pt | 是 |
-| H2二级标题 | 宋体 | 14pt | 是 |
-| H3三级标题 | 宋体 | 12pt | 是 |
-| 正文 | 宋体+TNR | 12pt | 否 |
-| 表格内容 | 宋体 | 12pt | 否 |
+格式权威单点：`references/report-format-spec.md`（全文规范）+ `tools/energy_audit/format_spec.py`（代码常量）。
+装配脚本链、仿写链、office_editor 备用路径**共用同一份**，本文件不再复述字体字号表（曾因四处副本导致口径漂移）。
 
 ## 关键原则
+
+### 术语表（对外统一叫法，2026-09-17 定）
+
+| 统一叫法 | 含义 | 说明 |
+|---|---|---|
+| **写章（3 批）** | LLM 逐章写正文：批1 封面+第1~4章 / 批2 第5章装配+第6~7章 / 批3 第8章+附录；批间 `/compact` | kanban 轨内部把同样三批叫"3 卡"，是对同一件事的另一种叫法，对外不再使用 |
+| **装配** | `build_energy_audit_docx.py`（构建）+ `finalize_energy_audit_pdf.py`（收尾：刷目录/转 PDF/盖章） | 旧文档称"组装""收尾三件套"，均为同一件事 |
+| **断言** | `ea_docx_asserts.py` 的 10 项交付硬检查 | 旧称"质检/核对" |
+| **就位** | `prepare_chapter_md.py` 把 `chapter5.md` 变成装配稿 `chapter_md/ch5_import.md` | 2026-09-17 新增，取代人工搬运 |
 
 - 1.6 省级规章需 web_search 验证，不可字符串替换
 - **批量生成：`kanban-energy-audit-orchestrator` 技能**。利用 Hermes Kanban 实现并行调度。
   一个公共机构 = 一个项目 = 一份报告。每项目 8 步串行（采集→V1验证→计算→V2复核→报告卡1基础章→报告卡2数据章→报告卡3收尾章→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
-- 报告章节细节与编写规范见 `references/` 目录（report-format-spec、chapter-writing-specs、public-institution-report-structure 等）。
+- 报告章节细节与编写规范见逐章指南（`ea-authoring/references/chapter*-guide.md`；第5章见 `ea-calculation/references/chapter5-*.md`）；"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
 
 ## 参考文件索引
 
@@ -62,19 +66,18 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 
 | 文件 | 用途 |
 |------|------|
+| `AUTHORITY-INDEX.md` | ★总索引："主题 → 唯一权威文件"映射（**先查这里，再查具体文件**） |
 | `energy-audit-core/references/standards-values.md（权威单点）` | ★权威·定额标准矩阵（DB37/T 2672-2019 表1-5 党政机关 + DB37/T 2673-2019 医院 + DB37/T 4452-2021 水）。任何定额值只以此文件为准 |
 | `energy-audit-core/references/coefficient-caliber.md（权威单点）` | ★权威·折标系数口径（电0.31/热34.12kgce每GJ/气1.2143/油1.4714/水不折算） |
 | `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |
-| `report-format-spec.md` | 报告格式总规范 |
-| `public-institution-report-structure.md` | ⚠️旧通用 8 章骨架（2026-09-05 降级：仅历史参考；现行章节指南以 energy-audit-report 技能的模板骨架+机构实例库为准） |
-| `chapter-writing-specs.md` | 章节写作通用规范 |
-| `audit-info-tables.md` | 审计信息表结构（ts_register_dept 等数据源链路） |
-| `config-schema.md` | config JSON 结构（采集/计算/报告均依赖） |
-| `three-layer-fallback.md` | 三级兜底原则 |
-| `agent-profile-architecture.md` | ⚠️v2.0 历史文档（"只保留 2 个技能/小方小德"为旧架构；现行=11 技能多 Agent + kanban 编排，见 `kanban-energy-audit-orchestrator`） |
-| `soul-purity-principle.md` | SOUL.md 编写原则 |
-| `hermes-operations.md` | Hermes 操作通用知识 |
-| `pipeline-architecture.md` | 流水线架构 |
+| `report-format-spec.md` | 报告格式总规范（唯一权威全文） |
+| `deployment-prerequisites.md` | 部署前提清单（新机/换机自检；直跑 + kanban 两轨通用） |
+| `audit-info-tables.md` | 审计信息表结构（来源链路以 `energy-audit-report-qa/references/audit-info-tables-fix.md` 为准） |
+| `config-schema.md` | config JSON 结构（仅 kanban 轨初始 config 用；生产链路是 PG → data.json） |
+| `three-layer-fallback.md` | 兜底原则（层数以 `ea-calculation/SKILL.md` 的四级为准） |
+| `soul-purity-principle.md` | SOUL.md 编写原则（`skills/energy-audit/_soul/` 的唯一编写依据） |
+| `hermes-operations.md` | Hermes 操作通用知识（含"SOUL 改动需重启 profile gateway"） |
+| `auxiliary-vision-config.md` | 辅助视觉模型配置（Qwen-VL：设备铭牌/仪表/图纸识别；2026-09-17 由 ea-authoring 移入） |
 | `project-granularity.md` | 项目粒度定义 |
 | `iso-date-to-cn.md` | 日期转换工具 |
-| `patch-replace-all-danger.md` | 编辑安全警示 |
+| `_archive/2026-09-17/` | 历史文档归档（public-institution-report-structure / chapter-writing-specs / agent-profile-architecture / pipeline-architecture / tools-api / patch-replace-all-danger / 6 份旧 SOUL），仅供追溯，勿引用 |

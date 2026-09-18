@@ -27,6 +27,7 @@ prod - serial number - 2
 """
 
 import argparse
+import re
 import sys
 from dataclasses import asdict
 from typing import Dict, List, Optional
@@ -167,6 +168,38 @@ def detect_area_mismatch(buildings: List[dict], declared_area: float) -> Optiona
     return None
 
 
+def detect_building_address_mismatch(buildings: List[dict],
+                                      declared_address: str) -> List[dict]:
+    """检测"建筑表地址 vs 项目地址"是否矛盾（2026-09-18 新增，源于真实事故）。
+
+    事故背景：某项目 base.address=经十东路111号，而 buildings[].address=岚山区岚山西路566号
+    （另一个项目的地址被串进来），报告第 2 章/附表忠实抄录后与 1.2 节自相矛盾。
+    规则：两者规范化后互不包含 → 告警（严重）；不自动改写，由用户核实权威地址。
+    """
+    if not buildings or not declared_address:
+        return []
+
+    def _norm(text) -> str:
+        return re.sub(r"[\s　]", "", str(text or ""))
+
+    base = _norm(declared_address)
+    issues: List[dict] = []
+    for b in buildings:
+        addr = _norm(b.get("address", ""))
+        if not addr:
+            continue
+        if base and (base in addr or addr in base):
+            continue
+        issues.append({
+            "type": "建筑地址不一致",
+            "等级": "严重",
+            "说明": (f"{b.get('name') or '未命名建筑'} 的地址「{b.get('address')}」"
+                     f"与项目地址「{declared_address}」不一致，"
+                     "报告第2章与附表会自相矛盾；请核实权威地址（属数据侧修复）"),
+        })
+    return issues
+
+
 # ============================================================
 # 采集报告格式化
 # ============================================================
@@ -294,6 +327,13 @@ def main(argv: List[str] | None = None) -> int:
     anomalies += detect_equipment_power_unit_issue(
         pg_result.get('found', {}).get('equipment', []))
     anomalies += detect_heating_electricity_missing(pg_result)
+
+    # 建筑表地址 vs 项目地址一致性（2026-09-18；防"串项目地址"进报告）
+    _project = pg_result.get('found', {}).get('project', {}) or {}
+    anomalies += detect_building_address_mismatch(
+        pg_result.get('found', {}).get('buildings', []),
+        _project.get('address', ''),
+    )
 
     # 报告
     report = format_collection_report(pg_result, anomalies)

@@ -40,4 +40,14 @@ xml = etree.tostring(run._element, encoding='unicode')
 
 ## 格式规范来源
 
-`references/report-format-spec.md` — 基于 19 份省直能源审计报告分析总结。
+`energy-audit-core/references/report-format-spec.md` — 基于 19 份省直能源审计报告分析总结。
+
+## 编辑安全：patch 的 replace_all 禁用于批量改编号（2026-07-02 事故）
+
+曾用 `patch(replace_all=True)` 把"表5.3~表5.8"批量改成动态表号，结果 4 个不同表题被替换成同一字符串，损失约 30 分钟逐个修回。
+
+1. `replace_all=True` 只用于**确实所有匹配都应替换成相同内容**的场景；
+2. 批量编号用 `变量 + offset` 在生成时算好，不靠事后替换；
+3. 受影响行多于 3 行时，直接整段重写比逐条替换更安全。
+
+> 原文件 `patch-replace-all-danger.md` 已归档至 `_archive/2026-09-17/energy-audit-core/references/`。

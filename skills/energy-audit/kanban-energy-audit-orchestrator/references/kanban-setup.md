@@ -102,7 +102,7 @@ cd D:\data\pyProject\dc_agent\dechnicAuditor-agent && .venv/Scripts/python.exe -
 python -c "from tools.energy_audit.db_config import get_file_base_url; print(get_file_base_url())"
 ```
 
-任一失败则中止，不发出会中途失败的 kanban。
+任一失败则中止，不发出会中途失败的 kanban。全量前提清单（新机/换机）见 `energy-audit-core/references/deployment-prerequisites.md`。
 
 ## Critical rules
 

@@ -1,5 +1,8 @@
 # 辅助视觉模型配置（Qwen-VL @ DashScope）
 
+> **位置变更（2026-09-17）**：本文原在 `ea-authoring/references/`，因属"环境部署"能力且采集/写章/视觉核验都可能用到，
+> 已移到 `energy-audit-core/references/`（core 发布到全部 6 个 profile）。内容不变，仅修正下方 config 路径。
+
 ## 背景
 
 能源审计中的图片识别场景（设备铭牌、仪表读数、建筑图纸）多为中文内容。DeepSeek 不支持原生视觉输入，因此需要配置辅助视觉模型。
@@ -7,13 +10,16 @@
 ## 推荐方案：Qwen-VL Max（DashScope 国内端点）
 
 ```yaml
-# ~/.hermes/config.yaml
+# Windows: %LOCALAPPDATA%\hermes\config.yaml   （= C:\Users\<用户>\AppData\Local\hermes\config.yaml）
+# macOS/Linux: ~/.hermes/config.yaml
 auxiliary:
   vision:
     provider: alibaba          # DashScope（阿里云百炼）
     model: qwen-vl-max         # Qwen-VL Max
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
+
+> 注意：Windows 上 `HERMES_HOME` 是 `%LOCALAPPDATA%\hermes`，**不是** `~/.hermes`（`C:\Users\<用户>\.hermes` 是另一个空壳目录）。
 
 ## 链路对比
 

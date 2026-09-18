@@ -85,7 +85,7 @@ RAG 检索知识库内容（历史审计报告、法规标准文档、机构资�
 | ② 采集前定位项目：确认项目存在/项目名/PG project_id | 用 search_projects 反查单位名 | caliber 算指标时查 get_energy 重新取能耗（应读 data.json） |
 
 判定口诀：**"上游文件里有的，读文件；文件里没有且影响正确性，先报断链由 datacollection 补采，不自己查库补"**。
-违反即"复查数据"，与 pipeline-architecture.md"不再各查各的数据"原则冲突。
+违反即"复查数据"，与 `energy-audit-routing` 直跑轨"数据一律从 data.json / indicators.json / chapter5.md 读取，禁从前序章节文本或 memory 提取"的同一原则冲突。
 
 **唯一例外：仿写模式（energy-audit-imitate）**——`imitate_pipeline.py` 内部经 `pg_collector`
 全量取数（数据来源=DB 快照，非上游文件接力），不走标准流水线主链路；标准流水线 author 仍禁反查。

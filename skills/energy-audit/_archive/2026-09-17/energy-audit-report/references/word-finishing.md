@@ -15,7 +15,7 @@ report_generator.py 的 `generate()` 在 `doc.save()` 后自动完成三件收�
 
 ## 2. 页眉 DrawingML 水印（2026-08 规范：禁 VML）
 
-- 组装脚本落盘后由 `scripts/add_watermark.py` 注入（`assemble_report.py` 内部
+- 组装脚本落盘后由 `energy-audit-imitate/scripts/add_watermark.py` 注入（`assemble_report.py` 内部
   importlib 加载同目录脚本调用 `add_unit_name_watermark(docx, unit_name)`）。
 - 形态：header 追加 DrawingML `<w:drawing><wp:anchor behindDoc="1">` + `wps:wsp`
   文本框，宋体浅灰 #C0C0C0、约 45°（`<a:xfrm rot="2700000">`）、居中衬底。

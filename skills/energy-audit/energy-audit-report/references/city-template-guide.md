@@ -85,7 +85,7 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 山东定额标准数值速查（已验证）：`references/quota-supplement.md`（含 DB37/T 2672-2019 党政机关、DB37/T 2673-2019 三级医院基准值、折标系数、用水定额）
 - 仿写路径（energy-audit-imitate 技能，bundled 不可改）：章节正文支持 markdown 表格——`表X.Y 标题` 行 + `| a | b |` 行（首行表头），report_generator._write_imitated_body 自动渲染为规范表格（12pt 居中、1.01cm 行高），组装无需手工建表。
 - **skill 双副本同步方向**：energy-audit-imitate 存在 repo `skills/productivity/`（权威源，bundled 只读）与 profile 副本两处；repo 若被 profile 旧版覆盖，其自带验收测试（tests/skills/test_energy_audit_imitate_skill.py）会立刻红（resolve_unit_name/format-spec 引用）——改 repo 后必须同步回 profile，反之会把测试打回 0.1.0 时代。
-- **仿写模式图表（2026-08 新能力）**：正文插 `[[图:类型|图注]]` 标记行即可嵌入图表，类型含 flow/trend/pie/cost_pie/monthly_electricity_kwh/monthly_water_m3/monthly_natural_gas_m3；数据来自 spec 的 `chart_data` 块（cost_pie 需各年费用字段 `*_cost_wan`）。不加标记 → 报告无任何图（用户会问"图表怎么没了"）。chart_data JSON 形状与渲染细节见 `references/word-finishing.md`
+- **仿写模式图表（2026-08 新能力）**：正文插 `[[图:类型|图注]]` 标记行即可嵌入图表，类型含 flow/trend/pie/cost_pie/monthly_electricity_kwh/monthly_water_m3/monthly_natural_gas_m3；数据来自 spec 的 `chart_data` 块（cost_pie 需各年费用字段 `*_cost_wan`）。不加标记 → 报告无任何图（用户会问"图表怎么没了"）。chart_data JSON 形状与渲染细节见 `energy-audit-imitate/references/assemble-format-notes.md`
 - **组装收尾工作流（2026-09 烟台法院实测）**：spec.json → assemble_report.py（生成 8 章）→
   officecli 追加附录（assemble 不支持附录；`office_cli_command` add/set 实现，禁用 python-docx）→
   40+ 项数值断言（与 DB 计算值比对）+ 占位符扫描（"测试"命中先确认是否"水平衡测试"术语）。
@@ -102,7 +102,7 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 表格 12pt 居中、行高 1.01cm（AT_LEAST）、垂直居中、表头加粗、Table Grid 边框
 - 表注（`>` 引用块）灰色 12pt 无缩进；表题（**表X-X**）居中加粗
 - 页脚居中页码域（PAGE）、目录 TOC 域（`TOC \o "1-3" \h \z \u` + outlineLvl），打开 Word 后 Ctrl+A → F9 更新
-- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**，VML 曾用 468pt/opacity 0.15 被批"不明显"，后按 repo 规范改为 DrawingML）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（2026-09-04 起不再写"第 X 页 共 Y 页"；页眉文字+分隔线由 `scripts/fix_header_footer.py` 注入，见 `word-finishing.md` §3/§4）。用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
+- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `energy-audit-imitate/scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（页眉文字+分隔线由 `scripts/fix_header_footer.py` 注入）。**主链（脚本装配）对应实现见 `references/script-assembly-chain.md`**；用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
 - 封面：单位名 22pt + "能源审计报告" 26pt 居中 + 报告信息表（md 第一个表格）
 - 运行：`D:/develop/anaconda3/python.exe scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`
 

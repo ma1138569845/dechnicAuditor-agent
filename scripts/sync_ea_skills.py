@@ -5,7 +5,7 @@
 用法:
     python scripts/sync_ea_skills.py            # 实际发布（含删除旧位置清理）
     python scripts/sync_ea_skills.py --dry-run  # 只报告差异不落盘
-    python scripts/sync_ea_skills.py --verify   # 只校验 hash 一致性并报告
+    python scripts/sync_ea_skills.py --verify   # 只读校验：待发布差异 + hash 一致性（exit 非 0 = 未对齐）
 
 铁律:
     1. repo `skills/energy-audit/` 是唯一权威源（git 管理），本脚本只做单向发布。
@@ -20,9 +20,15 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS_SRC = os.path.join(REPO, "skills", "energy-audit")
-HERMES_HOME = os.path.expanduser("~") + r"\AppData\Local\hermes"
+HERMES_HOME = os.environ.get("EA_HERMES_HOME") or (os.path.expanduser("~") + r"\AppData\Local\hermes")
 MAIN_SKILLS = os.path.join(HERMES_HOME, "skills", "energy-audit")
 PROFILES = ["datacollection", "datava", "caliber", "author", "editor", "knowledger"]
+
+# SOUL 源（2026-09-17 新增）：repo skills/energy-audit/_soul/<role>.md → profiles/<role>/SOUL.md
+# 背景：SOUL 此前只存在于 profile 侧、无 repo 源，长期漂移（如 caliber SOUL 仍写"4 项指标"）。
+# 环境变量 EA_HERMES_HOME 仅用于沙箱验收：不设时行为与旧版完全一致（仍指向 %LOCALAPPDATA%\hermes）。
+SOUL_SRC = os.path.join(SKILLS_SRC, "_soul")
+SOUL_ROLES = PROFILES
 
 # 角色安装矩阵：skill 目录名 → 需要安装的 profile 列表（全部 skill 都会发布到主 hermes skills）
 ROLE_MATRIX = {
@@ -60,7 +66,9 @@ PROFILE_STALE = {
     "editor": ["agent-editor"],
 }
 
-SKIP_NAMES = {"__pycache__", ".omc", ".pytest_cache", ".git", ".hub", ".curator_backups"}
+# `_` 前缀目录（_soul / _archive）是仓库内部件，不是技能，发布与清理一律跳过
+SKIP_NAMES = {"__pycache__", ".omc", ".pytest_cache", ".git", ".hub", ".curator_backups",
+              "_soul", "_archive"}
 
 
 def walk_files(root):
@@ -109,7 +117,10 @@ def main():
         print(f"[错误] 权威源不存在: {SKILLS_SRC}")
         sys.exit(1)
 
-    skills = sorted(os.listdir(SKILLS_SRC))
+    skills = sorted(
+        d for d in os.listdir(SKILLS_SRC)
+        if not d.startswith("_") and os.path.isdir(os.path.join(SKILLS_SRC, d))
+    )
     unknown = [s for s in skills if s not in ROLE_MATRIX]
     if unknown:
         print(f"[警告] 权威源中存在矩阵外 skill（不会发布到 profile）: {unknown}")
@@ -120,26 +131,49 @@ def main():
     print("== 主 hermes skills/energy-audit/ ==")
     for s in skills:
         changed, removed = copy_tree(os.path.join(SKILLS_SRC, s),
-                                     os.path.join(MAIN_SKILLS, s), args.dry_run)
+                                     os.path.join(MAIN_SKILLS, s),
+                                     args.dry_run or args.verify)
         total_changed += changed
         total_removed += removed
-        flag = "dry-run" if args.dry_run else "发布"
+        flag = "dry-run" if args.dry_run else ("校验" if args.verify else "发布")
         print(f"  [{flag}] {s}: 变更{changed} 删除{removed}")
 
     # 2) 清理主目录旧位置
     for stale in MAIN_STALE:
         if os.path.isdir(stale):
             print(f"  [清理] 主目录旧位置: {stale}")
-            if not args.dry_run:
+            if not (args.dry_run or args.verify):
                 shutil.rmtree(stale)
     # 2b) 清理主目录 energy-audit/ 下矩阵外残留（如已合并删除的 energy-audit-reports）
     if os.path.isdir(MAIN_SKILLS):
         for d in os.listdir(MAIN_SKILLS):
-            if d not in skills and d not in SKIP_NAMES:
+            if d not in skills and d not in SKIP_NAMES and not d.startswith("_"):
                 p = os.path.join(MAIN_SKILLS, d)
                 print(f"  [清理] 主目录矩阵外残留: {d}")
-                if not args.dry_run:
+                if not (args.dry_run or args.verify):
                     shutil.rmtree(p)
+
+    # 2c) 发布 SOUL（repo _soul/<role>.md → profiles/<role>/SOUL.md）
+    print("== profile SOUL ==")
+    if not os.path.isdir(SOUL_SRC):
+        print(f"  [警告] 无 SOUL 源目录: {SOUL_SRC}（跳过，不影响技能发布）")
+    else:
+        for role in SOUL_ROLES:
+            src = os.path.join(SOUL_SRC, f"{role}.md")
+            prof_dir = os.path.join(HERMES_HOME, "profiles", role)
+            dst = os.path.join(prof_dir, "SOUL.md")
+            if not os.path.isfile(src):
+                print(f"  [缺失] SOUL 源: _soul/{role}.md")
+                continue
+            if not os.path.isdir(prof_dir):
+                print(f"  [跳过] {role}: profile 不存在")
+                continue
+            if os.path.isfile(dst) and md5(dst) == md5(src):
+                continue
+            flag = "dry-run" if args.dry_run else ("校验" if args.verify else "发布")
+            print(f"  [{flag}] SOUL {role}.md")
+            if not (args.dry_run or args.verify):
+                shutil.copy2(src, dst)
 
     # 3) 按矩阵发布到 profiles
     for prof in PROFILES:
@@ -152,29 +186,30 @@ def main():
             if prof not in profs:
                 continue
             changed, removed = copy_tree(os.path.join(SKILLS_SRC, s),
-                                         os.path.join(prof_skills, s), args.dry_run)
+                                         os.path.join(prof_skills, s),
+                                         args.dry_run or args.verify)
             total_changed += changed
             total_removed += removed
-            flag = "dry-run" if args.dry_run else "发布"
+            flag = "dry-run" if args.dry_run else ("校验" if args.verify else "发布")
             print(f"  [{flag}] {s}: 变更{changed} 删除{removed}")
         # 清理旧命名 skill
         for stale in PROFILE_STALE.get(prof, []):
             p = os.path.join(HERMES_HOME, "profiles", prof, "skills", stale)
             if os.path.isdir(p):
                 print(f"  [清理] {prof} 旧 skill: {stale}")
-                if not args.dry_run:
+                if not (args.dry_run or args.verify):
                     shutil.rmtree(p)
         # 清理不在矩阵内的 energy-audit 残留
         if os.path.isdir(prof_skills):
             installed = {s for s, ps in ROLE_MATRIX.items() if prof in ps}
             for d in os.listdir(prof_skills):
-                if d not in installed and d not in SKIP_NAMES:
+                if d not in installed and d not in SKIP_NAMES and not d.startswith("_"):
                     p = os.path.join(prof_skills, d)
                     print(f"  [清理] {prof} 矩阵外残留: {d}")
-                    if not args.dry_run:
+                    if not (args.dry_run or args.verify):
                         shutil.rmtree(p)
 
-    print(f"\n{'[dry-run]' if args.dry_run else '[完成]'} 总变更 {total_changed} 文件，删除 {total_removed} 文件")
+    print(f"\n{'[dry-run]' if args.dry_run else ('[校验]' if args.verify else '[完成]')} 总变更 {total_changed} 文件，删除 {total_removed} 文件")
 
     if args.verify or args.dry_run:
         # 校验：全 profile 与 repo hash 一致性
@@ -193,6 +228,20 @@ def main():
                     if rel not in dst or md5(dst[rel]) != md5(sp):
                         bad += 1
                         print(f"  [不一致] {prof}/{s}/{rel}")
+        # SOUL 一致性（repo _soul/<role>.md ↔ profiles/<role>/SOUL.md）
+        if os.path.isdir(SOUL_SRC):
+            for role in SOUL_ROLES:
+                prof_dir = os.path.join(HERMES_HOME, "profiles", role)
+                if not os.path.isdir(prof_dir):
+                    continue
+                src = os.path.join(SOUL_SRC, f"{role}.md")
+                dst = os.path.join(prof_dir, "SOUL.md")
+                if not os.path.isfile(src):
+                    bad += 1
+                    print(f"  [缺失] SOUL 源: _soul/{role}.md")
+                elif not os.path.isfile(dst) or md5(dst) != md5(src):
+                    bad += 1
+                    print(f"  [不一致] {role}/SOUL.md")
         print(f"[校验] profile 侧不一致文件: {bad}")
         sys.exit(1 if bad else 0)
 

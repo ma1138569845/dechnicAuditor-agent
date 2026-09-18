@@ -61,7 +61,8 @@ knowledge_schema.py          energy_kg.py               data_analysis.py
     ├─ 重跑（已有文件）: load_analysis_result()
     │   └─ 旧格式兼容: 无 diagnosis_stats → 自动补全 KG 诊断
     │
-    └─ 用户确认异常后 → format_diagnosis_for_chapter7() → agent-xiaode
+    └─ 用户确认异常后 → format_diagnosis_for_chapter7() → 第7章写作素材
+        （落盘 diagnosis_chapter7_material.txt，由 author 在写第7章时引用）
 ```
 
 ## 扩展因果链

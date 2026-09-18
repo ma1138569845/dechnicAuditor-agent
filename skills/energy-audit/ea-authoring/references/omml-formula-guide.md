@@ -53,7 +53,7 @@ office_edit(
 | 单位建筑面积非供暖能耗 5.3.1 | `E_{jrcn}=\frac{E-E_{gn}-E_{jt}}{M}` | E 综合能耗 kgce/a；Egn 供暖能耗；Ejt 交通能耗；M 建筑面积 m² |
 | 常规用能系统单位建筑面积电耗 5.3.2 | `E_{ja}=\frac{E_{D}}{M}` | ED 电量总和 kWh/a（已剔供暖电耗）；M 建筑面积 |
 | 人均综合能耗 5.3.3 | `E_{r}=\frac{E}{P}` | E 综合能耗 kgce/a；P 用能人数 p |
-| 取水指标 5.3.4（按机构类型自适应，DB37/T 4452-2021） | 机关(7)：`V_{uc}=\frac{V_{k}}{N_{p}}`（m³/(人·a)）<br>高校(3)：`V_{u}=\frac{W_{u}}{N_{u}}`（Nu=统招生+留学生+0.5×教职工）<br>中小学/幼儿园(4)：`V_{s}=\frac{W_{u}}{N_{s}}`（Ns=非住宿生+2×住宿生+教职工）<br>医院(5)：`V_{z}=\frac{W_{z}}{\sum_{i=1}^{365}N_{i}}\times10^{3}`（L/(床·日)，ΣNi=全年实际开放床日数）<br>政务/场馆(6)：`V_{ui}=\frac{V_{j}}{N_{c}}\times1000`（L/(m²·a)） | 变量定义见 core/references/standards-values.md；不对标：政务/场馆（4452 无面积定额） |
+| 取水指标 5.3.4（按机构类型自适应，DB37/T 4452-2021） | 机关(7)：`V_{uc}=\frac{V_{k}}{N_{p}}`（m³/(人·a)）<br>高校(3)：`V_{u}=\frac{W_{u}}{N_{u}}`（Nu=统招生+留学生+0.5×教职工）<br>中小学/幼儿园(4)：`V_{s}=\frac{W_{u}}{N_{s}}`（Ns=非住宿生+2×住宿生+教职工）<br>医院(5)：`V_{z}=\frac{W_{z}}{\sum_{i=1}^{365}N_{i}}\times10^{3}`（L/(床·日)，ΣNi=全年实际开放床日数）<br>政务/场馆(6)：`V_{ui}=\frac{V_{j}}{N_{c}}\times1000`（L/(m²·a)） | 变量定义见 energy-audit-core/references/standards-values.md；不对标：政务/场馆（4452 无面积定额） |
 | 单位采暖建筑面积供暖能耗 5.3.5 | `E_{gnm}=\frac{E_{gn}}{M_{gn}}` | Egn 供暖能耗 kgce/a；Mgn 采暖建筑面积 m² |
 
 > 变量符号（Ejrcn/Eja/Er/Vuc/Egnm + 取水按类型 Vuc/Vu/Vs/Vz/Vui）以正式报告与 DB37/T 4452-2021 为准（2026-09-05 用户确认对齐；2026-09-05 晚按烟台法院正式版勘误：5.3.1=Ejrcn、5.3.2=Eja，此前 Ejfgn/Ejd 为误记）；报告中的符号不可自行改名。

@@ -85,6 +85,30 @@ def _resolve_auditor(sr, pg_project: dict, excel_data: dict) -> str:
     return val
 
 
+def _official_auditor_org(pg, brand: str = '德诚') -> dict:
+    """从 ts_register_dept 取最新一条不含"测试"的正式机构记录（2026-09-18 新增）。
+
+    事故背景：某项目 ts_project_dept 里存的是测试记录（名称"同方德诚测试公司-1"、
+    地址"<被审计单位名>-<地址>"这种拼接串），① 分支直接采用后未过滤，
+    导致 ② 分支的"测试"过滤永远不生效 → 报告/盖章出现测试机构名。
+    """
+    try:
+        regs = pg.get_register_info(dept_name=brand) or []
+    except Exception:
+        regs = []
+    for reg in regs:
+        name = str(reg.get('dept_name') or '')
+        if not name or '测试' in name:
+            continue
+        return {
+            'name': name,
+            'address': reg.get('address') or '',
+            'contact': reg.get('contact') or '',
+            'mobile': reg.get('mobile') or '',
+        }
+    return {}
+
+
 def _expand_energy_monthly(energy_yearly) -> list:
     """从 EnergyYearly 的 monthly_* 列表展开为 EnergyMonthly 行（第5章图表用）。"""
     rows = []
@@ -340,6 +364,27 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     # ③ 负责人/联系方式：仅 ts_project_dept，无值保持空（不查别的表）
     audit_org.setdefault('audit_org_contact', '')
     audit_org.setdefault('audit_org_phone', '')
+
+    # ④ 测试值过滤 + 权威回退（2026-09-18 新增，源于真实事故）
+    #    ① 分支取到的 ts_project_dept 常是测试记录（名称含"测试"、地址是"<被审计单位>-<地址>"拼接串），
+    #    必须在 ① 之后统一过滤，否则只会走 ② 的过滤形同虚设。
+    _unit = str(proj.get('audited_name') or proj.get('unit_name') or '')
+    _name = str(audit_org.get('audit_org_name') or '')
+    _addr = str(audit_org.get('audit_org_address') or '')
+    if ('测试' in _name) or (_unit and _unit in _addr):
+        _official = _official_auditor_org(pg)
+        if _official.get('name'):
+            audit_org['audit_org_name'] = _official['name']
+        if _official.get('address'):
+            audit_org['audit_org_address'] = _official['address']
+    # 负责人/联系方式：按 2026-09-02 用户确认口径以项目表 audit_dept_person/tel 为准
+    _person = str(proj.get('audit_dept_person') or '').strip()
+    _tel = str(proj.get('audit_dept_tel') or '').strip()
+    _contact = str(audit_org.get('audit_org_contact') or '')
+    if _person and (not _contact or '测试' in _contact or _contact in ('联系人姓名', '演示用户')):
+        audit_org['audit_org_contact'] = _person
+    if _tel:
+        audit_org['audit_org_phone'] = _tel
     result['found']['project'].update(audit_org)
 
     # ---- 1.5 客户信息 ----

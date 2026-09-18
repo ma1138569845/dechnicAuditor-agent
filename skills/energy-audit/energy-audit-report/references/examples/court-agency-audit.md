@@ -72,7 +72,11 @@
 - 用能人数=351（烟台）这种场景下，指标评价注意约束/基准/引导三层关系表述：低于约束但高于基准=“低于约束值”
 - 封面信息表（第一张表）：报告名称/被审计单位/审计机构/审计期/报告日期
 
-## Word 生成
+## Word 生成（2026-09-17 更新：脚本主链）
+
+**主链**：`energy-audit-report/scripts/` 装配脚本链——`build_energy_audit_docx.py`（一次构建：封面/信息表/目录/8章/附录/页眉水印）→ `finalize_energy_audit_pdf.py`（Word COM 刷目录 + 签章 PDF）→ `ea_docx_asserts.py`（交付断言）。烟台法院项目已验证：与 45 页终稿逐段文本 diff=0、断言 10/10、单份 ≈30 秒。详见 `../script-assembly-chain.md`。
+
+**legacy（md_to_docx 路径，保留供参考）：**
 
 正式模式 6 参数：`python md_to_docx_energy_audit.py <in.md> <out.docx> 单位名 审计期 审计机构 报告日期`（如“烟台经济技术开发区人民法院”“2023年—2025年”“同方德诚科技有限公司”“二〇二六年八月”）
 

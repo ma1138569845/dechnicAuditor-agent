@@ -82,7 +82,7 @@
 
 ## 5.3.4 取水指标（标题与公式按机构类型自适应，DB37/T 4452-2021）
 
-指标名、公式、单位按机构类型自适应（1.2 与 5.3.4 共用映射，见 core/references/standards-values.md）。机构类别缺失时默认医疗（泛化基线，与 indicators.py institution_category_to_type 一致）：
+指标名、公式、单位按机构类型自适应（1.2 与 5.3.4 共用映射，见 energy-audit-core/references/standards-values.md）。机构类别缺失时默认医疗（泛化基线，与 indicators.py institution_category_to_type 一致）：
 
 | 机构类别 | 指标名 | 公式（4452） | 单位 |
 |---|---|---|---|

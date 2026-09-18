@@ -58,6 +58,14 @@ if proj is None:
 
 ## 顶层 dataclass 结构
 
+### 新增字段时的"三处同步"（旧 chapter-writing-specs.md（已归档）的有效部分，2026-09-17 并入）
+
+给年度数据加字段（如新的月度数组）必须同时改三处，否则下游读不到：
+
+1. `tools/energy_audit/project_data.py` 的 `EnergyYearly` dataclass；
+2. `tools/energy_audit/pg_collector.py::_collect_from_pg_impl`（采集映射，含单位换算）与 `project_data.py::save_project/load_project` 的持久化读取；
+3. kanban 轨的 config JSON `energy_yearly` 数组（仅仿 config 入口的项目需要）。
+
 ```
 AuditProject
 ├─ project_id / created_at / updated_at / _version

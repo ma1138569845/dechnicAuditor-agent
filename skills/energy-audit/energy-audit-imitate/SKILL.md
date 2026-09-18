@@ -26,10 +26,10 @@ the scripted REST/pipeline path (`energy_audit_imitate_report`).
 
 > **与 ea-authoring 的分工（2026-09 定）**：本技能 = **仿写模式**（读同类参考报告 →
 > 仿修辞结构 → `assemble_report.py` 组装，Word 工艺为 assemble 链路）；
-> `ea-authoring` = **标准流水线模式**（office_editor 工具集 + office_cli_command 缩进/水印，
-> 正式 Kanban 交付走它）。格式基准两模式共用 `energy-audit-core/references/report-format-spec.md`；
-> 本技能自带 copies 供仿写快速查阅，权威以 core 版为准（本技能 `references/report-format-spec.md`
-> 为扩展版，含 assemble 专属细节，勿在正式流水线中作为格式依据）。
+> `ea-authoring` = **标准流水线模式**（装配脚本链为主、office_editor 备用，
+> 正式 Kanban 交付走它）。格式基准两模式共用 `energy-audit-core/references/report-format-spec.md`
+> （**唯一权威全文**；2026-09-17 起本技能不再维护格式副本）。
+> assemble 专属实施注记见本技能 `references/assemble-format-notes.md`。
 > **PG 反查边界例外声明（2026-09-05）**：仿写模式是 kanban"写作主流程禁反查 PG"的
 > **唯一例外路径**——`imitate_pipeline.py` 内部经 `pg_collector` 全量取数（数据来源=DB 快照），
 > 见 kanban `tools-reference.md` PG 反查边界；标准流水线 author 仍禁反查。
@@ -45,8 +45,9 @@ existing `.docx` layout (`docx`).
 - `python-docx` in the Hermes environment (needed by `scripts/assemble_report.py`).
 - `matplotlib` in the Hermes environment (chart rendering for `[[图:...]]` markers;
   included in the `energy` extra: `uv sync --extra energy`).
-- **格式规范**：`references/report-format-spec.md`（19 份省直报告统计标准）是组装
-  Word 时必须遵守的格式基准（字体/缩进/表格/目录/水印），先读它再写正文。
+- **格式规范**：`energy-audit-core/references/report-format-spec.md`（19 份省直报告统计
+  标准，唯一权威全文）是组装 Word 时必须遵守的格式基准（字体/缩进/表格/目录/水印），
+  先读它再写正文；assemble 专属实施注记见 `references/assemble-format-notes.md`。
 - Optional local reference folder: `EA_REFERENCE_DIR` or
   `{HERMES_HOME}/rag/report/{省}/{市}/{区县}/{审计类型}/`.
   On Windows this is `%LOCALAPPDATA%\hermes\rag\report` (not `~/.hermes`).
@@ -130,7 +131,7 @@ through 第8章 each have body text with the outline's subsection headings.
   `updateFields on open` (目录打开自动生成), DrawingML unit-name watermark
   (injected after save by `scripts/add_watermark.py` — 被审计单位全称，
   禁止 VML textpath), and a footer `第 X 页 共 Y 页` page-number field.
-  具体格式细则以 `references/report-format-spec.md` 为准。
+  具体格式细则以 `energy-audit-core/references/report-format-spec.md` 为准（仿写实施注记见 `references/assemble-format-notes.md`）。
 
 ### 5. Assemble Word
 

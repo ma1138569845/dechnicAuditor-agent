@@ -1,6 +1,6 @@
 # 第2章：公共机构概况 — 生成指南
 
-> **职责边界**：本指南只定义第2章的**专业规则**与**结构化输出**，不包含任何 Word 排版/表格绘制细节。文档渲染（标题、正文、表格、图片、样式）统一交给 office_editor 工具集（officecli 只是 editor_sdk 缺失时的受限回退），报告格式规范见 `references/report-format-spec.md`。
+> **职责边界**：本指南只定义第2章的**专业规则**与**结构化输出**，不包含任何 Word 排版/表格绘制细节。文档渲染（标题、正文、表格、图片、样式）统一由装配链落实（装配脚本链为主、office_editor 备用），报告格式规范见 `energy-audit-core/references/report-format-spec.md`。
 
 ## 1. 职责范围
 
@@ -11,7 +11,7 @@
 - 判断需要插入哪些建筑图片（`type: building_exterior`）
 - 输出第2章正文与建筑参数表数据（字段口径见「数据来源」节）
 
-**不负责（office_editor 工具集相关职责）：**
+**不负责（装配链相关职责）：**
 
 - 创建/保存 Word 文档
 - 创建表格、设置行高/列宽/垂直对齐
@@ -45,7 +45,7 @@ LLM 生成结构化章节结果
     ↓
 Chapter 2 Result JSON（对齐 report_data['chapter2']）
     ↓
-office_editor 工具集渲染（标题/正文/表格/图片/样式）
+装配链渲染（标题/正文/表格/图片/样式）
     ↓
 DOCX
 ```
@@ -79,6 +79,11 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 > 莘县县政府（以下简称"莘县政府"）是莘县人民政府直属国家机关，位于莘县政府街003号。院内共设有办公室、发改局、财政局等20余个内设机构，现有在职职工约300人。总建筑面积4190平方米，主要建筑物包括南楼和北楼2栋：其中南楼建成于1989年，地上5层；北楼建成于2019年，地上2层。两栋建筑均采用框架结构，设有外墙保温。
 
 ## 5. 2.2 建筑物概况 — 生成规则
+
+> **建筑地址口径（2026-09-18 新增）**：建筑参数表的"建筑地址"列一律以 `proj.base.address`（项目地址）为准；
+> 若 `buildings[].address` 与项目地址互相矛盾（真实事故：某项目建筑地址写成了另一个区的地址），
+> 取项目地址，并在正文注明"建筑表地址与项目地址不一致，已按项目地址填写，待核实"。
+> 禁止原样抄录互相矛盾的地址——那会让第 2 章与 1.2 节自相矛盾（采集侧已同步告警）。
 
 **两段式 + 面积汇总 + 收口：**
 
@@ -138,14 +143,14 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 ## 7. 建筑基本信息表定义（结构化）
 
-每栋建筑一张 `building_basic_info` 表。**LLM 输出 building 字段数据，不输出表格行/列宽/字体**；4 列键值对布局（16 行）、标签加粗、内容居中、表题在表格上方等由 office_editor 工具集按统一样式绘制（格式见 `references/report-format-spec.md`）。
+每栋建筑一张 `building_basic_info` 表。**LLM 输出 building 字段数据，不输出表格行/列宽/字体**；4 列键值对布局（16 行）、标签加粗、内容居中、表题在表格上方等由装配链按统一样式绘制（格式见 `energy-audit-core/references/report-format-spec.md`）。
 
 ```yaml
 table_type: building_basic_info
 layout:
   columns: 4
   arrangement: key_value_pair   # 键值对：标签 | 值 | 标签 | 值
-  caption: "表2-N {building.name}基本信息"   # 表题在表格上方，由 office_editor 编号
+  caption: "表2-N {building.name}基本信息"   # 表题在表格上方，由装配链编号
 field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该行（值列单位 m² 由渲染层处理）
   name: 建筑物名称
   address: 建筑地址
@@ -191,7 +196,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 | building_photo | 2.2 每栋建筑单独外观照（可选） | 按建筑数 | `proj.images[]` 中 category ∈ {`建筑外观`, `各建筑外观`}，图号接续图2.1；无图/无法归属则不插 |
 
 - 图片路径取自 `proj.images[].path`（`ImageItem`，带分类），禁止虚构
-- 图片宽度（12cm）、居中、图注（10pt 宋体居中）由 office_editor 工具集统一处理
+- 图片宽度（12cm）、居中、图注（10pt 宋体居中）由装配链统一处理
 
 ## 9. 输出 — Chapter 2 Result JSON
 
@@ -222,7 +227,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 - `section_2_1` / `section_2_2` / `section_2_3` 为完整正文段落（author 写作，字段空时按模板兜底）
 - 表格只声明 `table_type` + 原始 `building` 字段（`BuildingInfo`，见 §7），**禁止**输出行内容、列宽、字体等排版信息
 - 图片只声明 `type` / `path` / `caption`，**禁止**输出宽度、对齐等排版信息
-- 表号/图号（表2-1、图2-1）由 office_editor 按出现顺序统一编号；正文"见表2-1至表2-N"由 LLM 按建筑数量 N 生成
+- 表号/图号（表2-1、图2-1）由装配链按出现顺序统一编号；正文"见表2-1至表2-N"由 LLM 按建筑数量 N 生成
 
 ## 10. 校验（Reviewer）
 
@@ -233,4 +238,4 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 | 表格 | 每栋建筑对应一张 building_basic_info；building 字段与 field_mapping（BuildingInfo）一致，关键字段无缺失 |
 | 图片 | building_exterior 1 张（单位整体外观=scene_img_id，无则建筑外观兜底）；building_photo（每栋照）可选不强制；路径真实存在 |
 | 逻辑 | 用能系统段与 energy_types 一一对应，无多余/遗漏系统；设备数量表述符合 §6 category 规则 |
-| 格式 | 不属于本章职责，由 office_editor 与报告格式规范保证 |
+| 格式 | 不属于本章职责，由装配链与报告格式规范保证 |

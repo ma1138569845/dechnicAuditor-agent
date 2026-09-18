@@ -62,10 +62,11 @@
 - 装配冒烟：`load_project` 后核对 audit_info_tables 三张表数据源有值；模拟用户补全 audit_org_* 后 author 按 office_editor 写表 → docx 表#0-2 与正式版逐字段一致
 - V1 校验：project_to_report_data + check_completeness → 有人员时只报审计机构 3 项 P1（人员不再误报）；构造占位 team_members → 报"审计组人员名单"
 - V3 校验：对含表内【待补充】的 docx → 报 V3.STRUCT.PLACEHOLDER P0（计数含单元格）
-- 回归：repo `tests/tools/energy_audit/`（123 passed）；datava `scripts/tests/test_datava.py`（73 passed，**断言已更新**：审计组人员缺失 SEV_P2→SEV_P1，新增审计机构/配合人员 P1 断言）
+- 回归：repo `tests/tools/energy_audit/`（123 passed）；`ea-validation/scripts/tests/test_datava.py`（73 passed，**断言已更新**：审计组人员缺失 SEV_P2→SEV_P1，新增审计机构/配合人员 P1 断言）
 
 ## 同步注意
 
-- datava skill 双副本：`~/AppData/Local/hermes/profiles/datava/skills/data_validation/` 与 `D:\所有的Agent\正式\datava\skills\data_validation\`（pytest 实际跑后者，两处都要同步）
+- **datava 技能单源发布**：repo `skills/energy-audit/ea-validation/` → `scripts/sync_ea_skills.py`（矩阵：ea-validation→datava）→ `profiles/datava/skills/energy-audit/ea-validation/`；回归测试跑 `ea-validation/scripts/tests/test_datava.py`。
+- 历史：旧命名 `data_validation` 的副本曾在 `D:\所有的Agent\正式\datava\skills\` 存在（该目录目前在磁盘上仍有残留，不纳入现行发布链；2026-09-17 已定：维持现状、勿动）
 - datacollection SOUL.md 数据模型说明已加 audit_org_*/audit_team/cooperation 与采集规则（ts_register_dept 提问兜底）
 - energy-audit-imitate SKILL.md spec 示例已加 audit_info_tables 字段说明（repo 权威源 → 同步各 profile）

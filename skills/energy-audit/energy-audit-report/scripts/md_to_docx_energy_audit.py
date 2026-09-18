@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""能源审计报告 MD -> DOCX 转换脚本（用户格式规范硬编码）
+"""能源审计报告 MD -> DOCX 转换脚本（用户格式规范硬编码）—— legacy（2026-09-17 起新主链=装配脚本链 build_energy_audit_docx.py；本脚本保留供存量/参考）
 格式规范：H1宋体15pt居中加粗 / H2宋体14pt加粗 / H3宋体12pt加粗 /
 正文宋体+Times New Roman 12pt两端对齐、首行缩进2字符、1.5倍行距 /
 表格12pt居中、行高1.01cm(AT_LEAST)、垂直居中、表头加粗、Table Grid /

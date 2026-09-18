@@ -36,9 +36,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 | `chapter5-agent-guide.md` | 第5章 Agent 指南（5.1–5.4 + 图表函数） |
 | `chapter5-52-final-spec.md` | ★5.2 节规范【结构权威单点】（2026-09-05 定） |
 | `chapter5-52-writing-lessons.md` | ★5.2 写作教训【细节权威单点】（踩坑记录，16KB 最详） |
-| `chapter5-52-spec.md` | ⚠️已废弃（v3.4，并入 final-spec） |
-| `chapter5-52-writing-spec.md` | ⚠️已废弃（并入 writing-lessons） |
-| `chapter5-52-reference-style.md` | ⚠️已废弃（参考样式，图号/费用节为旧口径） |
+| ~~chapter5-52-spec / -writing-spec / -reference-style~~ | 已归档至 `_archive/2026-09-17/ea-calculation/references/`（内容分别并入 final-spec 与 writing-lessons） |
 | `chapter5-53-templates.md` | 5.3 指标模板（5.3.1 模板唯一权威） |
 | `chapter5-structured-tables.md` | 第5章结构化表格 |
 | `energy-flow-diagram-spec.md` | 能流图规范（graphviz 动态，非 matplotlib） |
@@ -78,7 +76,11 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 
 ```bash
 python <skill>/scripts/caliber_agent.py <项目名> [--skip-charts] [--output-dir <目录>]
+# 计算完成后，把第5章"就位"为装配稿（消灭手工搬运断点；不覆盖作者已并入的装配稿）
+python <skill>/scripts/prepare_chapter_md.py <项目名> [--force]
 ```
+
+`prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。
 
 环境变量 `HERMES_AGENT_HOME` 指定含 `tools/energy_audit` 的项目根（缺省按 `_paths.py` 三级降级自动解析）。
 
@@ -228,6 +230,14 @@ generate_charts(data, config, str(out_dir / 'charts'))
 | charts/*.png | 能源流向图 / 总量柱状图 / 逐月分组柱状图 / 费用饼图 |
 
 indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，author装配报告时引用它。
+
+### 第5章产物权威说明（2026-09-17 定）
+
+| 文件 | 定位 | 处置 |
+|---|---|---|
+| `<项目>/chapter5.md` | **计算产物（权威数据源）** | 只读；由 caliber 生成，作者与脚本都不得改写数值 |
+| `<项目>/chapter_md/ch5_import.md` | **装配唯一输入** | 由 `prepare_chapter_md.py` 就位；作者可并入分析性叙述段，但数值必须与 chapter5.md 一致 |
+| `<项目>/chapter_md/ch5.md`、`ch5_segA/B/C.md` | 中间物（历史分段/合并稿） | 可删；不作为装配输入，也不作为数值来源 |
 
 ---
 

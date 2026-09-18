@@ -40,8 +40,11 @@ metadata:
 1. 项目名模糊 → `energy_audit_search_projects` 反查确认单位全称
 2. 工具链可达：`EA_TOOLS_ROOT` 指向 repo 根（含 `tools/energy_audit`），或用绝对路径调用；缺省按 `_paths.py` 三级降级解析
 3. 确认项目目录 `~/projects/energy-audit/<单位全称>/`；未指定版本且 data.json 已存在则跳过采集。任务带了 `versionCode` / `--version-code` 时必须重采。
+4. 部署前提自检（新机/换机必做）：见 `energy-audit-core/references/deployment-prerequisites.md`
 
 ### 阶段 1：脚本链直跑（无 LLM 思考环节）
+
+> 路径约定：`<skills>` = repo 根 `skills/energy-audit/`；profile 场景取其技能目录（`.../profiles/<角色>/skills/energy-audit/`）。
 
 ```bash
 # 1) 采集（未指定版本且 data.json 已存在可跳过；指定 --version-code 必须重采）
@@ -50,28 +53,33 @@ python tools/energy_audit/data_collection_cli.py <项目名> [--version-code <ve
 python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --mode DATA_CHECK --json
 # 3) 指标计算 + 第5章
 python <skills>/ea-calculation/scripts/caliber_agent.py <项目名>
+# 3.5) 第5章装配稿就位（2026-09-17 新增，消灭手工搬运断点）
+#      exit 0=已就位或有更新的装配稿（保留）；2=装配稿早于计算产物，人工确认后加 --force
+python <skills>/ea-calculation/scripts/prepare_chapter_md.py <项目名>
 # 4) V2 指标复核（exit 0/2 裁决同上）
 python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --mode INDICATOR_REVIEW --json
 ```
 
 - exit 1（输入缺失）：对话里直接问用户补线索，补齐重跑该步
 - exit 2（P0）：停止，向用户说明 P0 内容 → 用户决定"修数据重跑"或"升级转 editor"
-- 每步产物落盘项目目录（data.json / validation.json / indicators.json / chapter5.md / charts/）
+- 3.5 步 exit 2：装配稿 `chapter_md/ch5_import.md` 早于 `chapter5.md`（可能用了旧数据）→ 先问用户，确认后 `--force` 覆盖
+- 每步产物落盘项目目录（data.json / validation.json / indicators.json / chapter5.md / chapter_md/ch5_import.md / charts/）
 
 ### 阶段 2：LLM 写章（3 批，批间落盘 + /compact）
 
-按 ea-authoring 三卡同款批次划分（**卡改批，其余全部照 ea-authoring 执行**）：
+按 ea-authoring 同款批次划分（kanban 轨称"3 卡"，直跑轨称"3 批"，是同一件事——术语见 `energy-audit-core/SKILL.md` 术语表；**其余全部照 ea-authoring 执行**）：
 
-- 批 1：封面表 + 第 1~4 章 → `chapter_md/ch1~ch4.md` → 建 docx + `doc_insert_markdown` 导入 → 格式修复链 → `office_save`
-- 批 2：第 5 章装配（chapter5.md 直导，禁重算）+ 第 6/7 章 → 导入 → 修复链 → 落盘
-- 批 3：第 8 章 + 附录 + 收尾三件套 + 水印 + PDF 签章
+- 批 1：封面数据 + 第 1~4 章 → `chapter_md/ch1~ch4.md`
+- 批 2：第 5 章装配（**装配稿由阶段 1 的 3.5 步就位**：`chapter_md/ch5_import.md`；作者可在其上并入叙述段，但**禁重算数值**）+ 第 6/7 章
+- 批 3：第 8 章 + 附录 → `chapter_md/ch8.md`、`chapter_md/appendix.md`
+- **三批全落盘后 → 装配脚本链**（2026-09-17 起主链）：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`，见 `energy-audit-report/references/script-assembly-chain.md`；office_editor 路径为备用
 
 **直跑铁律（与 kanban 三卡铁律同源）**：
 
 1. 数值一律从 data.json / indicators.json / chapter5.md 读取，禁从前序章节文本或 memory 提取
-2. **批与批之间必须 `/compact`**，下一批只信文件不信上文——直跑成败的生命线
-3. 每批完成必须 `office_save` 落盘；office_open 接续编辑，禁重建文件
-4. 正文一律 `doc_insert_markdown` 整章导入，禁逐段插入；每批后跑格式修复链
+2. **批与批之间必须压缩上下文，下一批只信文件不信上文**——直跑成败的生命线。交互会话用 `/compact`；**非交互模式**（`hermes chat -q/-Q`、kanban worker）无法执行斜杠命令 → 用"**每批一个独立会话/任务**"或 `--resume` 分次续跑替代：批边界即任务边界，不依赖上文（2026-09-18 实测确认）
+3. 每批完成必须把章节 md 落盘 `chapter_md/`（脚本链只从文件读内容，禁止只留在会话/内存）——备用路径沿用 `office_save` 落盘、`office_open` 接续、禁重建文件的约定
+4. 备用路径（office_editor）：正文一律 `doc_insert_markdown` 整章导入、禁逐段插入、每批后跑格式修复链；主链（脚本装配）无此要求
 
 ### 阶段 3：V3 直跑 + 每次人工确认（2026-09-06 定）
 
@@ -84,7 +92,7 @@ python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --m
 
 ### 阶段 4：交付
 
-双文件落盘 `<单位全称>能源审计报告.docx` + `.pdf`（签章默认启用），向用户报路径 + 各阶段实测耗时。
+双文件落盘 `<单位全称>能源审计报告.docx` + `.pdf`（签章默认启用；脚本链默认输出 `output/_script_build/`，正式命名切换待定），向用户报路径 + 各阶段实测耗时。
 
 ---
 

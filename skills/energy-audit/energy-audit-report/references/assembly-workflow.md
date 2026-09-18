@@ -2,9 +2,10 @@
 
 完整编制一份 Word 报告的实操链路。
 
-## 0. 路径定位（2026-09-04 定）
+## 0. 路径定位（2026-09-04 定；2026-09-17 更新）
 
-- **默认路径 = ea-authoring**：author 按 skill 逐章 LLM 写作 → office_editor 组装 Word → 三件套 + 附录（officecli）。
+- **主链（2026-09-17 起）= 装配脚本链**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`（见 `script-assembly-chain.md`）；内容仍由 LLM 逐章写 `chapter_md/`，脚本只做版式装配与收尾。
+- **备用路径 = office_editor（ea-authoring 内）**：author 按 skill 逐章 LLM 写作 → office_editor 组装 Word → 三件套 + 附录（officecli）。
 - **本文件描述的是仿写路径**：spec.json → assemble_report.py（energy-audit-imitate 工具，内部用 python-docx 渲染）→ 附录追加（officecli）→ 数值断言。仅当走"仿写同类报告"模式时使用。
 - 正文生成脚本（report_generator 的 build_chapter1~8）已退役，任何路径都不再调用。
 
@@ -14,7 +15,7 @@
 图表数据进 `chart_data`，三张信息表进 `audit_info_tables`，然后：
 
 ```bash
-python "$HERMES_HOME/skills/productivity/energy-audit-imitate/scripts/assemble_report.py" \
+python "$HERMES_HOME/skills/energy-audit/energy-audit-imitate/scripts/assemble_report.py" \
   spec.json "reports/<单位>能源审计报告.docx"
 ```
 
@@ -75,7 +76,7 @@ officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
 | 附录4：室内环境测量表 | 室内温度/湿度/照度等实测数据表；**如有室内环境测量表的附件图片则展示** | `proj.indoor_env`（ts_institution_environment，取 deleted=0 且 room_name 合理的记录） |
 | 附录5：空气质量判定方法 | 空气质量判定方法 A/B/C/D 表 | 标准固定表 |
 | 附录6：室内空气质量指标及要求 | 空气质量指标限值表（GB/T 18883-2022） | 标准固定表 |
-| 附录7：各种能源折标准煤参考系数 | 固定表：原煤0.7143/天然气1.2143/液化气1.7143/汽油1.4714/柴油1.4571/燃料油1.4286/电力0.31等价/热力0.03412当量 | 固定（权威值见 core/references/standards-values.md） |
+| 附录7：各种能源折标准煤参考系数 | 固定表：原煤0.7143/天然气1.2143/液化气1.7143/汽油1.4714/柴油1.4571/燃料油1.4286/电力0.31等价/热力0.03412当量 | 固定（权威值见 energy-audit-core/references/standards-values.md） |
 
 **动态编号规则（2026-09-05 用户确认）**：若无发票相关附件照片，则**没有附录3**，后续附录序号依次前移（附录4→附录3、附录5→附录4、附录6→附录5、附录7→附录6），即无发票时共 6 个附录。编写时先查 `proj.images` 是否有'缴费发票'分类照片再定编号，全文引用的附录编号须与实际编号一致。
 

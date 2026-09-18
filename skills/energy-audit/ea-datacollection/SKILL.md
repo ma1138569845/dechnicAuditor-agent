@@ -77,16 +77,14 @@ result = collect_from_pg(project_name)
 | 人员信息 | ts_project_audit_user / ts_project_audited_user | 审计组/被审计方 |
 | 图片 | **单位整体外观=ts_institution_scene.scene_img_id（→2.1 段落后图2.1，group_id 单值）**；ts_institution_build.build_img（建筑外观，→2.2 每栋照可选）/ ts_institution_energy_meter.device_img（电水表照片）/ 设备分表 _img 列（第6章设备照片）/ ts_institution_energy_invoice+invoice_image（缴费发票照片，record_id 关联）/ meter.ledger_files·year_files·month_files（计量台账）/ 设备分类表 ledger_files | 现场照片补充 |
 
-### 能耗表版本机制（⚠️ 取数铁律）
+### 能耗表版本机制（取数铁律）
 
-`ts_institution_energy_main` 同一 (year, data_type, energy_code) 可能并存**三套版本**：草稿（is_draft=1, version_code=NULL）+ 多个正式版本（is_draft=0, version_code 非空，如 PL2026080401/0402）。历史事故：版本间数值冲突时若用"多数投票"消解，错误被复制进两个正式版本后 2:1 必然选中错误值（烟台法院 2025 年电量、2024/2025 热力颠倒事故）。
+规则条文以 `energy-audit-core/references/version-normalization.md` 为**唯一权威**（草稿优先 → 无草稿时 version_code 大者 → 同版本 id 大者；指定 `--version-code` 只取该正式快照、不回退草稿；**禁止多数投票消解冲突**），本文件不重复。
 
-取数规则（`pg_query.py` 已内置 DISTINCT ON 版本归一，直接调用即可）：
+采集侧只需记住两点：
 
-1. 未指定版本：同一键只取一条，**草稿优先**（is_draft=1=最新编辑数据），无草稿时 version_code 大者优先；
-2. 指定 `--version-code` / `version_code=`：只取 `is_draft=0` 且版本号相等的正式快照，不回退草稿；
-3. **禁止多数投票消解冲突**；版本间数值不一致时必须输出冲突告警清单，人工核实后修正 DB；
-4. 年度总量与逐月加总交叉校验，费用÷单价=用量校验。
+1. `pg_query.py` 的 `get_institution_energy` 已内置 DISTINCT ON 版本归一，**直接调用即可**，勿自写多版本查询；
+2. 取回后仍须做两项交叉校验：年度总量 ↔ 逐月加总、费用 ÷ 单价 = 用量；不一致时输出冲突告警清单，人工核实后修 DB（不做静默消解）。
 
 ### 能耗表结构（main + data 两表）
 

@@ -258,7 +258,10 @@ pPr.append(outlineLvl)
 - 形态：DrawingML，禁止 VML `textpath`
 - 操作细则：`references/docx-watermark.md`
 
-## 十一、md 导入与格式修复链（2026-09-06 定）
+## 十一、md 导入与格式修复链（2026-09-06 定；**适用：office_editor 路径/存量报告**）
+
+> **适用域（2026-09-17 定）**：本章修复链适用于 **office_editor 路径**（备用路径）产出的 docx 与存量报告定点修复。
+> 新报告默认走**装配脚本链**（`energy-audit-report/references/script-assembly-chain.md`），脚本自带格式规范，无需本章修复链。
 
 **背景**：正文写入由逐段 `doc_insert_paragraph_with_text` 改为 `doc_insert_markdown` 整章导入（几百次 MCP 往返 → 每章 1 次）。md 导入的默认样式 ≠ 格式规范，必须跑下面的修复链。
 
@@ -280,12 +283,14 @@ pPr.append(outlineLvl)
 4. **正文修复**：正文自然段 `doc_modify_paragraph`（`alignment`=两端对齐、`line_spacing_rule`+`line_spacing`=1.5 倍）
 5. **首行缩进**：仍走 officecli 批处理（`docx-first-line-indent.md`，firstLineChars=200），不在此链内
 
+**⚠️ 公式段禁区（2026-09-16 实测）**：修复链的批量文字属性操作（`doc_update_text_property`）**必须跳过含数学公式的段落**——对含 `<m:oMath>` 的段落做文字属性/格式批处理，save 落盘时公式会被压平为纯文本（分式结构丢失：`E_jrcn=(E−Egn−Ejt)/M` → 纯文本「Ejrcn=E−Egn−EjtM」）。恢复方式：从同版式参考 docx 移植原生 `<m:oMath>` 元素（python-docx 手术式替换，禁止手写 OMML），或对该段重插 `doc_insert_math`；修复后不得再让任何文字属性操作覆盖该段。正文分段分类时请显式排除公式段。
+
 ### 11.3 验收
 
 1. Word「视图 → 导航窗格」标题树完整（H1/H2/H3 层级正确）
 2. 表格：12pt 宋体居中、行高 1.01cm、垂直居中（抽查 2~3 张）
 3. V3 格式检查通过 + 正式报告对照（PoC 阶段逐项比对）
-4. 红线不触：本链是 author 调用 office_editor 工具的**固定操作序列**，不是脚本生成正文（红线4）；禁 python-docx
+4. 红线不触：本链是 author 调用 office_editor 工具的**固定操作序列**，不是脚本生成正文（红线4）；禁止 python-docx（**适用域 = office_editor 路径内**，2026-09-17 方案确认；脚本装配链不受限）
 
 **⚠️ 渲染陷阱（2026-09-06 PoC 实测）**：`office_render` / `office_preview` 渲染的是**磁盘保存状态**，未 `office_save` 前渲染输出纯白页。凡需渲染验证（视觉检查/V3 预览），必须先 `office_save` 再 render，否则误判文档为空。
 

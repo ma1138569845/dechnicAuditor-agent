@@ -22,7 +22,7 @@ metadata:
 
 | 问题 | 权威位置（本包不重复） |
 |---|---|
-| 8 章结构 / 章间联动铁律 | `energy-audit-core/references/public-institution-report-structure.md` |
+| 8 章结构 / 章间联动铁律 | `ea-authoring/references/chapter*-guide.md`（逐章）+ `energy-audit-report/references/city-template-guide.md` |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` |
 | 每章写作模板与数据源 | `ea-authoring/references/chapter*-guide.md` |
 | 指标计算 / 第5章 | `ea-calculation` + `ea-calculation/references/` |

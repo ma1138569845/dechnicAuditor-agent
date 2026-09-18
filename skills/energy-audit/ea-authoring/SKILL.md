@@ -1,6 +1,6 @@
 ---
 name: ea-authoring
-description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章由 caliber 的 ea-calculation 产出，author 只装配不重写）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 转交 editor 流水线，勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
+description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章由 caliber 的 ea-calculation 产出，author 只装配不重写）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 做双轨分诊（单项目直跑、批量转 editor），勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
 version: 2.0.0
 author: 马天远
 ---
@@ -51,7 +51,7 @@ author: 马天远
 
 kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 定，取代单卡写 8 章——单卡曾致上下文膨胀 ~50 万 token 与迭代预算耗尽 90/90）。任务卡体会指明你是第几卡，**按卡体职责写作，禁止越界写后续章节**：
 
-**default 直跑轨等价形态（2026-09-06 定）**：无卡体时按同一批次划分自行执行——批 1（封面+第1~4章）→ 批 2（第5章装配+第6/7章）→ 批 3（第8章+附录+收尾+PDF），**批与批之间必须 `/compact`**，下一批只信文件不信上文；其余铁律与 kanban 三卡完全一致。
+**default 直跑轨等价形态（2026-09-06 定）**：无卡体时按同一批次划分自行执行——批 1（封面+第1~4章）→ 批 2（第5章装配+第6/7章）→ 批 3（第8章+附录+收尾+PDF），**批与批之间必须压缩上下文**（交互会话 `/compact`；**非交互模式**如 `hermes chat -q/-Q`、kanban worker 不能执行斜杠命令 → 改为每批独立会话/任务，批边界即任务边界），下一批只信文件不信上文；其余铁律与 kanban 三卡完全一致。
 
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|
@@ -65,7 +65,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 2. 卡2/卡3 用 `office_open` 接续编辑，**禁止重建文件**；每卡完成必须 `office_save` 落盘后再 `kanban_complete`
 3. **正文写入禁用逐段 `doc_insert_paragraph_with_text`**（2026-09-06 定：几百次 MCP 往返是纯 I/O 损耗），一律 `doc_insert_markdown` 整章导入；仅图片嵌入、封面表模板注入例外。每章导入后跑格式修复链（见 `references/docx-ooxml-techniques.md`「md 导入与格式修复链」小节）
 
-## 写作主工作流（LLM 逐章写作 + office_editor 组装）
+## 写作主工作流（LLM 逐章写作 + 装配脚本链；office_editor 备用）
 
 按顺序执行，禁止跳步：
 
@@ -88,7 +88,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 卡1 | 第2章 | `references/chapter2-guide.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
 | 卡1 | 第3章 | `references/chapter3-guide.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
 | 卡1 | 第4章 | `references/chapter4-guide.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
-| 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表） | **直接 md 导入，不重写**；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
+| 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表；装配稿 `chapter_md/ch5_import.md` 由 `prepare_chapter_md.py` 就位，见 `ea-calculation/SKILL.md`） | **直接 md 导入，不重写**；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
 | 卡2 | 第6章 | 见下方专项列表 | LLM 生成（分系统详述），落 `chapter_md/ch6.md` |
 | 卡2 | 第7章 | `references/chapter7-guide.md` | LLM 生成（问题-措施映射），落 `chapter_md/ch7.md` |
 | 卡3 | 第8章 | `references/chapter8-guide.md` | 聚合复用第5/7章结论，落 `chapter_md/ch8.md` |
@@ -99,11 +99,15 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 - `references/chapter6-guide.md`（第6章总指南：**新口径 6.1 主要用能系统运行分析（6.1.1~6.1.6）+ 6.2 设备统计 + 6.3 运行评价**，叙述模板/表6.1/图注格式）
 - `references/chapter6-sub-system-spec.md`（6.1 分系统权威规范：6.1.1~6.1.6 设备归类与模板）
-- `references/chapter6-indoor-env.md`（已废弃——室内环境检测归入附录4，不再生成 6.5 节）
 
 第6章章节号权威口径（R7 对齐）：**6.1 主要用能系统运行分析 / 6.2 主要用能设备统计 / 6.3 用能系统运行评价**，章标题"第6章 主要用能系统分析"。旧口径（6.1 用电/6.2 用水/6.3 用热/6.4 其他用能/6.5 室内环境）已废弃，勿再用。
 
-### 第 2 步：Word 组装（md 整章导入 + 格式修复链）
+### 第 2 步：Word 组装
+
+> **主链（2026-09-17 起）＝装配脚本链**：`build_energy_audit_docx.py`（一次构建：封面/信息表/目录/8章/附录/页眉水印页脚）→ `finalize_energy_audit_pdf.py`（Word COM 刷目录 + 导出签章 PDF）→ `ea_docx_asserts.py`（交付断言）。见 `energy-audit-report/references/script-assembly-chain.md`。实测单份 ≈30 秒（不含写章）；法院 45 页终稿对照文本 diff=0。
+> **以下 office_editor 步骤降为备用路径**（存量报告定点修改、脚本链不适用时应急）。
+
+#### 备用路径：office_editor 逐章导入 + 格式修复链
 
 章节 md 用 **office_editor 工具集**以 `doc_insert_markdown` 整章导入 .docx（**禁用逐段 `doc_insert_paragraph_with_text` 写正文**，2026-09-06 定）：
 
@@ -122,7 +126,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 6. **加水印（强制）**：注入被审计单位名称水印，再预览。做法见 `references/docx-watermark.md`。无水印不得交付。
 7. 排版预览用 `office_preview`；确认引擎用 `office_status`
 
-**附录编写（officecli，R7 正式版口径 2026-09-07 更新）**：附录 7 个固定清单——附录1 建筑基本信息及设备统计表（附表1-1/1-2）/附录2 建筑能耗数据信息表（附表2-1）/附录3 能源计量器具配备情况表（附表3-1）/附录4 室内环境测量与室内空气质量评价说明（无实测则写说明文字，有实测则附表）/附录5 空气质量判定方法（附表5-1 A/B/C/D）/附录6 室内空气质量指标及要求（附表6-1）/附录7 各种能源折标准煤参考系数（附表7-1）。**有发票照片时**在附录3 前插入"电费水费油费燃气费充值发票"附录，后续序号顺延。用 `office_cli_command` 追加——`add ... --type paragraph --prop style=HeadingN/--type table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**标题格式对齐正式报告**：第8章后先加"附录："总目录页（H1 样式但宋体12pt 不加粗 + Normal 清单逐条列"附录N：名称"），各附录标题用 **H2 宋体14pt 加粗、中文冒号**（`附录1：建筑基本信息及设备统计表`，不是空格）。**全链路禁用 python-docx，附录无例外**；清单与数据来源详见 `energy-audit-report/references/assembly-workflow.md`。附录4 如有室内环境测量表的附件图片则展示。
+**附录编写（office_editor 路径；主链走脚本渲染 appendix.md，2026-09-17）**：附录 7 个固定清单——附录1 建筑基本信息及设备统计表（附表1-1/1-2）/附录2 建筑能耗数据信息表（附表2-1）/附录3 能源计量器具配备情况表（附表3-1）/附录4 室内环境测量与室内空气质量评价说明（无实测则写说明文字，有实测则附表）/附录5 空气质量判定方法（附表5-1 A/B/C/D）/附录6 室内空气质量指标及要求（附表6-1）/附录7 各种能源折标准煤参考系数（附表7-1）。**有发票照片时**在附录3 前插入"电费水费油费燃气费充值发票"附录，后续序号顺延。用 `office_cli_command` 追加——`add ... --type paragraph --prop style=HeadingN/--type table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**标题格式对齐正式报告**：第8章后先加"附录："总目录页（H1 样式但宋体12pt 不加粗 + Normal 清单逐条列"附录N：名称"），各附录标题用 **H2 宋体14pt 加粗、中文冒号**（`附录1：建筑基本信息及设备统计表`，不是空格）。**本路径禁用 python-docx**（脚本装配链不受限）。清单与数据来源详见 `energy-audit-report/references/assembly-workflow.md`。附录4 如有室内环境测量表的附件图片则展示。
 
 **引擎与回退**：
 - 首选 **editor_sdk**（本地二进制，MCP 协议）：`office_edit` 的 199 个 MCP 编辑操作全可用。
@@ -147,7 +151,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | Word 生成技巧 | `references/word-generation-tips.md` |
 | 正文首行缩进 2 字符 | `references/docx-first-line-indent.md`（落盘后、加水印前必做） |
 | 项目名称水印（OnlyOffice 兼容） | `references/docx-watermark.md`（落盘前必做） |
-| 辅助视觉 | `references/auxiliary-vision-config.md` |
+| 辅助视觉（图片识别：设备铭牌/仪表/图纸） | `energy-audit-core/references/auxiliary-vision-config.md`（2026-09-17 由本技能移入 core） |
 
 ## 架构与历史参考
 
@@ -161,13 +165,15 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-ooxml-techniques.md` 与 `references/docx-first-line-indent.md`。
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
 5. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-watermark.md`。
-6. **落盘后、加水印前必须有正文首行缩进**：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。禁止 python-docx，禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-first-line-indent.md`。
+6. **落盘后、加水印前必须有正文首行缩进**（office_editor 路径）：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。**python-docx 禁令适用域 = office_editor 路径内**（2026-09-17 方案确认，脚本装配链自带缩进、不受此限）。禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-first-line-indent.md`。
 7. **页眉必须：单段落文字（单位全称+两空格+"能源审计报告"，右对齐宋体10.5pt）+ 下方分隔线**。分隔线用 `officecli set <docx> /header/p[N] --prop pbdr.bottom=single\;6\;000000`（或 OOXML `<w:pBdr><w:bottom w:val="single" w:color="000000" w:sz="6"/></w:pBdr>`）。交付前 `officecli get <docx> /header` 自检：单段落、`pbdr.bottom=single`、无重复单位名。细则见 `references/docx-ooxml-techniques.md` 页眉小节。
 
 ## 常见错误
 
 | 错误 | 后果 | 正确做法 |
 |------|------|---------|
+| 脚本链可用时仍走 office_editor 逐操作装配 | 慢（数小时）+ 编辑器 bug 面（公式压平/表格复制） | 默认走**装配脚本链**（`build→finalize→asserts`，见 `energy-audit-report/references/script-assembly-chain.md`）；编辑器仅备用 |
+| Word COM 传相对路径（收尾/转换） | 报"找不到您的文件"（按 Word 自身工作目录解析） | COM 一律**绝对路径** |
 | 数据缺失时编造内容继续写 | 报告含虚假数据，审计无效 | 走"输入内容"回退流程，仍缺则终止并提示用户 |
 | 调用脚本（report_generator 等）生成正文 | 正文无泛化能力，换项目即失效 | LLM 逐章按 references 写作（红线4） |
 | 逐段 `doc_insert_paragraph_with_text` 写正文 | 几百次 MCP 往返，纯 I/O 损耗（单报告 30-60 min） | `doc_insert_markdown` 整章导入（仅图片/占位替换/封面表例外，铁律4） |

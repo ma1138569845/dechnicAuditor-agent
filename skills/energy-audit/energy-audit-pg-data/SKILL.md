@@ -122,7 +122,7 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 |---|---|---|
 | 01 | **自来水**（表头常误标"天然气"） | 数值量级≈用水量（m³），费用≈水费 |
 | 25 | **天然气**（真实） | 数值 m³ 量级；标准系数 1.2143（DB 现值 1.33 为错值，遇则修） |
-| 45 | 电 | kWh 或万元，折标系数 0.1229/0.31 |
+| 45 | 电 | kWh 或万元，折标系数 0.1229/0.31（DB 双存；**报告口径用 0.31 等价，0.1229 为历史当量值，不得用于报告**） |
 | 50 | 热能/热力 | GJ；市政集中供热按面积缴费 |
 | 02/03 | 汽油/柴油 | 吨/元 |
 
@@ -134,11 +134,9 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
    `audit_dept_name`（审计机构名，会误命中）与 `audited_name`（被审计单位）。
    同一单位可能有多个审计年度项目记录，选数据年度最新且完整的。
 2. **取数**：按 customer_id 逐表拉取；主表→子表用 id 列表 IN(...) 二次查询，
-   勿跨表 JOIN（表多且字段名不统一）。**所有 ts_institution_* 业务表
-   （energy_main/build/meter/scene/energy_saving）都带 version_code/is_draft
-   版本机制**：优先复用 pg_query.py 已内置版本归一的 get_* 方法；自行查询时
-   必须版本归一（草稿优先=is_draft 1 最新数据、无草稿时 version_code 大者优先），
-   禁止按业务属性去重或多数投票。
+   勿跨表 JOIN（表多且字段名不统一）。**所有 ts_institution_* 业务表都带版本机制**——
+   一律复用 `pg_query.py` 已内置归一的方法（规则条文见
+   `energy-audit-core/references/version-normalization.md`），禁自写多版本查询、禁按业务属性去重。
 3. **核对**：能耗实物量↔费用交叉验证（如电价≈0.78 元/kWh、水价≈4.2 元/m³
    可作合理性检查）；场景表若有同一年的两套记录，选与供热费自洽的一套
    （例：年热费 120 万 → 22 元/㎡ × 54523.3㎡ = 119.95 万 ✓）。
@@ -147,25 +145,17 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 
 ## Pitfalls
 
-- **版本机制（⚠️ 取数铁律）**：`ts_institution_energy_main` 同一 (year, data_type,
-  energy_code) 并存多套版本 —— 草稿（is_draft=1, version_code=NULL）+ 多个正式版本
-  （is_draft=0, version_code 非空，如 PL2026080401/0402）。取数必须版本归一：
-  草稿优先（is_draft=1=最新编辑数据）、无草稿时 version_code 大者优先；`pg_query.py` 的
-  `get_institution_energy` 已内置 DISTINCT ON 归一，勿自行再写多版本查询。
-- **禁止多数投票消解冲突**：版本间数值不一致时若投票，错误被复制进两个正式版本后
-  2:1 必然选中错误值（烟台法院 2025 电量、2024/2025 热力颠倒事故）。发现版本冲突
-  必须输出告警清单人工核实，不得静默取多数。
-- **三副本=版本机制（非重复导入）**：`ts_institution_build` /
-  `ts_institution_energy_meter` / `ts_institution_scene` / `ts_institution_energy_saving`
-  **及全部设备分类表 `ts_institution_device_*`（含 device_power 等）**
-  与 energy_main 同构——同一业务键并存草稿（is_draft=1）+ 多个正式版本
-  （PL2026080401/0402…）。`pg_query.py` 的 get_institution_build（按 build_name）、
-  get_institution_scene（按 year）、get_energy_meter（按 data_type+statistical_year）
-  及 `_get_device_by_table`（按 device_name+power+power_unit）已内置版本归一；
-  自行查询时按业务键分组 + 草稿优先，不得按 (build_name, build_area)
-  之类去重（会误合并同名建筑、且不尊重版本优先级）。设备表版本归一是
-  2026-09-02 才修的：此前设备清单出现 3 条重复电梯（草稿 12kW + PL0401/0402
-  各 120kW）正是设备表无归一的证据。
+- **版本机制（取数第一铁律）**：规则条文（草稿优先 → version_code 大者 → id 大者；指定
+  version_code 只取正式快照；**禁多数投票**）以
+  `energy-audit-core/references/version-normalization.md` 为唯一权威，本文件不重复。下面只记 PG 侧事实与坑：
+  - **适用表与业务键**（`pg_query.py` 已内置归一，勿自写）：energy_main=(year, data_type, energy_code)、
+    build=(build_name, build_func)、scene=(year)、energy_meter=(data_type, statistical_year)、
+    energy_saving=(statistical_year)、device_*=(device_name, power, power_unit)。
+  - **三副本是版本机制，不是重复导入**：ver=None + PL2026080401 + PL2026080402 各存一份；
+    **禁止按 (build_name, build_area) 等业务属性去重**（会误合并同名建筑）——建筑表 3 条"相同"
+    记录 = 3 个版本，不是 3 栋楼（2026-09 用户明确纠正）。
+  - **冲突处置**：不一致时输出告警清单人工核实，不静默取多数——错误被复制进多个正式版后
+    2:1 必然选错（烟台法院 2025 电量、2024/2025 热力颠倒事故）。
 - **能耗交叉校验**：年度总量=逐月加总；费用÷单价=用量（如热费 320355.75÷89.61=3575GJ）。
   2023/2024 用水实物量、2025 电量等曾出现 DB 版本与账单不符，采信前必须校验。
 - **旧表陷阱**：`ts_energy_audit_project` / `ts_energy_audit_report` 是旧版
@@ -189,13 +179,10 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 - `ts_institution_device` 总表可能为 0 条，设备数据全在分类表中。
 - `energy_audit_*` 工具 handler 签名须保持 `(args: dict, **kwargs)`（注册层会
   传 task_id 等 kwargs）；改动工具时勿退回单参数签名。
-- **版本机制陷阱**：`ts_institution_energy_main` 按 `version_code` 存多套数据
-  （`ver=None`=草稿，`PLxxxxxxxxxx`=正式版本，另 `is_draft`/`anomaly_status`
-  标记）。正式版本可能在版本升级时被改错或丢数据（实测案例：烟台法院 2025
-  电量正式版写成 1,011,885 而草稿为正确 1,040,085；热力 2024/2025 两年颠倒；
-  2023/2024 水实物量正式版本缺失但草稿齐全）。取数铁律：取最新有效版本
-  （deleted=0）的同时必须与草稿（ver=None）交叉核对，不一致以账单为准并
-  告警，勿直接采信正式版。
+- **正式版可能在版本升级时被改错/丢数据**（实测：烟台法院 2025 电量正式版 1,011,885
+  vs 草稿正确 1,040,085；热力 2024/2025 颠倒；2023/2024 水实物量正式版缺失）→
+  取数时与草稿交叉核对，不一致**以账单为准并告警**；无法判断谁对时用下面的
+  "热价/单价交叉验证法"判定。
 - **热价/单价交叉验证法（判定草稿 vs 正式版谁对，烟台法院实证）**：用
   热力费 ÷ 热力实物量 = 热价，与 `ts_institution_scene.heat_price`（如
   89.61 元/GJ）比：三年一致的那套版本即正确。烟台法院草稿 2024=3575 GJ、
@@ -214,11 +201,9 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   energy_unit 标签不可信（烟台法院 2023 标"元"、2024/2025 标"万元"，但值全部实为
   "元"，如 2024 电 752860.98"万元"实为 75.29 万元）。判别：实物量×合理单价≈费用
   （电价≈0.7 元/kWh、水价≈5 元/m³、气价≈4~4.6 元/m³），量级对不上即单位标错。
-- **用户平台修改可能只落草稿版本**（2026-09-02 电梯实证）：用户在平台改设备功率
-  （电梯 120→12），仅更新草稿（is_draft=1, version_code=NULL），正式版本
-  PL2026080401/0402 仍是旧值；2026-09-04 起版本归一已改"草稿优先"（草稿=最新编辑数据，发布才是快照），取草稿即取新值。
-  用户声称"DB 已改"时，务必按版本逐条核对（草稿+各正式版本），发现只改草稿
-  须提示用户在平台发布/同步正式版本，或经同意后事务化同步正式版本。
+- **平台修改可能只落草稿版本**（2026-09-02 电梯实证：功率 120→12 只改了草稿，PL0401/0402 仍是旧值）。
+  用户声称"DB 已改"时按版本逐条核对；发现只改草稿 → 提示用户在平台发布/同步正式版本，
+  或经其同意后事务化同步。
 - **设备功率单位按类别推断（_fmt_device 默认 kW 是历史根因）**：设备分类表
   power 列无统一单位——照明/办公类存 W 数值（40W 灯具、150W 台式机、20W
   云桌面），空调/动力/热水器类存 kW 数值（多联机 13.74kW、电开水器 5kW、
@@ -226,19 +211,14 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   （照明/办公→W，其他→kW，有 power_unit 列值则用之）。判别法：类别+数值
   量级（"40kW 面板灯"即 W 误标 kW）；数据质检 detect_equipment_power_unit_issue
   会标记小功率设备被标 kW（真阳性，提示 DB 人工核实）。
-- **版本重复≠数据重复**：能耗主表/设备分类表/建筑表/计量表/场景表每套数据按
-  ver=None + PL0401 + PL0402 三版本各存一份——这是版本机制，不是重复导入。
-  一律按版本归一取数（草稿优先）；**禁止按 (build_name, build_area) 等
-  业务属性去重**（会误合并同名建筑、不尊重版本优先级；2026-09 用户明确纠正：
-  建筑表须与能源数据一样按版本状态取数）。建筑表 3 条"相同"记录=草稿/0401/
-  0402 三版本，勿当 3 栋建筑，也勿当重复导入随意去重。
 - **逐月自洽验证**：`ts_institution_energy_data` 草稿月度合计应=主表
   total_value；若某版本月度合计≠其主表值（烟台法院 PL0402 月度合计 932580
   ≠ 主表 1,011,885），该版本主表值与月度明细自相矛盾，整版不可信，弃用。
   注意半年/季度粒度均摊（period_code 含 '~'）会引入舍入差，用主表 total
   为准。
 - **定额值不在 DB**：`ts_energy_standard` 仅存折标系数（电 0.1229/0.31、天然气
-  1.2143/1.33、热力 34.12 kgce/GJ 等），无定额标准三档值。报告标注"来源：DB"
+  1.2143/1.33、热力 34.12 kgce/GJ 等；**DB 为双值并存，报告口径一律取 0.31 / 1.2143 那一档**），
+  无定额标准三档值。报告标注"来源：DB"
   的定额值可能不实——`ts_report_block` 存各项目已生成的报告块（含 deleted=1
   残留），其他项目（如医院）的块可能被生成流程当作参考（实测医院项目 5.3.2
   块含 45.90/6.90），不得作为党政机关对标依据。

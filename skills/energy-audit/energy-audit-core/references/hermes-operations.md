@@ -69,7 +69,8 @@ rm ~/AppData/Local/hermes/state.db  # 重启 Hermes 自动重建
 
 ## 多Profile运维（能源审计部署用）
 
-当前部署3个profile：`default`、`coder`、`xiaocheng`，各有一个飞书bot。
+能源审计部署使用 **6 个角色 profile**：`datacollection` / `datava` / `caliber` / `author` / `editor` / `knowledger`（另常用 `default` 作为主对话入口）；每个 profile 可各自绑定飞书 bot。
+profile 名单、技能安装矩阵与职责见 `kanban-energy-audit-orchestrator/references/role-definitions.md`（技能由 `scripts/sync_ea_skills.py` 单向发布，勿手工改 profile 侧技能）。
 
 ### 目录结构
 
@@ -78,14 +79,12 @@ C:\Users\<user>\AppData\Local\hermes\           # HERMES_HOME
 ├── .env                                         # default profile 密钥
 ├── config.yaml                                  # default profile 配置
 └── profiles\
-    ├── coder\                                   # coder profile
-    │   ├── config.yaml
-    │   ├── .env
-    │   └── SOUL.md
-    └── xiaocheng\                               # xiaocheng profile
-        ├── config.yaml
-        ├── .env
-        └── SOUL.md
+    └── <profile>\                               # 例如 author / caliber / datava …
+        ├── config.yaml                          # 模型/工具集/技能 always_load
+        ├── profile.yaml                         # 描述
+        ├── SOUL.md                              # 人格与职责（由 repo _soul/ 发布）
+        ├── .env                                 # 密钥（可选）
+        └── skills\energy-audit\                 # 该角色已发布的技能副本
 ```
 
 > profile 目录同时存在于 `HERMES_HOME/profiles/`（有效）和 `Path.home()/.hermes/profiles/`（可能残留骨架目录）。`hermes profile list` 只认完整profile。
@@ -98,17 +97,17 @@ hermes profile list
 hermes gateway list
 
 # 在指定profile下执行命令
-hermes -p coder ...
+hermes -p <profile> ...
 
 # 查看/切换 profile
 hermes profile show <name>         # 查看profile详情
 hermes profile use <name>          # 设置默认profile
 
 # Gateway 管理（每个profile独立）
-hermes -p coder gateway status     # 查看状态
-hermes -p coder gateway restart    # 重启（.env变更后必须重启）
-hermes -p xiaocheng gateway start  # 启动
-hermes -p default gateway stop     # 停止
+hermes -p <profile> gateway status     # 查看状态
+hermes -p <profile> gateway restart    # 重启（.env 或 SOUL.md 变更后必须重启）
+hermes -p <profile> gateway start      # 启动
+hermes -p <profile> gateway stop       # 停止
 ```
 
 ### .env 文件管理
@@ -158,32 +157,40 @@ rm -rf ~/.hermes/profiles/<empty-profile-name>
 
 更换API key后需更新每个 profile 的 `.env` 并重启对应 gateway。
 
-- DeepSeek API key 三个profile共用同一把
-- 飞书各用各的AppId/AppSecret，可驻留在同一个飞书群（不同bot）
+- 主模型 API key 可在各 profile 间共用一把（按部署策略决定）
+- 飞书各用各的 AppId/AppSecret，可驻留在同一个飞书群（不同 bot）
 
 ### SOUL.md 人格设定
 
 每个profile可通过 `SOUL.md` 自定义对话人格。文件位于 profile 根目录下：
 
 ```bash
-# 示例：xiaocheng 的 SOUL.md
-C:\Users\<user>\AppData\Local\hermes\profiles\xiaocheng\SOUL.md
+# 每个角色一份
+C:\Users\<user>\AppData\Local\hermes\profiles\<profile>\SOUL.md
 ```
 
-推荐结构：角色定位、语言风格、个人介绍三段式。例如 xiaocheng 的设定：
+推荐结构（能源审计角色统一采用）：人格 → 职责边界 → 专业标准（不含具体数值）→ 权威指针 → 执行契约；
+编写依据见 `energy-audit-core/references/soul-purity-principle.md`（SOUL 只写领域能力，不写 kanban 生命周期等框架指令），
+源文件在 repo `skills/energy-audit/_soul/<role>.md`，由 `sync_ea_skills.py` 发布。示例：
 
 ```markdown
-你是小同，同方德诚能源审计垂直领域知识库的专家。
+# <Role> — 同方德诚能源审计智能体
 
-## 角色定位
-- 同方德诚能源审计知识库的维护者、检索者、更新者与答疑者
+## 人格
+（3-5 行：专业身份、工作风格、面对不确定数据时的态度）
 
-## 语言风格
-- 使用中文交流，严谨专业，博闻强识，逻辑清晰
-- 以事实和数据为基础，避免主观臆断
+## 职责边界
+- 负责：…／不负责：…（指向其他角色）／输入 → 输出
 
-## 个人介绍
-同方德诚能源审计知识库专家
+## 专业标准（不含具体数值）
+- 不编造数据；数值口径以 AUTHORITY-INDEX 指定的唯一权威为准
+
+## 权威指针（只写路径，不抄内容）
+- 本角色专属：<skill>/SKILL.md
+- 总索引：energy-audit-core/references/AUTHORITY-INDEX.md
+
+## 执行契约
+（命令 / 退出码 / 产物路径——与 SKILL 保持一致，不重复解释）
 ```
 
 **SOUL.md 修改后需重启对应profile的gateway**才能在新会话中生效（已有会话不受影响）。
