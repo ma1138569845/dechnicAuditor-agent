@@ -74,7 +74,7 @@
   测算，禁止用 0 代入。法院已录数据 → 不触发（"无数据异常"）。
 - 供暖信息缺失提示原为捆绑条件 `if not scene.heat_day` → 报"供热面积/供热天数/热价
   未记录"（heat_price=89.61 有值时也误报热价缺失）→ 改为逐项检查拼 missing 项。
-- （已并入）ea-calculation/references/chapter5-writing-logic.md 口径铁律追加：预计算 indicators 的 heating_energy_kwh 缺失时
+- （已并入）ea-calculation/references/chapter5-spec.md《写作逻辑与计算三铁律》口径铁律追加：预计算 indicators 的 heating_energy_kwh 缺失时
   按 0 计入属"未剔除口径"，author 写 5.3 不得直接引用预计算值。
 - **审计机构取数口径变更（2026-09-02 用户确认"DB 数据为准"）**：audit_org_contact/phone
   从 project.audit_dept_person/audit_dept_tel 直接采用（不再强制向用户提问）；

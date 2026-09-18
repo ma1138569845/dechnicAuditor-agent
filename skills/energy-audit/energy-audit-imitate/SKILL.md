@@ -72,7 +72,7 @@ Run from this skill directory. `--help` prints usage. Stdout is JSON
 | Load project | `energy_audit_get_project` |
 | Buildings / equipment / energy | `energy_audit_get_buildings`, `energy_audit_get_equipment`, `energy_audit_get_energy` |
 | Same-type references | `energy_audit_rag_search` |
-| Chapter outline | `read_file` `references/chapter-outlines.md` |
+| Chapter outline | `read_file` `references/assemble-format-notes.md` |
 | Word assemble | `terminal` `python scripts/assemble_report.py …` |
 
 ## Procedure
@@ -107,7 +107,7 @@ writing continues on data + outline only.
 
 ### 4. Imitate all eight chapters
 
-`read_file` `references/chapter-outlines.md` for this audit type. For each
+`read_file` `references/assemble-format-notes.md` for this audit type. For each
 chapter: copy **rhetorical structure** (heading order, table habits, how
 findings are hedged) from references; fill **facts and numbers** only from
 this project. Never copy another unit's name, area, headcount, or kWh.

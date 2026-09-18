@@ -71,13 +71,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | `energy-audit-core/references/coefficient-caliber.md（权威单点）` | ★权威·折标系数口径（电0.31/热34.12kgce每GJ/气1.2143/油1.4714/水不折算） |
 | `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |
 | `report-format-spec.md` | 报告格式总规范（唯一权威全文） |
-| `deployment-prerequisites.md` | 部署前提清单（新机/换机自检；直跑 + kanban 两轨通用） |
-| `audit-info-tables.md` | 审计信息表结构（来源链路以 `energy-audit-report-qa/references/audit-info-tables-fix.md` 为准） |
-| `config-schema.md` | config JSON 结构（仅 kanban 轨初始 config 用；生产链路是 PG → data.json） |
-| `three-layer-fallback.md` | 兜底原则（层数以 `ea-calculation/SKILL.md` 的四级为准） |
+| `conventions.md` | ★通用约定（2026-09-18 五合一）：项目粒度 + 兜底原则 + config 结构 + 审计三张表结构 + ISO 日期转换 |
+| `deployment-ops.md` | ★部署与运维（2026-09-18 三合一）：新机自检清单 + Hermes 运维（含"SOUL 改动需重启 gateway"）+ 辅助视觉模型配置（Qwen-VL） |
 | `soul-purity-principle.md` | SOUL.md 编写原则（`skills/energy-audit/_soul/` 的唯一编写依据） |
-| `hermes-operations.md` | Hermes 操作通用知识（含"SOUL 改动需重启 profile gateway"） |
-| `auxiliary-vision-config.md` | 辅助视觉模型配置（Qwen-VL：设备铭牌/仪表/图纸识别；2026-09-17 由 ea-authoring 移入） |
-| `project-granularity.md` | 项目粒度定义 |
-| `iso-date-to-cn.md` | 日期转换工具 |
-| `_archive/2026-09-17/` | 历史文档归档（public-institution-report-structure / chapter-writing-specs / agent-profile-architecture / pipeline-architecture / tools-api / patch-replace-all-danger / 6 份旧 SOUL），仅供追溯，勿引用 |
+| `_archive/2026-09-17/`、`_archive/2026-09-18/` | 历史文档与合并前原件归档（仅供追溯，勿引用） |

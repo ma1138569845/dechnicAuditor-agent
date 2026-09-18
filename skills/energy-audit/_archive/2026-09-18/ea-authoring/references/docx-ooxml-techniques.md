@@ -73,7 +73,7 @@ OOXML 校验标准（`word/header*.xml` 内页眉文字段落的 `w:pPr` 下必�
 
 **`能源审计基本信息表`**
 
-参考文件： `references/audit-info-tables.md` 
+参考文件： `energy-audit-core/references/conventions.md`《审计基本信息三张表的表结构》一节
 
 
 
@@ -308,4 +308,3 @@ pPr.append(outlineLvl)
 - 铁律：**editor_sdk 内所有 `doc_update_text_property` 的 ranges 必须只覆盖非表格区域**（标题段、独立正文段）。全文正文字号统一改用 **python-docx 后处理**（save 落盘后打开 docx，遍历 body 段落+表格 run 设字号，天然避开编辑器导出 bug）。
 - 注意：python-docx 后处理后再回 editor_sdk 编辑会使内存态与磁盘失同步（office_render 报"服务器运行失败"）——**python-docx 后处理必须是最后一步**，之后渲染用 Word COM 路径（docx-render-verify 技能 render_word_pdf.ps1），不用 office_render。
 - 验证手段：解包 docx 读 word/document.xml，`count('关键短语')` 应各为 1；页数用 Word COM 转 PDF + fitz 核对（正文 8 章约 28 页，加附录约 48 页）。
-

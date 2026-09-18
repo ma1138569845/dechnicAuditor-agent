@@ -76,10 +76,10 @@ metadata:
 
 | 提取产物 | 写入位置 |
 |---|---|
-| 结构偏差表 | `references/argument-logic.md` 对应小节（仅"与权威的差异"） |
-| 论证链模式 | `references/argument-logic.md` |
-| 句法/占位/禁词/评价短语 | `references/writing-style.md` |
-| 样板中发现的防抄相关要求 | `references/anti-copy-gate.md` |
+| 结构偏差表 | `references/rules.md` 对应小节（仅"与权威的差异"） |
+| 论证链模式 | `references/rules.md` |
+| 句法/占位/禁词/评价短语 | `references/rules.md` |
+| 样板中发现的防抄相关要求 | `references/rules.md` |
 
 写入方式：**先读目标文件现状，再按机构类型/章节增量合并**；与现有规则冲突时
 优先保留已标注"以正式报告为准"的条目，并记录冲突来源（哪个样板、哪一版）。

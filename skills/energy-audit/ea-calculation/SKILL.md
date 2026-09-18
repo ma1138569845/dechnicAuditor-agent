@@ -30,17 +30,10 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 
 | 文件 | 内容 |
 |------|------|
-| `indicators-guide.md` | 5 项指标计算指南 + DB37 定额默认值（含验证示例：日照市人民医院） |
-| `chapter5-writing-logic.md` | 第5章写作逻辑（四段式5.2/五要素5.3/三档评价规则/供暖电耗剔除·口径统一·交叉校验三铁律） |
-| `chapter5-writing-guide.md` | 第5章生成逻辑（结构/各节规则/图号表号） |
-| `chapter5-agent-guide.md` | 第5章 Agent 指南（5.1–5.4 + 图表函数） |
-| `chapter5-52-final-spec.md` | ★5.2 节规范【结构权威单点】（2026-09-05 定） |
-| `chapter5-52-writing-lessons.md` | ★5.2 写作教训【细节权威单点】（踩坑记录，16KB 最详） |
-| ~~chapter5-52-spec / -writing-spec / -reference-style~~ | 已归档至 `_archive/2026-09-17/ea-calculation/references/`（内容分别并入 final-spec 与 writing-lessons） |
-| `chapter5-53-templates.md` | 5.3 指标模板（5.3.1 模板唯一权威） |
-| `chapter5-structured-tables.md` | 第5章结构化表格 |
-| `energy-flow-diagram-spec.md` | 能流图规范（graphviz 动态，非 matplotlib） |
-| `reports-vector-db.md` | 报告向量库 |
+| `chapter5-spec.md` | ★第5章【结构与细节权威】：结构规范（原 5.2 final-spec）+ 写作逻辑与计算三铁律（原 writing-logic）+ 5.2 踩坑细节（原 writing-lessons）+ 结构化表格 |
+| `chapter5-templates.md` | ★第5章【模板与生成逻辑】：5.3 指标模板（5.3.1 权威）+ 第5章生成逻辑 + Agent 指南 + 图表函数 |
+| `ea-calculation-support.md` | 辅助说明：能源流向图规范（graphviz）+ KG 可视化与置信度反馈 + 报告参考库与 RAG 检索 |
+| ~~其余 8 个 5.x 文件~~ | 已于 2026-09-18 瘦身合并（第 1 组）：4+3+3 个文件合并为上述 3 个；`indicators-guide.md` 内容已被 `standards-values.md` 与本 SKILL 覆盖 → 全部归档至 `_archive/2026-09-18/ea-calculation/references/` |
 
 > 写作章节时以 `references/` 为权威细节源，SKILL.md 只给流程与公式骨架。
 
@@ -205,9 +198,9 @@ md = generate(config, str(out_dir / 'chapter5.md'))   # 输出 5.1~5.4 的表格
 generate_charts(data, config, str(out_dir / 'charts'))
 ```
 
-脚本只渲染数据驱动的概括句/表格/图表（数字最密集章零差错）；**分析性叙述**（逐月趋势归因、评价结论、同比解读）由 author 按 chapter5-writing-guide.md 撰写后装配。
+脚本只渲染数据驱动的概括句/表格/图表（数字最密集章零差错）；**分析性叙述**（逐月趋势归因、评价结论、同比解读）由 author 按 `references/chapter5-templates.md` 撰写后装配。
 
-章节结构（细节见 `references/chapter5-writing-guide.md` 与 `chapter5-agent-guide.md`）：
+章节结构（细节见 `references/chapter5-templates.md` 与 `references/chapter5-spec.md`）：
 
 - 5.1 能耗概况 + 能源流向图（**graphviz 动态**，`draw_energy_flow_diagram()`；非 matplotlib 饼图）
 - 5.2 逐类型逐月数据分析（按用能类型**动态分节**，无数据不生成）+ 逐年柱状图 + 逐月趋势图
@@ -295,7 +288,7 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 - ✅ 非供暖能耗固定等效电系数 0.31
 - ✅ 标准名透传到 indicators.json（供 1.6 节引用）
 - ✅ 数据缺失标注【待补充】，不编造
-- ✅ 第5章写作遵循 `references/chapter5-writing-guide.md` 的分节/表号/趋势判断规则
+- ✅ 第5章写作遵循 `references/chapter5-spec.md`（结构/表号/细节）与 `references/chapter5-templates.md`（模板/生成逻辑）
 
 禁止：
 

@@ -152,7 +152,7 @@
 ## 4. 样板偏差记录（结构层面，供修订时核对）
 
 - 岚山医院样板的附录为 9 个（发票按电/水/气拆 3 个附录）；现行口径为 7 附录
-  （附录3=发票照片合并），以 `energy-audit-report/references/assembly-workflow.md`
+  （附录3=发票照片合并），以 `energy-audit-report/references/script-assembly-chain.md`
   为准，不采用样板拆法。
 - 样板 1.3 曾出现"审计时间/审计周期"两段旧口径；现行三段式（审计时间/审计期/
   基准期）以正式报告为准，勿回退。

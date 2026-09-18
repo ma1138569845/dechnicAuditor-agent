@@ -63,7 +63,7 @@ DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱
 
 ### Step 5: 修复后复验（六类验收项）
 
-修完数据/链路后必须跑端到端复验，六类验收项缺一不可（法院 D3 实证：修复过程又暴露 10 个链路 bug，详见 `references/collector-chain-fixes.md`）：
+修完数据/链路后必须跑端到端复验，六类验收项缺一不可（法院 D3 实证：修复过程又暴露 10 个链路 bug，详见 `references/fixes.md`）：
 
 1. **能耗 30 项**：三年 ×（电/水/气/热/汽油 实物量 + 费用），逐项对照正式版权威值
 2. **逐月明细 36 行**：12 月值、年合计与附录2 一致
@@ -119,7 +119,7 @@ DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱
 
 **列名陷阱**：ts_customer_info 列是 customer_name/contact/mobile（**无 name/contact_person/contact_phone**，按旧列名查直接 UndefinedColumn）；审计机构信息在 ts_institution_project.audit_dept_name/audit_dept_person/audit_dept_tel。
 
-修复落地细节（新字段名/函数位置/校验逻辑/验证命令/测试断言更新）见 `references/audit-info-tables-fix.md`。
+修复落地细节（新字段名/函数位置/校验逻辑/验证命令/测试断言更新）见 `references/fixes.md`。
 
 ## Conventions
 

@@ -78,7 +78,7 @@ DISCOVER  →  PLAN  →  SETUP  →  EXECUTE  →  MONITOR  →  REVIEW
 3. 确定并行度和调度参数
 4. 输出 `plan.json`
 
-**plan.json 结构**参见 [references/plan-schema.md](references/plan-schema.md)。
+**plan.json 结构**参见 [references/kanban-setup.md（plan.json 结构一节）](references/kanban-setup.md（plan.json 结构一节）)。
 
 ### Step 3 — Setup（生成并执行 setup.sh）
 
@@ -170,9 +170,8 @@ scripts/
 assets/
   setup.sh.tmpl                                   ← setup.sh 模板
 references/
-  plan-schema.md                                  ← plan.json 结构定义
+  kanban-setup.md                                 ← 环境搭建与配置规则（含 plan.json 结构、示例项目两节）
   role-definitions.md                             ← 5个Profile角色详述（4执行 + editor Director）
-  workflow.md                                     ← 每步详细工作流
-  monitoring.md                                   ← 监控与干预指南
-  examples.md                                     ← 示例项目
+  workflow.md                                     ← 每步详细工作流（含监控与干预一节）
+  tools-reference.md                              ← energy_audit 工具集与各角色使用矩阵
 ```

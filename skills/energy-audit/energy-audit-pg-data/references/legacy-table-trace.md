@@ -10,7 +10,7 @@
 |---|---|
 | `profiles/coder/skills/energy-audit/energy-audit/SKILL.md` L96/L128-129/L305 | 数据库速查表列出两表；审计组人员数据源指向 ts_energy_audit_project |
 | `profiles/coder/skills/energy-audit/energy-audit/references/database-schema.md` L62-75 | 两表字段结构专节 |
-| `profiles/author/skills/ea-authoring/references/audit-info-tables.md` L28 | "需手动提供或另行直查 PG 表 ts_energy_audit_project" |
+| `profiles/author/skills/ea-authoring/references/audit-info-tables.md` L28（历史位置，该文档已归档/合并至 `energy-audit-core/references/conventions.md`） | "需手动提供或另行直查 PG 表 ts_energy_audit_project" |
 | `dc-eau-agent/tools/energy_audit/pg_query.py` L147/L176 | get_audit_projects / get_audit_reports 实际 SQL |
 
 ## 正确数据源

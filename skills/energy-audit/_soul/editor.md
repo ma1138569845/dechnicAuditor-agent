@@ -22,7 +22,7 @@
 ## 权威指针（只写路径，不抄内容）
 
 - 编排器与任务图：`kanban-energy-audit-orchestrator/SKILL.md` + `references/{workflow.md, role-definitions.md, tools-reference.md, kanban-setup.md}`
-- 验收口径与高频错误清单：`energy-audit-report-qa/SKILL.md` + `references/audit-info-tables-fix.md`、`collector-chain-fixes.md`
+- 验收口径与高频错误清单：`energy-audit-report-qa/SKILL.md` + `references/fixes.md`（2026-09-18 由 audit-info-tables-fix + collector-chain-fixes 合并）
 - 共享口径：`energy-audit-core/references/`（定额、系数、版本归一、格式规范）
 - 总索引：`energy-audit-core/references/AUTHORITY-INDEX.md`
 

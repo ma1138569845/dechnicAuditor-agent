@@ -40,7 +40,7 @@ metadata:
 1. 项目名模糊 → `energy_audit_search_projects` 反查确认单位全称
 2. 工具链可达：`EA_TOOLS_ROOT` 指向 repo 根（含 `tools/energy_audit`），或用绝对路径调用；缺省按 `_paths.py` 三级降级解析
 3. 确认项目目录 `~/projects/energy-audit/<单位全称>/`；未指定版本且 data.json 已存在则跳过采集。任务带了 `versionCode` / `--version-code` 时必须重采。
-4. 部署前提自检（新机/换机必做）：见 `energy-audit-core/references/deployment-prerequisites.md`
+4. 部署前提自检（新机/换机必做）：见 `energy-audit-core/references/deployment-ops.md`（部署前提一节）
 
 ### 阶段 1：脚本链直跑（无 LLM 思考环节）
 

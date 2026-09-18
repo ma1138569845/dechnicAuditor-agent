@@ -26,8 +26,8 @@ metadata:
 ## Prerequisites
 
 - python-docx 在本机 **anaconda** python（`D:/develop/anaconda3/python.exe`）；项目 `.venv` 的 python 无 pip、无 python-docx（`pip`→3.13 anaconda，`python`→3.11 项目venv）。运行 docx 脚本一律用 anaconda 解释器。
-- 转换脚本：`scripts/md_to_docx_energy_audit.py`（本技能自带，通用化参数）
-- 学校模板参考：`references/examples/school-audit-template.md`；源文件在 `~/AppData/Local/hermes/attachments/学校能源审计报告模板（示例数据）.md`（md+docx 均已生成）
+- 转换脚本：`_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（本技能自带，通用化参数）
+- 学校模板参考：`references/audit-examples.md`；源文件在 `~/AppData/Local/hermes/attachments/学校能源审计报告模板（示例数据）.md`（md+docx 均已生成）
 - 原始市州模板：用户附件 `市州公共机构能源审计报告模板参考.pdf`（结构化内容已提炼进本 SKILL.md）
 
 ## 市州模板 0–11 章骨架（所有单位类型通用）
@@ -41,7 +41,7 @@ metadata:
 - 日历：寒暑假双谷、开学月（9月）高峰、教学日 6:30–22:30、宿舍热水晚高峰、食堂燃气与教学日历同步
 - 标准：GB/T 36876 教室照明、GB/T 17225 教室温度、建科〔2008〕89号 节约型校园导则
 - 对标修正：寄宿制学校运行时间长，定额对标需注明"寄宿制修正"或横向对比同类校
-- 医院（已跑通 2026-08：二级=日照岚山区人民医院、三级=山东省立医院东院区）：全天候运行、消毒供应/净化空调/医疗设备特殊用能；定额对标 DB37/T 2673-2019（数值需核验，拿不到用【待核验】占位，已确认三级电耗引导值 76.4）、用水定额 DB37/T 4452-2021（二级 540/340、三级 804/440 L/(床·d)）；第4项指标用单位开放床日用水量；测试数据/复制数据判别见“真实数据核验”。详见 `references/examples/hospital-audit.md`
+- 医院（已跑通 2026-08：二级=日照岚山区人民医院、三级=山东省立医院东院区）：全天候运行、消毒供应/净化空调/医疗设备特殊用能；定额对标 DB37/T 2673-2019（数值需核验，拿不到用【待核验】占位，已确认三级电耗引导值 76.4）、用水定额 DB37/T 4452-2021（二级 540/340、三级 804/440 L/(床·d)）；第4项指标用单位开放床日用水量；测试数据/复制数据判别见“真实数据核验”。详见 `references/audit-examples.md`
 - **党政机关/法院版已跑通**（2026-08 烟台经开区法院，参考日照岚山区法院报告）：
   8 章结构（非市州 0–11 章）：1 执行概要 → 2 公共机构概况 → 3 能源资源管理 → 4 计量统计 →
   5 消耗指标分析（5.2 消耗数据/5.3 五项指标/5.4 能耗基准）→ 6 用能系统分析 → 7 节能潜力 → 8 结论 + 
@@ -49,11 +49,11 @@ metadata:
   对标 DB37/T 2672-2019（山东党政机关，约束/基准/引导三级）
   供能：风冷冷水机组+多联机、市政供暖按热量表缴费、散热器采暖、厨房天然气、公务车汽油
   用能人数来自 ts_institution_scene.work_staff（351 人），不是编造
-  完整工作流（结构/指标口径/数据中心要点/Word参数）见 `references/examples/court-agency-audit.md`；定额数值见 `references/quota-supplement.md`
+  完整工作流（结构/指标口径/数据中心要点/Word参数）见 `references/audit-examples.md`；定额数值见 `references/quota-supplement.md`
 
 ## 示例数据自洽规则（用户零容忍不一致）
 
-- 折标系数（学校示例用）：电 0.1229 kgce/kWh（当量值）、天然气 1.33 kgce/m³、汽油 1.4714 kgce/kg、柴油 1.4571 kgce/kg —— **仅学校示例模板数值流转演示用，正式山东公共机构报告禁**（见 school-audit-template.md 自洽声明）
+- 折标系数（学校示例用）：电 0.1229 kgce/kWh（当量值）、天然气 1.33 kgce/m³、汽油 1.4714 kgce/kg、柴油 1.4571 kgce/kg —— **仅学校示例模板数值流转演示用，正式山东公共机构报告禁用**（见 `audit-examples.md` 学校实例一节的"仅示例"声明；原 `school-audit-template.md` 已归档至 `_archive/2026-09-18/`）
 - **山东公共机构审计报告折标系数**（DB37/T 2672-2019/2671/2673/3780 系列附录 B，已 web_search 验证原文）：
   天然气 **1.2143** kgce/m³、电力 **0.31**（供电煤耗）、热力 0.03412 tce/GJ、汽油 1.4714、柴油 1.4571。
   ⚠ DB 系统配置的天然气系数是 1.33，与山东标准（1.2143）不同——写山东公共机构报告按 DB37/T 系列系数，
@@ -93,7 +93,7 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
   cost_pie 费用类型仅含>0 项（电/水/气/热/汽油/柴油分开显示，无合并；油费=0 时不显示）。
   定额以 `references/quota-supplement.md` 为准（indicators.py 内置 government 默认已核验 DB37/T 2672，
   非供暖 20.0/11.9/6.5）。
-  完整链路见 `references/assembly-workflow.md`
+  完整链路见 `references/script-assembly-chain.md`
 
 ## Word 生成（用户格式规范，硬性）
 
@@ -102,9 +102,9 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 表格 12pt 居中、行高 1.01cm（AT_LEAST）、垂直居中、表头加粗、Table Grid 边框
 - 表注（`>` 引用块）灰色 12pt 无缩进；表题（**表X-X**）居中加粗
 - 页脚居中页码域（PAGE）、目录 TOC 域（`TOC \o "1-3" \h \z \u` + outlineLvl），打开 Word 后 Ctrl+A → F9 更新
-- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `energy-audit-imitate/scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（页眉文字+分隔线由 `scripts/fix_header_footer.py` 注入）。**主链（脚本装配）对应实现见 `references/script-assembly-chain.md`**；用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
+- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `energy-audit-imitate/scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（页眉文字+分隔线由 `_archive/2026-09-18/energy-audit-report/scripts/fix_header_footer.py` 注入）。**主链（脚本装配）对应实现见 `references/script-assembly-chain.md`**；用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
 - 封面：单位名 22pt + "能源审计报告" 26pt 居中 + 报告信息表（md 第一个表格）
-- 运行：`D:/develop/anaconda3/python.exe scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`
+- 运行：`D:/develop/anaconda3/python.exe _archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`
 
 ## Procedure
 
