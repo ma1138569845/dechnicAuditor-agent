@@ -1,7 +1,13 @@
 ---
 name: ea-calculation
-description: 能源审计指标计算与第5章生成能力（caliber 专属）。计算单位面积非供暖能耗/常规电耗/人均综合能耗/人均取水/单位采暖建筑面积供暖能耗 5 项指标、定额对标（DB37）、生成第5章 Markdown+图表时使用。折标系数优先用 data.json 中 EnergyYearly.coefficients 持久化值，缺失四级兜底（data.json→DB→用户→默认）；定额对标三级兜底（DB→用户→core/standards-values 默认）。
+description: "计算能源审计指标、做 DB37 定额对标并生成第5章（caliber 专用）."
 version: 1.3.0
+author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, indicators, db37, chapter5]
 ---
 
 # Indicator Calculation Skill

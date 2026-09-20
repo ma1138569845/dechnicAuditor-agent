@@ -1,6 +1,13 @@
 ---
 name: energy-audit-report
-description: 能源审计报告共享资产库——机构类型实例库（法院/医院/学校）、市州0-11章模板骨架、报告装配工作流（spec.json→assemble_report.py→附录→数值断言；主链脚本链见 references/script-assembly-chain.md）、附录/折标系数规范、定额补充（EUE表5、省级规章验证铁律）、PG数据导出流程。当需要"查找同类报告实例/参考""市州报告模板骨架""报告装配与数值断言""附录规范""数据导出"等场景时使用。章节正文写作规则见 ea-authoring（第1/2/3/4/6/7/8章）与 ea-calculation（第5章）；章结构权威=逐章指南（ea-authoring/references/chapter*-guide.md）与市州模板骨架（references/city-template-guide.md）。
+description: "能源审计报告共享资产库：实例库、市州模板、装配链与数值断言、附录规范."
+version: 1.0.0
+author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, report-assets, templates, assembly]
 agent_created: true
 ---
 

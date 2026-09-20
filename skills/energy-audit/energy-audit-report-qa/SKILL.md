@@ -1,6 +1,13 @@
 ---
 name: energy-audit-report-qa
-description: Use when 对照核查能源审计报告(生成版vs正式版)。docx提取+三级数据校验+高频错误清单。
+description: "对照核查能源审计报告（生成版vs正式版）：docx 提取+三级数据校验+高频错误清单."
+version: 1.0.0
+author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, qa, report-review, checklist]
 ---
 
 # Energy Audit Report QA（报告对照与数据核查）

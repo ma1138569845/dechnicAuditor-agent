@@ -1,7 +1,13 @@
 ---
 name: ea-datacollection
-description: 能源审计项目多源统一数据采集能力。当需要为能源审计项目采集数据、从PG数据库/Excel/用户提供汇总项目信息、构建AuditProject数据模型、检查数据完整性时使用。支持多源兜底采集、字段来源追踪、基础数据问题标记。
+description: "为能源审计项目多源采集数据、构建 AuditProject 数据模型（PG/Excel 兜底）."
 version: 2.1.0
+author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, data-collection, pg, excel]
 ---
 
 # Data Collection Skill

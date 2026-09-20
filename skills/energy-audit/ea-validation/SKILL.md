@@ -1,7 +1,13 @@
 ---
 name: ea-validation
-description: 能源审计三模式数据验证审查能力（datava 专属）。对能源审计项目做数据验证、完整性检查、能耗异常检测、指标复核、报告审查。支持 V1 采集后 DATA_CHECK / V2 计算后 INDICATOR_REVIEW / V3 报告后 REPORT_REVIEW，输出 P0/P1/P2 分级结论与退出码流程裁决。口径权威源：energy-audit-core/references/（定额矩阵/折标系数/版本归一）。
+description: "对能源审计项目做三模式数据验证与报告审查（datava 专用）；P0/P1/P2 分级裁决."
 version: 2.1.0
+author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, validation, review, quality-gate]
 ---
 
 # Data Validation Skill

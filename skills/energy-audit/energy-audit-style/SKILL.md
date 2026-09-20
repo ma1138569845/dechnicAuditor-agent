@@ -1,6 +1,6 @@
 ---
 name: energy-audit-style
-description: 能源审计报告写作逻辑与语言风格规则包——跨章论证链（数据→分析→结论→建议）、句法模式、占位体系、评价短语、防抄三闸门（事实/句法/查重）。author 写作、editor 终审、imitate 仿写后查重时引用。结构权威不在此（见 energy-audit-core/report），章节模板不在此（见 ea-authoring），计算口径不在此（见 ea-calculation）。
+description: "能源审计报告写作风格规则包：跨章论证链、句法、评价短语、防抄三闸门."
 version: 1.0.0
 author: 马天远
 license: MIT

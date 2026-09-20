@@ -1,6 +1,6 @@
 ---
 name: energy-audit-routing
-description: "能源审计任务双轨调度：单项目/散单 default 直跑，批量转 editor kanban。用户提出\"编制/生成/完成XX能源审计报告\"或任何涉及某单位能源审计的任务（采集/校验/核算/分析/报告）时，default（当前会话）必须先加载本技能做分诊——单项目数据齐备走直跑轨（脚本链直跑+三批写章），多份报告/批量/数据残缺走 kanban 轨（转交 editor）。"
+description: "编制/生成某单位能源审计报告时，default 必须先加载本技能分诊：单项目直跑、批量转 editor."
 version: 1.2.0
 author: DechnicAuditor
 license: MIT

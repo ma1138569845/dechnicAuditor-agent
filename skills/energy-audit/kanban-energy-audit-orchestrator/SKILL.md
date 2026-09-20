@@ -1,6 +1,6 @@
 ---
 name: kanban-energy-audit-orchestrator
-description: 能源审计报告Kanban多Agent编排器——自动化大规模公共机构能源审计。
+description: "能源审计报告Kanban多Agent编排器——自动化大规模公共机构能源审计."
 version: 1.0.0
 author: 同方德诚（山东）科技股份公司
 license: MIT

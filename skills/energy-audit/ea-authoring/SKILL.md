@@ -1,8 +1,13 @@
 ---
 name: ea-authoring
-description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章：表格/数值由 caliber 的 ea-calculation 产出并已经 prepare 就位为装配稿，author 在装配稿上补写分析叙述段、不重算数值）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 做双轨分诊（单项目直跑、批量转 editor），勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
+description: "装配能源审计报告公共章节并生成 Word 产物（author 角色专用）；第5章补写分析叙述、不重算数值."
 version: 2.0.0
 author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, authoring, report-assembly, word]
 ---
 
 # 报告编写专属知识（ea-authoring）

@@ -1,8 +1,13 @@
 ---
 name: energy-audit-core
-description: 能源审计共享核心知识——全流程概览、报告8章结构、格式规范、三级兜底、DB37对标标准。所有能源审计 Agent 共享的基础知识，各 Agent 专属深度知识见 ea-datacollection / ea-validation / ea-calculation / ea-authoring。
+description: "能源审计共享核心知识：全流程、8章结构、格式规范、三级兜底、DB37 对标."
 version: 5.0.1
 author: 马天远
+license: MIT
+platforms: [windows]
+metadata:
+  hermes:
+    tags: [energy-audit, core, standards, db37]
 ---
 
 # 能源审计共享核心知识

@@ -1,6 +1,6 @@
 ---
 name: energy-audit-style-extractor
-description: 能源审计写作风格提取器——从一篇样板能源审计报告（docx/md）逆向提取"写作逻辑"（结构树/论证链/语言风格），泛化去事实后编译进 energy-audit-style 规则包。学的是报告生成的"方法"，不是报告里的句子和数据。当用户提供样板报告要求"学习其写作逻辑/风格并固化为技能"、或需要更新 energy-audit-style 规则包时使用。不适用于：编写单份报告（走 energy-audit-routing）、数据采集（ea-datacollection）、指标计算（ea-calculation）。
+description: "从样板能源审计报告提取写作逻辑与风格，编译进 energy-audit-style 规则包."
 version: 1.0.0
 author: 马天远
 license: MIT
