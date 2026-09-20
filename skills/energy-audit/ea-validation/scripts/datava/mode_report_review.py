@@ -364,11 +364,17 @@ def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
     """
     findings: List[Finding] = []
     issues: List[str] = []
-    apx_idx = None
+    ch8_idx = None
     for _i, _b in enumerate(blocks):
-        if _b.kind == "p" and (_b.text or "").strip().startswith("附录"):
-            apx_idx = _i
-            break
+        if _b.kind == "p" and (_b.text or "").strip().startswith("第8章"):
+            ch8_idx = _i
+    apx_idx = None
+    if ch8_idx is not None:
+        for _i in range(ch8_idx, len(blocks)):
+            _b = blocks[_i]
+            if _b.kind == "p" and (_b.text or "").strip().startswith("附录"):
+                apx_idx = _i
+                break
     for _bi, b in enumerate(blocks):
         if b.kind != "tbl" or getattr(b, "obj", None) is None:
             continue
