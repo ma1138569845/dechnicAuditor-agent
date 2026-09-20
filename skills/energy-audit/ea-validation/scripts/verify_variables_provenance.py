@@ -15,7 +15,7 @@
   3) 判定：
      · 变量 ∈ S_ref 且 ∉ S_data      → P0【蓝本变量泄漏】（实证串数据）
      · 机构名 ∈ S_ref 且 ∉ S_data    → P0【蓝本专名泄漏】
-     · 命中蓝本特征词（--blueprint 无法覆盖时兜底）→ P0
+     · 命中蓝本特征词（仅未提供 --blueprint 时启用；命中词属本项目数据源专名的除外）→ P0
      · 变量 ∉ S_data 且 ∉ S_ref      → P1【待确认：可能编造或派生值（如百分比/均值）】
      · 变量 ∈ S_data                 → 通过
 
@@ -54,7 +54,8 @@ STD_SPAN_RE = re.compile(
     r"(?:DB\s?37\s?/?\s?T?|GB\s?/?\s?T?|JGJ|CJJ\s?/?\s?T?|JS\s?/?\s?T|鲁事管发|国管局令|"
     r"省政府令|国家发展改革委|第)\s?[〔\[（(]?\s?\d+(?:\s?[-—–]\s?\d+)?\s?[〕\]）)]?\s?号?"
 )
-YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)")
+# 年份：4 位数字后紧跟「平方米/㎡/m²/万元」等量纲的属于数量（如"约2000平方米"），不是年份
+YEAR_RE = re.compile(r"(?<!\d)(19\d{2}|20\d{2})(?!\d)(?!\s*[平㎡mM万])")
 # 蓝本特征词兜底（未提供 --blueprint 时用；可在项目侧扩充）
 BLUEPRINT_HINTS = ("烟台", "开发区", "人社厅", "纪委监委", "审判", "岚山", "高院", "黄渤海新区")
 
@@ -184,9 +185,11 @@ def collect_data_side(project_dir: str):
             for eq in payload.get("equipment") or []:
                 if isinstance(eq, dict) and eq.get("name"):
                     device_names.add(str(eq["name"]))
+                    orgs |= extract_orgs(str(eq["name"]))
             for row in payload.get("buildings") or []:
                 if isinstance(row, dict) and row.get("name"):
                     device_names.add(str(row["name"]))
+                    orgs |= extract_orgs(str(row["name"]))
             # 数据源里文本提到的年份（历史沿革/沿革年份）也算"本项目数据里有的"
             try:
                 years_from_payload = extract_years(json.dumps(payload, ensure_ascii=False))
@@ -269,10 +272,13 @@ def main(argv=None) -> int:
     report_whitelist = {"excluded_blocks": whitelist_stats, "excluded_total": sum(whitelist_stats.values())}
 
     p0, p1 = [], []
-    # 1) 蓝本特征词兜底
-    for hint in BLUEPRINT_HINTS:
-        if hint in text:
-            p0.append(f"命中蓝本特征词：{hint}")
+    # 1) 蓝本特征词兜底（仅未提供 --blueprint 时启用——提供了蓝本按 2)~3) 逐项比对；
+    #    命中词属本项目数据源专名（单位名/地址/建筑名）的，不算泄漏，防本项目专名误报）
+    if not args.blueprint:
+        _known_names = data_orgs | device_names
+        for hint in BLUEPRINT_HINTS:
+            if hint in text and not any(hint in str(n) for n in _known_names if n):
+                p0.append(f"命中蓝本特征词：{hint}")
     # 2) 数值
     gen_numbers = extract_numbers(text)
     for v in sorted(gen_numbers):
