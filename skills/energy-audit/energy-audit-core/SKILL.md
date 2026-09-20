@@ -44,14 +44,9 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 
 ## 关键原则
 
-### 术语表（对外统一叫法，2026-09-17 定）
+### 术语表与阶段表
 
-| 统一叫法 | 含义 | 说明 |
-|---|---|---|
-| **写章（3 批）** | LLM 逐章写正文：批1 封面+第1~4章 / 批2 第5章装配+第6~7章 / 批3 第8章+附录；批间 `/compact` | kanban 轨内部把同样三批叫"3 卡"，是对同一件事的另一种叫法，对外不再使用 |
-| **装配** | `build_energy_audit_docx.py`（构建）+ `finalize_energy_audit_pdf.py`（收尾：刷目录/转 PDF/盖章） | 旧文档称"组装""收尾三件套"，均为同一件事 |
-| **断言** | `ea_docx_asserts.py` 的 10 项交付硬检查 | 旧称"质检/核对" |
-| **就位** | `prepare_chapter_md.py` 把 `chapter5.md` 变成装配稿 `chapter_md/ch5_import.md` | 2026-09-17 新增，取代人工搬运 |
+**唯一权威 = `references/WORKFLOW.md`**（阶段表 / 门禁 / 回退 / 术语表 / 批量轨差异）。本文件不复述，避免多处副本。
 
 - 1.6 省级规章需 web_search 验证，不可字符串替换
 - **批量生成：`kanban-energy-audit-orchestrator` 技能**。利用 Hermes Kanban 实现并行调度。
@@ -67,6 +62,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | 文件 | 用途 |
 |------|------|
 | `AUTHORITY-INDEX.md` | ★总索引："主题 → 唯一权威文件"映射（**先查这里，再查具体文件**） |
+| `WORKFLOW.md` | ★工作流唯一状态机（阶段表/门禁/回退/术语表/批量轨差异；2026-09-20 建） |
 | `energy-audit-core/references/standards-values.md（权威单点）` | ★权威·定额标准矩阵（DB37/T 2672-2019 表1-5 党政机关 + DB37/T 2673-2019 医院 + DB37/T 4452-2021 水）。任何定额值只以此文件为准 |
 | `energy-audit-core/references/coefficient-caliber.md（权威单点）` | ★权威·折标系数口径（电0.31/热34.12kgce每GJ/气1.2143/油1.4714/水不折算） |
 | `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |

@@ -18,6 +18,8 @@ metadata:
 
 # Kanban Energy Audit Orchestrator
 
+> **阶段定义（每项目 8 步）、门禁、回退、术语以 `energy-audit-core/references/WORKFLOW.md` 为唯一权威**；本技能只负责批量轨的调度实现（plan.json / setup.sh / 任务图 / 监控）。
+
 将一批公共机构的能源审计报告编制工作——从数据采集、验证、指标计算到报告生成——封装在 Hermes Kanban 流水线中，由专门的 Agent Profile 分工执行。
 
 此技能是**元编排器**，不执行任何采集/验证/计算/报告生成本身。它做五件事：

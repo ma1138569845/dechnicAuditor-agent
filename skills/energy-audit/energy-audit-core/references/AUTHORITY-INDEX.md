@@ -51,3 +51,4 @@
 | 数据导出与整库导出 | `energy-audit-pg-data/references/data-export.md` | datacollection | — |
 | 跨项目经验（踩坑结论） | `energy-audit-core/references/lessons-learned.md`（索引式，2026-09-18 建） | 全角色（开工前扫一遍） | 细节仍以本表其它权威文件为准，本文件只做索引 |
 | 变量一致性（该变的是否真变） | `ea-validation/scripts/verify_variables_provenance.py` + `energy-audit-style/references/rules.md`《变量一致性闸门》 | datava（V3 后）、author（交付前）、editor | 文字相同=正常（固定条款），只查变量；相似度查重降为参考信息 |
+| 工作流 / 阶段 / 门禁 / 回退 / 术语 | `energy-audit-core/references/WORKFLOW.md`（唯一状态机，2026-09-20 建） | default、editor、全角色 | routing 只写分诊、kanban 只写调度实现，均不复述阶段表 |
