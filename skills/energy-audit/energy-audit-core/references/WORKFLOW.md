@@ -23,7 +23,7 @@
 | S11 | 收尾 | author | 上一步 docx | `finalize_energy_audit_pdf.py --project-dir <项目>` | 同名 `.pdf`（刷目录+盖章） | Word COM 必须绝对路径；updateFields 自动补写 |
 | S12 | 断言 | author | docx + pdf | `ea_docx_asserts.py <docx> --pdf <pdf>` | 断言结果 | **10 项硬检查全过，失败不得报"完成"** |
 | S13 | V3 审查 | datava | 落盘的 docx | `… --mode REPORT_REVIEW --report <docx>` | `report_review.json` | P0 阻塞；直跑轨结论**必须完整展示给用户确认** |
-| S14 | 变量一致性 | datava / author | 生成稿 + 蓝本 | `verify_variables_provenance.py <项目名> [--blueprint …]` | P0/P1 清单 | P0（蓝本变量泄漏）→ 必须改回本项目数据 |
+| S14 | 一致性与证据 | datava / author | 生成稿 + 蓝本 + 检索台账 | `verify_variables_provenance.py <项目名> [--blueprint …]`；`verify_retrieval_evidence.py <项目名>` | P0/P1 清单 | 变量泄漏 P0 → 改回本项目数据；**证据台账 P0（缺失/必需章空白）→ 补登记** |
 | S15 | 交付 | author | 上一步产物 | 复制（不移动） | `output/交付件/<单位>能源审计报告.docx\|pdf` | 交付件为唯一对外出口 |
 | **S16a** | **交付件入库** | author | `output/交付件/*.docx` | ① 落 `rag/report/<机构类型>/`（去重命名，禁"- 副本"）② `rag/ingestion/ingest_reports.py` 入向量库 ③ 生成 `_wiki` 页 ④ 刷新 `rag/ingest_log.json` | 知识层更新 | `energy-audit-core/scripts/verify_knowledge_assets.py` 退出码 0（P0=0） |
 | S16 | 沉淀 | 全员 | 本次踩坑 | 写进对应权威文件 + `lessons-learned.md` 登记一行 | 经验索引 | 只做索引，不复制细节 |
@@ -36,12 +36,17 @@
 ② 读契约第五节 5.1 的蓝本正文（形态参照，**已注入，不用另开文件**）
       （只学形态：章节骨架 / 表格习惯 / 措辞粒度 / 固定表述；里面别的项目的
        单位名/数值/设备一律不得沿用）
-③ 按本项目数据写 → 落盘 chapter_md/chN.md → 收工重跑①刷新"已落盘章节"
+③ 按本项目数据写 → 落盘 chapter_md/chN.md → **把参考登记进 `_retrieval_log.md`**（契约第七节）
+   → 收工重跑①刷新"已落盘章节"
 ```
 
 - **蓝本正文由契约注入**（2026-09-20「钩子 1」）：契约按机构类型自动切出
   `audit-examples.md` 的对应小节并写进 5.1；此前只给"文件路径 + 小节名"，
   模型不真去读就绕过去了。需要临时回退旧行为用 `--no-blueprint-body`。
+- **参考要留痕**（2026-09-20「钩子 2」）：每查一次同类成稿/标准条文就往
+  `<项目>/chapter_md/_retrieval_log.md` 加一行（含「未命中：<原因>」的情形）；
+  交付前 S14 跑 `ea-validation/scripts/verify_retrieval_evidence.py`——
+  必需章（第3/6/7章）空白记 P0。此前"有没有真去参考"纯靠自觉，不可检查。
 - **批间压缩上下文**：交互会话用 `/compact`；非交互模式（`hermes chat -q/-Q`、kanban worker）改为**每批一个独立会话/任务**，批边界即任务边界。
 - 数值只从 `data.json` / `indicators.json` / `chapter5.md` 读，**禁从前序章节文本或记忆提取**。
 
@@ -54,6 +59,7 @@
 | 合规占位登记 | `<项目>/missing_items.json` 登记的缺失 → P1 放行 | 未登记占位 → P0 |
 | 取值锚点 | `verify_benchmark_sources.py`：指标→标准表号 | 缺锚点 → 第5章标【待核验】 |
 | 变量一致性 | `verify_variables_provenance.py`：P0=蓝本变量泄漏 | P0 → 改回本项目数据 |
+| **参考证据台账** | `verify_retrieval_evidence.py`：必需章（第3/6/7章）各须有证据行，入口与来源不得为空；来源须能在本地参考库/标准库核对到 | P0（台账缺失或必需章空白）→ 补登记后重跑；P1 仅提示 |
 | 表题/图注 | 正文每张表上方一行 `表X.Y`；图注与 `report_images.json` 逐字一致 | V3 记 P2 / 缺表题计 P2 |
 
 ## 四、回退路径

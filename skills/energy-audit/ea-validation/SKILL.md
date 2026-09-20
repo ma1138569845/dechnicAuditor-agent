@@ -241,6 +241,27 @@ python <skill>/scripts/verify_variables_provenance.py <项目名> \
 - 退出码：0 无 P0；1 存在 P0；
 - 与查重的关系见 `energy-audit-style/references/rules.md`《变量一致性闸门》。
 
+## Capability 5: 参考证据闸门（交付前，2026-09-20 新增；S14 与 Capability 4 同批跑）
+
+> 定位：查"**有没有真去参考**"（同类成稿 / 标准条文），与 Capability 4 查"参考进来后
+> 该变的变量变没变"配套。此前契约只写"可以调用检索入口"，没有任何一步是必须的，
+> 检索结果也不留痕——不可检查。
+
+```bash
+python <skill>/scripts/verify_retrieval_evidence.py <项目名> [--log <md>] [--json]
+```
+
+台账是 `<项目>/chapter_md/_retrieval_log.md`（写章前由 `prepare_writing_context.py`
+生成模板；表内声明"必需登记章节"，本脚本以**该声明**为准，默认 第3/6/7 章）。
+
+| 输出 | 条件 | 动作 |
+|---|---|---|
+| **P0** | 台账缺失；必需章无任何证据行；某行「检索入口」或「命中来源」为空 | 补登记（查过没命中就写「未命中：<原因>」）后重跑 |
+| P1 | 命中行没写「采用了什么」；来源文件名在本地参考库/标准库核对不到 | 补依据或更正文件名 |
+
+- 退出码：0 无 P0；1 存在 P0；
+- 判据与登记格式的唯一权威：契约 `_context.md` 第七节 + 本 Capability。
+
 ### 依赖降级
 
 - V1 依赖 `tools.energy_audit`（data_check / data_analysis / project_data），导入失败返回 error（退出码 1）

@@ -53,6 +53,7 @@
 | 数据导出与整库导出 | `energy-audit-pg-data/references/data-export.md` | datacollection | — |
 | 跨项目经验（踩坑结论） | `energy-audit-core/references/lessons-learned.md`（索引式，2026-09-18 建） | 全角色（开工前扫一遍） | 细节仍以本表其它权威文件为准，本文件只做索引 |
 | 变量一致性（该变的是否真变） | `ea-validation/scripts/verify_variables_provenance.py` + `energy-audit-style/references/rules.md`《变量一致性闸门》 | datava（V3 后）、author（交付前）、editor | 文字相同=正常（固定条款），只查变量；相似度查重降为参考信息 |
+| **参考证据（有没有真去参考）** | `ea-validation/scripts/verify_retrieval_evidence.py` + 台账 `<项目>/chapter_md/_retrieval_log.md`（模板由 `ea-authoring/scripts/prepare_writing_context.py` 生成） | datava、author（S14）、editor | 登记格式与判据只写在这两处 + `ea-validation/SKILL.md` Capability 5；各 SKILL 不复述必需章清单（以台账内声明为准） |
 | 工作流 / 阶段 / 门禁 / 回退 / 术语 | `energy-audit-core/references/WORKFLOW.md`（唯一状态机，2026-09-20 建） | default、editor、全角色 | routing 只写分诊、kanban 只写调度实现，均不复述阶段表 |
 | **参考与知识读取**（读哪层 / 目录 / 检索入口 / 降级链） | `energy-audit-core/references/WORKFLOW.md` **第六节**（2026-09-20 建） | 全角色；knowledger 亦以本节为准 | 各 SKILL/SOUL 只写"何时读哪层"，不复述路径与目录（`rag/standards`/`rag/report`/`rag/data`/`rag/wiki` 的语义只在第六节） |
 | **知识库维护（写侧）**：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令 | `energy-audit-core/references/knowledge-base-maintenance.md`（2026-09-20 建） | knowledger（专属）、author（S16a）、editor | 各 SKILL/SOUL 只写"何时入料/巡检"，不复述边界表与判据 |

@@ -68,6 +68,10 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **"参考什么"以 `energy-audit-core/references/WORKFLOW.md` 第六节为唯一决策表**：形态层（蓝本，人工读）/ 事实层（本项目 data）/ 知识层（本地成稿库 → 向量 → wiki → 图谱）。
 > 写章节想找同类写法时：`reference_library.search_local_references(chapter, tags)`（本地、离线可用）优先，其次 `energy_audit_rag_search`；图谱输出**不是报告片段**，不得引用。
+> **每查一次都要留痕（2026-09-20 新增，S14 闸门）**：往 `<项目>/chapter_md/_retrieval_log.md`
+> 加一行（章 / 检索入口 / 命中来源 / 采用了什么 / 落到哪节）。**查不到也要写
+> 「未命中：<原因>」**——空白会被 S14 判 P0（必需章：第3、6、7章）。台账模板由契约
+> 自动生成；自检命令 `ea-validation/scripts/verify_retrieval_evidence.py <项目名>`。
 > **查依据/条文原文**（"这项定额出自哪一条""规范怎么要求的"）：`energy_audit_rag_search(query, kbs="standards")`
 > —— 返回定额标准库 + 技术规范库的**条文**（`kind=standard_clause`）。它是**依据**，不是同类成稿：
 > 可以引用条款支撑结论，**不得**照它的行文仿写报告段落（条文与报告的文体完全不同）。

@@ -45,6 +45,72 @@ BLUEPRINT_SECTIONS = {
 
 DEFAULT_BLUEPRINT_LIMIT = 9000        # 注入正文字符上限（超了截断并显式告警）
 
+# 参考证据台账（2026-09-20「钩子 2」）：契约生成模板，S14 由
+# ea-validation/scripts/verify_retrieval_evidence.py 检查。
+EVIDENCE_LOG_NAME = "_retrieval_log.md"
+REQUIRED_EVIDENCE_CHAPTERS = ("第3章", "第6章", "第7章")
+
+
+def ensure_evidence_log(md_dir: str) -> str:
+    """没有就建（有则**不动**，避免覆盖已登记内容）。返回台账路径。"""
+    path = os.path.join(md_dir, EVIDENCE_LOG_NAME)
+    if os.path.isfile(path):
+        return path
+    rows = "\n".join(f"| {c} |  |  |  |  |" for c in REQUIRED_EVIDENCE_CHAPTERS)
+    template = f"""# 参考证据台账（写章时逐条登记）
+
+> 用途：留痕「这一章到底参考了什么」。交付前 S14 由
+> `ea-validation/scripts/verify_retrieval_evidence.py` 检查。
+> **必需登记章节：{'、'.join(REQUIRED_EVIDENCE_CHAPTERS)}**
+> 规则：命中就写来源；**查不到也要写「未命中：<原因>」**——
+> 空白区分不出「没查」和「忘了填」，空白记 P0。
+
+| 章 | 检索入口 | 命中来源（文件/库） | 采用了什么 | 落到哪节 |
+|---|---|---|---|---|
+{rows}
+
+## 可用入口（照抄其一填到「检索入口」列）
+
+- 同类成稿（本地、离线永远可用）：`reference_library.search_local_references(chapter, tags)`
+- 报告向量库 / 标准条文库：`energy_audit_rag_search(query, ...)`；
+  查定额/规范**条文原文**用 `kbs="standards"`
+- 第7章诊断素材：`<项目>/diagnosis_chapter7_material.txt`（S3 产出，写 7.1 前必读原文）
+- 蓝本形态参照：契约第五节 5.1（已注入，**不算**"检索"，不必登记）
+"""
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(template)
+    return path
+
+
+def evidence_log_state(pdir: str):
+    """返回 (台账路径, {章: 行数}, 文件是否存在)。"""
+    path = os.path.join(pdir, "chapter_md", EVIDENCE_LOG_NAME)
+    counts = {c: 0 for c in REQUIRED_EVIDENCE_CHAPTERS}
+    if not os.path.isfile(path):
+        return path, counts, False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return path, counts, True
+    started = False
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("|"):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if not started:                       # 第一行是表头
+            started = True
+            continue
+        if all(c.startswith("-") or not c for c in cells):
+            continue
+        if not cells:
+            continue
+        ch = cells[0]
+        if ch in counts and len(cells) > 1 and any(c for c in cells[1:]):
+            counts[ch] += 1
+    return path, counts, True
+
 
 def blueprint_key(inst_type: str, category: str) -> str:
     key = (inst_type or "").strip().lower()
@@ -374,10 +440,32 @@ def main(argv=None) -> int:
         "**不得**照它的写法仿报告段落。",
         "- 「参考什么」的完整决策表见 `energy-audit-core/references/WORKFLOW.md` 第六节。",
         "",
-        "## 七、本批开工/收工检查",
+    ]
+
+    # 七、参考证据登记（钩子 2）：先把模板备好，再把当前登记状态照出来
+    ensure_evidence_log(md_dir)
+    ev_path, ev_counts, _ev_exists = evidence_log_state(pdir)
+    ev_rows = "；".join(
+        f"{c} {'✓ ' + str(ev_counts[c]) + ' 行' if ev_counts[c] else '— 未登记'}"
+        for c in REQUIRED_EVIDENCE_CHAPTERS)
+    lines += [
+        "## 七、参考证据登记（**S14 闸门会查**）",
+        "",
+        f"- 台账文件：`chapter_md/{EVIDENCE_LOG_NAME}`（本次已确保存在；有内容不会被覆盖）",
+        f"- 必需登记章节：{'、'.join(REQUIRED_EVIDENCE_CHAPTERS)}",
+        f"- 当前登记状态：{ev_rows}",
+        "",
+        "> 每查一次同类成稿/标准条文，就往台账加一行："
+        "`| 章 | 检索入口 | 命中来源（文件/库） | 采用了什么 | 落到哪节 |`。",
+        "> **查不到也要写**「未命中：<原因>」——空白区分不出「没查」和「忘了填」，空白记 P0。",
+        "> 交付前跑："
+        "`python <skills>/ea-validation/scripts/verify_retrieval_evidence.py <项目名>`。",
+        "",
+        "## 八、本批开工/收工检查",
         "",
         "- [ ] 开工：已读本文件；数值口径与第一节一致",
         "- [ ] 开工：写第 6/7 章前已读第六节列出的素材（尤其第7章诊断素材原文）",
+        "- [ ] 写章：每次参考都登记到第七节的台账（含「未命中」的情形）",
         "- [ ] 写章：只写 `chapter_md/` 中尚不存在的章（见第三节）",
         "- [ ] 收工：本章已落盘 `chapter_md/chN.md`，并**重跑本脚本**刷新第三节",
         "",
