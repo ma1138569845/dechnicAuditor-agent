@@ -31,7 +31,13 @@ from tools.energy_audit.institution_classifier import classify_institution
 
 AUDIT_TYPES: Tuple[str, ...] = ("公共机构", "公共建筑", "工业企业")
 GEO_TAG_KEYS: Tuple[str, ...] = ("province", "city", "district")
-_REPORT_SUFFIXES = {".docx", ".doc", ".md", ".txt"}
+# ★2026-09-20 加 .pdf：此前只认 docx/doc/md/txt，导致 7 份正式成稿（含法院母版
+#   `日照市岚山区人民法院能源审计报告.pdf`、学校 3 份、医院 1 份、检察院 1 份、
+#   工业企业 1 份）**对仿写参考库完全不可见**。
+#   注：README.md 等说明文件由 `_is_reference_report()` 按文件名排除，不靠扩展名。
+_REPORT_SUFFIXES = {".docx", ".doc", ".pdf", ".md", ".txt"}
+# 不是参考报告的说明性/台账文件（按文件名排除）
+_NON_REPORT_NAMES = {"readme.md", "index.md", "log.md", "说明.md", "ingest_log.json"}
 _CHAPTER_LINE = re.compile(r"第\s*([一二三四五六七八\d]+)\s*章")
 _CN_NUM = "一二三四五六七八"
 _MIN_PLACE_LEN = 2
@@ -191,22 +197,43 @@ def score_reference(path: Path, tags: Dict[str, str]) -> int:
         else:
             score -= 4
     wanted_cat = (tags.get("institution_category") or "").strip()
-    if wanted_cat and category == wanted_cat:
-        score += 3
+    if wanted_cat:
+        # ★2026-09-20：类别**不符要扣分**（原来只在相符时 +3、不符不扣）
+        #   → 医疗查询里"济南大学/省人社厅"与"岚山人民医院"同为 0 分，按文件名排序时
+        #   反而把不相关的排到前面。现在不符 -6，确保相符者永远优先。
+        if category == wanted_cat:
+            score += 3
+        else:
+            score -= 6
     wanted_spec = (tags.get("specific_type") or "").strip()
-    if wanted_spec and specific == wanted_spec:
-        score += 2
+    if wanted_spec:
+        if specific == wanted_spec:
+            score += 2
+        else:
+            score -= 3
     return score
 
 
 def list_reference_files(root: Path) -> List[Path]:
-    """列出根目录及类型子目录下的报告文件。"""
+    """列出根目录及类型子目录下的**报告成稿**文件（排除 README 等说明文件）。"""
     if not root.exists() or not root.is_dir():
         return []
     files: List[Path] = []
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in _REPORT_SUFFIXES:
-            files.append(path)
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in _REPORT_SUFFIXES:
+            continue
+        if path.name.lower() in _NON_REPORT_NAMES:
+            continue
+        # 规格/标准类文件不属于"同类成稿"（2026-09-20：标准已迁去 rag/standards/，
+        # 这里再加一道保险，防止再次混放）
+        if any(k in str(path) for k in ("定额标准", "能耗限额", "能耗定额", "设计标准")):
+            continue
+        # 副本/重复文件不入库
+        if any(k in path.stem for k in (" - 副本", "副本", "copy", "(1)")):
+            continue
+        files.append(path)
     return sorted(files)
 
 
@@ -233,6 +260,20 @@ def _extract_plain_text(path: Path) -> str:
         from docx import Document
         doc = Document(str(path))
         return "\n".join(p.text for p in doc.paragraphs if p.text and p.text.strip())
+    if suffix == ".pdf":
+        # ★2026-09-20 新增：正式成稿有相当一部分是 PDF（法院母版/学校/医院/工业企业），
+        #   此前直接返回 ""，这些报告对仿写链完全不可见。
+        try:
+            import fitz  # PyMuPDF，与 rag/energy_audit_importer.py 同一依赖
+        except ImportError:
+            return ""
+        try:
+            with fitz.open(str(path)) as doc:
+                return "\n".join(
+                    page.get_text("text") for page in doc
+                )
+        except Exception:
+            return ""
     return ""
 
 
@@ -313,14 +354,35 @@ def search_local_references(
     for path in files:
         ranked.append((score_reference(path, tags), path))
     ranked.sort(key=lambda item: (-item[0], item[1].name))
-    ranked, geo_scope = _geo_pool(ranked, tags)
 
     wanted_type = (tags.get("audit_type") or "").strip()
-    typed = [(s, p) for s, p in ranked if not wanted_type or infer_audit_type(p, p.name) == wanted_type]
+    wanted_cat = (tags.get("institution_category") or "").strip()
+
+    # ★2026-09-20：**先按「审计类型 + 机构类别」硬过滤，再做地理收窄**。
+    #   原实现是"地理收窄后若没有同类，就退回全部（含 score<=0 的不相关成稿）"——
+    #   实测「医疗」查询会返回"济南大学/省人社厅/省司法厅"的片段且 score=0，
+    #   属"检索失败被当成有结果"。现在没有同类就如实返回空 + note，由上层降级。
+    typed: List[Tuple[int, Path]] = []
+    for score, path in ranked:
+        if wanted_type and infer_audit_type(path, path.name) != wanted_type:
+            continue
+        if wanted_cat and classify_institution(path.name)[0] != wanted_cat:
+            continue
+        typed.append((score, path))
+
     if not typed:
-        typed = [(s, p) for s, p in ranked if s >= 0]
-    if not typed:
-        typed = ranked
+        return {
+            "results": [],
+            "source": "local_folder",
+            "count": 0,
+            "reference_dir": str(root),
+            "geo_scope": "none",
+            "note": (f"本地参考库没有同类型成稿（要求 审计类型={wanted_type or '不限'}、"
+                     f"机构类别={wanted_cat or '不限'}）。**不要用不相关报告充当参考**；"
+                     f"请降级到向量检索，或如实标注无同类参考。"),
+        }
+
+    typed, geo_scope = _geo_pool(typed, tags)
 
     results: List[dict] = []
     seen = set()

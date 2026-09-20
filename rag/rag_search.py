@@ -2,10 +2,12 @@
 能源审计报告 RAG 检索工具
 
 检索流程（逐层降级，任一层命中即返回）:
-  0. Qdrant 标签直查（无需 embedding / API key）
-  1. Qdrant 向量检索（energy_audit_reports collection）
+  1. Qdrant 向量检索（energy_audit_reports collection；tags 作 must-filter）
   2. 本地 wiki 兜底（技能包章节指南 + LLM Wiki 生成页）
   3. 知识图谱因果诊断 —— **不是"检索到历史报告"**
+
+★2026-09-20：原"Layer 0 标签直查"**已废止短路**（它不看 query、命中后使语义检索永不执行）；
+  需要按标签枚举时请显式调用 `search_by_tags()`。
 
 ⚠️ 第 3 层语义（2026-09-20 修正）：知识图谱是依据查询词生成的**因果推断**，
    不是报告片段。这类结果带 `is_report_chunk=False`，`search_reports` 会返回
@@ -26,20 +28,37 @@ from rag.config import qdrant_client_kwargs, reports_collection
 
 COLLECTION = reports_collection()
 
+# 可用于 Qdrant must-filter 的 payload 键（其余键传进来会让过滤恒空，必须剔除）。
+# 省/地市/区县等地理标签**不在 payload 里**，只能写进 query（见 imitate_pipeline 的注释）。
+_FILTERABLE_TAG_KEYS = ("audit_type", "institution_category", "specific_type", "chapter",
+                        "type", "filename")
+
+
+def _sanitize_tags(tags: Optional[Dict]) -> Dict:
+    """只保留真正存在于 payload 的过滤键，避免"传了不存在的键 → 恒空结果"。"""
+    if not tags:
+        return {}
+    return {k: v for k, v in tags.items() if k in _FILTERABLE_TAG_KEYS and v}
 # ============================================================
-# Layer 0: 标签直查（无需 embedding，适合精确匹配）
+# 显式工具：按标签枚举（无需 embedding）
+# ⚠️ 2026-09-20 起**不再参与** search_reports 的兜底链（原"Layer 0 短路"已废止）
 # ============================================================
 
 def search_by_tags(tags: Dict, limit: int = 10) -> List[dict]:
     """
-    按标签精确筛选（不需要 embedding / API key）
-    适用于: 查找"所有医院类报告的第2章"
+    按标签精确筛选（不需要 embedding / API key）。适用于"把所有医疗类报告的第 2 章列出来"
+    这类**按标签枚举**的需求。
+
+    ⚠️ **它不看查询语义**（`scroll` 按内部顺序取前 N 条，结果 score 为空），
+    因此**不得**作为 `search_reports` 默认路径使用——见 `search_reports` 的说明。
+    要用它，请显式调用本函数。
     """
     from qdrant_client import QdrantClient
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
     client = QdrantClient(**qdrant_client_kwargs())
 
+    tags = _sanitize_tags(tags)
     conditions = []
     for key, value in tags.items():
         conditions.append(FieldCondition(key=key, match=MatchValue(value=value)))
@@ -88,6 +107,7 @@ def search_qdrant(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> Li
     client = QdrantClient(**qdrant_client_kwargs())
 
     # 构建过滤条件
+    tags = _sanitize_tags(tags)
     qdrant_filter = None
     if tags:
         conditions = []
@@ -492,8 +512,7 @@ def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> d
     """
     统一检索入口（四层兜底）
 
-    Layer 0: Qdrant 标签直查（无需 API key）
-    Layer 1: Qdrant 向量检索（语义匹配）
+    Layer 1: Qdrant 向量检索（语义匹配；**tags 仅作 must-filter**，不短路）
     Layer 2: 本地知识库（技能包章节指南 + LLM Wiki 关键字匹配）
     Layer 3: 知识图谱因果诊断（异常 / 系统 / 措施）—— **非报告来源**
 
@@ -511,18 +530,14 @@ def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> d
     """
     degraded: List[str] = []
 
-    # Layer 0: 标签直查
-    if tags:
-        try:
-            results = search_by_tags(tags, top_k)
-            if results:
-                return {'results': results, 'source': 'qdrant_tags', 'count': len(results),
-                        'is_report_retrieval': True, 'degraded': degraded, 'note': ''}
-        except Exception as e:
-            degraded.append('qdrant_tags')
-            print(f"[RAG] ⚠️ Qdrant 标签直查不可用（{e}）；降级到下一层")
+    # ★2026-09-20 废止「Layer 0 标签直查短路」：
+    #   search_by_tags 用 scroll 按标签取前 N 条，**完全不看 query**
+    #   （实测把"东营职业学院/省委党校/山东技师学院"返回给"学校 宿舍 空调用电 分析"，
+    #     score 为空），而且一旦命中就直接 return → 真正的语义检索永不执行。
+    #   现改为：**tags 只作 filter**，与 query 一起进向量检索（见下方 Layer 1）。
+    #   search_by_tags 仍保留为显式工具（要"按标签枚举"时直接调它）。
 
-    # Layer 1: Qdrant 向量
+    # Layer 1: Qdrant 向量检索（tags 作 must-filter）
     try:
         results = search_qdrant(query, tags, top_k)
         if results:
@@ -619,23 +634,30 @@ def search_for_chapter(chapter_key: str, tags: Dict, context: str = "") -> str:
 if __name__ == '__main__':
     print("=== RAG 检索测试 ===\n")
 
-    # 测试 Layer 0: 标签直查（无需 API key）
-    print("1. 标签直查: institution_category=医疗")
-    r = search_reports("", {'institution_category': '医疗'})
-    print(f"  来源: {r['source']}, 结果数: {r['count']}")
-    for item in r['results'][:3]:
-        print(f"  {item['filename']} | {item['chapter']}")
+    # 1) 显式按标签枚举（无 query 语义，score 为空——这是 search_by_tags 的定位）
+    print("1. search_by_tags 枚举: institution_category=医疗")
+    try:
+        for item in search_by_tags({'institution_category': '医疗'}, 3):
+            print(f"  {item['filename']} | {item['chapter']}")
+    except Exception as e:
+        print(f"  ⚠️ 跳过（Qdrant 不可达）：{e}")
 
-    # 测试 Layer 0: 精准标签
-    print("\n2. 标签直查: specific_type=法院")
-    r = search_reports("", {'specific_type': '法院'})
-    print(f"  来源: {r['source']}, 结果数: {r['count']}")
-    for item in r['results'][:3]:
-        print(f"  {item['filename']} | {item['chapter']}")
+    # 2) 语义检索 + 标签过滤（tags 只作 filter，不再短路）
+    print("\n2. search_reports(语义+filter): 学校 宿舍 空调用电")
+    try:
+        r = search_reports("学校 宿舍 空调用电", {'institution_category': '教育'})
+        print(f"  来源: {r['source']}, 结果数: {r['count']}, degraded={r['degraded']}")
+        for item in r['results'][:3]:
+            print(f"  {item['filename']} | {item['chapter']} | score={item.get('score')}")
+    except Exception as e:
+        print(f"  ⚠️ 失败：{e}")
 
     # 测试 for chapter
     print("\n3. search_for_chapter: 医院 第2章")
-    ref = search_for_chapter('第2章', {'institution_category': '医疗'}, '公共机构基本情况')
-    print(ref[:500])
+    try:
+        ref = search_for_chapter('第2章', {'institution_category': '医疗'}, '公共机构基本情况')
+        print(ref[:500])
+    except Exception as e:
+        print(f"  ⚠️ 失败：{e}")
 
     print("\n✅ RAG 检索工具就绪")

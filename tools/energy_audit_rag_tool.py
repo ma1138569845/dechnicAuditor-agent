@@ -4,7 +4,14 @@ from __future__ import annotations
 能源审计 RAG / 知识图谱检索工具（Hermes Agent 入口）
 
 把 rag.rag_search 与 rag.knowledge_graph.energy_kg 包装为模型可调用的工具，
-支持四层检索兜底：Qdrant 标签直查、Qdrant 向量检索、本地 wiki、知识图谱因果诊断。
+支持三层检索兜底：Qdrant 向量检索（tags 仅作 must-filter）→ 本地 wiki → 知识图谱因果诊断。
+
+★2026-09-20：
+  · 原「Layer 0 Qdrant 标签直查」已**废止短路**——它用 scroll 按标签取前 N 条、不看 query，
+    一旦命中就让语义检索永不执行（实测返回与查询无关的片段且 score=0）。
+    需要"按标签枚举"时请显式调用 `rag.rag_search.search_by_tags`。
+  · 返回值新增 `is_report_retrieval` / `degraded`；`documents[].is_report_chunk`
+    标明该条是否真是报告片段（知识图谱推断为 false，**不得作为报告引用来源**）。
 
 返回结构包含：
 - 原始报告/知识库文档片段
