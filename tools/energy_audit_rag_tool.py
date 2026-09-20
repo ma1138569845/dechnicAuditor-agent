@@ -28,6 +28,7 @@ from tools.registry import registry, tool_error, tool_result
 
 try:
     from rag.rag_search import search_reports, search_knowledge_graph
+    from rag.smart_retrieve import smart_retrieve
     _RAG_AVAILABLE = True
     _RAG_IMPORT_ERROR = ""
 except Exception as _rag_import_err:
@@ -225,11 +226,17 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
     except Exception as _e:  # 本地库不可用不应阻断
         local_note = f"本地参考库不可用：{_e}"
 
-    # 1) 统一 RAG 检索（报告 + wiki）
+    # 1) 多路召回 + 重排序（2026-09-20，P3-1）：
+    #    R1 向量 / R2 标签 / R3 本地成稿+章节指南 / R4 图谱；加权重排后去重。
+    #    失败自动降级到单路 `search_reports`（保证行为向后兼容）。
     try:
-        rag_results = search_reports(query, tags, top_k)
+        rag_results = smart_retrieve(query, tags, top_k)
     except Exception as e:
-        rag_results = {"results": [], "source": "none", "count": 0, "error": str(e)}
+        print(f"[smart_retrieve] ⚠️ 多路召回失败，降级单路：{e}")
+        try:
+            rag_results = search_reports(query, tags, top_k)
+        except Exception as e2:
+            rag_results = {"results": [], "source": "none", "count": 0, "error": str(e2)}
 
     documents = [
         {
@@ -243,6 +250,9 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
             # ★2026-09-20：知识图谱推断不是报告片段，逐条标注，避免被当引用来源
             "is_report_chunk": r.get("is_report_chunk", rag_results.get("is_report_retrieval", True)),
             "kind": r.get("kind", "report_chunk"),
+            # 多路召回的可解释性：命中路线与重排分量
+            "route": r.get("route", []),
+            "rerank": r.get("rerank", {}),
         }
         for i, r in enumerate(rag_results.get("results", []))
     ]
@@ -288,6 +298,7 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
         "local_reference_files": local_files,
         "local_reference_note": local_note,
         "source": rag_results.get("source", "none"),
+        "routes": rag_results.get("routes", {}),
         # ★2026-09-20：显式区分"检索到历史报告"与"降级到图谱推断"
         "is_report_retrieval": rag_results.get("is_report_retrieval", True),
         "degraded": rag_results.get("degraded", []),
