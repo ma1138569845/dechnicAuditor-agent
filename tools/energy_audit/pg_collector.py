@@ -26,6 +26,7 @@ from tools.energy_audit.project_data import (
 )
 from tools.energy_audit.indicators import compute_project_indicators
 from tools.energy_audit.institution_classifier import classify_institution
+from tools.energy_audit.dept_dict import classify_from_codes as _classify_from_codes
 from tools.energy_audit.file_resolver import (
     enrich_energy_saving_images,
     enrich_management_info,
@@ -794,13 +795,23 @@ def build_and_save_project(
     pg_building_area = total_building_area(pg_buildings)
 
     # unit_type：来自 ts_customer_info.field_type（10/20/30）
-    # institution_category / specific_type：PG 无中文字段，按单位名分类器识别
+    # institution_category / specific_type：优先平台字典码（customer_func / children_func），
+    # 字典缺值时才回退单位名分类器
     unit_for_class = pg_project.get('unit_name') or project_name
     classified_cat, classified_spec = classify_institution(unit_for_class)
     ft = str(pg_customer.get('field_type') or '').strip()
     pg_unit_type = _FIELD_TYPE_UNIT.get(ft, '')
-    pg_institution_category = classified_cat if classified_cat != '未分类' else ''
-    pg_specific_type = classified_spec if classified_spec != '其他' else ''
+    # 一级单位类型码 / 二级分档码（2026-09-20 新增）：平台字典是权威来源，
+    # 教育类靠它区分 本科及以上/专科/普通非寄宿制/普通寄宿制/职业学校/初等教育/
+    # 学前教育/其他教育——单位名分类器做不到这一步。
+    pg_unit_func = str(pg_customer.get('customer_func') or '').strip().upper()
+    pg_children_func = str(pg_customer.get('children_func') or '').strip().upper()
+    dict_cat, dict_spec = _classify_from_codes(pg_unit_func, pg_children_func)
+    pg_institution_category = dict_cat or (classified_cat if classified_cat != '未分类' else '')
+    pg_specific_type = dict_spec or (classified_spec if classified_spec != '其他' else '')
+    if pg_unit_func and not dict_cat:
+        print(f"[datacollection v2] ⚠️ 平台单位类型码 customer_func={pg_unit_func!r} 未在字典中，"
+              f"已回退单位名分类器（请复核 tools/energy_audit/dept_dict.py）")
 
     # ---- 图片采集：单位整体外观（scene_img_id）/ 建筑外观（build_img）/ 计量器具照片（device_img）----
     # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
@@ -892,6 +903,15 @@ def build_and_save_project(
                                             ('default', '')),
             specific_type=sr.resolve('specific_type',
                                      ('PG', pg_specific_type),
+                                     ('Excel', excel_data),
+                                     ('default', '')),
+            # 平台单位类型字典码（定额对标按「一级类型 + 二级分档」选行）
+            unit_func=sr.resolve('unit_func',
+                                 ('PG', pg_unit_func),
+                                 ('Excel', excel_data),
+                                 ('default', '')),
+            children_func=sr.resolve('children_func',
+                                     ('PG', pg_children_func),
                                      ('Excel', excel_data),
                                      ('default', '')),
             basic_situation=sr.resolve('basic_situation',

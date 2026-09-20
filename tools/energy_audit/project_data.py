@@ -50,6 +50,16 @@ class ProjectBase:
     unit_type: str = "公共机构"          # 审计类型: 公共机构/公共建筑/工业企业
     institution_category: str = ""     # 机构类别: 医疗/教育/党政机关/场馆/体育/政务服务中心
     specific_type: str = ""            # 具体类型: 医院/大学/法院/机关...
+    # ---- 平台单位类型字典码（ts_customer_info，2026-09-20 新增）----
+    # customer_func: 一级码 A政务/B场馆/C医疗/D党政/E教育（字典 client_dept_type）
+    # children_func: 二级码，含义随一级码而异（字典 client_dept_type_<一级码>）：
+    #   教育 A本科及以上/B专科/C普通非寄宿制/D普通寄宿制/E职业学校/F初等教育/
+    #        G学前教育/H其他教育  ← DB37/T 2671-2019 的 8 个分档
+    #   医疗 A一级/B二级/C三级；党政 A省级/B市级/C市级以下；场馆 A图书馆…E科技馆；
+    #   政务 A市级及以上/B市级以下
+    # 用途：定额对标按「一级类型 + 二级分档」选行（见 tools/energy_audit/dept_dict.py）
+    unit_func: str = ""
+    children_func: str = ""
     basic_situation: str = ""          # 单位基本情况概述（来自 ts_customer_info.basic_situation）
     contact_person: str = ""           # 联系人
     contact_phone: str = ""            # 联系电话

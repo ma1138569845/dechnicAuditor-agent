@@ -22,7 +22,9 @@
 | # | 现象 | 铁律 | 详见 |
 |---|---|---|---|
 | S1 | 电力折标误用当量值 0.1229（差 2.5 倍） | 山东口径一律 **0.31 kgce/kWh（等价）**；气 1.2143（DB 里的 1.33 是错值）；**水不折算** | `coefficient-caliber.md`（唯一权威） |
-| S2 | 定额取值拿错气候区（法院本应 A 区 20.0/11.9/6.5，却取了 B 区 20.8/12.6/6.9 并标"来源：DB"） | 取值必须**机构分档 × 气候区**双维度匹配；报告引用须写**标准号+表号**（原文锚点）；跑 `verify_benchmark_sources.py` 自检 | `standards-values.md`（23 条 ★来源锚点）、`ea-calculation/scripts/verify_benchmark_sources.py` |
+| S2 | 定额取值拿错气候区（法院本应 A 区 20.0/11.9/6.5，却取了 B 区 20.8/12.6/6.9 并标"来源：DB"） | 取值必须**机构分档 × 气候区**双维度匹配；报告引用须写**标准号+表号**（原文锚点）；跑 `verify_benchmark_sources.py` 自检 | `standards-values.md`（24 条 ★来源锚点）、`ea-calculation/scripts/verify_benchmark_sources.py` |
+| S7 | **气候区不再从 DB 取**：`ts_customer_info.climate_type` 大面积误填为 A（济南的省立医院、聊城的莘县县政府在 DB 里都是 A，按 DB37/5026 应为 **B 区**）；已交付的省立医院东院区 indicators.json 用的是二级 **A 区** 22.6/15.3/9.4 | 气候区**一律以 `standards-values.md`《山东省气候区划》表为准**（代码单点 `tools/energy_audit/climate_zone.py`）；地市判定优先用**行政区划代码**（district_id 前 4 位），DB 的 climate_type 仅作交叉校验并提示复核 | `standards-values.md`《山东省气候区划》、`tools/energy_audit/climate_zone.py` |
+| S8 | 平台字典码 `ts_customer_info.customer_func / children_func`（一级单位类型 + 二级分档）长期**没被采集使用**，机构类型改为按单位名分类器猜 | 机构类型与档位**优先取平台字典码**（教育 8 档 / 医疗一~三级 / 党政省~市级以下 / 场馆 5 类），分类器只作兜底；字典码在 `tools/energy_audit/dept_dict.py`（可 `--check-db` 自检） | `tools/energy_audit/dept_dict.py`、`energy-audit-pg-data/SKILL.md` |
 | S3 | 把用水两档（通用/先进）与能耗三档（约束/基准/引导）混用 | 能耗=三档；用水=两档；评价短语用固定词表 | `energy-audit-style/references/rules.md`（评价短语） |
 | S4 | 未剔除供暖电耗，非供暖能耗/常规电耗偏高约 15% | 从总电耗中剔除供暖循环泵/风机电耗后再算非供暖类指标 | `coefficient-caliber.md`、`ea-calculation/SKILL.md` |
 | S5 | 教育类项目（DB37/T 2671）曾无定额矩阵，运行时兜底还写错标准号（写成不存在的 DB37/T 2674）并带编造的电耗/人均值 | 教育类定额**已全档收录**（原文核验 2026-09-20）；取值必须按**机构类型+二级分档**（不分气候区），禁止跨机构类型借用 EUE 等同类值 | `standards-values.md`《教育机构能源消耗定额标准》一节、`tools/energy_audit/indicators.py` `_DEFAULT_BENCHMARKS['education']` |

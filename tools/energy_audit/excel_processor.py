@@ -31,6 +31,10 @@ EXCEL_SCHEMAS = {
         'unit_type': ['审计类型', '单位类型'],
         'institution_category': ['机构类别'],
         'specific_type': ['具体类型'],
+        # 平台单位类型字典码（可选）：一级码 A政务/B场馆/C医疗/D党政/E教育；
+        # 二级码随一级码而异（教育 A本科及以上…H其他教育）。缺省时由 PG 侧提供。
+        'unit_func': ['公共机构类型', '单位类型码', '一级单位类型'],
+        'children_func': ['教育机构类型', '二级类型', '单位二级类型'],
         'basic_situation': ['基本情况', '单位概况'],
         'contact_person': ['联系人'],
         'contact_phone': ['联系电话', '电话'],
