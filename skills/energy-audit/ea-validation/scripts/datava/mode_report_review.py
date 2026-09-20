@@ -52,6 +52,12 @@ MISSING_REGISTRY_FILE = "missing_items.json"
 # 图注/表题（居中），不参与正文对齐/行距/缩进判定；字号与加粗不判
 # （format-spec 与装配脚本对图注字号表述不一致，避免制造新的矛盾）
 RE_CAPTION = re.compile(r"^(图|表|附表)\s*\d+\s*[.\-–—]\s*\d+")
+RE_TABLE_CAPTION = re.compile(r"^(表|附表)\s*\d+\s*[.\-–—]\s*\d+")
+# 合法无表号的表（来源：封面三张信息表由装配脚本直写；5.1 规范明确"能源消费结构/逐年能耗对比"不占正式表号）
+CAPTIONLESS_ALLOWED = {
+    "能源审计机构信息表", "能源审计组人员名单", "能源审计配合人员名单",
+    "能源消费结构", "能源消费结构表", "逐年能耗对比", "逐年能源消费对比",
+}
 FMT_CAPTION = {"align": 1}
 KIND_LABELS = {
     "h1": "一级标题",
@@ -422,6 +428,37 @@ def check_tables_and_placeholders(
                 expected=f"≥ {MIN_TABLES} 张",
                 actual=f"{total_tables} 张",
                 suggestion="核对表1~表3、第2章建筑表、第5章指标表是否齐备",
+            )
+        )
+
+    # 表题检查（2026-09-20 新增）：**正文**每张表的上方一行应为「表X.Y 标题」/「附表X-Y 标题」
+    # 封面/信息表区域（第1章之前）不计；5.1 的参考表与封面三表在 CAPTIONLESS_ALLOWED 内豁免。
+    captionless: List[str] = []
+    prev_text, prev_chapter = "", None
+    for b in blocks:
+        text = (b.text or "").strip()
+        if b.kind == "p":
+            if text:
+                prev_text, prev_chapter = text, getattr(b, "chapter", None)
+            continue
+        if b.kind != "tbl":
+            continue
+        if not prev_chapter:                      # 封面/信息表区域：不属于正文表格
+            continue
+        if RE_TABLE_CAPTION.match(prev_text) or prev_text in CAPTIONLESS_ALLOWED:
+            continue
+        captionless.append(prev_text[:30] or "（表格上方无段落）")
+    if captionless:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.TABLE_CAPTION",
+                category="章节完整性",
+                severity=SEV_P2,
+                title=f"有 {len(captionless)} 张正文表缺表题（表X.Y）",
+                detail="；".join(f"第{i+1}处「{t}」" for i, t in enumerate(captionless[:5])),
+                expected="每张正文表上方一行是 `表X.Y 标题`（附录用 `附表X-Y`）",
+                actual=f"{len(captionless)} 张表上方不是表题行",
+                suggestion="给每张表补 `表X.Y 标题` 行（章内连续编号、独占一行、紧邻表格上方；附录用附表X-Y）",
             )
         )
 

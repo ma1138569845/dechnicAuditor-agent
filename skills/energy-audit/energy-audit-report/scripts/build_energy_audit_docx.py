@@ -484,6 +484,9 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif line.startswith("**表") and line.endswith("**"):
             _para(doc, line[2:-2].strip(), size=12, bold=True,
                   align=WD_ALIGN_PARAGRAPH.CENTER)
+        elif re.match(r"^表\d+\s*[.\-–—]\s*\d+", line):
+            # 裸表题（无 ** 包裹）：2026-09-20 新增，避免表题被当正文（两端对齐）导致 V3 P2
+            _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         elif appendix and re.match(r"^附表\d", line):
             _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         elif line.startswith("**") and line.endswith("**") and len(line) > 4:

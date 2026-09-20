@@ -165,7 +165,8 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 1. **第6章结构（R7 口径）**：6.1 主要用能系统运行分析（6.1.1~6.1.6 分系统，按实际用能系统动态生成）+ 6.2 主要用能设备统计（表6.1）+ 6.3 用能系统运行评价，结构参考 `references/chapter-guides-6-8.md` 与 `references/chapter-guides-6-8.md`；6.2 用水/6.3 用热/6.5 室内环境检测三节不写（室内环境归附录4）。
 2. **第4章 4.2/4.3 独立计量、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
-3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-techniques.md` 与 `references/docx-techniques.md`。
+3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-techniques.md`。
+   **图表规范（2026-09-20 定）**：每张表必须有 `表X.Y 标题` 行（章内连号、独占一行、紧邻表格上方；附录用 `附表X-Y`）；每张图必须有 `图X.Y 说明（单位：xx）` 图注并与 `report_images.json` 的 caption 逐字一致——**缺表题会被 V3 记 P2**。
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
 5. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-techniques.md`。
 6. **落盘后、加水印前必须有正文首行缩进**（office_editor 路径）：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。**python-docx 禁令适用域 = office_editor 路径内**（2026-09-17 方案确认，脚本装配链自带缩进、不受此限）。禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-techniques.md`。
