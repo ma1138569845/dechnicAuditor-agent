@@ -43,6 +43,39 @@
 - 环境变量（`EA_TOOLS_ROOT` / `HERMES_PROJECTS_ROOT` / `EA_REFERENCE_DIR` 等）均为可选覆盖；缺省按三级降级自动解析。
 - 技能发布为单源：repo `skills/energy-audit/` → `scripts/sync_ea_skills.py` → 主库 + 6 角色 profile；勿手工复制。
 
+### 四、技能包 ↔ repo 的同步（**唯一入口 `deploy_ea_skills.py`**）
+
+> **背景（2026-09-20 事故）**：此前用 `robocopy /MIR` 把技能包镜像**整体**覆盖到
+> repo `skills/energy-audit`，抹掉了目标侧未提交的文件改动，git 层面无法恢复。
+> 同日还发现 repo 有**第二个写入者**（另一会话在同分支连续提交），
+> 因此"目标可能既脏、又领先于镜像"。`/MIR` 从此**禁用**。
+
+**唯一入口**是 `scripts/deploy_ea_skills.py`（技能包 `repo/scripts/` 下，与 `sync_ea_skills.py` 同目录）：
+
+```bash
+# 1) 先看差异与阻挡项（只读，永远先跑这一步）
+python scripts/deploy_ea_skills.py --check
+
+# 2) 正常发布：只复制有差异的文件，发布后自动 sync 到 profiles 并 --verify
+python scripts/deploy_ea_skills.py
+
+# 3) 镜像落后于目标（目标领先且已提交）→ 反向回流，先备份镜像侧
+python scripts/deploy_ea_skills.py --backport --yes
+```
+
+**它守两条线**（任一命中即停止，不做任何改动）：
+
+| 守卫 | 判据 | 说明 |
+|---|---|---|
+| 脏文件守卫 | 将被覆盖/删除的目标文件在 git 里是脏的 | 未提交 = 覆盖即永久丢失 |
+| 部署基线守卫 | 目标文件内容 ≠ 上次发布时记下的哈希 | 说明目标侧被**别人**改过（可能已提交） |
+
+基线记在技能包 `repo/_deploy/last_deploy.json`（不在发布范围内，不进 skills 目录）。
+两条出路：确认可覆盖 `--force`；确认目标领先是正常的 `--adopt`（把现状登记为新基线）。
+
+> 铁律：**镜像与 repo 谁都不是"永远权威"**——`--check` 先说话。发布前若 `--check` 报阻挡，
+> 先弄清差异归属（谁的改动、提没提交），再决定 `--force` / `--backport` / `--adopt`。
+
 ---
 
 ## Hermes 会话/Token/多 profile 运维（原 hermes-operations）
