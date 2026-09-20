@@ -33,7 +33,7 @@ if proj is None:
 | 1.3 审计周期 | 审计时间=`proj.base.audit_start`（create_time）/`audit_end`（生成时间）；审计期=`proj.base.audit_period`（audit_year）；基准期=`proj.base.base_period`（reference_year） |
 | 1.5 审计过程 | 单位简称 | `proj.base.unit_short` |
 | 2.1 基本情况 | 全称/简称/行政归属/地址/性质/内设机构/人数/建筑面积 | **优先级**：`proj.base.basic_situation` 完整直接采用 → 为空/不完整按要素序列（全称→简称→行政归属→地址→性质→内设→人员→建筑→面积）用 `proj.base.unit_name` / `unit_short` / `admin_affiliation` / `address` / `department_count` / `people_count` / `building_area` 补全 → 字段缺失可 `web_search` 查公开信息辅助（数字不得来自查询） |
-| 2.2 建筑物概况 | 每栋建筑全部参数 | 遍历 `proj.buildings`，字段见 `BuildingInfo`（完整清单见 `chapter2-guide.md` §7） |
+| 2.2 建筑物概况 | 每栋建筑全部参数 | 遍历 `proj.buildings`，字段见 `BuildingInfo`（完整清单见 `chapter-guides-1-4.md` §7） |
 | 2.3 用能系统 | 设备名称/数量/能源类型 | `proj.equipment[]`（name/category/quantity），能源类型由 `proj.energy_yearly[]` 各能耗字段是否 >0 判定 |
 | 3.1 机构职责 | 管理机构职责正文 | **优先** `proj.management.management_org`（采集阶段已由制度文件 LLM 提炼）；为空则按 `proj.base.institution_category` 选模板 |
 | 3.2 目标方针 | 目标/方针正文 | **优先** `proj.management.management_policy` / `proj.management.management_goals`；为空则**仿写同类报告 3.2**（run_imitate），仿写不可用再走通用兜底句 |

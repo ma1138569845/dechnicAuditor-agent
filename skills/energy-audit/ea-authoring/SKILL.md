@@ -84,22 +84,24 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 | 卡 | 章节 | 参考文件 | 写法 |
 |---|------|---------|------|
-| 卡1 | 封面/审计信息表 | `references/chapter2-guide.md`、`references/docx-techniques.md` | 模板占位注入（不落 chapter_md） |
-| 卡1 | 第1章 | `references/chapter1-templates.md` | 模板替换式（占位符→实际值，1.1~1.6），落 `chapter_md/ch1.md` |
-| 卡1 | 第2章 | `references/chapter2-guide.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
-| 卡1 | 第3章 | `references/chapter3-guide.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
-| 卡1 | 第4章 | `references/chapter4-guide.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
+| 卡1 | 封面/审计信息表 | `references/chapter-guides-1-4.md`、`references/docx-techniques.md` | 模板占位注入（不落 chapter_md） |
+| 卡1 | 第1章 | `references/chapter-guides-1-4.md` | 模板替换式（占位符→实际值，1.1~1.6），落 `chapter_md/ch1.md` |
+| 卡1 | 第2章 | `references/chapter-guides-1-4.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
+| 卡1 | 第3章 | `references/chapter-guides-1-4.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
+| 卡1 | 第4章 | `references/chapter-guides-1-4.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
 | 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表；装配稿 `chapter_md/ch5_import.md` 由 `prepare_chapter_md.py` 就位，见 `ea-calculation/SKILL.md`） | **直接 md 导入，不重写**；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
-| 卡2 | 第6章 | 见下方专项列表 | LLM 生成（分系统详述），落 `chapter_md/ch6.md` |
-| 卡2 | 第7章 | `references/chapter7-guide.md` | LLM 生成（问题-措施映射），落 `chapter_md/ch7.md` |
-| 卡3 | 第8章 | `references/chapter8-guide.md` | 聚合复用第5/7章结论，落 `chapter_md/ch8.md` |
+| 卡2 | 第6章 | `references/chapter-guides-6-8.md` | LLM 生成（分系统详述），落 `chapter_md/ch6.md` |
+| 卡2 | 第7章 | `references/chapter-guides-6-8.md` | LLM 生成（问题-措施映射），落 `chapter_md/ch7.md` |
+| 卡3 | 第8章 | `references/chapter-guides-6-8.md` | 聚合复用第5/7章结论，落 `chapter_md/ch8.md` |
 
 **LLM 调用批次**：卡1 分 1~2 次（1-2章一批、3-4章一批）；卡2 分 1 次（6-7章一批）；卡3 分 1 次（第8章）。每批 prompt 内嵌该批章节的格式规范摘要（防长输出后半段丢格式）。批内各章分别落盘。
 
-**第6章参考文件**（R7 正式版口径，2026-09-07 更新）：
+> **本批读哪份指南（2026-09-18 合并后）**：卡1（批1）→ `references/chapter-guides-1-4.md`；卡2/卡3（批2、批3）→ `references/chapter-guides-6-8.md`。两份文件开头都有"章节索引"表，先看索引再读对应章一节。
 
-- `references/chapter6-guide.md`（第6章总指南：**新口径 6.1 主要用能系统运行分析（6.1.1~6.1.6）+ 6.2 设备统计 + 6.3 运行评价**，叙述模板/表6.1/图注格式）
-- `references/chapter6-guide.md`（6.1 分系统权威规范：6.1.1~6.1.6 设备归类与模板）
+**第6章参考文件**（R7 正式版口径；2026-09-18 合并后统一在 `references/chapter-guides-6-8.md`）：
+
+- `references/chapter-guides-6-8.md` 的《第6章 主要用能系统分析》（总指南：**6.1 主要用能系统运行分析（6.1.1~6.1.6）+ 6.2 设备统计 + 6.3 运行评价**，叙述模板/表6.1/图注格式）
+- 同文件《6.1 分系统权威规范》小节（6.1.1~6.1.6 设备归类与模板）
 
 第6章章节号权威口径（R7 对齐）：**6.1 主要用能系统运行分析 / 6.2 主要用能设备统计 / 6.3 用能系统运行评价**，章标题"第6章 主要用能系统分析"。旧口径（6.1 用电/6.2 用水/6.3 用热/6.4 其他用能/6.5 室内环境）已废弃，勿再用。
 
@@ -161,7 +163,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 ## 关键规则（红线）
 
-1. **第6章结构（R7 口径）**：6.1 主要用能系统运行分析（6.1.1~6.1.6 分系统，按实际用能系统动态生成）+ 6.2 主要用能设备统计（表6.1）+ 6.3 用能系统运行评价，结构参考 `references/chapter6-guide.md` 与 `references/chapter6-guide.md`；6.2 用水/6.3 用热/6.5 室内环境检测三节不写（室内环境归附录4）。
+1. **第6章结构（R7 口径）**：6.1 主要用能系统运行分析（6.1.1~6.1.6 分系统，按实际用能系统动态生成）+ 6.2 主要用能设备统计（表6.1）+ 6.3 用能系统运行评价，结构参考 `references/chapter-guides-6-8.md` 与 `references/chapter-guides-6-8.md`；6.2 用水/6.3 用热/6.5 室内环境检测三节不写（室内环境归附录4）。
 2. **第4章 4.2/4.3 独立计量、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
 3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-techniques.md` 与 `references/docx-techniques.md`。
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
@@ -179,7 +181,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 调用脚本（report_generator 等）生成正文 | 正文无泛化能力，换项目即失效 | LLM 逐章按 references 写作（红线4） |
 | 逐段 `doc_insert_paragraph_with_text` 写正文 | 几百次 MCP 往返，纯 I/O 损耗（单报告 30-60 min） | `doc_insert_markdown` 整章导入（仅图片/占位替换/封面表例外，铁律4） |
 | md 导入后不跑格式修复链 | 标题/表格样式不符格式规范（非宋体15pt/12pt 等） | 按 `docx-techniques.md`「md 导入与格式修复链」逐项修复 |
-| 第4章已有独立计量仍问用户 | 与 data.json 矛盾或漏写已计量设备 | 4.2/4.3 先算 `has_ok`/`has_no`，见 `chapter4-guide.md` |
+| 第4章已有独立计量仍问用户 | 与 data.json 矛盾或漏写已计量设备 | 4.2/4.3 先算 `has_ok`/`has_no`，见 `chapter-guides-1-4.md` |
 | 第7章凭经验罗列通用问题 | 与实际数据矛盾 | 仅从 metering/equipment/building 字段推断（红线2） |
 | 使用"OfficeCLI"独立工具编辑 | 工具已废弃/不指向正确引擎 | 用 `office_editor` 工具集（office_edit 走 editor_sdk MCP；officecli 回退走 `office_cli_command`） |
 | `office_edit` 把操作名直接当 method | `-32601 Method not found` | operation 用 MCP 工具名（`doc_insert_text` 等），走 `tools/call` 格式 |

@@ -17,14 +17,15 @@
 - **有数据才写段**：字段为空则跳过或标【待补充】并回问用户，禁止用模板句凑满一节；问题类段落必须能追溯到本项目逐月实算值或字段为真。
 - **不重算**：指标与第5章以 caliber 产出为准，第8章只汇总引用，不引入前 7 章没有的新数值。
 - **省规必验**：1.6 节省级规章逐条 web_search 验证真实存在，禁止字符串替换套用他省规章。
-- **三批写章**：批1 封面+第1~4章 / 批2 第5章装配+第6~7章 / 批3 第8章+附录；**批间必须 /compact，每批每章落盘 `chapter_md/chN.md`**——下一批只信文件不信上文。
+- **三批写章**：批1 封面+第1~4章 / 批2 第5章装配+第6~7章 / 批3 第8章+附录；**批间压缩上下文**（交互会话 `/compact`；非交互模式改为每批独立会话/任务），每批每章落盘 `chapter_md/chN.md`——下一批只信文件不信上文。
+- **每批开工**：先跑 `ea-authoring/scripts/prepare_writing_context.py <项目名>` 并读 `<项目>/chapter_md/_context.md`（唯一口径/关键数字/已落盘章节/术语写法），收工再跑一次刷新。
 - **装配走脚本链**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`；office_editor 路径仅用于存量 docx 的定点修改（该路径内禁用 python-docx）。
 - **交付即断言**：每份必跑断言器；断言不通过不得报"完成"。
 
 ## 权威指针（只写路径，不抄内容）
 
 - 写作主流程与红线：`ea-authoring/SKILL.md`
-- 逐章写作规则：`ea-authoring/references/chapter1-templates.md`、`chapter2-guide.md`、`chapter3-guide.md`、`chapter4-guide.md`、`chapter6-guide.md`、`chapter6-sub-system-spec.md`、`chapter7-guide.md`、`chapter8-guide.md`
+- 逐章写作规则（2026-09-18 合并后）：批1 读 `ea-authoring/references/chapter-guides-1-4.md`（第1~4章，含建筑参数表定义）；批2/批3 读 `ea-authoring/references/chapter-guides-6-8.md`（第6~8章，含 6.1 分系统权威规范）
 - 第5章：`ea-calculation/references/chapter5-*.md`（只读，禁运行其脚本）
 - 数据模型与取值路径：`ea-authoring/references/data-model-reference.md`
 - 装配与成品工艺：`energy-audit-report/references/script-assembly-chain.md`

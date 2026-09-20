@@ -11,7 +11,7 @@
 | D1 | 用 project_id 关联业务表，取到空/错行 | 机构业务数据一律按 **customer_id** 关联；`ts_institution_project` 只用于定位项目与取 customer_id | `energy-audit-pg-data/SKILL.md` |
 | D2 | 同一单位并存测试行与正式行，取到"测试公司" | 多项目行时选 `audit_dept_name` 为正式机构、`audit_year` 覆盖审计期者；**机构名含"测试"必须回退 `ts_register_dept` 正式名** | `pg_collector._official_auditor_org`；事故见本文 D3 |
 | D3 | 生成报告盖章出现"同方德诚测试公司-1"、机构地址是"<单位名>-<地址>"拼接串 | 机构名称/地址必须过滤"测试"并回退正式注册记录；负责人/联系方式以项目表 `audit_dept_person/tel` 为准 | `conventions.md`《审计基本信息三张表》、`energy-audit-report-qa/references/fixes.md` |
-| D4 | 建筑表里混进**别的项目**的楼与地址（省立医院东院区名下出现岚山区 6 栋楼 + 地址"岚山区岚山西路566号"） | 建筑地址与项目地址不一致 → **采集侧告警**（`detect_building_address_mismatch`）；报告建筑表地址一律取 `proj.base.address` | `ea-authoring/references/chapter2-guide.md`（建筑地址口径） |
+| D4 | 建筑表里混进**别的项目**的楼与地址（省立医院东院区名下出现岚山区 6 栋楼 + 地址"岚山区岚山西路566号"） | 建筑地址与项目地址不一致 → **采集侧告警**（`detect_building_address_mismatch`）；报告建筑表地址一律取 `proj.base.address` | `ea-authoring/references/chapter-guides-1-4.md`（建筑地址口径） |
 | D5 | 多版本并存时用"多数投票"消解冲突 → 选中错值（热力 2024/2025 颠倒） | 版本归一：**草稿优先 → version_code 大者 → id 大者**；指定 `--version-code` 只取该正式快照；**禁多数投票**，冲突输出告警 | `version-normalization.md` |
 | D6 | 费用 `energy_unit` 标"万元"实为"元"，量级差 1 万倍 | 费用单位字段不可信 → 用**单价反验**（电≈0.7 元/kWh、水≈5 元/m³、气≈4.2~4.6 元/m³、热≈89.6 元/GJ） | `energy-audit-pg-data/SKILL.md`（费用单位陷阱） |
 | D7 | 费用取到 0（旧版本 `real_value=0`） | 取费用用 `unit_total_value/10000`（元→万元）；实物量 dt=1/4/5 用 total 即可 | 同上（费用字段取数） |
@@ -34,7 +34,7 @@
 | W1 | 后一章数值与前章不一致（从上下文"记忆"里抄数） | 数值**只从** `data.json` / `indicators.json` / `chapter5.md` 读；禁从上下文或前序章节文本提取 | `ea-authoring/SKILL.md` 三批铁律 |
 | W2 | 第5章出现三份稿，装配读了旧的一份 | 权威划分：`chapter5.md`=计算产物（只读）→ `chapter_md/ch5_import.md`=装配唯一输入（由 `prepare_chapter_md.py` 就位，不覆盖作者稿）；`ch5.md`/`segA-C`=中间物 | `ea-calculation/SKILL.md`（第5章产物权威说明） |
 | W3 | 数据缺失如实标【待补充】却被 V3 判 P0 阻塞交付 | 已登记的数据缺失写入 `<项目>/missing_items.json` → V3 记 **P1 放行**；未登记占位仍 P0 | `ea-validation/SKILL.md`、`_changes/T2-直跑验证记录.md` |
-| W4 | 图注段落被当作正文判"两端对齐偏离" | 图注/表题单独成段、居中 12pt；V3 已按 `caption` 段型校验 | `ea-authoring/references/chapter6-guide.md`、`docx-techniques.md` |
+| W4 | 图注段落被当作正文判"两端对齐偏离" | 图注/表题单独成段、居中 12pt；V3 已按 `caption` 段型校验 | `ea-authoring/references/chapter-guides-6-8.md`、`docx-techniques.md` |
 | W5 | 空话式结论（"能耗较高，节能潜力较大"） | 结论必须带数值与对照基准；禁词表见 rules.md | `rules.md`（禁词/句法骨架） |
 | W6 | 分批写章后措辞/术语漂移 | 每批开工先读 `<项目>/chapter_md/_context.md`（接续契约，`prepare_writing_context.py` 生成），术语与口径以它为准 | 本文件 W6 指针：`ea-authoring/scripts/prepare_writing_context.py` |
 

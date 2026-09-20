@@ -74,6 +74,7 @@ python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --m
 - 批 1：封面数据 + 第 1~4 章 → `chapter_md/ch1~ch4.md`
 - 批 2：第 5 章装配（**装配稿由阶段 1 的 3.5 步就位**：`chapter_md/ch5_import.md`；作者可在其上并入叙述段，但**禁重算数值**）+ 第 6/7 章
 - 批 3：第 8 章 + 附录 → `chapter_md/ch8.md`、`chapter_md/appendix.md`
+- **本批读哪份章节指南**（2026-09-18 合并后）：批 1 → `ea-authoring/references/chapter-guides-1-4.md`；批 2 与批 3 → `ea-authoring/references/chapter-guides-6-8.md`
 - **三批全落盘后 → 装配脚本链**（2026-09-17 起主链）：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`，见 `energy-audit-report/references/script-assembly-chain.md`；office_editor 路径为备用
 
 **直跑铁律（与 kanban 三卡铁律同源）**：

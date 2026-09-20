@@ -47,12 +47,12 @@ agent_created: true
 
 | 章 | 权威位置 |
 |---|---|
-| 第1章 | `ea-authoring/references/chapter1-templates.md` |
-| 第2章 | `ea-authoring/references/chapter2-guide.md` |
-| 第3章 | `ea-authoring/references/chapter3-guide.md` |
-| 第4章 | `ea-authoring/references/chapter4-guide.md` |
+| 第1章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第2章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第3章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第4章 | `ea-authoring/references/chapter-guides-1-4.md` |
 | 第5章 | `ea-calculation/references/chapter5-templates.md`（模板+生成逻辑）+ `chapter5-spec.md`（结构+逻辑+细节）★2026-09-18 合并 |
 | 第6章 | `ea-authoring/references/chapter6-*.md` |
-| 第7章 | `ea-authoring/references/chapter7-guide.md` |
-| 第8章 | `ea-authoring/references/chapter8-guide.md` |
+| 第7章 | `ea-authoring/references/chapter-guides-6-8.md` |
+| 第8章 | `ea-authoring/references/chapter-guides-6-8.md` |
 | 8章结构/章间联动 | `ea-authoring/references/chapter*-guide.md`（逐章）+ `references/city-template-guide.md`（市州模板） |
