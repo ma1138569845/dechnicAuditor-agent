@@ -178,6 +178,9 @@ resolve_benchmark(institution_type, metric, user_values=None, sub_type=None, db_
 | 场馆 venue | `'博物馆·市级'`（场馆类型 · 省/市/区县档） | `'博物馆·空调供暖'` |
 | 政务 service | `'市级以下'` | — |
 
+> 场馆**取水指标**另有一维：`'图书馆'` / `'博物馆'`（4452 面积口径定额，2026-09-20 启用）；
+> 剧院/体育馆/科技馆在 4452 中无定额 → 不对标。该维度**不设默认键**，避免"无定额的场馆套用图书馆定额"。
+
 拼装由 `indicators.project_sub_type(base, institution_type, metric)` 完成——它读
 `base.unit_func` / `base.children_func`（平台字典码，见 `dept_dict.py`）＋ 内置气候区表
 （`climate_zone.py`）。**调用方只需把 base 传进去**，不要自己拼字符串。

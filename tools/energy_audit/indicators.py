@@ -284,9 +284,16 @@ _DEFAULT_BENCHMARKS = {
         },
         # 表5 数据中心 EUE（场馆专用：2.2/1.7/1.4，与党政机关 2.2/1.8/1.4 不同）
         'eue': (2.2, 1.7, 1.4),
-        # 用水：DB37/T 3780-2019 无取水定额 → 场馆走面积口径，benchmark 留空（评价"—"）。
-        # 原 water_per_person=(18, 8, 0) 于 2026-09-20 删除：① 4452 表2 中查无此值（无源）；
-        # ② 场馆指标映射走 water_per_area，该键在正常路径上取不到，属死数据。
+        # 用水：场馆走**面积口径**（单位建筑面积年取水量）。
+        # ★2026-09-20 启用（用户确认）：4452 表2 实际**有**面积口径定额——
+        #   图书馆、档案馆 先进 1.3 / 通用 1.8；博物馆 先进 1.5 / 通用 1.8（单位 m³/(m²·a)）。
+        #   三元组槽序与其余用水一致：约束值(通用值) / 基准值(先进值) / 引导值(无)。
+        #   纪念馆（0.62/1.26）不在平台场馆字典内，暂不录入。
+        # 剧院 / 体育馆 / 科技馆：4452 **无**定额 → 保持"不对标"（评价显示"—"）。
+        'water_per_area': {
+            '图书馆': (1.8, 1.3, 0),
+            '博物馆': (1.8, 1.5, 0),
+        },
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
@@ -327,6 +334,8 @@ _SUBTYPE_DEFAULT = {
     ('venue', 'unit_area_elec'): '图书馆·市级',
     ('venue', 'per_capita_energy'): '图书馆·市级',
     ('venue', 'unit_area_heating'): '图书馆·市政集中供暖（按热计量）',
+    # 注意：**不给 venue/water_per_area 设默认键**——4452 只对图书馆/档案馆、博物馆有面积定额，
+    # 剧院/体育馆/科技馆没有；若默认成"图书馆"，这几类会被套上图书馆定额（错）。查不到即 (0,0,0)。
 }
 
 
@@ -615,6 +624,16 @@ def audit_db_benchmark(institution_type: str, metric: str, sub_type: Optional[st
                                   area_code=area_code or None)
     if not db:
         return None
+    # 用水类：DB 存 value1=先进值 / value2=通用值，内置三元组槽序为 (通用, 先进, 0)，
+    # 两者顺序相反 → 按**无序二元组**比对；能耗类按位置逐值比。
+    if metric.startswith('water'):
+        db_pair = sorted(float(db.get(k) or 0) for k in ('约束值', '基准值'))
+        bi_pair = sorted(float(builtin.get(k) or 0) for k in ('约束值', '基准值'))
+        if db_pair == bi_pair:
+            return None
+        return (f"DB 与内置默认不一致（{institution_type}/{metric}/sub_type={sub_type or '—'}）："
+                f"DB 先进/通用={db_pair[1]}/{db_pair[0]}、内置 先进/通用={bi_pair[1]}/{bi_pair[0]}；"
+                f"报告取值以内置默认（standards-values.md）为准，请复核平台数据")
     diff = [k for k in ('约束值', '基准值', '引导值')
             if abs(float(db.get(k) or 0) - float(builtin.get(k) or 0)) > 1e-6]
     if not diff:
@@ -1157,12 +1176,34 @@ def calc_water_indicator(
         water_total = data.water_m3
         # ×1000: m³→L，单位 L/(m²·a)（与 4452 式(6) 一致）
         L_per_area = round(water_total * 1000 / building_area, 2)
+
+        # 对标（2026-09-20 启用）：4452 表2 对**图书馆/档案馆、博物馆**有面积口径定额
+        # （m³/(m²·a)）；剧院/体育馆/科技馆无 → benchmark 留空，评价显示"—"。
+        # 定额单位换算到 L/(m²·a) 后与实测比较；字段语义同其他用水（约束=通用、基准=先进）。
+        bm = {}
+        evaluation = '—'
+        if institution_type == 'venue':
+            bm = resolve_benchmark('venue', 'water_per_area', user_benchmark, sub_type)
+            general, advanced = bm['约束值'], bm['基准值']   # 通用值 / 先进值（m³/(m²·a)）
+            if general > 0:
+                if L_per_area <= advanced * 1000:
+                    evaluation = '低于先进值'
+                elif L_per_area <= general * 1000:
+                    evaluation = '低于通用值'
+                else:
+                    evaluation = '高于通用值'
+            else:
+                bm = {}
+
         return {
             'L_per_area': L_per_area,
+            # 与 datava V2 的 MetricSpec 字段名对齐（它读 m3_per_area）；同一量的 m³ 口径
+            'm3_per_area': round(L_per_area / 1000, 4),
             'total_water_m3': water_total,
             'building_area': building_area,
             'metric': '单位建筑面积年取水量',
-            'benchmark': {},
+            'benchmark': ({**bm, '实际值': L_per_area, '评价结果': evaluation,
+                           '单位': 'L/(m²·a)', '定额单位': 'm³/(m²·a)'} if bm else {}),
         }
 
     # 机关/教育：人均取水量
