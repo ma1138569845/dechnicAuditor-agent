@@ -43,6 +43,11 @@ DEPT_TO_INSTITUTION_TYPE: Dict[str, str] = {
     'E': 'education',
 }
 
+# 反向：英文机构族名 → 一级码（供 DB 交叉校验拼查询条件）
+INSTITUTION_TYPE_TO_UNIT_FUNC: Dict[str, str] = {
+    v: k for k, v in DEPT_TO_INSTITUTION_TYPE.items()
+}
+
 # 中文机构类别 → 一级码（institution_classifier 的输出即这套中文名）
 CATEGORY_TO_UNIT_FUNC: Dict[str, str] = {
     '政务服务中心': 'A',
@@ -119,6 +124,17 @@ def children_label(unit_func: str, children_func: str) -> str:
         return ''
     return CHILDREN_FUNC.get(str(unit_func).strip().upper(), {}).get(
         str(children_func).strip().upper(), '')
+
+
+def label_to_code(unit_func: str, label: str) -> str:
+    """中文标签 → 二级码（children_label 的反函数）；未知返回 ''。"""
+    want = str(label or '').strip()
+    if not want:
+        return ''
+    for code, lbl in CHILDREN_FUNC.get(str(unit_func or '').strip().upper(), {}).items():
+        if lbl == want:
+            return code
+    return ''
 
 
 def institution_type_of(unit_func: str) -> str:

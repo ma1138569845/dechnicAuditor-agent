@@ -77,6 +77,7 @@ try:
         calc_per_capita_energy,
         calc_water_indicator,
         calc_unit_area_heating_energy,
+        project_sub_type,
         calc_baseline,
         resolve_coefficient,
         resolve_benchmark,
@@ -138,12 +139,23 @@ def calc_all_indicators(
     inst_type = institution_category_to_type(getattr(proj.base, 'institution_category', '') or '')
     bed_count = getattr(proj.base, 'beds_count', 0) or 0
 
+    # 二级维度查询串（2026-09-20）：分档/等级·气候区/场馆类型·省市档，
+    # 由平台字典码（unit_func/children_func）+ 内置气候区表拼出；表2 换成「·供暖类型」。
+    st_non_heating = project_sub_type(proj.base, inst_type, 'unit_area_non_heating')
+    st_elec = project_sub_type(proj.base, inst_type, 'unit_area_elec')
+    st_capita = project_sub_type(proj.base, inst_type, 'per_capita_energy')
+    st_water = project_sub_type(proj.base, inst_type, 'water_per_person')
+    st_heating = project_sub_type(proj.base, inst_type, 'unit_area_heating')
+
     results = {
         'project': getattr(proj.base, 'unit_name', ''),
         'year': latest.year,
         'building_area': getattr(proj.base, 'building_area', 0),
         'people_count': getattr(proj.base, 'people_count', 0),
         'institution_type': inst_type,
+        'sub_type': {'unit_area_non_heating': st_non_heating, 'unit_area_elec': st_elec,
+                     'per_capita_energy': st_capita, 'water_indicator': st_water,
+                     'unit_area_heating': st_heating},
         'calculated_at': datetime.now().isoformat(),
     }
 
@@ -153,23 +165,25 @@ def calc_all_indicators(
         # 输入无效（如建筑面积缺失）时结果为 0 值占位，直接对标会误判"先进水平"
         results['unit_area_non_heating_energy'] = {**r1, 'benchmark': None}
     else:
-        bm1 = compare_with_benchmark(r1['kgce_per_m2'], inst_type, 'unit_area_non_heating')
+        bm1 = compare_with_benchmark(r1['kgce_per_m2'], inst_type, 'unit_area_non_heating',
+                                     sub_type=st_non_heating)
         results['unit_area_non_heating_energy'] = {
             **r1,
             'benchmark': bm1,
         }
 
     # ── 指标 (2): 常规用能系统单位建筑面积电耗 ──
-    r2 = calc_unit_area_electricity(latest, institution_type=inst_type)
+    r2 = calc_unit_area_electricity(latest, institution_type=inst_type, sub_type=st_elec)
     results['unit_area_electricity'] = r2
 
     # ── 指标 (3): 人均综合能耗 ──
-    r3 = calc_per_capita_energy(latest, institution_type=inst_type)
+    r3 = calc_per_capita_energy(latest, institution_type=inst_type, sub_type=st_capita)
     results['per_capita_energy'] = r3
 
     # ── 指标 (4): 取水指标（医院=床日/机关教育=人均/场馆=面积）──
     r4 = calc_water_indicator(latest, inst_type, bed_count=bed_count,
-                              building_area=latest.building_area)  # venue/service 面积口径必传
+                              building_area=latest.building_area,  # venue/service 面积口径必传
+                              sub_type=st_water)
     results['water_indicator'] = r4
 
     # ── 指标 (5): 单位采暖建筑面积供暖能耗（有供暖能耗的项目必算）──
@@ -179,7 +193,7 @@ def calc_all_indicators(
         heating_area = sum(float(getattr(b, 'heating_area', 0) or 0)
                            for b in getattr(proj, 'buildings', []) or [])
         r5 = calc_unit_area_heating_energy(latest, heating_area=heating_area,
-                                           institution_type=inst_type)
+                                           institution_type=inst_type, sub_type=st_heating)
         results['unit_area_heating'] = r5
 
     # ── 5.4: 建筑能耗基准 ──
@@ -361,6 +375,14 @@ def run_caliber(
             # 漏传导致非机关项目 md 按机关口径，与 indicators.json 打架）
             'institution_category': getattr(proj.base, 'institution_category', '') or '',
             'beds_count': getattr(proj.base, 'beds_count', 0) or 0,
+            # 二级维度定档（2026-09-20）：平台字典码 + 地址（+行政区划代码），
+            # 供 chapter5 拼 sub_type；否则教育类只能取默认档
+            'unit_func': getattr(proj.base, 'unit_func', '') or '',
+            'children_func': getattr(proj.base, 'children_func', '') or '',
+            'city': getattr(proj.base, 'city', '') or '',
+            'district': getattr(proj.base, 'district', '') or '',
+            'address': getattr(proj.base, 'address', '') or '',
+            'district_id': getattr(proj.base, 'district_id', '') or '',
             # 折标系数（data.json 持久化，三年一致取最新年）：md 与
             # indicators.json 同口径（2026-09-05 修复）
             'coefficients': dict(getattr(yearly_data[-1], 'coefficients', {}) or {}),

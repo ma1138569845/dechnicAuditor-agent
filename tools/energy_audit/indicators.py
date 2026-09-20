@@ -45,24 +45,78 @@ ELEC_COEFF_NON_HEATING = 0.31  # kgce/kWh（终端电力等价值）
 
 # 内置兜底定额（kgce/(m²·a)） → 约束值, 基准值, 引导值
 _DEFAULT_BENCHMARKS = {
-    'medical': {  # DB37/T 2673-2019, 二级 A区（最常见医院类型）
-        'unit_area_non_heating': (22.6, 15.3, 9.4),
-        'unit_area_elec': (73.1, 53.0, 34.9),
-        'per_capita_energy': (907.4, 556.9, 428.3),
-        # 供暖定额 DB37/T 2672-2019 表2 不分机构等级（按供暖类型），医疗机构同样适用
-        'unit_area_heating': (12.7, 11.1, 8.3),  # 默认市政集中供暖（按热计量）口径
+    'medical': {  # DB37/T 2673-2019《医疗机构能源消耗定额标准》（原文逐页复核 2026-09-20）
+        # 表1/表3/表4 按「机构等级 × 气候区」6 行；键统一为 '等级·气候区'
+        'unit_area_non_heating': {  # 表1 kgce/(m²·a)
+            '三级·A': (38.1, 30.3, 21.9),
+            '三级·B': (39.1, 33.4, 22.6),
+            '二级·A': (22.6, 15.3, 9.4),
+            '二级·B': (33.9, 25.1, 15.7),
+            '一级·A': (13.8, 8.0, 4.3),
+            '一级·B': (17.5, 11.1, 5.9),
+        },
+        'unit_area_elec': {  # 表4 kWh/(m²·a)
+            '三级·A': (118.1, 87.9, 68.7),
+            '三级·B': (131.5, 97.5, 76.4),
+            '二级·A': (73.1, 53.0, 34.9),
+            '二级·B': (110.6, 79.6, 52.3),
+            '一级·A': (55.1, 33.6, 21.5),
+            '一级·B': (72.9, 45.9, 27.9),
+        },
+        'per_capita_energy': {  # 表3 kgce/(p·a)
+            '三级·A': (944.8, 574.3, 482.1),
+            '三级·B': (1159.4, 753.7, 509.0),
+            '二级·A': (907.4, 556.9, 428.3),
+            '二级·B': (1118.4, 642.7, 434.8),
+            '一级·A': (781.0, 542.8, 338.6),
+            '一级·B': (938.8, 623.8, 367.0),
+        },
+        # 表2 单位采暖建筑面积供暖能耗：**本 2673 标准自己的表2**，不分机构等级、按供暖类型。
+        # ★修复：此前借用 DB37/T 2672-2019 表2 的 12.7/11.1/8.3（跨标准错用）。
+        'unit_area_heating': {
+            '市政集中供暖（按热计量）': (13.4, 10.0, 7.9),
+            '空调供暖': (15.1, 9.2, 6.2),
+            '燃气（油）供暖': (12.3, 8.3, 5.5),
+        },
+        # 表5 数据中心 EUE：★修复 2026-09-20——原文为 2.3/1.8/1.4
+        # （standards-values.md 曾误记 2.2/2.0/1.6，已同步更正）
+        'eue': (2.3, 1.8, 1.4),
         # 用水: DB37/T 4452-2021, 二级医院, 单位开放床日用水量 L/(床·d)
         'water_per_bed_day': (540, 340, 0),     # 约束值(通用值), 基准值(先进值), 引导值(无)
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
-    'government': {  # DB37/T 2672-2019（标准原文已核验 2026-09-02；烟台法院=市级以下+A区）
-        'unit_area_non_heating': (20.0, 11.9, 6.5),
-        'unit_area_elec': (67.4, 39.5, 20),
-        'per_capita_energy': (1197.8, 781.0, 453.7),
-        # 表2 单位采暖建筑面积供暖能耗（不分机构等级，按供暖类型）：
-        # 市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
-        'unit_area_heating': (12.7, 11.1, 8.3),  # 默认市政集中供暖（按热计量）口径
+    'government': {  # DB37/T 2672-2019《党政机关能源消耗定额标准》（原文逐页复核 2026-09-20）
+        # 表1/表3/表4 按「机构等级 × 气候区」取值（省级只给 B 区）；键统一为 '等级·气候区'
+        'unit_area_non_heating': {  # 表1 kgce/(m²·a)
+            '省级·B': (25.5, 16.6, 9.6),
+            '市级·A': (21.9, 14.9, 7.2),
+            '市级·B': (22.3, 15.6, 8.1),
+            '市级以下·A': (20.0, 11.9, 6.5),
+            '市级以下·B': (20.8, 12.6, 6.9),
+        },
+        'unit_area_elec': {  # 表4 kWh/(m²·a)
+            '省级·B': (81.0, 52.0, 35.5),
+            '市级·A': (72.6, 49.9, 22.7),
+            '市级·B': (80.0, 51.5, 31.9),
+            '市级以下·A': (67.4, 39.5, 20.0),
+            '市级以下·B': (75.8, 45.9, 26.2),
+        },
+        'per_capita_energy': {  # 表3 kgce/(p·a)
+            '省级·B': (1611.5, 1240.4, 700.9),
+            '市级·A': (1300.8, 912.3, 665.9),
+            '市级·B': (1557.1, 978.1, 698.2),
+            '市级以下·A': (1197.8, 781.0, 453.7),
+            '市级以下·B': (1293.4, 828.9, 478.0),
+        },
+        # 表2 单位采暖建筑面积供暖能耗（不分机构等级，按供暖类型）
+        'unit_area_heating': {
+            '市政集中供暖（按热计量）': (12.7, 11.1, 8.3),
+            '空调供暖': (12.4, 8.9, 6.4),
+            '燃气（油）供暖': (12.3, 8.4, 4.8),
+        },
+        # 表5 数据中心 EUE
+        'eue': (2.2, 1.8, 1.4),
         # 用水: DB37/T 4452-2021, 机关
         'water_per_person': (25, 10, 0),        # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'standard_name': 'DB37/T 2672-2019《党政机关能源消耗定额标准》',
@@ -106,19 +160,33 @@ _DEFAULT_BENCHMARKS = {
             '学前教育': (159.0, 102.6, 58.2),
             '其他教育': (257.0, 164.3, 83.5),
         },
-        'unit_area_heating': {  # 表2 kgce/(m²·a)，默认市政集中供暖（按热计量）口径
-            # 空调供暖/燃气（油）供暖口径见 standards-values.md 教育类表2（部分档位标准给"—"）
-            '高等教育·本科及以上': (12.4, 9.7, 7.1),
-            '高等教育·专科': (12.4, 9.7, 7.1),
-            '中等教育·普通非寄宿制': (10.6, 8.7, 6.0),
-            '中等教育·普通寄宿制': (11.4, 9.0, 6.3),
-            '中等教育·职业学校': (11.4, 9.0, 6.3),
-            '初等教育': (10.3, 8.1, 5.8),
-            '学前教育': (11.7, 9.5, 6.7),
-            '其他教育': (11.5, 9.3, 6.5),
+        # 表2 单位采暖建筑面积供暖能耗 kgce/(m²·a)：键 = '分档·供暖类型'，共 20 行
+        # （与 DB ts_limit_config group_func='E' + limit_type='B' 的 20 行结构一致；
+        #  标准中为"—"的档位不录，缺档时 _lookup_sub_quota 会回退默认行并告警）
+        'unit_area_heating': {
+            '高等教育·本科及以上·空调供暖': (9.6, 5.8, 4.3),
+            '高等教育·本科及以上·燃气（油）供暖': (7.4, 4.6, 2.8),
+            '高等教育·本科及以上·市政集中供暖（按热计量）': (12.4, 9.7, 7.1),
+            '高等教育·专科·空调供暖': (9.6, 5.8, 4.3),
+            '高等教育·专科·燃气（油）供暖': (7.4, 4.6, 2.8),
+            '高等教育·专科·市政集中供暖（按热计量）': (12.4, 9.7, 7.1),
+            '中等教育·普通非寄宿制·空调供暖': (7.8, 4.3, 2.6),
+            '中等教育·普通非寄宿制·燃气（油）供暖': (6.7, 3.6, 2.5),
+            '中等教育·普通非寄宿制·市政集中供暖（按热计量）': (10.6, 8.7, 6.0),
+            '中等教育·普通寄宿制·空调供暖': (8.3, 4.5, 2.8),
+            '中等教育·普通寄宿制·市政集中供暖（按热计量）': (11.4, 9.0, 6.3),
+            '中等教育·职业学校·空调供暖': (8.3, 4.5, 2.8),
+            '中等教育·职业学校·市政集中供暖（按热计量）': (11.4, 9.0, 6.3),
+            '初等教育·空调供暖': (7.6, 4.2, 2.4),
+            '初等教育·燃气（油）供暖': (4.5, 3.0, 2.2),
+            '初等教育·市政集中供暖（按热计量）': (10.3, 8.1, 5.8),
+            '学前教育·空调供暖': (9.2, 4.8, 3.6),
+            '学前教育·市政集中供暖（按热计量）': (11.7, 9.5, 6.7),
+            '其他教育·空调供暖': (8.5, 4.6, 3.0),
+            '其他教育·市政集中供暖（按热计量）': (11.5, 9.3, 6.5),
         },
         # 表5 数据中心 EUE：教育类 2.2/1.6/1.3（党政机关 2.2/1.8/1.4、
-        # 医疗机构 2.2/2.0/1.6、场馆 2.2/1.7/1.4，四者各不相同，禁止互相借用）
+        # 医疗机构 2.3/1.8/1.4、场馆 2.2/1.7/1.4，四者各不相同，禁止互相借用）
         'eue': (2.2, 1.6, 1.3),
         # 用水: DB37/T 4452-2021 表2 教育业，三元组口径 =(通用值, 先进值, 无引导值) m³/(人·a)
         # ★键必须与上面四张表同为「一级类型·二级分档」，否则 sub_type 匹配不上会掉到 (0,0,0)。
@@ -141,35 +209,85 @@ _DEFAULT_BENCHMARKS = {
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
         'standard_name': 'DB37/T 2671-2019《教育机构能源消耗定额标准》',
     },
-    'venue': {  # DB37/T 3780-2019《场馆机构能源消耗定额标准》（标准原文核验 2026-09-03；取"市"档）
-        # 子类型嵌套：图书馆/博物馆/剧院/体育馆/科技馆 → (约束值, 基准值, 引导值)
+    'venue': {  # DB37/T 3780-2019《场馆机构能源消耗定额标准》
+        # 表1/表3/表4 = 「场馆类型 × 省市档」共 15 行；表2 = 「场馆类型 × 供暖类型」
+        # 键统一为 '场馆类型·档位/供暖类型'，匹配用 _lookup_sub_quota（子集匹配）。
+        # ⚠️ 本类原文 PDF 未入本地标准库（数值与 DB ts_limit_config 双向互证一致）；
+        #    如需逐条回溯请补下 DB37/T 3780-2019 原文。
         # 注4：文化馆（宫）、美术馆等其他文化类场馆参照图书馆。
-        # 表1 单位建筑面积非供暖能耗 kgce/(m²·a)（市档）
-        'unit_area_non_heating': {
-            '图书馆': (16.2, 12.2, 9.7), '博物馆': (21.9, 15.3, 8.0), '剧院': (17.3, 12.3, 8.2),
-            '体育馆': (16.7, 14.9, 11.3), '科技馆': (15.6, 8.3, 6.6),
+        'unit_area_non_heating': {  # 表1 kgce/(m²·a)
+            '图书馆·省级': (19.6, 15.4, 12.4),
+            '图书馆·市级': (16.2, 12.2, 9.7),
+            '图书馆·区县级': (13.4, 6.4, 4.8),
+            '博物馆·省级': (26.6, 22.6, 18.9),
+            '博物馆·市级': (21.9, 15.3, 8.0),
+            '博物馆·区县级': (16.6, 12.5, 6.2),
+            '剧院·省级': (24.1, 21.1, 17.9),
+            '剧院·市级': (17.3, 12.3, 8.2),
+            '剧院·区县级': (13.6, 7.6, 5.3),
+            '体育馆·省级': (22.4, 18.4, 16.9),
+            '体育馆·市级': (16.7, 14.9, 11.3),
+            '体育馆·区县级': (14.8, 8.8, 6.9),
+            '科技馆·省级': (25.3, 22.2, 18.3),
+            '科技馆·市级': (15.6, 8.3, 6.6),
+            '科技馆·区县级': (11.3, 6.5, 4.8),
         },
-        # 表2 单位采暖建筑面积供暖能耗 kgce/(m²·a)（市政集中供暖按热计量，不分省市档）
+        # 表2 单位采暖建筑面积供暖能耗 kgce/(m²·a)（不分省市档；"—"=标准未制定该值）
         'unit_area_heating': {
-            '图书馆': (12.5, 11.4, 9.3), '博物馆': (12.9, 11.8, 10.3), '剧院': (12.6, 11.6, 9.9),
-            '体育馆': (16.7, 13.2, 11.5), '科技馆': (12.1, 11.3, 9.3),
+            '图书馆·市政集中供暖（按热计量）': (12.5, 11.4, 9.3),
+            '图书馆·空调供暖': (10.2, 7.4, 5.3),
+            '图书馆·燃气（油）供暖': (12.0, 8.0, 6.2),
+            '博物馆·市政集中供暖（按热计量）': (12.9, 11.8, 10.3),
+            '博物馆·空调供暖': (10.4, 7.2, 4.9),
+            '博物馆·燃气（油）供暖': (9.9, 7.7, 5.1),
+            '剧院·市政集中供暖（按热计量）': (12.6, 11.6, 9.9),
+            '剧院·空调供暖': (10.9, 6.9, 4.3),
+            '体育馆·市政集中供暖（按热计量）': (16.7, 13.2, 11.5),
+            '体育馆·空调供暖': (14.1, 11.1, 9.5),
+            '体育馆·燃气（油）供暖': (36.4, 30.4, 24.3),
+            '科技馆·市政集中供暖（按热计量）': (12.1, 11.3, 9.3),
+            '科技馆·空调供暖': (9.1, 7.3, 4.8),
         },
-        # 表3 人均综合能耗 kgce/(p·a)（市档）
-        'per_capita_energy': {
-            '图书馆': (466.6, 388.8, 311.1), '博物馆': (522.0, 350.8, 225.7), '剧院': (552.5, 304.7, 204.8),
-            '体育馆': (641.3, 437.3, 332.6), '科技馆': (762.0, 635.0, 505.5),
+        'per_capita_energy': {  # 表3 kgce/(p·a)
+            '图书馆·省级': (566.8, 446.6, 380.9),
+            '图书馆·市级': (466.6, 388.8, 311.1),
+            '图书馆·区县级': (430.8, 306.4, 140.3),
+            '博物馆·省级': (724.7, 653.9, 512.3),
+            '博物馆·市级': (522.0, 350.8, 225.7),
+            '博物馆·区县级': (451.7, 317.2, 162.2),
+            '剧院·省级': (852.5, 734.6, 593.7),
+            '剧院·市级': (552.5, 304.7, 204.8),
+            '剧院·区县级': (385.7, 285.3, 181.5),
+            '体育馆·省级': (941.3, 826.7, 706.3),
+            '体育馆·市级': (641.3, 437.3, 332.6),
+            '体育馆·区县级': (562.5, 414.9, 299.9),
+            '科技馆·省级': (1236.8, 1136.2, 1026.5),
+            '科技馆·市级': (762.0, 635.0, 505.5),
+            '科技馆·区县级': (481.7, 330.2, 199.8),
         },
-        # 表4 常规用能系统单位建筑面积电耗 kWh/(m²·a)（市档）
-        'unit_area_elec': {
-            '图书馆': (57.1, 35.1, 24.3), '博物馆': (65.8, 46.7, 27.7), '剧院': (67.1, 48.2, 32.3),
-            '体育馆': (54.3, 34.5, 23.9), '科技馆': (76.3, 42.9, 26.3),
+        'unit_area_elec': {  # 表4 kWh/(m²·a)
+            '图书馆·省级': (63.7, 56.4, 40.3),
+            '图书馆·市级': (57.1, 35.1, 24.3),
+            '图书馆·区县级': (39.2, 23.5, 14.3),
+            '博物馆·省级': (81.8, 68.2, 54.5),
+            '博物馆·市级': (65.8, 46.7, 27.7),
+            '博物馆·区县级': (37.9, 27.9, 16.8),
+            '剧院·省级': (102.6, 90.7, 82.3),
+            '剧院·市级': (67.1, 48.2, 32.3),
+            '剧院·区县级': (40.1, 25.2, 15.5),
+            '体育馆·省级': (76.3, 58.6, 47.5),
+            '体育馆·市级': (54.3, 34.5, 23.9),
+            '体育馆·区县级': (48.3, 22.5, 14.3),
+            '科技馆·省级': (127.1, 96.9, 74.7),
+            '科技馆·市级': (76.3, 42.9, 26.3),
+            '科技馆·区县级': (53.3, 30.8, 19.3),
         },
         # 表5 数据中心 EUE（场馆专用：2.2/1.7/1.4，与党政机关 2.2/1.8/1.4 不同）
         'eue': (2.2, 1.7, 1.4),
-        # 用水：DB37/T 3780-2019 无取水定额 → 不对标（面积口径 benchmark 为空）
+        # 用水：DB37/T 3780-2019 无取水定额 → 场馆走面积口径，benchmark 留空（评价"—"）。
+        # 原 water_per_person=(18, 8, 0) 于 2026-09-20 删除：① 4452 表2 中查无此值（无源）；
+        # ② 场馆指标映射走 water_per_area，该键在正常路径上取不到，属死数据。
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
-        # 用水: DB37/T 4452-2021, 场馆类
-        'water_per_person': (18, 8, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
         'standard_name': 'DB37/T 3780-2019《场馆机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -178,53 +296,177 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_non_heating': (14.0, 9.5, 6.5),
         'unit_area_elec': (48.0, 36.0, 26.0),
         'per_capita_energy': (850, 620, 420),
-        # 用水: DB37/T 4452-2021, 政务服务
-        'water_per_person': (22, 9, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
+        # 用水：4452 表2 **无政务服务中心定额** → 取值 (0,0,0)，评价显示"暂无定额标准可对标"。
+        # 原 water_per_person=(22, 9, 0) 于 2026-09-20 删除：4452 查无此值（无源），且政务走面积口径。
         'standard_name': 'DB37/T 3781-2019《政务服务中心能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
 }
 
 # 子类型嵌套定额的「默认键」（sub_type 缺失或匹配不上时的兜底行）
-#   venue：注4 文化馆（宫）、美术馆等其他文化类场馆参照图书馆
-#   education：分档无法判定时沿用旧兜底行（中等教育·普通寄宿制 11.5/7.0/4.0），
-#              不改变历史行为；**报告必须写明实际档位**，能从项目数据定档时应传 sub_type。
-_SUBTYPE_DEFAULT = {'venue': '图书馆', 'education': '中等教育·普通寄宿制'}
+#   venue：注4 文化馆（宫）、美术馆等其他文化类场馆参照图书馆；省市档缺省取"市级"。
+#   education：分档无法判定时取"中等教育·普通寄宿制"（11.5/7.0/4.0，与历史默认行一致）。
+#   医疗：等级缺省"二级"、气候区缺省"A"；党政：等级缺省"市级以下"、气候区缺省"A"
+#         （均与历史默认行一致，仅用于防崩）。
+#   ★默认键不是取值依据：报告必须写明实际档位，能从项目数据定档时必须传 sub_type。
+_SUBTYPE_DEFAULT = {
+    ('medical', 'unit_area_non_heating'): '二级·A',
+    ('medical', 'unit_area_elec'): '二级·A',
+    ('medical', 'per_capita_energy'): '二级·A',
+    ('medical', 'unit_area_heating'): '市政集中供暖（按热计量）',
+    ('government', 'unit_area_non_heating'): '市级以下·A',
+    ('government', 'unit_area_elec'): '市级以下·A',
+    ('government', 'per_capita_energy'): '市级以下·A',
+    ('government', 'unit_area_heating'): '市政集中供暖（按热计量）',
+    ('education', 'unit_area_non_heating'): '中等教育·普通寄宿制',
+    ('education', 'unit_area_elec'): '中等教育·普通寄宿制',
+    ('education', 'per_capita_energy'): '中等教育·普通寄宿制',
+    ('education', 'unit_area_heating'): '中等教育·普通寄宿制·市政集中供暖（按热计量）',
+    ('education', 'water_per_person'): '中等教育·普通寄宿制',
+    ('venue', 'unit_area_non_heating'): '图书馆·市级',
+    ('venue', 'unit_area_elec'): '图书馆·市级',
+    ('venue', 'per_capita_energy'): '图书馆·市级',
+    ('venue', 'unit_area_heating'): '图书馆·市政集中供暖（按热计量）',
+}
 
 
-def _lookup_sub_quota(vals: dict, sub_type: Optional[str], default_key: str = ""):
-    """在「子类型 → (约束值, 基准值, 引导值)」嵌套定额中取值（容错匹配）。
+def _segments(key: str) -> List[str]:
+    """'高等教育·本科及以上' → ['高等教育', '本科及以上']。"""
+    return [s for s in str(key or '').split('·') if s]
 
-    匹配顺序：
-      1. 精确命中 sub_type
-      2. '·' 之后的二级分档命中（sub_type='本科及以上' → '高等教育·本科及以上'）
-      3. '·' 之前的一级类型命中（sub_type='高等教育' → 其首个分档）
-      4. default_key
-      5. (0, 0, 0)（并打 warning）
+
+def _match_key(vals: dict, query: Optional[str]) -> Optional[str]:
+    """在「键为 'A·B·C' 形式」的定额表里定位一行（容错）。
+
+    规则（依次）：
+      1. 归一后精确命中；
+      2. 双向可容纳 —— query 的段全部落在键里，或键的段全部落在 query 里；
+         多候选时取「交集段数最多、段数差最小」者。
+
+    这样 '本科及以上' 能命中 '高等教育·本科及以上'；
+    '图书馆·市级' 也能命中只有 '图书馆' 的表2 行。匹配不上返回 None。
+    """
+    q = _segments(query)
+    if not q:
+        return None
+    exact = '·'.join(q)
+    if exact in vals:
+        return exact
+    best, best_score = None, None
+    for key in vals:
+        ks = _segments(key)
+        if not ks:
+            continue
+        inter = len(set(q) & set(ks))
+        if inter == 0 or (inter != len(q) and inter != len(ks)):
+            continue
+        score = (inter, -abs(len(q) - len(ks)))
+        if best_score is None or score > best_score:
+            best, best_score = key, score
+    return best
+
+
+def _lookup_sub_quota(vals, sub_type: Optional[str] = None, default_key: str = ""):
+    """在「键 → (约束值, 基准值, 引导值)」嵌套定额中取值。
+
+    匹配顺序：sub_type → default_key → (0,0,0)（并打 warning）。
     """
     if not isinstance(vals, dict):
         return vals
-    if sub_type:
-        if sub_type in vals:
-            return vals[sub_type]
-        for key, val in vals.items():
-            if key.split('·')[-1] == sub_type:
-                return val
-        for key, val in vals.items():
-            if key.split('·')[0] == sub_type:
-                return val
-    if default_key and default_key in vals:
+    hit = _match_key(vals, sub_type)
+    if hit is not None:
+        return vals[hit]
+    hit = _match_key(vals, default_key)
+    if hit is not None:
         if sub_type:
             logger.warning(
                 "定额子类型未匹配：sub_type=%s，回退默认行 %s（可选：%s）",
-                sub_type, default_key, "、".join(vals),
+                sub_type, hit, "、".join(vals),
             )
-        return vals[default_key]
+        return vals[hit]
     logger.warning(
         "定额子类型无法定位：sub_type=%s，default=%s，可选键=%s，返回 (0,0,0)",
         sub_type, default_key, "、".join(vals),
     )
     return (0, 0, 0)
+
+
+def build_sub_type(metric: str, children_label: str = '', climate_zone: str = '',
+                   heat_type: str = '', sub_type: str = '') -> str:
+    """按指标拼出 resolve_benchmark 需要的 sub_type 查询串（'·' 分隔）。
+
+    例：
+      metric='unit_area_non_heating', children_label='本科及以上'        → '本科及以上'
+      metric='unit_area_elec', children_label='二级', climate_zone='B'   → '二级·B'
+      metric='unit_area_heating', children_label='二级', heat_type='空调供暖'
+                                                                        → '二级·空调供暖'
+
+    场馆类不适用本函数（它的第二维是省市档，且档位来自 DB area_code / 人工确认），
+    调用方请直接传 sub_type='博物馆·市级' 这样的现成串。
+    本函数在 sub_type 已给时原样返回，只做"没有现成串时按指标拼"的兜底。
+    """
+    if sub_type:
+        return sub_type
+    parts: List[str] = []
+    if children_label:
+        parts.append(children_label)
+    if metric == 'unit_area_heating':
+        if heat_type:
+            parts.append(heat_type)
+    elif climate_zone:
+        parts.append(climate_zone)
+    return '·'.join(parts)
+
+
+# 供暖类型缺省：标准注1——按面积收费的市政集中供暖、燃煤自供暖，均按"市政集中供暖（按热计量）"计算
+DEFAULT_HEATING_NAME = '市政集中供暖（按热计量）'
+
+
+def _venue_area_grade(text: str) -> str:
+    """从单位名猜场馆的省市档（省级/市级/区县级）。猜不出按"市级"。"""
+    t = str(text or '')
+    if '省' in t:
+        return '省级'
+    if any(k in t for k in ('区', '县', '镇', '街道')):
+        return '区县级'
+    return '市级'
+
+
+def project_sub_type(base, institution_type: str, metric: str,
+                     heating_name: str = DEFAULT_HEATING_NAME) -> str:
+    """按项目 base（平台字典码 + 地址 + 行政区划代码）拼出某指标的 sub_type 查询串。
+
+    - 医疗/党政：表1/3/4 → '等级·气候区'；表2 → '等级·供暖类型'
+    - 教育：表1/3/4/用水 → '分档'；表2 → '分档·供暖类型'
+    - 场馆：表1/3/4 → '场馆类型·省市档'（省市档由单位名推断，缺省"市级"）；表2 → '场馆类型·供暖类型'
+    - 政务服务中心：'市级及以上'/'市级以下'
+
+    拿不到平台字典码（unit_func/children_func 为空）时返回 ''，由默认行兜底并告警。
+
+    base 可以是 ProjectBase 对象，也可以是含同名字段的 dict（chapter5_agent 传的是 dict）。
+    """
+    from tools.energy_audit import climate_zone as _cz
+    from tools.energy_audit import dept_dict as _dd
+
+    def bv(name: str) -> str:
+        if isinstance(base, dict):
+            return str(base.get(name) or '')
+        return str(getattr(base, name, '') or '')
+
+    unit_func = bv('unit_func')
+    label = _dd.children_label(unit_func, bv('children_func'))
+    if not label:
+        return ''
+    if metric == 'unit_area_heating':
+        return f"{label}·{heating_name}" if heating_name else label
+    if institution_type in ('medical', 'government'):
+        zone, _ = _cz.resolve_climate_zone(
+            bv('city'), bv('district'), bv('address'), bv('district_id') or None)
+        return f"{label}·{zone}" if zone else label
+    if institution_type == 'venue':
+        grade = _venue_area_grade(bv('unit_name') or bv('name'))
+        return f"{label}·{grade}"
+    return label
 
 
 # ============================================================
@@ -267,40 +509,120 @@ def lookup_coefficient_from_db(energy_code: str) -> Optional[float]:
     return None
 
 
-def lookup_benchmark_from_db(field_type: str, limit_type: str = 'A',
-                              climate_type: str = 'A') -> Optional[dict]:
-    """Layer 1: 从 ts_limit_config 查定额
-       参数： field_type: 领域类型
-             limit_type: 限额类型
-             climate_type: 气候区域类型
+def lookup_benchmark_from_db(field_type: str = '10', limit_type: str = 'A',
+                             group_func: Optional[str] = None,
+                             children_func: Optional[str] = None,
+                             climate_type: Optional[str] = None,
+                             heat_type: Optional[str] = None,
+                             area_code: Optional[str] = None) -> Optional[dict]:
+    """从 ts_limit_config 读一条定额（**仅供交叉校验，不参与取值**）。
 
+    维度语义（2026-09-20 由库内数据反推确认，与平台字典一致）：
+      field_type    领域类型，公共机构恒 '10'
+      group_func    一级单位类型码 A政务/B场馆/C医疗/D党政/E教育（= customer_func）
+      children_func 二级类型码（= customer_func 那颗字典的键）
+      limit_type    指标/表号码 A表1非供暖 B表2供暖 C表3人均 D表4电耗 E表5EUE F用水
+      climate_type  气候区 A/B（党政机关、医疗机构用；**教育类该列为空**）
+      heat_type     供暖类型 A市政/B空调/C燃气油（仅 limit_type='B'）
+      area_code     场馆省市档 A省级/B市级/C区县级
+
+    传 None 的条件不参与过滤。climate_type 传 '' 表示"只匹配空值"（教育类口径）。
+    同一维度可能有多版本行，取 ORDER BY id DESC LIMIT 1。
     """
+    sql = ["SELECT value1, value2, value3, standard_name FROM ts_limit_config",
+           "WHERE (deleted IS NULL OR deleted = 0)",
+           "AND field_type = %s",
+           "AND limit_type = %s"]
+    params: List = [field_type, limit_type]
+    if group_func is not None:
+        sql.append("AND COALESCE(group_func, '') = %s")
+        params.append(group_func)
+    if children_func is not None:
+        sql.append("AND COALESCE(children_func, '') = %s")
+        params.append(children_func)
+    if climate_type is not None:
+        if climate_type == '':
+            sql.append("AND COALESCE(climate_type, '') IN ('', 'null')")
+        else:
+            sql.append("AND climate_type = %s")
+            params.append(climate_type)
+    if heat_type is not None:
+        sql.append("AND COALESCE(heat_type, '') = %s")
+        params.append(heat_type)
+    if area_code is not None:
+        sql.append("AND COALESCE(area_code, '') = %s")
+        params.append(area_code)
+    sql.append("ORDER BY id DESC LIMIT 1")
+
     try:
         import psycopg2
         conn = psycopg2.connect(**_db_config())
         cur = conn.cursor()
-        cur.execute("""
-            SELECT value1, value2, value3, standard_name
-            FROM ts_limit_config
-            WHERE (deleted IS NULL OR deleted = 0)
-              AND field_type = %s
-              AND limit_type = %s
-              AND climate_type = %s
-            ORDER BY id DESC LIMIT 1
-        """, (field_type, limit_type, climate_type))
+        cur.execute(" ".join(sql), tuple(params))
         row = cur.fetchone()
         conn.close()
         if row and row[0]:
-            result = {
+            return {
                 '约束值': float(row[0]), '基准值': float(row[1]), '引导值': float(row[2]),
                 '标准': row[3] or '',
                 '来源': 'DB',
             }
-            logger.info(f"Layer1 DB benchmark: {result}")
-            return result
     except Exception as e:
-        logger.warning(f"Layer1 DB benchmark failed: {e}")
+        logger.warning(f"DB benchmark lookup failed: {e}")
     return None
+
+
+def audit_db_benchmark(institution_type: str, metric: str, sub_type: Optional[str],
+                       builtin: dict) -> Optional[str]:
+    """把内置默认值与 DB ts_limit_config 交叉比对，不一致返回告警文本；一致/无法比对返回 None。
+
+    ★只读、只告警：**不参与取值**（取值以内置默认 = standards-values.md 为准）。
+    sub_type 里的中文标签会被翻回二级码，气候区/供暖类型/场馆档位分别识别。
+    """
+    from tools.energy_audit import dept_dict as dd
+
+    unit_func = dd.INSTITUTION_TYPE_TO_UNIT_FUNC.get(institution_type, '')
+    limit_type = dd.limit_type_of(metric)
+    if not unit_func or not limit_type:
+        return None
+
+    children_code = climate = heat_code = area_code = ''
+    for seg in _segments(sub_type):
+        if not children_code:
+            code = dd.label_to_code(unit_func, seg)
+            if code:
+                children_code = code
+                continue
+        if not heat_code:
+            ht = dd.heat_type_of(seg)
+            if ht:
+                heat_code = ht
+                continue
+        if not area_code:
+            ag = dd.AREA_GRADE.get(seg)
+            if ag:
+                area_code = ag
+                continue
+        if not climate and seg.upper() in ('A', 'B') and institution_type in ('medical', 'government'):
+            climate = seg.upper()
+
+    # 教育类 DB 的 climate_type 存空串 → 显式按空值过滤
+    climate_arg = climate if climate else ('' if institution_type == 'education' else None)
+    db = lookup_benchmark_from_db(limit_type=limit_type, group_func=unit_func,
+                                  children_func=children_code or None,
+                                  climate_type=climate_arg,
+                                  heat_type=heat_code or None,
+                                  area_code=area_code or None)
+    if not db:
+        return None
+    diff = [k for k in ('约束值', '基准值', '引导值')
+            if abs(float(db.get(k) or 0) - float(builtin.get(k) or 0)) > 1e-6]
+    if not diff:
+        return None
+    return (f"DB 与内置默认不一致（{institution_type}/{metric}/sub_type={sub_type or '—'}）："
+            f"DB={db['约束值']}/{db['基准值']}/{db['引导值']}、内置={builtin['约束值']}/"
+            f"{builtin['基准值']}/{builtin['引导值']}；"
+            f"报告取值以内置默认（standards-values.md）为准，请复核平台数据")
 
 
 def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) -> float:
@@ -344,56 +666,65 @@ def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) ->
 
 
 def resolve_benchmark(institution_type: str = 'medical',
-                       metric: str = 'unit_area_non_heating',
-                       user_values: Optional[Tuple[float, float, float]] = None,
-                       sub_type: Optional[str] = None) -> dict:
-    """三级兜底获取定额对标值
+                      metric: str = 'unit_area_non_heating',
+                      user_values: Optional[Tuple[float, float, float]] = None,
+                      sub_type: Optional[str] = None,
+                      db_audit: bool = True) -> dict:
+    """定额对标取值 —— **取值链：用户显式提供 > 内置默认**。
 
-    Layer 1: DB (ts_limit_config)
-    Layer 2: 用户提供
-    Layer 3: 内置默认 (_DEFAULT_BENCHMARKS)
+    ★2026-09-20 口径变更（用户确认"以 Layer 3 内置默认为准"）：
+      - 取值只来自两处：用户显式给的三档值、或内置默认 _DEFAULT_BENCHMARKS
+        （= energy-audit-core/references/standards-values.md 的代码镜像）；
+      - DB ts_limit_config **退出取值链**，改由 audit_db_benchmark() 旁路交叉校验，
+        不一致只打 warning（提醒平台修数据），不影响报告取值；
+      - 好处：已交付项目重跑时定额值不会因"接通 DB"而变，回归可断言。
 
-    institution_type: 'medical'|'government'|'education'
-    metric: 'unit_area_non_heating'|'unit_area_elec'
-    返回 {约束值, 基准值, 引导值, 标准, 来源}
+    Args:
+        institution_type: medical | government | education | venue | service
+        metric: unit_area_non_heating | unit_area_heating | per_capita_energy
+                | unit_area_elec | eue | water_per_person | water_per_bed_day
+        user_values: 用户显式提供的 (约束值, 基准值, 引导值)；给了就用它
+        sub_type: 二级维度查询串，'·' 分隔且**可只给一部分**（子集匹配），例如
+                  '本科及以上' / '二级·B' / '博物馆·市级' / '二级·空调供暖'
+        db_audit: 是否做 DB 一致性交叉校验（默认开；DB 不可用只记 debug，不影响取值）
+
+    Returns:
+        {'约束值', '基准值', '引导值', '标准', '来源'}；给了 sub_type 时额外带 '分档'。
     """
-    # Layer 1
-    field_types = {'medical': '20', 'government': '10', 'education': '30'}
-    ft = field_types.get(institution_type, '10')
-    db_val = lookup_benchmark_from_db(ft, 'A', 'A')
-    if db_val:
-        std = db_val.get('标准', '')
-        expected_kw = {'government': '党政机关', 'medical': '医疗机构', 'education': '教育机构'}
-        # 校验 DB 返回的标准名与机构类型是否匹配；
-        # venue/service 无 DB 匹配规则 → 跳过 DB 层（防止空字符串恒匹配误用别类记录）
-        expected = expected_kw.get(institution_type)
-        if expected and expected in std:
-            return db_val
-        # 不匹配 → 忽略 DB，走 Layer 2/3
+    defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
 
-    # Layer 2
+    # Layer 1（取值）：用户显式提供
     if user_values and len(user_values) == 3:
-        return {
+        result = {
             '约束值': user_values[0], '基准值': user_values[1], '引导值': user_values[2],
             '标准': '用户提供',
             '来源': 'User',
         }
+    else:
+        # Layer 2（取值）：内置默认（唯一权威）
+        vals = defaults.get(metric, (0, 0, 0))
+        if isinstance(vals, dict):
+            vals = _lookup_sub_quota(
+                vals, sub_type, _SUBTYPE_DEFAULT.get((institution_type, metric), ''))
+        # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
+        key = 'water_standard' if metric.startswith('water') else 'standard_name'
+        result = {
+            '约束值': vals[0], '基准值': vals[1], '引导值': vals[2],
+            '标准': defaults.get(key, ''),
+            '来源': 'Default',
+        }
+    if sub_type:
+        result['分档'] = sub_type
 
-    # Layer 3
-    defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
-    vals = defaults.get(metric, (0, 0, 0))
-    if isinstance(vals, dict):
-        # 子类型嵌套（venue 场馆类型 / education 教育机构分档）：见 _lookup_sub_quota
-        vals = _lookup_sub_quota(vals, sub_type, _SUBTYPE_DEFAULT.get(institution_type, ''))
-    # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
-    std_name = defaults.get('standard_name', '')
-    if metric.startswith('water'):
-        std_name = defaults.get('water_standard', std_name)
-    return {
-        '约束值': vals[0], '基准值': vals[1], '引导值': vals[2],
-        '标准': std_name,
-        '来源': 'Default',
-    }
+    # Layer 3（仅校验）：DB 交叉核对，不参与取值（2026-09-20 口径变更）
+    if db_audit:
+        try:
+            warn = audit_db_benchmark(institution_type, metric, sub_type, result)
+            if warn:
+                logger.warning(warn)
+        except Exception as e:  # DB 不可用/字段异常均不得影响取值
+            logger.debug("DB 定额一致性校验跳过：%s", e)
+    return result
 
 
 # ============================================================
@@ -564,15 +895,15 @@ def calc_unit_area_non_heating_energy(
 
 def compare_with_benchmark(kgce_per_m2: float, institution_type: str = 'medical',
                           metric: str = 'unit_area_non_heating',
-                          user_benchmark: Optional[Tuple[float, float, float]] = None) -> dict:
+                          user_benchmark: Optional[Tuple[float, float, float]] = None,
+                          sub_type: Optional[str] = None) -> dict:
     """
-    定额对标（三级兜底）
-    
-    Layer 1: DB ts_limit_config
-    Layer 2: 用户提供 (user_benchmark)
-    Layer 3: 内置默认 _DEFAULT_BENCHMARKS
+    定额对标（取值链：用户值 > 内置默认；DB 仅交叉校验）
+
+    sub_type: 二级维度查询串（分档/等级·气候区/场馆类型·省市档/供暖类型），
+              见 resolve_benchmark。不传则用该 (机构, 指标) 的默认行。
     """
-    bm = resolve_benchmark(institution_type, metric, user_benchmark)
+    bm = resolve_benchmark(institution_type, metric, user_benchmark, sub_type)
     if kgce_per_m2 <= bm['引导值']:
         level = '低于引导值'
     elif kgce_per_m2 <= bm['基准值']:
@@ -748,6 +1079,7 @@ def calc_water_indicator(
     user_benchmark: Optional[Tuple[float, float, float]] = None,
     bed_count: Optional[int] = None,  # 医院使用
     building_area: Optional[float] = None,  # 政务服务中心/场馆使用（面积口径）
+    sub_type: Optional[str] = None,  # 二级维度（教育类分档等），透传给 resolve_benchmark
 ) -> dict:
     """
     取水指标（按机构类型分派三种口径，三级兜底）
@@ -801,7 +1133,7 @@ def calc_water_indicator(
         # 采集侧无住院部用水拆分字段，暂用全院总水量 water_m3 近似。
         water_total = data.water_m3
         L_per_bed_day = round(water_total * 1000 / (bed_count * 365), 2)  # m³→L, year→day
-        benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark)
+        benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark, sub_type)
         # 水三元组槽序与能耗一致：引导值(无)=0, 约束值=通用值, 基准值=先进值（越小越好）
         if L_per_bed_day <= benchmark['基准值']:
             evaluation = '低于先进值'
@@ -841,7 +1173,7 @@ def calc_water_indicator(
 
     per_person = round(data.water_m3 / data.people_count, 2)
 
-    benchmark = resolve_benchmark(institution_type, 'water_per_person', user_benchmark)
+    benchmark = resolve_benchmark(institution_type, 'water_per_person', user_benchmark, sub_type)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         evaluation = '暂无定额标准可对标'
     elif per_person <= benchmark['基准值']:
@@ -1112,22 +1444,31 @@ def compute_project_indicators(project) -> dict:
     for yd in yd_objects:
         year_item = {'year': yd.year}
 
+        # 二级维度查询串（2026-09-20）：分档/等级·气候区/场馆类型·省市档 等，
+        # 逐指标计算——表2 用「·供暖类型」，其余用「·气候区/省市档」。
+        st_non_heating = project_sub_type(base, institution_type, 'unit_area_non_heating')
+        st_elec = project_sub_type(base, institution_type, 'unit_area_elec')
+        st_capita = project_sub_type(base, institution_type, 'per_capita_energy')
+        st_water = project_sub_type(base, institution_type, 'water_per_person')
+        st_heating = project_sub_type(base, institution_type, 'unit_area_heating')
+
         # 单位面积非供暖能耗（含对标）
         year_item['unit_area_non_heating'] = calc_unit_area_non_heating_energy(yd)
         year_item['unit_area_non_heating']['benchmark'] = compare_with_benchmark(
             year_item['unit_area_non_heating']['kgce_per_m2'],
             institution_type=institution_type,
             metric='unit_area_non_heating',
+            sub_type=st_non_heating,
         )
 
         # 常规用能系统单位建筑面积电耗（含对标）
         year_item['unit_area_electricity'] = calc_unit_area_electricity(
-            yd, institution_type=institution_type
+            yd, institution_type=institution_type, sub_type=st_elec,
         )
 
         # 人均综合能耗（含对标）
         year_item['per_capita_energy'] = calc_per_capita_energy(
-            yd, institution_type=institution_type
+            yd, institution_type=institution_type, sub_type=st_capita,
         )
 
         # 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆=单位建筑面积年取水量，含对标）
@@ -1137,12 +1478,14 @@ def compute_project_indicators(project) -> dict:
             institution_type=institution_type,
             bed_count=base.beds_count if institution_type == 'medical' else None,
             building_area=base.building_area,  # venue/service 面积口径必传（2026-09-05）
+            sub_type=st_water,
         )
 
         # 单位采暖建筑面积供暖能耗（表2 定额；项目有供暖能耗时计算，否则置 None）
         if yd.heating_energy_tce > 0:
             year_item['unit_area_heating'] = calc_unit_area_heating_energy(
                 yd, heating_area=heating_area, institution_type=institution_type,
+                sub_type=st_heating,
             )
         else:
             year_item['unit_area_heating'] = None

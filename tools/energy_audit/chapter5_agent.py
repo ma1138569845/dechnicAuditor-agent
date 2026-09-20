@@ -26,6 +26,7 @@ from tools.energy_audit.indicators import (
     calc_water_indicator,
     calc_baseline,
     institution_category_to_type,
+    project_sub_type,
     COEFFICIENTS,
 )
 
@@ -433,6 +434,15 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     bed_count = config.get('beds_count', 0) or 0
     yd_list = _convert_to_yearly_energy_data(en, config)
 
+    # 二级维度查询串（2026-09-20）：分档/等级·气候区/场馆类型·省市档；表2 用「·供暖类型」。
+    # config 由 caliber_agent 注入 unit_func/children_func/地址/行政区划代码；缺值时返回 ''
+    # 并退回该 (机构, 指标) 的默认行（会打 warning）。
+    st_non_heating = project_sub_type(config, institution_type, 'unit_area_non_heating')
+    st_elec = project_sub_type(config, institution_type, 'unit_area_elec')
+    st_capita = project_sub_type(config, institution_type, 'per_capita_energy')
+    st_water = project_sub_type(config, institution_type, 'water_per_person')
+    st_heating = project_sub_type(config, institution_type, 'unit_area_heating')
+
     # 注入供暖电耗明细（energy_data dict 无法承载"总电的子集"，走 data 顶层 map 通道；
     # 缺失该 map 时供暖电耗=0 → 非供暖能耗未剔除供暖电耗，与 indicators.json 口径不一致）
     hk_map = data.get('heating_energy_kwh_map') or {}
@@ -479,7 +489,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             r = calc_unit_area_non_heating_energy(yd)
             if 'benchmark' not in r:
                 from tools.energy_audit.indicators import compare_with_benchmark
-                r['benchmark'] = compare_with_benchmark(r['kgce_per_m2'], institution_type=institution_type)
+                r['benchmark'] = compare_with_benchmark(
+                    r['kgce_per_m2'], institution_type=institution_type,
+                    sub_type=st_non_heating)
             row_nh.append(f" {r['non_heating_kgce']/1000:,.2f} |")
             row_nh_m2.append(f" {r['kgce_per_m2']:,.2f} |")
             row_nh_ev.append(f" {r['benchmark']['评价结果']} |")
@@ -502,7 +514,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             # 转置布局（指标项为行、年份为列，与 5.3.1 及 chapter5-53-templates 统一，2026-09-06）
             cols_elec = {"用电量(kWh)": [], "单位面积电耗(kWh/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
             for yd in yd_list:
-                r = calc_unit_area_electricity(yd, institution_type=institution_type)
+                r = calc_unit_area_electricity(yd, institution_type=institution_type,
+                                               sub_type=st_elec)
                 cols_elec["用电量(kWh)"].append(f"{r['total_electricity_kwh']:,.2f}")
                 cols_elec["单位面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:,.2f}")
                 cols_elec["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
@@ -524,7 +537,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             # 转置布局（指标项为行、年份为列，2026-09-06）
             cols_pc = {"综合能耗(kgce)": [], "用能人数": [], "人均综合能耗(kgce/人)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
             for yd in yd_list:
-                r = calc_per_capita_energy(yd, institution_type=institution_type)
+                r = calc_per_capita_energy(yd, institution_type=institution_type,
+                                           sub_type=st_capita)
                 cols_pc["综合能耗(kgce)"].append(f"{r['total_kgce']:,.2f}")
                 cols_pc["用能人数"].append(f"{people}")
                 cols_pc["人均综合能耗(kgce/人)"].append(f"{r['kgce_per_person']:,.2f}")
@@ -548,7 +562,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
                 cols_bed = {"取水量(m³)": [], "床位数": [], "单位开放床日用水量(L/床·d)": [], "通用值": [], "先进值": [], "评价结果": []}
                 for yd in yd_list:
-                    r = calc_water_indicator(yd, institution_type='medical', bed_count=bed_count)
+                    r = calc_water_indicator(yd, institution_type='medical',
+                                             bed_count=bed_count, sub_type=st_water)
                     cols_bed["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
                     cols_bed["床位数"].append(f"{bed_count}")
                     cols_bed["单位开放床日用水量(L/床·d)"].append(f"{r['L_per_bed_day']:,.2f}")
@@ -571,7 +586,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             # 转置布局（指标项为行、年份为列，2026-09-06）
             cols_va = {"取水量(m³)": [], "建筑面积(m²)": [], "单位建筑面积年取水量(L/(m²·a))": [], "评价结果": []}
             for yd in yd_list:
-                r = calc_water_indicator(yd, institution_type=institution_type, building_area=area)
+                r = calc_water_indicator(yd, institution_type=institution_type,
+                                         building_area=area, sub_type=st_water)
                 cols_va["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
                 cols_va["建筑面积(m²)"].append(f"{area:,.0f}")
                 cols_va["单位建筑面积年取水量(L/(m²·a))"].append(f"{r['L_per_area']:,.2f}")
@@ -593,7 +609,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
                 cols_w = {"取水量(m³)": [], "用能人数": [], f"{title}(m³/(人·a))": [], "通用值": [], "先进值": [], "评价结果": []}
                 for yd in yd_list:
-                    r = calc_water_indicator(yd, institution_type=institution_type)
+                    r = calc_water_indicator(yd, institution_type=institution_type,
+                                             sub_type=st_water)
                     cols_w["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
                     cols_w["用能人数"].append(f"{people}")
                     cols_w[f"{title}(m³/(人·a))"].append(f"{r['m3_per_person']:,.2f}")
@@ -626,7 +643,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             cols_h = {"供暖能耗(tce)": [], "采暖建筑面积(m²)": [], "单位面积供暖能耗(kgce/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_unit_area_heating_energy(yd, heating_area=heating_area,
-                                                  institution_type=institution_type)
+                                                  institution_type=institution_type,
+                                                  sub_type=st_heating)
                 ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
                 cols_h["供暖能耗(tce)"].append(f"{r['heating_energy_kgce']/1000:,.2f}")
                 cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:,.0f}")

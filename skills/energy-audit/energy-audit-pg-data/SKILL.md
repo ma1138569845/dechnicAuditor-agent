@@ -116,6 +116,53 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 `energy_yearly_to_yearly_energy_data` 传入 → `(总电 − heating_energy_kwh) × 0.31`。
 验证：2025 非供暖能耗 = (1040085−78210)×0.31/24300 = 12.27 kgce/(m²·a) ✓。
 
+## 单位类型字典与 ts_limit_config 维度（2026-09-20 建）
+
+平台把"机构类型"拆成**一级 + 二级**两列存在 `ts_customer_info`，取值是**字典码**不是中文
+（历史代码没读这两列，机构类型靠单位名分类器猜，教育类因此无法定档——见 lessons-learned S8）。
+
+| 列 | 含义 | 字典 |
+|---|---|---|
+| `customer_func` | 一级单位类型 | `client_dept_type`：A 政务服务中心 / B 场馆机构 / C 医疗机构 / D 党政机关 / **E 教育机构** |
+| `children_func` | 二级类型 | `client_dept_type_<一级码>`（见下表） |
+| `climate_type` | 气候区 A/B | ⚠️ **实测大面积误填为 A**（济南、聊城在内陆却记 A）→ **不作为取值依据**，气候区一律走内置表 `tools/energy_audit/climate_zone.py`（DB37/5026-2022 表3.0.1），该列只做交叉校验告警 |
+| `district_id` | 行政区划代码 | 如 370611；**气候区判定的首选依据**（地址常不含城市名、`ProjectBase.city` 常为空） |
+| `field_type` | 所属领域 | 全库 `10`（公共机构）；`20` 公共建筑、`30` 工业企业 |
+
+二级字典取值：
+
+| 一级 | 字典 | 取值 |
+|---|---|---|
+| A 政务 | `client_dept_type_A` | A 市级及以上 / B 市级以下 |
+| B 场馆 | `client_dept_type_B` | A 图书馆 / B 博物馆 / C 剧院 / D 体育馆 / E 科技馆 |
+| C 医疗 | `client_dept_type_C` | A 一级 / B 二级 / C 三级 |
+| D 党政 | `client_dept_type_D` | A 省级 / B 市级 / C 市级以下 |
+| E 教育 | `client_dept_type_E` | A 本科及以上 / B 专科 / C 普通非寄宿制 / D 普通寄宿制 / E 职业学校 / F 初等教育 / G 学前教育 / H 其他教育 |
+
+> 代码侧镜像在 `tools/energy_audit/dept_dict.py`（单点）。平台改字典后跑
+> `python -m tools.energy_audit.dept_dict --check-db` 复核（0 = 一致）。
+> 采集侧 `pg_collector` 已把 `customer_func` / `children_func` 写入
+> `ProjectBase.unit_func` / `children_func`，供定额对标定档（见 ea-calculation SKILL Capability 4）。
+
+### `ts_limit_config`（限额库）维度语义 —— 由库内数据反推确认
+
+| 列 | 语义 |
+|---|---|
+| `field_type` | 领域（全库 `10`） |
+| `group_func` | **一级单位类型码**（= `customer_func`） |
+| `children_func` | **二级类型码**（= `customer_func` 对应字典的键） |
+| `limit_type` | **指标 / 表号码**：A 表1非供暖 / B 表2供暖 / C 表3人均 / D 表4电耗 / E 表5 EUE / F 用水 / G 室内空气质量 / H 建筑照明 |
+| `climate_type` | 气候区 A/B（党政机关、医疗机构用；**教育类为空串**） |
+| `heat_type` | 供暖类型 A 市政 / B 空调 / C 燃气油（仅 `limit_type='B'`） |
+| `area_code` | **场馆的省市档** A 省级 / B 市级 / C 区县级（注意不在 `climate_type`） |
+| `value1/2/3` | 约束值 / 基准值 / 引导值（**用水为 先进值 / 通用值 / 空**） |
+| `standard_name` | 引用标准名（注意历史笔误：教育用水写成 `DB37/T 4522-2021`，正确为 `DB37/T 4452-2021`） |
+
+> ⚠️ **该库不参与报告取值**（2026-09-20 用户确认"以内置默认为准"）。
+> 取值=`standards-values.md` 的代码镜像；DB 仅由 `indicators.audit_db_benchmark()` 交叉校验并告警。
+> 已知数据质量问题（待平台修）：场馆表1 博物馆市档引导值 `80.00`（应 8.0）、场馆表2 图书馆燃气档
+> 基准值 `80.00`（应 8.0）、教育用水仅 1 行且标准号/数值均需重录。
+
 ## 能源代码映射（勿信 energy_name 列！）
 
 | 代码 | 真实能源 | 判别方法 |

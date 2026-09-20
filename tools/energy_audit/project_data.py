@@ -89,6 +89,8 @@ class ProjectBase:
     province: str = "山东"             # 所在省份（用于规章检索与同类报告匹配）
     city: str = ""                     # 地市，如 烟台
     district: str = ""                 # 区县，如 芝罘 / 经济技术开发区
+    district_id: str = ""              # 行政区划代码（ts_customer_info.district_id），
+                                       # 如 370611；气候区判定首选依据（地址常不含城市名、city 常为空）
 
 
 @dataclass

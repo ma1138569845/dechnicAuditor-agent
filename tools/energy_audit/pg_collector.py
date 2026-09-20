@@ -394,6 +394,9 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         if cust:
             customer = dict(cust[0])
             district_id = customer.get('district_id')
+            # 行政区划代码保留到 customer 上（ProjectBase.district_id）：
+            # 气候区判定首选依据——地址常不含城市名、city 常为空（2026-09-20）
+            customer['district_id'] = str(district_id or '').strip()
             division = {}
             getter = getattr(pg, 'get_admin_division_by_district_id', None)
             if callable(getter):
@@ -978,6 +981,10 @@ def build_and_save_project(
                                 ('PG', pg_customer),
                                 ('Excel', excel_data),
                                 ('default', '')),
+            district_id=sr.resolve('district_id',
+                                   ('PG', pg_customer),
+                                   ('Excel', excel_data),
+                                   ('default', '')),
             audit_start=sr.resolve('audit_start',
                                    ('PG', pg_project),
                                    ('Excel', excel_data),

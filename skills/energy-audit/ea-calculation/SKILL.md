@@ -156,32 +156,54 @@ Layer 3: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy
 
 ---
 
-## Capability 4: 定额对标（三级兜底 + DB 查询规则）
+## Capability 4: 定额对标（取值链 = 用户值 > 内置默认；DB 仅交叉校验）
+
+> ★2026-09-20 口径变更（用户确认"以 Layer 3 内置默认为准"）：**DB `ts_limit_config` 退出取值链**。
+> 取值只来自两处，DB 改由 `audit_db_benchmark()` 旁路比对、不一致只打 warning（提示平台修数据），
+> **不影响报告取值**。好处：已交付项目重跑时定额值不会因"接通 DB"而变，可做逐值回归断言。
 
 ```python
-resolve_benchmark(institution_type, metric, user_values, children_func, climate_type)
-# → {约束值, 基准值, 引导值, 标准, 来源}
+resolve_benchmark(institution_type, metric, user_values=None, sub_type=None, db_audit=True)
+# → {约束值, 基准值, 引导值, 标准, 来源}；给了 sub_type 时额外带 '分档'
+# 来源 ∈ {User, Default}（不再出现 'DB'）
 ```
 
-### 机构类型 → DB field_types 码（代码实际，`indicators.py::_STANDARD_SCOPE` 附近）
+### sub_type：二级维度查询串（`'·'` 分隔，**可只给一部分**，子集匹配）
 
-| 机构类型 | field_types 值 |
-|----------|---------------|
-| 机关 government | 10 |
-| 医疗 medical | 20 |
-| 教育 education | 30 |
-| 政务/场馆 | 无专用码，走 Layer 2/3 兜底（政务用机关定额、场馆用其默认定额） |
+| 机构 | 表1/表3/表4（+用水） | 表2（供暖能耗） |
+|---|---|---|
+| 医疗 medical | `'二级·A'`（等级 · 气候区） | `'二级·空调供暖'` |
+| 党政 government | `'市级以下·A'`（等级 · 气候区） | `'市级以下·市政集中供暖（按热计量）'` |
+| 教育 education | `'本科及以上'`（8 分档，不分气候区） | `'本科及以上·燃气（油）供暖'` |
+| 场馆 venue | `'博物馆·市级'`（场馆类型 · 省/市/区县档） | `'博物馆·空调供暖'` |
+| 政务 service | `'市级以下'` | — |
 
-### 指标 → DB 查询维度（代码实际）
+拼装由 `indicators.project_sub_type(base, institution_type, metric)` 完成——它读
+`base.unit_func` / `base.children_func`（平台字典码，见 `dept_dict.py`）＋ 内置气候区表
+（`climate_zone.py`）。**调用方只需把 base 传进去**，不要自己拼字符串。
 
-DB 查询按「机构类型 field_types 码 × 标准表 std_category」过滤，取 ORDER BY 最新一条；
-不设 limit_type 编码体系。医疗 children_func 传医院等级（A/B/C）、climate_type 传气候区域。
+### 维度取值来源（唯一权威）
 
-### DB 查询规则
+| 维度 | 来源 | 说明 |
+|---|---|---|
+| 一级单位类型（机构族） | `ts_customer_info.customer_func`（字典 `client_dept_type`） | 缺值才回退单位名分类器 |
+| 二级分档/等级/场馆类型 | `ts_customer_info.children_func`（字典 `client_dept_type_<一级码>`） | 教育 8 档、医疗一~三级、党政省~市级以下、场馆 5 类 |
+| 气候区（医疗/党政） | **内置表** `climate_zone.py`（DB37/5026-2022 表3.0.1） | **不取** DB `climate_type`；地市优先按 `district_id` 行政区划码判 |
+| 供暖类型（表2） | 项目供暖方式；缺省"市政集中供暖（按热计量）" | 标准注1：按面积收费的市政供暖、燃煤自供暖均按此口径 |
+| 场馆省市档 | 单位名推断，缺省"市级" | 待补：纳入项目数据后可直接读 |
 
-- DB 返回标准名与机构类型不匹配时，忽略 DB 走 Layer 2/3
-- `children_func`（二级分类，如医院等级 A/B/C）与 `climate_type`（气候区域 A/B）按项目属性传入
-- 取不到/不匹配 → Layer 2 用户值 → Layer 3 内置默认
+### DB 交叉校验规则
+
+- 按真实维度查 `ts_limit_config`：`field_type`(恒 10) × `group_func`(一级码) × `limit_type`(表号
+  A表1/B表2/C表3/D表4/E表5/F用水) × `children_func`(二级码) × `climate_type` × `heat_type` × `area_code`
+- 与内置默认不一致 → `logger.warning`（**不取值**），文案含 DB 值与内置值，提示"以 standards-values.md 为准"
+- DB 不可用（离线/无权限）只记 debug，绝不阻断计算
+
+### 内置默认的守门人
+
+内置默认 = `energy-audit-core/references/standards-values.md` 的代码镜像。
+**改任何一侧都必须跑**`ea-calculation/scripts/verify_default_benchmarks.py`
+（逐值比对代码表与权威文件，退出码 0 = 一致），否则两边会漂移。
 
 ### 标准名透传
 
