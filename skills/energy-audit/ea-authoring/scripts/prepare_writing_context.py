@@ -31,17 +31,22 @@ INDICATOR_LABELS = [
 
 VALUE_KEYS = ("kgce_per_m2", "kgce_per_person", "kwh_per_m2", "value", "v", "water_value")
 
-# 本批蓝本：按机构类型映射到 audit-examples.md 的对应小节（2026-09-20）
+# 本批蓝本：机构类型 → audit-examples.md 里的 `##` 小节（2026-09-20 改"正文注入"）
+#   改之前：契约只给"文件路径 + 小节名"两个字符串 —— 模型不真去读就绕过去了，
+#   于是报告形态实际由 chapter-guides（规则）决定，蓝本形同虚设（这就是"钩子 1"）。
+#   改之后：把小节**正文**直接切进契约，读不读都不再是选择。
 BLUEPRINT_SECTIONS = {
-    "medical": "§医院实例（含 §三级医院案例）",
-    "government": "§法院/党政机关实例",
-    "education": "§学校实例模板",
-    "venue": "§法院/党政机关实例（场馆类暂无专用蓝本，形态参照机关）",
-    "service": "§法院/党政机关实例（政务服务中心暂无专用蓝本，形态参照机关）",
+    "medical": ("医院实例", ""),
+    "government": ("法院/党政机关实例", ""),
+    "education": ("学校实例模板", ""),
+    "venue": ("法院/党政机关实例", "场馆类暂无专用蓝本，形态参照机关"),
+    "service": ("法院/党政机关实例", "政务服务中心暂无专用蓝本，形态参照机关"),
 }
 
+DEFAULT_BLUEPRINT_LIMIT = 9000        # 注入正文字符上限（超了截断并显式告警）
 
-def blueprint_section(inst_type: str, category: str) -> str:
+
+def blueprint_key(inst_type: str, category: str) -> str:
     key = (inst_type or "").strip().lower()
     if not key:
         cat = category or ""
@@ -55,7 +60,65 @@ def blueprint_section(inst_type: str, category: str) -> str:
             key = "service"
         else:
             key = "government"
-    return BLUEPRINT_SECTIONS.get(key, BLUEPRINT_SECTIONS["government"])
+    return key if key in BLUEPRINT_SECTIONS else "government"
+
+
+def blueprint_section(inst_type: str, category: str) -> str:
+    """给契约表格用的"小节名（+备选说明）"文案。"""
+    name, note = BLUEPRINT_SECTIONS[blueprint_key(inst_type, category)]
+    return f"§{name}" + (f"（{note}）" if note else "")
+
+
+def blueprint_path() -> str:
+    """audit-examples.md 的绝对路径：env 覆盖 → 同技能包内相对定位。"""
+    env = os.environ.get("EA_BLUEPRINT_FILE")
+    if env and os.path.isfile(env):
+        return env
+    here = os.path.dirname(os.path.abspath(__file__))              # …/ea-authoring/scripts
+    pkg = os.path.dirname(os.path.dirname(here))                   # …/skills/energy-audit
+    cand = os.path.join(pkg, "energy-audit-report", "references", "audit-examples.md")
+    return cand if os.path.isfile(cand) else ""
+
+
+def extract_section(md_text: str, name: str):
+    """切出 `## …name…` 到下一个 `##` 之间的正文。返回 (标题, 正文)；找不到返回 ("", "")。"""
+    lines = md_text.splitlines()
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.startswith("## ") and name in ln[3:]:
+            start = i
+            break
+    if start is None:
+        return "", ""
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## "):
+            end = j
+            break
+    return lines[start], "\n".join(lines[start:end]).rstrip()
+
+
+def blueprint_body(inst_type: str, category: str, limit: int):
+    """返回 (小节标题, 正文, 是否截断, 告警文本)。任何一步失败都返回可解释的告警，不抛。"""
+    name, note = BLUEPRINT_SECTIONS[blueprint_key(inst_type, category)]
+    path = blueprint_path()
+    if not path:
+        return "", "", False, ("⚠️ 找不到蓝本文件 `audit-examples.md`"
+                              "（可用 EA_BLUEPRINT_FILE 指定）——本批按 chapter-guides 规则写，"
+                              "形态无样板可参照。")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return "", "", False, f"⚠️ 蓝本文件读不到（{exc}）——本批按 chapter-guides 规则写。"
+    head, body = extract_section(text, name)
+    if not body:
+        return "", "", False, (f"⚠️ 蓝本里没有 `§{name}` 小节——本批按 chapter-guides 规则写，"
+                              "形态无样板可参照。")
+    truncated = len(body) > limit
+    if truncated:
+        body = body[:limit].rstrip() + "\n…（本节剩余部分已截断）"
+    return head, body, truncated, ""
 
 
 def projects_root() -> str:
@@ -128,6 +191,10 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="生成写章接续契约 _context.md")
     ap.add_argument("project", help="项目名（对应 ~/projects/energy-audit/<项目名>/）或项目目录")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--blueprint-limit", type=int, default=DEFAULT_BLUEPRINT_LIMIT,
+                    help=f"注入蓝本正文的字符上限（默认 {DEFAULT_BLUEPRINT_LIMIT}）")
+    ap.add_argument("--no-blueprint-body", action="store_true",
+                    help="不注入蓝本正文，只给文件路径与小节名（旧行为，排障用）")
     args = ap.parse_args(argv)
 
     pdir = resolve_project_dir(args.project)
@@ -224,7 +291,7 @@ def main(argv=None) -> int:
         "- 措辞与禁词：见 `energy-audit-style/references/rules.md`（评价短语、禁词表、句法骨架）。",
         "- 数值引用：只从 `data.json` / `indicators.json` / `chapter5.md` 读取；**禁止引用前序章节文本里的数字**。",
         "",
-        "## 五、本批蓝本（形态参照，只学形态）",
+        "## 五、本批蓝本（形态参照，**只学形态**）",
         "",
         "| 项 | 值 |",
         "|---|---|",
@@ -234,8 +301,31 @@ def main(argv=None) -> int:
         "| **必须替换为本项目数据** | 单位名 / 地址 / 人数 / 面积 / 能耗 / 费用 / 设备 / 定额取值 / 问题与建议 |",
         "| 交付前自检 | `python <skills>/ea-validation/scripts/verify_variables_provenance.py <项目名> [--blueprint <本类成稿.md>]` |",
         "",
-        "> 批1（封面+第1~4章）读本类小节的「报告结构 / 报告编写要点 / 表格骨架」；批2/批3（第5~8章）读「指标口径 / 节能潜力·问题清单」。",
+        "> 用法：批1（封面+第1~4章）参照下文的「报告结构 / 报告编写要点 / 表格骨架」；"
+        "批2/批3（第5~8章）参照「指标口径 / 节能潜力·问题清单」。",
+        "> **下文是另一个项目的成稿摘录**：学它的骨架、表格习惯、措辞粒度与固定表述；"
+        "里面的单位名/地址/人数/面积/能耗/费用/设备/定额取值**一律不得沿用**"
+        "（交付前由 `verify_variables_provenance.py` 抓变量泄漏）。",
         "",
+    ]
+
+    # 5.1 蓝本正文注入（2026-09-20「钩子 1」）：不再只给路径，直接把本类小节切进来——
+    #     契约里只写"去读某文件"，模型不读就绕过去了；正文进契约后，读不读不再是选择。
+    if not args.no_blueprint_body:
+        _head, _body, _trunc, _warn = blueprint_body(
+            ind.get("institution_type"), base.get("institution_category"),
+            args.blueprint_limit)
+        lines += ["### 5.1 蓝本正文（本批形态参照）", ""]
+        if _warn:
+            lines += [f"> {_warn}", ""]
+        else:
+            lines += [f"来源小节：`{_head.lstrip('# ').strip()}`", "",
+                      "```markdown", _body, "```", ""]
+            if _trunc:
+                lines += [f"> ⚠️ 小节超长（>{args.blueprint_limit} 字符）已截断——"
+                          "需要后半段请直接打开蓝本文件；截断不影响形态参照。", ""]
+
+    lines += [
         "## 六、本批可用素材（写作输入；先用现成的，不要临场编）",
         "",
     ]

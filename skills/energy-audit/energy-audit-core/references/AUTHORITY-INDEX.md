@@ -55,5 +55,7 @@
 | 变量一致性（该变的是否真变） | `ea-validation/scripts/verify_variables_provenance.py` + `energy-audit-style/references/rules.md`《变量一致性闸门》 | datava（V3 后）、author（交付前）、editor | 文字相同=正常（固定条款），只查变量；相似度查重降为参考信息 |
 | 工作流 / 阶段 / 门禁 / 回退 / 术语 | `energy-audit-core/references/WORKFLOW.md`（唯一状态机，2026-09-20 建） | default、editor、全角色 | routing 只写分诊、kanban 只写调度实现，均不复述阶段表 |
 | **参考与知识读取**（读哪层 / 目录 / 检索入口 / 降级链） | `energy-audit-core/references/WORKFLOW.md` **第六节**（2026-09-20 建） | 全角色；knowledger 亦以本节为准 | 各 SKILL/SOUL 只写"何时读哪层"，不复述路径与目录（`rag/standards`/`rag/report`/`rag/data`/`rag/wiki` 的语义只在第六节） |
-| 知识层资产治理（目录规约 / 元数据 / 副本 / 点数对账 / 死资产） | `_changes/verify_knowledge_assets.py`（2026-09-20 建）+ `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | editor、knowledger | — |
+| **知识库维护（写侧）**：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令 | `energy-audit-core/references/knowledge-base-maintenance.md`（2026-09-20 建） | knowledger（专属）、author（S16a）、editor | 各 SKILL/SOUL 只写"何时入料/巡检"，不复述边界表与判据 |
+| 知识层资产治理（目录规约 / 元数据 / 副本 / 点数对账 / 死资产 / 切片体检 / 归档完备） | `energy-audit-core/scripts/verify_knowledge_assets.py`（2026-09-20 建，同日由 `_changes/` 移入技能）+ `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | editor、knowledger | — |
+| 知识库入料入口（投递区 → 向量化/实体/wiki → 归档 + 台账） | `energy-audit-core/scripts/ingest_kb_files.py`（2026-09-20 建，同日移入技能） | knowledger（标准/规范）、author（S16a 成稿） | 不复述脚本参数与七步流程 |
 | **标准条文检索**（定额/规范条文原文，`kbs="standards"`） | `rag/rag_search.py: search_standards()` + `rag/config.py: kb_collection()/STANDARD_KB_IDS`（2026-09-20 P3-3 建）+ `tools/energy_audit_rag_tool.py` 的 `kbs` 参数 | author、knowledger、caliber（查依据） | 各 SKILL 只写"何时用 kbs=standards"，不复述库名/集合名/参数细节 | 

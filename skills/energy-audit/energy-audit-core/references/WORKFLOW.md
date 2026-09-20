@@ -25,19 +25,23 @@
 | S13 | V3 审查 | datava | 落盘的 docx | `… --mode REPORT_REVIEW --report <docx>` | `report_review.json` | P0 阻塞；直跑轨结论**必须完整展示给用户确认** |
 | S14 | 变量一致性 | datava / author | 生成稿 + 蓝本 | `verify_variables_provenance.py <项目名> [--blueprint …]` | P0/P1 清单 | P0（蓝本变量泄漏）→ 必须改回本项目数据 |
 | S15 | 交付 | author | 上一步产物 | 复制（不移动） | `output/交付件/<单位>能源审计报告.docx\|pdf` | 交付件为唯一对外出口 |
-| **S16a** | **交付件入库** | author | `output/交付件/*.docx` | ① 落 `rag/report/<机构类型>/`（去重命名，禁"- 副本"）② `rag/ingestion/ingest_reports.py` 入向量库 ③ 生成 `_wiki` 页 ④ 刷新 `rag/ingest_log.json` | 知识层更新 | `_changes/verify_knowledge_assets.py` 退出码 0（P0=0） |
+| **S16a** | **交付件入库** | author | `output/交付件/*.docx` | ① 落 `rag/report/<机构类型>/`（去重命名，禁"- 副本"）② `rag/ingestion/ingest_reports.py` 入向量库 ③ 生成 `_wiki` 页 ④ 刷新 `rag/ingest_log.json` | 知识层更新 | `energy-audit-core/scripts/verify_knowledge_assets.py` 退出码 0（P0=0） |
 | S16 | 沉淀 | 全员 | 本次踩坑 | 写进对应权威文件 + `lessons-learned.md` 登记一行 | 经验索引 | 只做索引，不复制细节 |
 
 ## 二、写章三步（每批固定，S7~S9 共用）
 
 ```
 ① 跑并读接续契约：prepare_writing_context.py → chapter_md/_context.md
-      （唯一口径 / 关键数字 / 已落盘章节 / 术语写法 / **本批蓝本**）
-② 读本批蓝本（形态参照）：energy-audit-report/references/audit-examples.md 对应机构类型小节
-      （只学形态：章节骨架 / 表格习惯 / 措辞粒度 / 固定表述）
+      （唯一口径 / 关键数字 / 已落盘章节 / 术语写法 / **本批蓝本正文，见其第五节 5.1**）
+② 读契约第五节 5.1 的蓝本正文（形态参照，**已注入，不用另开文件**）
+      （只学形态：章节骨架 / 表格习惯 / 措辞粒度 / 固定表述；里面别的项目的
+       单位名/数值/设备一律不得沿用）
 ③ 按本项目数据写 → 落盘 chapter_md/chN.md → 收工重跑①刷新"已落盘章节"
 ```
 
+- **蓝本正文由契约注入**（2026-09-20「钩子 1」）：契约按机构类型自动切出
+  `audit-examples.md` 的对应小节并写进 5.1；此前只给"文件路径 + 小节名"，
+  模型不真去读就绕过去了。需要临时回退旧行为用 `--no-blueprint-body`。
 - **批间压缩上下文**：交互会话用 `/compact`；非交互模式（`hermes chat -q/-Q`、kanban worker）改为**每批一个独立会话/任务**，批边界即任务边界。
 - 数值只从 `data.json` / `indicators.json` / `chapter5.md` 读，**禁从前序章节文本或记忆提取**。
 
@@ -79,7 +83,7 @@
 
 | 层 | 回答什么 | 唯一位置 | 怎么读 | 谁能写 |
 |---|---|---|---|---|
-| **形态层** | 写得**像**（骨架/表格习惯/措辞粒度/固定表述） | 技能包内 `energy-audit-report/references/audit-examples.md`（+ 逐章指南 `chapter*-guide.md`、措辞规则 `rules.md`） | **人工 Read**，无检索；契约第五节给"本批蓝本小节名" | 技能维护者（git） |
+| **形态层** | 写得**像**（骨架/表格习惯/措辞粒度/固定表述） | 技能包内 `energy-audit-report/references/audit-examples.md`（+ 逐章指南 `chapter-guide*.md`、措辞规则 `rules.md`） | **契约第五节 5.1 已注入本类小节正文**（`prepare_writing_context.py` 按机构类型切，无需另开文件）；无检索 | 技能维护者（git） |
 | **事实层** | 本项目的**数与名** | `<项目>/data.json` · `indicators.json` · `chapter5.md` | 脚本读；**禁止从上下文/前序章节文本提取** | 采集/计算脚本 |
 | **知识层** | 外部知识（标准 → 成稿 → 方法论） | 见 6.2 | 见 6.2 | 见 6.2 |
 
@@ -93,7 +97,7 @@
 | **标准条文库（向量）** | Qdrant `energy_quota_standards`（定额标准）+ `energy_audit_technical_guidelines`（技术规范），各含 `_wiki`/`_entities` | `energy_audit_rag_search(query, kbs="standards")`，或 `rag.rag_search.search_standards(query)` —— **2026-09-20 P3-3 接入，与报告向量链并行** | 里面是**条文**不是成稿：可作**依据引用**，**不得**当"机构同类报告"仿写（返回 `is_report_retrieval=false`） |
 | 章节指南 / 生成 wiki 页 | `<HERMES_HOME>/skills/energy-audit/**/chapter*.md`、`<HERMES_HOME>/rag/wiki/generated/` | `search_wiki()` —— 第三层 | 关键字匹配 |
 | 知识图谱 | `rag/knowledge_graph/energy_kg.py` | `search_knowledge_graph()` —— 第四层 | **不是报告片段**（`is_report_chunk=false`），仅作诊断候选，**不得引用进报告** |
-| 入库台账 | `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | `_changes/verify_knowledge_assets.py` | 点对点对账 + 副本/死资产检查 |
+| 入库台账 | `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | `energy-audit-core/scripts/verify_knowledge_assets.py` | 点对点对账 + 副本/死资产 + **切片体检 / 归档完备性** |
 
 **降级链（顺序即优先级）**：`本地参考库 → 报告向量 → wiki → 图谱(标注非报告)`；
 **标准条文库（定额/规范）是并行支线，不在降级链内**——它回答"依据是什么"，不回答"别人怎么写"，

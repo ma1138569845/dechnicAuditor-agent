@@ -59,7 +59,12 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **每批开工第一步（2026-09-18 新增）**：跑 `python <skills>/ea-authoring/scripts/prepare_writing_context.py <项目名>` 生成/刷新接续契约 `<项目>/chapter_md/_context.md`，并**先读它**——它固化了唯一口径、关键数字、已落盘章节、术语与写法。每批收工后重跑一次，刷新"已落盘章节"供下一批接续。
 
-> **每批第二步（2026-09-20 新增）：读本批蓝本（形态参照）**：`energy-audit-report/references/audit-examples.md` 的对应机构类型小节（法院/党政机关、医院、学校）——**只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；项目变量一律取本项目数据源，交付前跑 `ea-validation/scripts/verify_variables_provenance.py`。
+> **每批第二步（2026-09-20 新增，同日升级为"正文注入"）：读契约的蓝本正文**——
+> `chapter_md/_context.md` **第五节 5.1** 已按机构类型（法院/党政机关、医院、学校）自动
+> 切入 `audit-examples.md` 对应小节的**正文**，不必再另开文件。
+> **只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；里面别的项目的
+> 单位名/地址/人数/面积/能耗/费用/设备/定额取值**一律不得沿用**，交付前跑
+> `ea-validation/scripts/verify_variables_provenance.py`。
 
 > **"参考什么"以 `energy-audit-core/references/WORKFLOW.md` 第六节为唯一决策表**：形态层（蓝本，人工读）/ 事实层（本项目 data）/ 知识层（本地成稿库 → 向量 → wiki → 图谱）。
 > 写章节想找同类写法时：`reference_library.search_local_references(chapter, tags)`（本地、离线可用）优先，其次 `energy_audit_rag_search`；图谱输出**不是报告片段**，不得引用。
