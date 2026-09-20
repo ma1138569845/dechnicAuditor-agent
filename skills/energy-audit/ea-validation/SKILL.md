@@ -217,6 +217,24 @@ indicators.json → data.json 内嵌 indicators → compute_project_indicators()
 
 ## Error Handling
 
+## Capability 4: 变量一致性闸门（交付前，2026-09-20 新增）
+
+> 定位：与 Report Review 并列的**交付前闸门**。判据不是"文字像不像"，而是"**该变的变量是否真变**"。
+
+```bash
+python <skill>/scripts/verify_variables_provenance.py <项目名> \
+    [--file <生成稿.md> ...] [--blueprint <同类成稿.md> ...] [--json]
+```
+
+| 输出 | 含义 | 动作 |
+|---|---|---|
+| P0 蓝本变量泄漏 | 数值/机构名/年份出现在蓝本、但不在本项目数据源 | 定位该段，改回本项目数据；**不得交付** |
+| P1 待确认 | 既不在数据源也不在蓝本（多为派生值：百分比/均值，或来源缺失） | 抽检；派生值放行，来源缺失补依据 |
+
+- 固定条款/标准原文/结构骨架**不参与判定**（复用 `similarity_gate.filter_whitelist`）；
+- 退出码：0 无 P0；1 存在 P0；
+- 与查重的关系见 `energy-audit-style/references/rules.md`《变量一致性闸门》。
+
 ### 依赖降级
 
 - V1 依赖 `tools.energy_audit`（data_check / data_analysis / project_data），导入失败返回 error（退出码 1）

@@ -50,3 +50,4 @@
 | 辅助视觉模型（图片识别：铭牌/仪表/图纸） | `energy-audit-core/references/deployment-ops.md`《辅助视觉模型配置》一节 | author、datacollection、视觉核验环节 | 别的技能不复述 provider/model/端点 |
 | 数据导出与整库导出 | `energy-audit-pg-data/references/data-export.md` | datacollection | — |
 | 跨项目经验（踩坑结论） | `energy-audit-core/references/lessons-learned.md`（索引式，2026-09-18 建） | 全角色（开工前扫一遍） | 细节仍以本表其它权威文件为准，本文件只做索引 |
+| 变量一致性（该变的是否真变） | `ea-validation/scripts/verify_variables_provenance.py` + `energy-audit-style/references/rules.md`《变量一致性闸门》 | datava（V3 后）、author（交付前）、editor | 文字相同=正常（固定条款），只查变量；相似度查重降为参考信息 |
