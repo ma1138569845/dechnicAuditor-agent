@@ -3,10 +3,11 @@
 """防抄查重 CLI（editor 终审手动用）：生成稿 vs 一份或多份参考报告。
 
 用法:
-    python similarity_check.py <生成稿.md|txt> <参考1.md|txt> [参考2.txt ...]
+    python similarity_check.py <生成稿.md|txt> <参考1.md|txt> [参考2.txt ...] [--strict]
 
 输出：每份参考的 lcs_ratio / ngram_overlap / 最长连续相同 / 匹配片段，以及
 总体是否通过。阈值与 rules 见 energy-audit-style/references/anti-copy-gate.md。
+默认启用**白名单**（标题/表格骨架/标准原文/固定条文不计入），--strict 关闭白名单按裸文本判定。
 """
 from __future__ import annotations
 
@@ -32,6 +33,8 @@ def main(argv=None) -> int:
     parser.add_argument("generated", help="生成稿路径（.md/.txt）")
     parser.add_argument("references", nargs="+", help="参考报告路径（可多个）")
     parser.add_argument("--json", action="store_true", help="输出完整 JSON")
+    parser.add_argument("--strict", action="store_true",
+                        help="关闭白名单（裸文本判定；固定条文会被计入，一般只在排查时用）")
     args = parser.parse_args(argv)
 
     gen_path = Path(args.generated)
@@ -48,7 +51,7 @@ def main(argv=None) -> int:
         refs.append(p.read_text(encoding="utf-8", errors="replace"))
 
     generated = gen_path.read_text(encoding="utf-8", errors="replace")
-    report = check_similarity(generated, refs)
+    report = check_similarity(generated, refs, use_whitelist=not args.strict)
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
