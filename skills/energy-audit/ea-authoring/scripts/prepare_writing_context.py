@@ -278,6 +278,10 @@ def main(argv=None) -> int:
         "",
         f"- tags 至少含 `institution_category={inst_cat or '【待补充】'}`；`chapter` 取本章名（如 `第7章`）。",
         "- 想跨库扩大召回：`energy_audit_rag_search`（多路召回 + 重排，返回带 route/rerank 可解释）。",
+        "- **查依据/条文原文**（定额出自哪一条、规范怎么要求、办法怎么规定）："
+        "`energy_audit_rag_search(query, kbs=\"standards\")` —— 命中定额标准库 + 技术规范库的"
+        "**条文**（`kind=standard_clause`）。它**不是**同类成稿：可作依据引用，"
+        "**不得**照它的写法仿报告段落。",
         "- 「参考什么」的完整决策表见 `energy-audit-core/references/WORKFLOW.md` 第六节。",
         "",
         "## 七、本批开工/收工检查",

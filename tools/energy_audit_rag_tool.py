@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from tools.registry import registry, tool_error, tool_result
 
 try:
-    from rag.rag_search import search_reports, search_knowledge_graph
+    from rag.rag_search import search_reports, search_knowledge_graph, search_standards
     from rag.smart_retrieve import smart_retrieve
     _RAG_AVAILABLE = True
     _RAG_IMPORT_ERROR = ""
@@ -62,6 +62,16 @@ ENERGY_AUDIT_RAG_SEARCH_SCHEMA = {
         "system": {
             "type": "string",
             "description": "用能系统过滤，用于知识图谱节能措施检索。例如：中央空调系统、照明系统、供暖系统、变配电系统。",
+        },
+        "kbs": {
+            "type": "string",
+            "enum": ["reports", "standards", "all"],
+            "description": (
+                "查哪类知识库。reports（默认）=历史审计成稿，用于「同类项目怎么写某一章」；"
+                "standards=定额标准 + 技术规范**条文原文**，用于查定额值、条文依据、规范要求"
+                "（如「医院单位建筑面积能耗定额先进值出自哪条」）；all=两类都查。"
+                "注意：standards 返回的是条文，不是同类成稿，不得当参考报告仿写。"
+            ),
         },
         "top_k": {
             "type": "integer",
@@ -196,6 +206,7 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
 
     tags = _build_tags(args)
     top_k = int(args.get("top_k") or 5)
+    kbs = str(args.get("kbs") or "reports").strip().lower()
     include_kg = bool(args.get("include_knowledge_graph", True))
     system_filter = str(args.get("system", "")).strip()
 
@@ -229,12 +240,25 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
     # 1) 多路召回 + 重排序（2026-09-20，P3-1）：
     #    R1 向量 / R2 标签 / R3 本地成稿+章节指南 / R4 图谱；加权重排后去重。
     #    失败自动降级到单路 `search_reports`（保证行为向后兼容）。
+    #    ★P3-3：kbs 决定查哪类库——standards 只走标准条文路；all 在四路之上追加 R5。
     try:
-        rag_results = smart_retrieve(query, tags, top_k)
+        if kbs == "standards":
+            std = search_standards(query, top_k=top_k)
+            rag_results = {
+                "results": std, "source": "standards_kb", "count": len(std),
+                "routes": {"standards": len(std)}, "degraded": [],
+                "is_report_retrieval": False,
+                "note": ("" if std else
+                         "标准类库无命中——请确认定额/规范库已喂料"
+                         "（清单见 _changes/guidelines库喂料清单-20260920.md）。"),
+            }
+        else:
+            rag_results = smart_retrieve(query, tags, top_k,
+                                         include_standards=(kbs == "all"))
     except Exception as e:
         print(f"[smart_retrieve] ⚠️ 多路召回失败，降级单路：{e}")
         try:
-            rag_results = search_reports(query, tags, top_k)
+            rag_results = search_reports(query, tags, top_k, kbs=kbs)
         except Exception as e2:
             rag_results = {"results": [], "source": "none", "count": 0, "error": str(e2)}
 
@@ -253,6 +277,10 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
             # 多路召回的可解释性：命中路线与重排分量
             "route": r.get("route", []),
             "rerank": r.get("rerank", {}),
+            # ★P3-3：标明这条来自哪个知识库、是不是标准条文
+            "kb_id": r.get("kb_id") or (r.get("tags") or {}).get("kb_id") or "",
+            "kind": r.get("kind", "report_chunk"),
+            "chunk_type": r.get("chunk_type", ""),
         }
         for i, r in enumerate(rag_results.get("results", []))
     ]

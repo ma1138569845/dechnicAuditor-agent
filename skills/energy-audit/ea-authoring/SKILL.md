@@ -1,6 +1,6 @@
 ---
 name: ea-authoring
-description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章由 caliber 的 ea-calculation 产出，author 只装配不重写）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 做双轨分诊（单项目直跑、批量转 editor），勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
+description: "author（小德）Agent 专属技能，仅流水线 author 角色装配时使用。当 author 编写或生成公共机构能源审计报告时使用——覆盖第1/2/3/4/6/7/8章正文写作（第5章：表格/数值由 caliber 的 ea-calculation 产出并已经 prepare 就位为装配稿，author 在装配稿上补写分析叙述段、不重算数值）、OMML 公式、office_editor 工具集（office_create/edit/save）文档编辑、Word 生成、以及最终产物（.docx + 默认签章 .pdf）。⚠️ default 主对话收到\"编制/生成XX能源审计报告\"请求时应加载 energy-audit-routing 做双轨分诊（单项目直跑、批量转 editor），勿直接采用本技能。数据采集/入库/校验问题不适用本技能。"
 version: 2.0.0
 author: 马天远
 ---
@@ -58,6 +58,9 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **"参考什么"以 `energy-audit-core/references/WORKFLOW.md` 第六节为唯一决策表**：形态层（蓝本，人工读）/ 事实层（本项目 data）/ 知识层（本地成稿库 → 向量 → wiki → 图谱）。
 > 写章节想找同类写法时：`reference_library.search_local_references(chapter, tags)`（本地、离线可用）优先，其次 `energy_audit_rag_search`；图谱输出**不是报告片段**，不得引用。
+> **查依据/条文原文**（"这项定额出自哪一条""规范怎么要求的"）：`energy_audit_rag_search(query, kbs="standards")`
+> —— 返回定额标准库 + 技术规范库的**条文**（`kind=standard_clause`）。它是**依据**，不是同类成稿：
+> 可以引用条款支撑结论，**不得**照它的行文仿写报告段落（条文与报告的文体完全不同）。
 >
 > **写第 6/7 章另有一份现成素材（2026-09-20 接入）**：S3 产出的 `<项目>/diagnosis_chapter7_material.txt`
 > （逐月/逐年异常已诊断好：问题 + 严重程度 + 推断原因/置信度 + 验证方法 + 措施及节能率）。
@@ -68,12 +71,12 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|
 | 卡1 基础章 | 封面+审计信息表、第1章（1.1~1.6）、第2/3/4章 | 1~2 次（1-2章一批、3-4章一批），每章 md 落盘 `chapter_md/chN.md` | `office_create` 建 docx → 每章 1 次 `doc_insert_markdown` 整章导入 | data.json 等上游产出 |
-| 卡2 数据章 | 第5章装配（禁重算）、第6/7章 | 1 次（6-7章一批，md 落盘 `chapter_md/`）；第5章不生成 | `office_open` 接续 → 第5章 chapter5.md **直接 md 导入** + 第6/7章 md 导入 + 设备照片 `doc_insert_image` | 卡1 落盘 docx |
+| 卡2 数据章 | 第5章装配稿叙述补写＋导入（数值禁重算）、第6/7章 | 1~2 次（第5章叙述补写 1 次；6-7章一批 1 次，md 落盘 `chapter_md/`） | `office_open` 接续 → 第5章装配稿 `chapter_md/ch5_import.md`（补写叙述后）**md 导入** + 第6/7章 md 导入 + 设备照片 `doc_insert_image` | 卡1 落盘 docx |
 | 卡3 收尾章 | 第8章审计结论、附录1~7、收尾三件套（目录/缩进/页眉分隔线）、水印、PDF+签章 | 1 次（第8章，md 落盘 `chapter_md/ch8.md`） | `office_open` 接续 → 第8章 md 导入 → 附录（officecli）→ 收尾链 | 卡2 落盘 docx |
 
 **三卡铁律（防口径分裂）**：
 
-1. 所有数值一律从 data.json / indicators.json / chapter5.md 读取，**禁止从前序章节文本提取数值**
+1. 所有数值一律从 data.json / indicators.json / 装配数据源（chapter5.md → 装配稿 ch5_import.md）读取，**禁止从前序章节文本提取数值**
 2. 卡2/卡3 用 `office_open` 接续编辑，**禁止重建文件**；每卡完成必须 `office_save` 落盘后再 `kanban_complete`
 3. **正文写入禁用逐段 `doc_insert_paragraph_with_text`**（2026-09-06 定：几百次 MCP 往返是纯 I/O 损耗），一律 `doc_insert_markdown` 整章导入；仅图片嵌入、封面表模板注入例外。每章导入后跑格式修复链（见 `references/docx-techniques.md`「md 导入与格式修复链」小节）
 
@@ -91,7 +94,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 ### 第 1 步：分卡章节 md 生成（LLM 生成正文，禁止脚本）
 
-按任务卡体指定的章节范围，**每一章读对应 reference 后用 LLM 撰写章节 markdown，落盘项目 `chapter_md/chN.md`**（第5章除外——直接用 caliber 产出的 chapter5.md，不重写不落盘）：
+按任务卡体指定的章节范围，**每一章读对应 reference 后用 LLM 撰写章节 markdown，落盘项目 `chapter_md/chN.md`**（第5章：表格/数值由 caliber 产出、`prepare_chapter_md.py` 就位为装配稿 `chapter_md/ch5_import.md`；author **在装配稿上补写分析叙述段**，数值不重算）：
 
 | 卡 | 章节 | 参考文件 | 写法 |
 |---|------|---------|------|
@@ -100,12 +103,12 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 卡1 | 第2章 | `references/chapter-guides-1-4.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
 | 卡1 | 第3章 | `references/chapter-guides-1-4.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
 | 卡1 | 第4章 | `references/chapter-guides-1-4.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
-| 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表；装配稿 `chapter_md/ch5_import.md` 由 `prepare_chapter_md.py` 就位，见 `ea-calculation/SKILL.md`） | **直接 md 导入，不重写**；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
+| 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表；装配稿 `chapter_md/ch5_import.md` 由 `prepare_chapter_md.py` 就位，见 `ea-calculation/SKILL.md`） | **在装配稿上补写分析叙述段后 md 导入，数值禁重算**（5.2 四段式 / 5.3 定义段+结论评价段 / 5.4 规则段+逐品种推导，按 chapter5-templates.md）；计算与写作口径见 ea-calculation/references/chapter5-*（author 已装配该技能供只读引用：用 `skill_view('ea-calculation', file_path='references/chapter5-xxx.md')` 读写作口径，**禁止运行其 scripts/ 重算任何数值**） |
 | 卡2 | 第6章 | `references/chapter-guides-6-8.md` | LLM 生成（分系统详述），落 `chapter_md/ch6.md` |
 | 卡2 | 第7章 | `references/chapter-guides-6-8.md` | LLM 生成（问题-措施映射），落 `chapter_md/ch7.md` |
 | 卡3 | 第8章 | `references/chapter-guides-6-8.md` | 聚合复用第5/7章结论，落 `chapter_md/ch8.md` |
 
-**LLM 调用批次**：卡1 分 1~2 次（1-2章一批、3-4章一批）；卡2 分 1 次（6-7章一批）；卡3 分 1 次（第8章）。每批 prompt 内嵌该批章节的格式规范摘要（防长输出后半段丢格式）。批内各章分别落盘。
+**LLM 调用批次**：卡1 分 1~2 次（1-2章一批、3-4章一批）；卡2 分 1~2 次（第5章装配稿叙述补写 1 次；6-7章一批 1 次）；卡3 分 1 次（第8章）。每批 prompt 内嵌该批章节的格式规范摘要（防长输出后半段丢格式）。批内各章分别落盘。
 
 > **本批读哪份指南（2026-09-18 合并后）**：卡1（批1）→ `references/chapter-guides-1-4.md`；卡2/卡3（批2、批3）→ `references/chapter-guides-6-8.md`。两份文件开头都有"章节索引"表，先看索引再读对应章一节。
 
@@ -129,7 +132,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 2. `office_edit(operation="doc_insert_markdown", arguments={"idx": <文档末尾位置>, "markdown": <章节 md 全文>})` 整章导入（**operation 是 MCP 操作名**，不是自定义方法名）：
    - idx 用 `doc_get_last_operable_pos().position`（勿硬编码大数）
    - 每章 1 次调用；表格随 md 表格语法一起导入，大表可用 `doc_insert_table_by_csv`
-   - 第5章用 caliber 产出的 chapter5.md 直接导入
+   - 第5章用装配稿 chapter_md/ch5_import.md（author 已补写分析叙述段）直接导入
    - 图片仍单独 `doc_insert_image` 嵌入（第2章建筑图/第6章设备照片），图注用 md 段落写入
    - 封面/审计信息表维持模板占位注入
 3. **格式修复链（每章导入后或每卡导入完成后统一跑）**：md 导入的默认样式 ≠ 格式规范，按序修复——操作序列与参数见 `references/docx-techniques.md`「md 导入与格式修复链」小节：

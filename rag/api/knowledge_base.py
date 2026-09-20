@@ -117,6 +117,16 @@ _DEFAULT_KBS = [
     },
 ]
 
+# 走"报告专用解析器"的知识库白名单。
+# ★2026-09-20 修复：原先按 `kb_type == "energy_audit"` 分路，而三个默认库共用同一个
+#   kb_type='energy_audit' → "定额标准/技术规范"两个**标准类**库也走了报告解析：
+#   extract_pdf_structure() 把标准封面的"发布机关"当成"被审计单位"（例：
+#   单位名称='山东省市场监督管理局 发布'、机构类型='未分类 - 其他'），
+#   build_chunks() 对没有"第X章"结构的标准只产出 1 条 summary →
+#   标准文档入库即垃圾，这也解释了这两个库为何长期空置（试过一次就不会再用）。
+#   现改为**按 kb_id 分路**：只有报告库走报告解析，标准/规范类走通用切片器。
+_REPORT_KB_IDS = {"energy_audit_reports"}
+
 # Supported file extensions for KB documents
 _SUPPORTED_EXTS = {
     ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
@@ -3631,7 +3641,10 @@ def _run_vectorization_job(job_id: str, kb_id: str, doc_id: str):
         kb_type = kb["kb_type"]
         chunking_config = kb.get("chunking_config") or {}
 
-        if kb_type == "energy_audit":
+        # ★按 kb_id 分路（不再按 kb_type）：见 _REPORT_KB_IDS 处的修复说明。
+        # 报告库 → 报告专用解析（抽单位名/机构类型/审计机构/目录/引用标准）；
+        # 其余库（定额标准、技术规范…）→ 通用切片器（按段落 + 定长 512/重叠 64）。
+        if kb_id in _REPORT_KB_IDS:
             from rag.energy_audit_importer import extract_pdf_structure, build_chunks, embed_and_store
             structure = extract_pdf_structure(str(target))
             chunks = build_chunks(structure)

@@ -326,6 +326,30 @@ def reports_collection() -> str:
     return _snapshot()["reports_collection"]
 
 
+# ============================================================
+# 知识库 → Qdrant 集合名（2026-09-20，P3-3 检索路由）
+# ============================================================
+# 三个默认知识库与各自的 Qdrant 集合**同名**（见 rag/api/knowledge_base.py 的 `_DEFAULT_KBS`）。
+# 显式登记，是为了让"按库检索"只有一个解析入口——检索侧不得再各写各的字符串。
+DEFAULT_KB_COLLECTIONS: dict[str, str] = {
+    "energy_audit_reports": "energy_audit_reports",
+    "energy_quota_standards": "energy_quota_standards",
+    "energy_audit_technical_guidelines": "energy_audit_technical_guidelines",
+}
+
+# 标准类库（定额标准 / 技术规范）：与"报告成稿"库语义不同——里面是**条文**，不是成稿片段。
+STANDARD_KB_IDS: tuple[str, ...] = (
+    "energy_quota_standards",
+    "energy_audit_technical_guidelines",
+)
+
+
+def kb_collection(kb_id: str) -> str:
+    """知识库 id → Qdrant 集合名。未登记的库按同名约定解析。"""
+    key = str(kb_id or "").strip()
+    return DEFAULT_KB_COLLECTIONS.get(key, key) if key else ""
+
+
 def dashscope_api_key() -> str:
     return _snapshot()["dashscope_api_key"]
 

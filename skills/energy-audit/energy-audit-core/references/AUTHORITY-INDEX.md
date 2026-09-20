@@ -54,3 +54,4 @@
 | 工作流 / 阶段 / 门禁 / 回退 / 术语 | `energy-audit-core/references/WORKFLOW.md`（唯一状态机，2026-09-20 建） | default、editor、全角色 | routing 只写分诊、kanban 只写调度实现，均不复述阶段表 |
 | **参考与知识读取**（读哪层 / 目录 / 检索入口 / 降级链） | `energy-audit-core/references/WORKFLOW.md` **第六节**（2026-09-20 建） | 全角色；knowledger 亦以本节为准 | 各 SKILL/SOUL 只写"何时读哪层"，不复述路径与目录（`rag/standards`/`rag/report`/`rag/data`/`rag/wiki` 的语义只在第六节） |
 | 知识层资产治理（目录规约 / 元数据 / 副本 / 点数对账 / 死资产） | `_changes/verify_knowledge_assets.py`（2026-09-20 建）+ `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | editor、knowledger | — |
+| **标准条文检索**（定额/规范条文原文，`kbs="standards"`） | `rag/rag_search.py: search_standards()` + `rag/config.py: kb_collection()/STANDARD_KB_IDS`（2026-09-20 P3-3 建）+ `tools/energy_audit_rag_tool.py` 的 `kbs` 参数 | author、knowledger、caliber（查依据） | 各 SKILL 只写"何时用 kbs=standards"，不复述库名/集合名/参数细节 | 

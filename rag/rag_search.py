@@ -24,7 +24,12 @@ import os, json
 from typing import Dict, List, Optional
 from pathlib import Path
 
-from rag.config import qdrant_client_kwargs, reports_collection
+from rag.config import (
+    STANDARD_KB_IDS,
+    kb_collection,
+    qdrant_client_kwargs,
+    reports_collection,
+)
 
 COLLECTION = reports_collection()
 
@@ -39,6 +44,23 @@ def _sanitize_tags(tags: Optional[Dict]) -> Dict:
     if not tags:
         return {}
     return {k: v for k, v in tags.items() if k in _FILTERABLE_TAG_KEYS and v}
+
+
+def _kb_scope(kbs: Optional[str]) -> tuple:
+    """把 kbs 参数解析成要查的库范围。只认三个值，未知值按最保守的 `reports` 处理。
+
+        None / "reports" → 只查报告成稿库（**保持历史行为，零回归**）
+        "standards"      → 只查标准类库（定额标准 + 技术规范）
+        "all"            → 两类都查
+    """
+    v = str(kbs or "").strip().lower()
+    if v in ("standards", "standard", "标准", "标准库"):
+        return ("standards",)
+    if v in ("all", "全部", "*"):
+        return ("reports", "standards")
+    return ("reports",)
+
+
 # ============================================================
 # 显式工具：按标签枚举（无需 embedding）
 # ⚠️ 2026-09-20 起**不再参与** search_reports 的兜底链（原"Layer 0 短路"已废止）
@@ -140,6 +162,69 @@ def search_qdrant(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> Li
         }
         for hit in r.points
     ]
+
+
+# ============================================================
+# Layer 1b: 标准类库检索（定额标准 / 技术规范）—— 2026-09-20 P3-3
+# ============================================================
+# 为什么单独一条路：标准库的 payload 与报告库**不同**——没有 institution_category /
+# specific_type / chapter，只有 filename / text / chunk_index / chunk_type
+# （由 knowledge_base._chunk_general_document 写入）。因此**不能**套用报告库的
+# tag must-filter：那些过滤键在标准库里根本不存在，套上去只会恒空结果。
+
+STANDARD_KB_LABELS = {
+    "energy_quota_standards": "定额标准",
+    "energy_audit_technical_guidelines": "技术规范",
+}
+
+
+def search_qdrant_multi(query: str, kb_ids=None, top_k: int = 5) -> List[dict]:
+    """一次 embedding、多集合检索（省掉 N-1 次嵌入调用）。按 score 降序合并。"""
+    from qdrant_client import QdrantClient
+
+    ids = [str(k).strip() for k in (kb_ids or []) if str(k).strip()]
+    if not ids:
+        return []
+    client = QdrantClient(**qdrant_client_kwargs())
+    vector = _embed_query(query)
+    out: List[dict] = []
+    for kb_id in ids:
+        coll = kb_collection(kb_id)
+        try:
+            r = client.query_points(collection_name=coll, query=vector, limit=top_k,
+                                    with_payload=True)
+        except Exception as e:  # noqa: BLE001  单个库失败不拖累其它库
+            print(f"[standards] ⚠️ 库 {kb_id}（集合 {coll}）检索失败：{e}")
+            continue
+        for hit in r.points:
+            pl = hit.payload or {}
+            out.append({
+                "score": hit.score,
+                "filename": pl.get("filename") or pl.get("file_name") or "",
+                "chapter": "",
+                "text": str(pl.get("text") or "")[:2000],
+                "tags": {"source": "standard_kb",
+                         "kb_id": kb_id,
+                         "kb_label": STANDARD_KB_LABELS.get(kb_id, kb_id)},
+                # ★标准条文**不是**报告片段：不得被当作"同类成稿"来仿写
+                "is_report_chunk": False,
+                "kind": "standard_clause",
+                "kb_id": kb_id,
+                "collection": coll,
+                "chunk_type": pl.get("chunk_type") or "",
+                "chunk_index": pl.get("chunk_index"),
+            })
+    out.sort(key=lambda x: -(x.get("score") or 0.0))
+    return out
+
+
+def search_standards(query: str, kb_ids=None, top_k: int = 5) -> List[dict]:
+    """标准类库检索（定额标准 + 技术规范），默认查全部标准库。
+
+    用途：查「定额值 / 条文依据 / 规范要求」的**原文**，不是找同类成稿。
+    返回项带 `is_report_chunk=False`，调用方不得把它当报告片段引用。
+    """
+    return search_qdrant_multi(query, kb_ids or STANDARD_KB_IDS, top_k=top_k)
 
 
 # ============================================================
@@ -508,13 +593,17 @@ def search_knowledge_graph(query: str, tags: Optional[Dict] = None) -> List[dict
 # 统一检索入口（四级兜底）
 # ============================================================
 
-def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> dict:
+def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5,
+                   kbs: Optional[str] = None) -> dict:
     """
     统一检索入口（四层兜底）
 
     Layer 1: Qdrant 向量检索（语义匹配；**tags 仅作 must-filter**，不短路）
     Layer 2: 本地知识库（技能包章节指南 + LLM Wiki 关键字匹配）
     Layer 3: 知识图谱因果诊断（异常 / 系统 / 措施）—— **非报告来源**
+
+    kbs: 查哪类库。None/"reports"=报告成稿库（默认，历史行为）；"standards"=标准类库
+         （定额 + 技术规范，返回条文原文）；"all"=两类都查。见 _kb_scope()。
 
     返回 {
       results: [...],
@@ -529,6 +618,27 @@ def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> d
     "检索成功"（Qdrant 未启动 + wiki 路径写错时尤其严重）。现显式区分。
     """
     degraded: List[str] = []
+
+    # ★2026-09-20 P3-3：标准类库（定额 / 规范）单独一条路。里面是**条文**，不是成稿片段，
+    #   所以不进下面这条"报告四级兜底链"，单独返回并显式标注 is_report_retrieval=False。
+    if "reports" not in _kb_scope(kbs):
+        try:
+            std = search_standards(query, top_k=top_k)
+        except Exception as e:  # noqa: BLE001
+            std = []
+            degraded.append("standards_kb")
+            print(f"[RAG] ⚠️ 标准类库检索失败（{e}）")
+        if std:
+            return {'results': std, 'source': 'standards_kb', 'count': len(std),
+                    'is_report_retrieval': False, 'degraded': degraded,
+                    'note': ('命中的是标准/规范**条文原文**（定额库 + 技术规范库），'
+                             '可作依据引用，但**不得**当"机构同类报告"来仿写。')}
+        return {'results': [], 'source': 'standards_kb', 'count': 0,
+                'is_report_retrieval': False, 'degraded': degraded,
+                'note': ('标准类库无命中。降级链：'
+                         + ('、'.join(degraded) if degraded else '两库均空')
+                         + '。请确认定额/规范库已喂料'
+                           '（清单见 _changes/guidelines库喂料清单-20260920.md）。')}
 
     # ★2026-09-20 废止「Layer 0 标签直查短路」：
     #   search_by_tags 用 scroll 按标签取前 N 条，**完全不看 query**

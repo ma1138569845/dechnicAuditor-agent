@@ -17,7 +17,7 @@
 | S5 | 第5章就位 | caliber | `chapter5.md` | `prepare_chapter_md.py <项目名>` | `chapter_md/ch5_import.md` | exit 2（装配稿早于计算产物）→ 人工确认后 `--force` |
 | S6 | V2 复核 | datava | `indicators.json` | `… --mode INDICATOR_REVIEW` | `indicator_review.json` | P0（如评价与数值不符）→ 停 |
 | S7 | 写章 批1 | author | S2~S6 产物 + 蓝本 | 契约 → 蓝本 → 第1~4章写作 | `chapter_md/ch1~ch4.md` | 每章落盘；收工重跑契约脚本 |
-| S8 | 写章 批2 | author | 同上 | 第5章装配（禁重算）+ 第6/7章 | `ch5_import.md`（已就位）、`ch6.md`、`ch7.md` | 同上 |
+| S8 | 写章 批2 | author | 同上 | 第5章装配稿补叙述（禁重算）+ 第6/7章 | `ch5_import.md`（已就位）、`ch6.md`、`ch7.md` | 同上 |
 | S9 | 写章 批3 | author | 同上 | 第8章 + 附录 | `ch8.md`、`appendix.md` | 同上 |
 | S10 | 装配 | author | `data.json`+`chapter_md/`+`report_images.json` | `build_energy_audit_docx.py --project-dir <项目>` | `output/_script_build/<单位>能源审计报告.docx` | 缺章仅告警（会出空章）；公式占位必须命中资产库 |
 | S11 | 收尾 | author | 上一步 docx | `finalize_energy_audit_pdf.py --project-dir <项目>` | 同名 `.pdf`（刷目录+盖章） | Word COM 必须绝对路径；updateFields 自动补写 |
@@ -87,14 +87,17 @@
 
 | 资产 | 唯一位置 | 检索入口 | 说明 |
 |---|---|---|---|
-| 标准原文 | `%LOCALAPPDATA%\hermes\rag\standards\` | 人工查阅；可导入向量库 | **不得**放进 `rag/report/`（会被当同类成稿） |
+| 标准原文（文件） | `%LOCALAPPDATA%\hermes\rag\standards\` | 人工查阅；入库后走下面的"标准条文库" | **不得**放进 `rag/report/`（会被当同类成稿） |
 | 历史成稿 | `%LOCALAPPDATA%\hermes\rag\report\<机构类>\` | `tools/energy_audit/reference_library.search_local_references(chapter, tags)` —— **本地打分、离线永远可用，第一层** | 只放已交付成稿；禁"- 副本" |
 | 向量索引 | Qdrant `energy_audit_reports`（+`_wiki`/`_entities`） | `rag.rag_search.search_reports(query, tags)` —— **第二层**；tags 只作 must-filter | 远端 `10.10.2.55:6334`（配置在 `config.yaml→knowledge_base`） |
+| **标准条文库（向量）** | Qdrant `energy_quota_standards`（定额标准）+ `energy_audit_technical_guidelines`（技术规范），各含 `_wiki`/`_entities` | `energy_audit_rag_search(query, kbs="standards")`，或 `rag.rag_search.search_standards(query)` —— **2026-09-20 P3-3 接入，与报告向量链并行** | 里面是**条文**不是成稿：可作**依据引用**，**不得**当"机构同类报告"仿写（返回 `is_report_retrieval=false`） |
 | 章节指南 / 生成 wiki 页 | `<HERMES_HOME>/skills/energy-audit/**/chapter*.md`、`<HERMES_HOME>/rag/wiki/generated/` | `search_wiki()` —— 第三层 | 关键字匹配 |
 | 知识图谱 | `rag/knowledge_graph/energy_kg.py` | `search_knowledge_graph()` —— 第四层 | **不是报告片段**（`is_report_chunk=false`），仅作诊断候选，**不得引用进报告** |
 | 入库台账 | `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | `_changes/verify_knowledge_assets.py` | 点对点对账 + 副本/死资产检查 |
 
-**降级链（顺序即优先级）**：`本地参考库 → 向量 → wiki → 图谱(标注非报告)`。
+**降级链（顺序即优先级）**：`本地参考库 → 报告向量 → wiki → 图谱(标注非报告)`；
+**标准条文库（定额/规范）是并行支线，不在降级链内**——它回答"依据是什么"，不回答"别人怎么写"，
+按场景显式选择（见 6.3）。
 任何一层失败都必须**显式**（返回值带 `degraded` / `note`，检索结果带 `is_report_retrieval`）；
 **Qdrant 不可用 ≠ 无参考可用**，不得因此编造，也不得用不相关报告充当参考。
 
@@ -106,6 +109,7 @@
 | 第 3 章 3.1/3.2 无制度数据要"仿写" | 知识层·本地成稿 | `search_local_references("第3章", tags)` → 仿段落结构，专名数据换成本单位 |
 | 想找"同类项目怎么写某一章" | 知识层·向量 | `energy_audit_rag_search`（或 `search_reports`）；返回带 `is_report_retrieval` |
 | 查定额/折标系数 | 知识层·标准 + 事实层 | 数值一律取 `standards-values.md`（唯一权威）；标准原文在 `rag/standards/` 备查 |
+| **查定额/规范条文原文**（要"依据哪一条"，不只是数值） | 知识层·标准条文库（向量） | `energy_audit_rag_search(query, kbs="standards")`；命中带 `is_report_retrieval=false` + `kind=standard_clause`，**只能当依据引用，不得当同类成稿仿写** |
 | 诊断"能耗为什么偏高" | 知识层·图谱 | **S3 已产出 `<项目>/diagnosis_chapter7_material.txt`**（问题+系统+严重度+推断原因/置信度+验证方法+措施）；契约第六节给摘要，**写第7章 7.1 前必读原文**。结论是**候选因果链**，须用本项目台账验证 |
 | 写第6/7章（分系统 / 问题与建议） | 知识层·本地成稿 + 诊断素材 | 先读素材原文（上一条）；再按章取同类成稿全文：`search_local_references("第7章", tags)` |
 | 交付前查有没有串别人的数据 | 形态层 + 闸门 | `verify_variables_provenance.py --blueprint <同类成稿>` |

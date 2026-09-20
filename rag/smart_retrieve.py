@@ -39,6 +39,7 @@ from rag.rag_search import (
     search_by_tags,
     search_knowledge_graph,
     search_qdrant,
+    search_standards,
     search_wiki,
 )
 
@@ -114,7 +115,9 @@ _ROUTE_META = {
     "qdrant_tags":     {"own_score_as_relevance": False, "gate_by_keyword": True},
     "local_folder":    {"own_score_as_relevance": False, "gate_by_keyword": True},
     "skill_guide":     {"own_score_as_relevance": False, "gate_by_keyword": True},
-    "standards":       {"own_score_as_relevance": False, "gate_by_keyword": True},
+    # 标准条文路：命中的是 Qdrant 向量分（0~1 相关性），与 qdrant_vector 同类——
+    # 2026-09-20 P3-3 起本条路由真正产出结果（此前 AUTHORITY 里留了 1.00 却无人产出）。
+    "standards":       {"own_score_as_relevance": True,  "gate_by_keyword": False},
     "llm_wiki_generated": {"own_score_as_relevance": False, "gate_by_keyword": True},
 }
 
@@ -161,8 +164,13 @@ def _rank(raw: List[Dict], query: str, tags: Optional[Dict], route: str) -> List
 
 
 def smart_retrieve(query: str, tags: Optional[Dict] = None, top_k: int = 5,
-                   chapter: str = "", reference_dir: Optional[str] = None) -> Dict:
-    """四路召回 + 重排序。返回形状兼容 `search_reports` 并额外带 route/rerank/routes。"""
+                   chapter: str = "", reference_dir: Optional[str] = None,
+                   include_standards: bool = False) -> Dict:
+    """四路召回 + 重排序。返回形状兼容 `search_reports` 并额外带 route/rerank/routes。
+
+    include_standards=True 时额外跑 R5 标准条文路（定额标准 / 技术规范），
+    用于"查依据"型问题；默认关闭，见 R5 处说明。
+    """
     tags = dict(tags or {})
     k = max(int(top_k) * 3, 10)
     pool: List[Dict] = []
@@ -223,6 +231,18 @@ def smart_retrieve(query: str, tags: Optional[Dict] = None, top_k: int = 5,
         degraded.append("knowledge_graph")
         print(f"[smart] ⚠️ 图谱路不可用：{e}")
 
+    # R5 标准条文（定额标准 / 技术规范）—— 2026-09-20 P3-3
+    #   默认**不开**：AUTHORITY["standards"]=1.00，混进来会系统性挤掉"同类成稿"路线，
+    #   而写章时想看的恰恰是"别人怎么写的"而不是条文原文。要查依据时显式打开。
+    if include_standards:
+        try:
+            r5 = _rank(search_standards(query, top_k=k), query, tags, "standards")
+            pool += r5
+            routes["standards"] = len(r5)
+        except Exception as e:  # noqa: BLE001
+            degraded.append("standards")
+            print(f"[smart] ⚠️ 标准条文路不可用：{e}")
+
     # 去重：(filename, chapter) 保留最高分，命中路线合并（多路命中 = 更强证据）
     fused: Dict[Tuple[str, str], Dict] = {}
     for it in pool:
@@ -242,7 +262,12 @@ def smart_retrieve(query: str, tags: Optional[Dict] = None, top_k: int = 5,
         note = ("四路召回均无命中（降级链：" + ("、".join(degraded) if degraded else "各层空") +
                 "）。请检查 Qdrant / wiki / 本地成稿库，或如实说明无参考。")
     elif not report_hits:
-        note = "未命中历史报告；命中的是知识图谱推断（非报告），不得作为报告引用来源。"
+        kinds = {str(it.get("kind") or "") for it in results}
+        if "standard_clause" in kinds:
+            note = ("命中的是标准/规范**条文原文**（非同类成稿）：可作依据引用，"
+                    "但不得当 '机构同类报告' 仿写。")
+        else:
+            note = "未命中历史报告；命中的是知识图谱推断（非报告），不得作为报告引用来源。"
     return {
         "results": results,
         "source": "smart_multi_recall",
