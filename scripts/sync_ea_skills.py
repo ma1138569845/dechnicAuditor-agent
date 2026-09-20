@@ -15,6 +15,7 @@
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import sys
 
@@ -107,6 +108,47 @@ def copy_tree(src, dst, dry_run=False):
     return changed, removed
 
 
+# ── 元数据合规轻量检查（2026-09-20 新增）────────────────────────────────────
+# 与 tests/skills/test_authoring_standards.py 的机械规则对齐：描述≤60字符、ASCII 句点、
+# 无营销词；六必填字段；tags 非空。纯正则实现，不引入 yaml 依赖；仅告警不阻断发布。
+REQUIRED_FIELDS = ("name", "description", "version", "author", "license", "platforms")
+MARKETING = re.compile(
+    r"\b(powerful|comprehensive|seamless|revolutionary|cutting-edge|state-of-the-art)\b", re.I
+)
+
+
+def check_skill_meta(skill_dir):
+    """技能目录的元数据合规检查；返回问题列表（空 = 合规）。"""
+    p = os.path.join(skill_dir, "SKILL.md")
+    try:
+        text = open(p, encoding="utf-8").read()
+    except OSError:
+        return ["SKILL.md 不可读"]
+    m = re.search(r"^---\s*$(.*?)^---\s*$", text, re.M | re.S)
+    if not m:
+        return ["frontmatter 无法解析"]
+    fm = m.group(1)
+    problems = []
+    dm = re.search(r"^description:\s*(.+?)\s*$", fm, re.M)
+    if not dm:
+        problems.append("缺 description")
+    else:
+        desc = dm.group(1).strip().strip('"').strip("'")
+        if len(desc) > 60:
+            problems.append(f"description 超60字符({len(desc)})")
+        if not desc.rstrip().endswith("."):
+            problems.append("description 未以句点结尾")
+        mm = MARKETING.search(desc)
+        if mm:
+            problems.append(f"description 含营销词 {mm.group(0)}")
+    for f in REQUIRED_FIELDS:
+        if not re.search(r"^%s:\s*\S" % f, fm, re.M):
+            problems.append(f"缺字段 {f}")
+    if not re.search(r"^\s*tags:\s*\[?[^\s\]]", fm, re.M):
+        problems.append("缺 tags")
+    return problems
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -124,6 +166,16 @@ def main():
     unknown = [s for s in skills if s not in ROLE_MATRIX]
     if unknown:
         print(f"[警告] 权威源中存在矩阵外 skill（不会发布到 profile）: {unknown}")
+
+    # 元数据合规轻量检查（提示不阻断）：与 test_authoring_standards 规则对齐
+    noncompliant = [(s, check_skill_meta(os.path.join(SKILLS_SRC, s))) for s in skills]
+    noncompliant = [(s, problem) for s, problem in noncompliant if problem]
+    if noncompliant:
+        print("[警告] 技能元数据不合规（跑 tests/skills/test_authoring_standards.py 定位）:")
+        for s, problem in noncompliant:
+            print(f"  - {s}: {'; '.join(problem)}")
+    else:
+        print("✓ 技能元数据合规检查通过（描述/字段/tags）")
 
     total_changed, total_removed = 0, 0
 
