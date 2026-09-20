@@ -68,14 +68,70 @@ _DEFAULT_BENCHMARKS = {
         'standard_name': 'DB37/T 2672-2019《党政机关能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
-    'education': {
-        'unit_area_non_heating': (11.5, 7.0, 4.0),
-        'unit_area_elec': (35.0, 25.0, 18.0),
-        'per_capita_energy': (400, 300, 200),
-        # 用水: DB37/T 4452-2021, 教育业单位取水量 m³/(p·a)
-        'water_per_person': (14, 8, 0),          # 约束值(通用值), 基准值(先进值), 引导值(无) m³/(人·a)
+    'education': {  # DB37/T 2671-2019《教育机构能源消耗定额标准》（原文逐页核验 2026-09-20）
+        # ★ 2026-09-20 修复：原写 standard_name='DB37/T 2674-2019'（**该标准号不存在**），
+        #   且 unit_area_elec=(35,25,18) / per_capita_energy=(400,300,200) 系编造值，
+        #   标准中无此两行数据。现按原文表1/表2/表3/表4/表5 全量录入。
+        # 教育类特点：**不分气候区**（不要套 2672/2673 的 A/B 区），
+        #   但必须按「机构类型 + 二级分档」取行。键格式 '一级类型·分档'。
+        # 原表纵向合并单元格：职业学校＝普通寄宿制（表1/表2/表4）；专科＝本科及以上（表4）。
+        # 数值权威单点：skills/energy-audit/energy-audit-core/references/standards-values.md
+        'unit_area_non_heating': {  # 表1 kgce/(m²·a)
+            '高等教育·本科及以上': (16.5, 10.0, 7.5),
+            '高等教育·专科': (15.3, 8.2, 5.9),
+            '中等教育·普通非寄宿制': (9.6, 6.5, 3.5),
+            '中等教育·普通寄宿制': (11.5, 7.0, 4.0),
+            '中等教育·职业学校': (11.5, 7.0, 4.0),
+            '初等教育': (8.8, 5.8, 3.0),
+            '学前教育': (12.2, 7.2, 4.3),
+            '其他教育': (12.4, 7.6, 5.0),
+        },
+        'unit_area_elec': {  # 表4 kWh/(m²·a)
+            '高等教育·本科及以上': (40.8, 22.2, 16.1),
+            '高等教育·专科': (40.8, 22.2, 16.1),
+            '中等教育·普通非寄宿制': (24.6, 13.6, 7.3),
+            '中等教育·普通寄宿制': (27.9, 17.4, 9.0),
+            '中等教育·职业学校': (27.9, 17.4, 9.0),
+            '初等教育': (23.1, 12.8, 6.7),
+            '学前教育': (30.1, 17.6, 9.4),
+            '其他教育': (25.0, 16.1, 8.7),
+        },
+        'per_capita_energy': {  # 表3 kgce/(p·a)
+            '高等教育·本科及以上': (480.6, 278.9, 164.9),
+            '高等教育·专科': (419.3, 210.2, 125.2),
+            '中等教育·普通非寄宿制': (226.5, 113.8, 60.2),
+            '中等教育·普通寄宿制': (252.7, 156.8, 73.6),
+            '中等教育·职业学校': (273.6, 175.9, 89.9),
+            '初等教育': (153.3, 100.8, 51.4),
+            '学前教育': (159.0, 102.6, 58.2),
+            '其他教育': (257.0, 164.3, 83.5),
+        },
+        'unit_area_heating': {  # 表2 kgce/(m²·a)，默认市政集中供暖（按热计量）口径
+            # 空调供暖/燃气（油）供暖口径见 standards-values.md 教育类表2（部分档位标准给"—"）
+            '高等教育·本科及以上': (12.4, 9.7, 7.1),
+            '高等教育·专科': (12.4, 9.7, 7.1),
+            '中等教育·普通非寄宿制': (10.6, 8.7, 6.0),
+            '中等教育·普通寄宿制': (11.4, 9.0, 6.3),
+            '中等教育·职业学校': (11.4, 9.0, 6.3),
+            '初等教育': (10.3, 8.1, 5.8),
+            '学前教育': (11.7, 9.5, 6.7),
+            '其他教育': (11.5, 9.3, 6.5),
+        },
+        # 表5 数据中心 EUE：教育类 2.2/1.6/1.3（党政机关 2.2/1.8/1.4、
+        # 医疗机构 2.2/2.0/1.6、场馆 2.2/1.7/1.4，四者各不相同，禁止互相借用）
+        'eue': (2.2, 1.6, 1.3),
+        # 用水: DB37/T 4452-2021 表2 教育业，三元组口径 =(通用值, 先进值, 无引导值) m³/(人·a)
+        'water_per_person': {
+            '高等院校': (50, 33, 0),              # 先进 33 / 通用 50
+            '中等教育学校': (14, 8, 0),            # 有住宿；先进 8 / 通用 14
+            '初等教育学校·有住宿': (11, 8, 0),
+            '初等教育学校·无住宿': (10.8, 6.8, 0),
+            '幼儿园': (13.9, 10.3, 0),
+            '特殊教育学校': (32.3, 15, 0),
+            '职业技能培训学校': (13, 8, 0),
+        },
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
-        'standard_name': 'DB37/T 2674-2019《教育机构能源消耗定额标准》',
+        'standard_name': 'DB37/T 2671-2019《教育机构能源消耗定额标准》',
     },
     'venue': {  # DB37/T 3780-2019《场馆机构能源消耗定额标准》（标准原文核验 2026-09-03；取"市"档）
         # 子类型嵌套：图书馆/博物馆/剧院/体育馆/科技馆 → (约束值, 基准值, 引导值)
@@ -120,6 +176,47 @@ _DEFAULT_BENCHMARKS = {
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
 }
+
+# 子类型嵌套定额的「默认键」（sub_type 缺失或匹配不上时的兜底行）
+#   venue：注4 文化馆（宫）、美术馆等其他文化类场馆参照图书馆
+#   education：分档无法判定时沿用旧兜底行（中等教育·普通寄宿制 11.5/7.0/4.0），
+#              不改变历史行为；**报告必须写明实际档位**，能从项目数据定档时应传 sub_type。
+_SUBTYPE_DEFAULT = {'venue': '图书馆', 'education': '中等教育·普通寄宿制'}
+
+
+def _lookup_sub_quota(vals: dict, sub_type: Optional[str], default_key: str = ""):
+    """在「子类型 → (约束值, 基准值, 引导值)」嵌套定额中取值（容错匹配）。
+
+    匹配顺序：
+      1. 精确命中 sub_type
+      2. '·' 之后的二级分档命中（sub_type='本科及以上' → '高等教育·本科及以上'）
+      3. '·' 之前的一级类型命中（sub_type='高等教育' → 其首个分档）
+      4. default_key
+      5. (0, 0, 0)（并打 warning）
+    """
+    if not isinstance(vals, dict):
+        return vals
+    if sub_type:
+        if sub_type in vals:
+            return vals[sub_type]
+        for key, val in vals.items():
+            if key.split('·')[-1] == sub_type:
+                return val
+        for key, val in vals.items():
+            if key.split('·')[0] == sub_type:
+                return val
+    if default_key and default_key in vals:
+        if sub_type:
+            logger.warning(
+                "定额子类型未匹配：sub_type=%s，回退默认行 %s（可选：%s）",
+                sub_type, default_key, "、".join(vals),
+            )
+        return vals[default_key]
+    logger.warning(
+        "定额子类型无法定位：sub_type=%s，default=%s，可选键=%s，返回 (0,0,0)",
+        sub_type, default_key, "、".join(vals),
+    )
+    return (0, 0, 0)
 
 
 # ============================================================
@@ -278,9 +375,8 @@ def resolve_benchmark(institution_type: str = 'medical',
     defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
     vals = defaults.get(metric, (0, 0, 0))
     if isinstance(vals, dict):
-        # venue 子类型嵌套：按场馆子类型取值，缺省用图书馆（注4：文化馆宫美术馆参照图书馆）
-        st = sub_type or '图书馆'
-        vals = vals.get(st) or vals.get('图书馆', (0, 0, 0))
+        # 子类型嵌套（venue 场馆类型 / education 教育机构分档）：见 _lookup_sub_quota
+        vals = _lookup_sub_quota(vals, sub_type, _SUBTYPE_DEFAULT.get(institution_type, ''))
     # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
     std_name = defaults.get('standard_name', '')
     if metric.startswith('water'):

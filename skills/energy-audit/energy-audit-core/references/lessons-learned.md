@@ -22,10 +22,11 @@
 | # | 现象 | 铁律 | 详见 |
 |---|---|---|---|
 | S1 | 电力折标误用当量值 0.1229（差 2.5 倍） | 山东口径一律 **0.31 kgce/kWh（等价）**；气 1.2143（DB 里的 1.33 是错值）；**水不折算** | `coefficient-caliber.md`（唯一权威） |
-| S2 | 定额取值拿错气候区（法院本应 A 区 20.0/11.9/6.5，却取了 B 区 20.8/12.6/6.9 并标"来源：DB"） | 取值必须**机构分档 × 气候区**双维度匹配；报告引用须写**标准号+表号**（原文锚点）；跑 `verify_benchmark_sources.py` 自检 | `standards-values.md`（17 条 ★来源锚点）、`ea-calculation/scripts/verify_benchmark_sources.py` |
+| S2 | 定额取值拿错气候区（法院本应 A 区 20.0/11.9/6.5，却取了 B 区 20.8/12.6/6.9 并标"来源：DB"） | 取值必须**机构分档 × 气候区**双维度匹配；报告引用须写**标准号+表号**（原文锚点）；跑 `verify_benchmark_sources.py` 自检 | `standards-values.md`（23 条 ★来源锚点）、`ea-calculation/scripts/verify_benchmark_sources.py` |
 | S3 | 把用水两档（通用/先进）与能耗三档（约束/基准/引导）混用 | 能耗=三档；用水=两档；评价短语用固定词表 | `energy-audit-style/references/rules.md`（评价短语） |
 | S4 | 未剔除供暖电耗，非供暖能耗/常规电耗偏高约 15% | 从总电耗中剔除供暖循环泵/风机电耗后再算非供暖类指标 | `coefficient-caliber.md`、`ea-calculation/SKILL.md` |
-| S5 | 教育类项目（DB37/T 2671）暂无定额矩阵 | 未收录标准时**标【待核验】**，禁止套用其它机构标准 | `standards-values.md`（其他机构类型待补充） |
+| S5 | 教育类项目（DB37/T 2671）曾无定额矩阵，运行时兜底还写错标准号（写成不存在的 DB37/T 2674）并带编造的电耗/人均值 | 教育类定额**已全档收录**（原文核验 2026-09-20）；取值必须按**机构类型+二级分档**（不分气候区），禁止跨机构类型借用 EUE 等同类值 | `standards-values.md`《教育机构能源消耗定额标准》一节、`tools/energy_audit/indicators.py` `_DEFAULT_BENCHMARKS['education']` |
+| S6 | 教育类报告自相矛盾：同一份报告**表里写约束值 16.5**、**正文写 25.5** kgce/(m²·a)（济南大学 0620 稿） | 表格与正文的定额值必须**同源**（都从 `standards-values.md` 取）；25.5 是党政机关省级约束值，属**跨标准串档**，教育类无此值 | `standards-values.md`（教育类表1）、`ea-validation/scripts/datava/mode_indicator_review.py` |
 
 ## 三、报告与写作
 
