@@ -206,6 +206,9 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
             "score": r.get("score"),
             "text": r.get("text", ""),
             "tags": r.get("tags", {}),
+            # ★2026-09-20：知识图谱推断不是报告片段，逐条标注，避免被当引用来源
+            "is_report_chunk": r.get("is_report_chunk", rag_results.get("is_report_retrieval", True)),
+            "kind": r.get("kind", "report_chunk"),
         }
         for i, r in enumerate(rag_results.get("results", []))
     ]
@@ -248,6 +251,9 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
         "query": query,
         "filters": tags,
         "source": rag_results.get("source", "none"),
+        # ★2026-09-20：显式区分"检索到历史报告"与"降级到图谱推断"
+        "is_report_retrieval": rag_results.get("is_report_retrieval", True),
+        "degraded": rag_results.get("degraded", []),
         "document_count": len(documents),
         "documents": documents,
         "knowledge_graph": {
@@ -257,7 +263,12 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
         "references": sorted(set(_collect_references(rag_results) + kg_references)),
     }
 
-    if not documents and not kg_diagnosis and not kg_measures:
+    if rag_results.get("note"):
+        output["notice"] = rag_results["note"]
+    elif not output["is_report_retrieval"] and (documents or kg_diagnosis or kg_measures):
+        output["notice"] = ("未命中历史报告；documents 为知识图谱推断，"
+                            "不得作为报告引用来源（引用前必须另行取证）。")
+    elif not documents and not kg_diagnosis and not kg_measures:
         output["notice"] = "未找到与查询相关的内容。请尝试调整 query、放宽过滤条件或检查知识库/Qdrant 是否已配置。"
 
     return tool_result(output)

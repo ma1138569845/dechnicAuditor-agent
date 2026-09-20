@@ -1,10 +1,17 @@
 """
 能源审计报告 RAG 检索工具
 
-检索流程:
+检索流程（逐层降级，任一层命中即返回）:
+  0. Qdrant 标签直查（无需 embedding / API key）
   1. Qdrant 向量检索（energy_audit_reports collection）
-  2. 本地 wiki 兜底（当 Qdrant 不可用时）
-  3. 知识图谱因果诊断兜底（当 wiki 也无结果时）
+  2. 本地 wiki 兜底（技能包章节指南 + LLM Wiki 生成页）
+  3. 知识图谱因果诊断 —— **不是"检索到历史报告"**
+
+⚠️ 第 3 层语义（2026-09-20 修正）：知识图谱是依据查询词生成的**因果推断**，
+   不是报告片段。这类结果带 `is_report_chunk=False`，`search_reports` 会返回
+   `is_report_retrieval=False` + `note`，`format_reference` 会加显著警示——
+   **不得作为报告引用来源**。此前它伪装成 filename='knowledge_graph' 的报告片段，
+   检索失败被当成了检索成功。
 
 用法:
   from rag.rag_search import search_reports
@@ -119,22 +126,68 @@ def search_qdrant(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> Li
 # Layer 2: 本地 wiki 兜底
 # ============================================================
 
+def _hermes_home() -> Path:
+    """Hermes 数据家目录。
+
+    ★2026-09-20 修：此前本文件用 ``Path.home()/".hermes"`` 拼 wiki 路径，
+    而 Windows 上 Hermes 数据实际在 ``%LOCALAPPDATA%\\hermes``
+    → wiki 兜底恒返回 0 条（静默失效）。现与
+    ``tools/energy_audit/reference_library._hermes_report_dir`` 走同一条解析链。
+    """
+    try:
+        from hermes_constants import get_hermes_home
+
+        return Path(get_hermes_home())
+    except Exception:
+        override = os.environ.get("HERMES_HOME")
+        if override:
+            return Path(override).expanduser()
+        local = os.environ.get("LOCALAPPDATA")
+        if os.name == "nt" and local:
+            return Path(local) / "hermes"
+        return Path.home() / ".hermes"
+
+
+# 技能包章节指南目录（references/chapter*.md）。默认扫已部署的 energy-audit 技能树；
+# 可用 HERMES_RAG_WIKI_PATHS（os.pathsep 分隔）覆盖。
 _WIKI_PATHS = [
-    Path(__file__).resolve().parent / "references",                                    # tools/energy_audit/references/
-    Path(os.path.expanduser("~/.hermes/skills/energy-audit/energy-audit/references")), # 技能包
-]
+    Path(p).expanduser()
+    for p in (os.environ.get("HERMES_RAG_WIKI_PATHS") or "").split(os.pathsep)
+    if p.strip()
+] or [_hermes_home() / "skills" / "energy-audit"]
 
-# User-private Obsidian/wiki vault (optional Layer-2 fallback).
-# Default to a cross-platform home-directory "wiki" folder; override with HERMES_OBSIDIAN_WIKI.
-_OBSIDIAN_WIKI = Path(os.getenv("HERMES_OBSIDIAN_WIKI", str(Path.home() / "wiki")))
+# 用户私有 Obsidian/wiki vault（可选；**仅在显式设置环境变量时启用**，
+# 此前默认指向不存在的 ~/wiki，属无效兜底）
+_OBSIDIAN_WIKI = (
+    Path(os.environ["HERMES_OBSIDIAN_WIKI"]).expanduser()
+    if os.environ.get("HERMES_OBSIDIAN_WIKI")
+    else None
+)
 
-# Auto-generated llm-wiki pages exported by the knowledge-base pipeline.
-# Default vault matches rag.api.knowledge_base._DEFAULT_WIKI_VAULT.
-_LLM_WIKI_VAULT = Path(os.getenv("HERMES_WIKI_VAULT", str(Path.home() / ".hermes" / "rag" / "wiki")))
+# 知识库导入管道自动生成的 llm-wiki 页面（默认 %LOCALAPPDATA%\hermes\rag\wiki\generated）
+_LLM_WIKI_VAULT = Path(
+    os.getenv("HERMES_WIKI_VAULT") or (_hermes_home() / "rag" / "wiki")
+).expanduser()
 _LLM_WIKI_GENERATED = _LLM_WIKI_VAULT / "generated"
 
 # 排除的 wiki 目录/文件（杂项）
 _WIKI_EXCLUDE_DIRS = {"_meta", "raw", "未命名.base", ".obsidian"}
+
+
+def _is_excluded_wiki_path(rel: Path) -> bool:
+    """是否跳过该 wiki 相对路径。
+
+    ★2026-09-20 修：本函数此前**被调用两次但从未定义**（NameError 一直没暴露，
+    因为 wiki 目录不存在、那段代码从没执行到）。修好路径后必须先补上定义。
+    """
+    parts = list(rel.parts)
+    if set(parts) & _WIKI_EXCLUDE_DIRS:
+        return True
+    # 归档副本不参与检索，避免与 live 文件重复命中
+    if any(p == "_archive" or p.startswith("_archive") for p in parts[:-1]):
+        return True
+    name = rel.name
+    return name.startswith("~$") or name.endswith(".bak")
 
 def _score_by_keyword_hits(text: str, keywords: list[str]) -> float:
     """Simple keyword overlap score: ratio of query keywords present in text."""
@@ -193,9 +246,11 @@ def search_wiki(query: str, tags: Optional[Dict] = None) -> List[dict]:
     本地知识库搜索（三层兜底的 Layer 2）
 
     搜索范围:
-      1. references/ 下的 chapter*.md（能源审计章节指南）
-      2. llm-wiki 自动生成的 wiki 页面（~/.hermes/rag/wiki/generated/）
-      3. Obsidian wiki（HERMES_OBSIDIAN_WIKI，默认 E:/data/wiki）下的所有 .md 文件
+      1. 技能包的 chapter*.md 章节指南（`_WIKI_PATHS`，默认 <hermes_home>/skills/energy-audit）
+      2. LLM Wiki 自动生成的页面（`_LLM_WIKI_GENERATED`，默认 <hermes_home>/rag/wiki/generated/）
+      3. Obsidian wiki（**仅当设置 HERMES_OBSIDIAN_WIKI 时**）下的所有 .md 文件
+
+    注：本层返回的都是**知识库/指南文本**，不是历史报告片段；引用时须注明来源文件。
 
     tags 过滤:
       本地 wiki 文件没有结构化标签字段，因此把 tags 中非空值作为必填关键字：
@@ -230,11 +285,14 @@ def search_wiki(query: str, tags: Optional[Dict] = None) -> List[dict]:
             'tags': result_tags,
         })
 
-    # —— 1. references 下的 chapter*.md ——
+    # —— 1. 技能包章节指南 chapter*.md ——
     for wiki_path in _WIKI_PATHS:
         if not wiki_path.exists():
             continue
-        for md_file in wiki_path.glob("chapter*.md"):
+        for md_file in wiki_path.rglob("chapter*.md"):
+            rel = md_file.relative_to(wiki_path)
+            if _is_excluded_wiki_path(rel):
+                continue
             try:
                 text = md_file.read_text(encoding='utf-8')
                 if not _matches_wiki_tags(text, tags or {}):
@@ -242,7 +300,7 @@ def search_wiki(query: str, tags: Optional[Dict] = None) -> List[dict]:
                 score = _score_by_keyword_hits(text, keywords)
                 if score > 0:
                     title = text.split('\n')[0].replace('# ', '') if text.startswith('#') else md_file.stem
-                    _add_result(score, md_file.name, title, text[:2000], 'local_wiki')
+                    _add_result(score, str(rel), title, text[:2000], 'skill_guide')
             except Exception:
                 pass
 
@@ -266,7 +324,7 @@ def search_wiki(query: str, tags: Optional[Dict] = None) -> List[dict]:
                 pass
 
     # —— 3. Obsidian wiki ——
-    if _OBSIDIAN_WIKI.exists():
+    if _OBSIDIAN_WIKI and _OBSIDIAN_WIKI.exists():
         for md_file in _OBSIDIAN_WIKI.rglob("*.md"):
             rel = md_file.relative_to(_OBSIDIAN_WIKI)
             if _is_excluded_wiki_path(rel):
@@ -393,7 +451,10 @@ def search_knowledge_graph(query: str, tags: Optional[Dict] = None) -> List[dict
         if result.has_diagnosis:
             results.append({
                 'score': max(result.confidence, 0.5),
-                'filename': 'knowledge_graph',
+                # ★不是报告片段：显式标注，避免被当历史报告引用（2026-09-20 修）
+                'filename': '（知识图谱推断·非报告）',
+                'kind': 'knowledge_graph_diagnosis',
+                'is_report_chunk': False,
                 'chapter': result.anomaly_description,
                 'text': _format_diagnosis_result(result),
                 'tags': {'source': 'knowledge_graph'},
@@ -410,7 +471,9 @@ def search_knowledge_graph(query: str, tags: Optional[Dict] = None) -> List[dict
                 if measures:
                     results.append({
                         'score': 0.6,
-                        'filename': 'knowledge_graph',
+                        'filename': '（知识图谱推断·非报告）',
+                        'kind': 'knowledge_graph_measures',
+                        'is_report_chunk': False,
                         'chapter': f'{system}节能措施',
                         'text': _format_measures(system, measures[:10]),
                         'tags': {'source': 'knowledge_graph', 'system': system},
@@ -431,57 +494,103 @@ def search_reports(query: str, tags: Optional[Dict] = None, top_k: int = 5) -> d
 
     Layer 0: Qdrant 标签直查（无需 API key）
     Layer 1: Qdrant 向量检索（语义匹配）
-    Layer 2: 本地知识库（能源审计 references + Obsidian wiki 关键字匹配）
-    Layer 3: 知识图谱因果诊断（异常 / 系统 / 措施）
+    Layer 2: 本地知识库（技能包章节指南 + LLM Wiki 关键字匹配）
+    Layer 3: 知识图谱因果诊断（异常 / 系统 / 措施）—— **非报告来源**
 
-    返回 {results: [...], source: 'qdrant_tags'|'qdrant_vector'|'wiki'|'knowledge_graph'|'none'}
+    返回 {
+      results: [...],
+      source: 'qdrant_tags'|'qdrant_vector'|'wiki'|'knowledge_graph'|'none',
+      count: int,
+      is_report_retrieval: bool,   # False ⇒ 结果不是历史报告片段，不得作为报告引用
+      degraded: [str],             # 本次降级原因（Qdrant 不通 / wiki 目录缺失 等）
+      note: str,                   # 面向调用方的显式说明（未命中时给出）
+    }
+
+    ★2026-09-20：此前 Layer 3 的结果与真实报告片段**同形**，导致"检索失败"被当成
+    "检索成功"（Qdrant 未启动 + wiki 路径写错时尤其严重）。现显式区分。
     """
+    degraded: List[str] = []
+
     # Layer 0: 标签直查
     if tags:
         try:
             results = search_by_tags(tags, top_k)
             if results:
-                return {'results': results, 'source': 'qdrant_tags', 'count': len(results)}
+                return {'results': results, 'source': 'qdrant_tags', 'count': len(results),
+                        'is_report_retrieval': True, 'degraded': degraded, 'note': ''}
         except Exception as e:
-            print(f"[RAG] Qdrant tag search failed: {e}")
+            degraded.append('qdrant_tags')
+            print(f"[RAG] ⚠️ Qdrant 标签直查不可用（{e}）；降级到下一层")
 
     # Layer 1: Qdrant 向量
     try:
         results = search_qdrant(query, tags, top_k)
         if results:
-            return {'results': results, 'source': 'qdrant_vector', 'count': len(results)}
+            return {'results': results, 'source': 'qdrant_vector', 'count': len(results),
+                    'is_report_retrieval': True, 'degraded': degraded, 'note': ''}
     except Exception as e:
-        print(f"[RAG] Qdrant vector search failed: {e}")
+        degraded.append('qdrant_vector')
+        print(f"[RAG] ⚠️ Qdrant 向量检索不可用（{e}）；降级到下一层")
 
     # Layer 2: wiki
     try:
+        if not _LLM_WIKI_GENERATED.exists():
+            degraded.append('llm_wiki_missing')
         results = search_wiki(query, tags)
         if results:
-            return {'results': results, 'source': 'wiki', 'count': len(results)}
+            return {'results': results, 'source': 'wiki', 'count': len(results),
+                    'is_report_retrieval': True, 'degraded': degraded, 'note': ''}
     except Exception as e:
-        print(f"[RAG] Wiki search failed: {e}")
+        degraded.append('wiki')
+        print(f"[RAG] ⚠️ 本地 wiki 检索失败（{e}）；降级到下一层")
 
-    # Layer 3: knowledge graph
+    # Layer 3: knowledge graph —— 不是报告检索，必须显式标注
     try:
         results = search_knowledge_graph(query, tags)
         if results:
-            return {'results': results, 'source': 'knowledge_graph', 'count': len(results)}
+            why = '、'.join(degraded) if degraded else '知识库无命中'
+            return {
+                'results': results, 'source': 'knowledge_graph', 'count': len(results),
+                'is_report_retrieval': False, 'degraded': degraded,
+                'note': (f'未检索到历史报告（降级链：{why}）。以下为知识图谱依据查询词生成的'
+                         f'因果推断，**不得作为报告引用来源**，仅可用于诊断思路与措施候选。'),
+            }
     except Exception as e:
-        print(f"[RAG] Knowledge graph search failed: {e}")
+        degraded.append('knowledge_graph')
+        print(f"[RAG] ⚠️ 知识图谱检索失败（{e}）")
 
-    return {'results': [], 'source': 'none', 'count': 0}
+    return {
+        'results': [], 'source': 'none', 'count': 0,
+        'is_report_retrieval': False, 'degraded': degraded,
+        'note': ('未检索到任何内容。降级链：' + ('、'.join(degraded) if degraded else '各层均无命中') +
+                 '。请检查 Qdrant 是否启动、wiki 是否已生成，或改用项目本地参考库。'),
+    }
 
 
 def format_reference(results: dict) -> str:
-    """格式化检索结果为可嵌入 prompt 的参考文本"""
+    """格式化检索结果为可嵌入 prompt 的参考文本。
+
+    ★2026-09-20：当来源不是历史报告（如知识图谱推断）时，输出显著警示，
+    避免被当作可引用来源写进报告。
+    """
     if not results.get('results'):
         return ""
 
-    lines = [f"\n### 参考（来源: {results['source']}）\n"]
+    is_report = results.get('is_report_retrieval', True)
+    if is_report:
+        lines = [f"\n### 参考（来源: {results['source']}）\n"]
+    else:
+        lines = [
+            f"\n### ⚠️ 非报告来源：知识图谱推断（来源: {results['source']}）",
+            f"> {results.get('note') or '未检索到历史报告，以下内容不是报告片段。'}",
+            "> 用途限定：仅可作为诊断思路/措施候选；**引用进报告前必须另行取证**。",
+            "",
+        ]
     for i, r in enumerate(results['results'], 1):
         tags_str = '/'.join(v for v in r.get('tags', {}).values() if v)
         score_str = f" (相似度: {r['score']:.2f})" if 'score' in r else ""
-        lines.append(f"**参考{i}** [{tags_str}] {r['chapter']}{score_str}")
+        prefix = "**参考" if is_report else "**推断"
+        lines.append(f"{prefix}{i}** [{tags_str}] {r['chapter']}{score_str}")
         lines.append(r['text'][:500])
         lines.append("---")
     return '\n'.join(lines)
