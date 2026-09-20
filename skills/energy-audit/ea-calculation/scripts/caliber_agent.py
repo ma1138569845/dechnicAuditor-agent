@@ -390,6 +390,9 @@ def run_caliber(
             # 缺失/全 0 时 generate_chapter5_md 走建筑总面积兜底）
             'heating_area': sum(float(getattr(b, 'heating_area', 0) or 0)
                                 for b in getattr(proj, 'buildings', []) or []),
+            # 地下车库面积：建筑表 garage_area 聚合（D8：5.3.1/5.3.2 分母剔除）
+            'garage_area': sum(float(getattr(b, 'garage_area', 0) or 0)
+                               for b in getattr(proj, 'buildings', []) or []),
             'heating_energy_kwh_map': heating_energy_kwh_map,
             'manual': {
                 'energy_data': energy_data_dict,

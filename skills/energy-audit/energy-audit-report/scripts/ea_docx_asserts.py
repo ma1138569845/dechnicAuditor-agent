@@ -16,8 +16,9 @@
     toc_no_self_ref   目录未自收录（目录区不重复出现"目录"字样，启发式）
     no_flat_formula   无公式压平残留（已知形态清单）
     no_writer_markers 无写作标记残留（写作参考/数据参考/逐月参考/[FORMULA）
+    ch5_narrative     第5章分析叙述段计数 ≥ 15（防「只有图表无文字」，2026-09-20 新增）
 
-度量（总是输出）: oMath / captions / tables / drawings / media_files
+度量（总是输出）: oMath / captions / tables / drawings / media_files / ch5_body_paras
                   pages / header_pages / footer_pages（需 --pdf）
 --expect 键: pages（容差 ±2）/ oMath / captions / tables / drawings / media_files
 """
@@ -53,6 +54,39 @@ def count_captions(doc_xml: str) -> int:
     return n
 
 
+def ch5_narrative_count(doc_xml: str) -> int:
+    """第5章分析叙述段计数（2026-09-20 新增）：剔表格/标题/图注表题后，≥12 字段落数。
+
+    区间 = 正文中最后一次「第5章」标题之后、其后首个「第6章」标题之前
+    （目录区条目早于正文标题，天然被排除）。"""
+    x = re.sub(r"<w:tbl[ >].*?</w:tbl>", " ", doc_xml, flags=re.S)
+    paras = []
+    for m in re.finditer(r"<w:p[ >].*?</w:p>", x, re.S):
+        t = "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", m.group(0)))
+        paras.append(re.sub(r"\s+", "", t))
+    idx5 = None
+    for i, t in enumerate(paras):
+        if t.startswith("第5章"):
+            idx5 = i
+    if idx5 is None:
+        return 0
+    idx6 = len(paras)
+    for j in range(idx5 + 1, len(paras)):
+        if paras[j].startswith("第6章"):
+            idx6 = j
+            break
+    n = 0
+    for t in paras[idx5 + 1:idx6]:
+        if len(t) < 12:
+            continue
+        if re.match(r"^\d+\.\d+", t):       # 小节标题
+            continue
+        if re.match(r"^[图表]\s*\d", t):     # 图注/表题
+            continue
+        n += 1
+    return n
+
+
 def run(docx: str, pdf: str = None):
     z = zipfile.ZipFile(docx)
     znames = z.namelist()
@@ -65,6 +99,7 @@ def run(docx: str, pdf: str = None):
     instrs = re.findall(r"<w:instrText[^>]*>([^<]*)</w:instrText>", doc)
     text = visible_text(doc)
     tn = norm(text)
+    ch5_n = ch5_narrative_count(doc)
     i = tn.find("目录")
     self_ref = False
     if i >= 0:
@@ -87,6 +122,7 @@ def run(docx: str, pdf: str = None):
         "toc_no_self_ref": not self_ref,
         "no_flat_formula": not [p for p in FLAT_FORMULAS if p in text],
         "no_writer_markers": not [m for m in MARKERS if m in text],
+        "ch5_narrative": ch5_n >= 15,
     }
     details = {}
     flat = [p for p in FLAT_FORMULAS if p in text]
@@ -95,12 +131,15 @@ def run(docx: str, pdf: str = None):
         details["no_flat_formula"] = flat
     if marks:
         details["no_writer_markers"] = marks
+    if ch5_n < 15:
+        details["ch5_narrative"] = "第5章叙述段仅 %d 段（需 ≥ 15）" % ch5_n
 
     metrics = {
         "toc_state": toc_state,
         "oMath": len(re.findall(r"<m:oMath(?![A-Za-z])", doc)),
         "captions": count_captions(doc),
         "tables": len(re.findall(r"<w:tbl[ >]", doc)),
+        "ch5_body_paras": ch5_n,
         "drawings": len(re.findall(r"<w:drawing[ >]", doc)),
         "media_files": len(media),
     }

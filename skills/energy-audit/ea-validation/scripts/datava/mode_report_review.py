@@ -53,9 +53,14 @@ MISSING_REGISTRY_FILE = "missing_items.json"
 # （format-spec 与装配脚本对图注字号表述不一致，避免制造新的矛盾）
 RE_CAPTION = re.compile(r"^(图|表|附表)\s*\d+\s*[.\-–—]\s*\d+")
 RE_TABLE_CAPTION = re.compile(r"^(表|附表)\s*\d+\s*[.\-–—]\s*\d+")
-# 合法无表号的表（来源：封面三张信息表由装配脚本直写；5.1 规范明确"能源消费结构/逐年能耗对比"不占正式表号）
+# 合法无表号的表（来源：封面三张信息表由装配脚本直写）
 CAPTIONLESS_ALLOWED = {
     "能源审计机构信息表", "能源审计组人员名单", "能源审计配合人员名单",
+}
+
+# 第5章「写作参考」类数据表（2026-09-20 新增专项检查）：规范 5.1 无表，
+# 参考数据只以文字行保留；若被渲染进正文 → P1（此前以「无表题豁免」身份长期漏检）
+CH5_REF_TABLES = {
     "能源消费结构", "能源消费结构表", "逐年能耗对比", "逐年能源消费对比",
 }
 FMT_CAPTION = {"align": 1}
@@ -177,8 +182,10 @@ def extract_areas(blocks: Sequence[Block]) -> Dict[int, List[float]]:
 
 
 def check_area_consistency(
-    areas: Dict[int, List[float]], truth_area: float
+    areas: Dict[int, List[float]], truth_area: float, garage_area: float = 0.0
 ) -> List[Finding]:
+    """D8 口径（2026-09-20）：全文允许两种面积口径——非指标章 = base.building_area；
+    第5章指标分母 = 建筑面积扣除地下车库。两者之差视为合法，其余按容差判。"""
     findings: List[Finding] = []
     flat = [(ch, v) for ch, values in areas.items() for v in values if v > 0]
     if not flat:
@@ -193,28 +200,40 @@ def check_area_consistency(
             )
         ]
 
+    effective_area = (
+        truth_area - garage_area if garage_area > 0 and truth_area > garage_area else truth_area
+    )
     values = [v for _, v in flat]
     low, high = min(values), max(values)
-    if low > 0 and (high - low) / low * 100.0 > AREA_TOLERANCE_PCT:
+    allowed_gap = low * AREA_TOLERANCE_PCT / 100.0 + (truth_area - effective_area)
+    if low > 0 and (high - low) > allowed_gap:
         detail = "; ".join(f"第{ch}章 {fmt_num(v)} m²" for ch, v in sorted(flat))
         findings.append(
             Finding(
                 code="V3.CROSS.AREA_MISMATCH",
                 category="跨章一致性",
                 severity=SEV_P0,
-                title=f"各章建筑面积不一致（极差 {(high - low) / low * 100.0:.2f}%）",
+                title=f"各章建筑面积不一致（极差 {(high - low) / low * 100.0:.2f}%，超出允许 {allowed_gap:.0f} m²）",
                 detail=detail,
                 location="跨章",
-                expected="全文口径一致",
+                expected="非指标章 = base.building_area；第5章指标分母 = 建筑面积扣除地下车库（D8）",
                 actual=f"{fmt_num(low)} ~ {fmt_num(high)} m²",
-                suggestion="统一以 data.json base.building_area 为准重新生成受影响章节",
+                suggestion="统一口径重新生成受影响章节（车库扣除仅适用于第5章 5.3.1/5.3.2 指标分母说明）",
             )
         )
 
     if truth_area > 0:
         for chapter, value in sorted(flat):
-            deviation = abs(value - truth_area) / truth_area * 100.0
-            if deviation > AREA_TOLERANCE_PCT:
+            dev_source = abs(value - truth_area) / truth_area * 100.0
+            dev_effective = (
+                abs(value - effective_area) / effective_area * 100.0
+                if effective_area > 0 else float("inf")
+            )
+            if min(dev_source, dev_effective) > AREA_TOLERANCE_PCT:
+                expected_desc = (
+                    f"{fmt_num(truth_area)} m²（或扣除地下车库后 {fmt_num(effective_area)} m²，D8）"
+                    if effective_area < truth_area else f"{fmt_num(truth_area)} m²（data.json）"
+                )
                 findings.append(
                     Finding(
                         code="V3.CROSS.AREA_VS_SOURCE",
@@ -222,12 +241,118 @@ def check_area_consistency(
                         severity=SEV_P0,
                         title=f"第{chapter}章建筑面积与项目数据不符",
                         location=f"第{chapter}章",
-                        expected=f"{fmt_num(truth_area)} m²（data.json）",
+                        expected=expected_desc,
                         actual=f"{fmt_num(value)} m²",
                         suggestion="修正报告数据源绑定，勿在文本中硬写面积",
                     )
                 )
                 break  # 同一偏差不重复报，定位一处即可
+    return findings
+
+
+def check_ch5_narrative(blocks: Sequence[Block]) -> List[Finding]:
+    """第5章各小节分析叙述检查（2026-09-20 新增）。
+
+    - 小节范围：5.2.x / 5.3.x / 5.4.x
+    - 0 字叙述 → P0（整节只有图表/公式，历史事故形态）
+    - 叙述 < 80 字 → P1（偏薄）
+    - 5.3.x 缺「统计报告期内」定义段 / 缺「分别为」结论评价段 → P1
+    - 5.4.x 缺基准规则/推导文字（未见 最近一年/三年平均/平均值）→ P1
+    """
+    findings: List[Finding] = []
+    sec_head = re.compile(r"^(5\.[234]\.\d+)(?=\s|　|$)")
+    other_head = re.compile(r"^5(?:\.\d+){0,2}(?=\s|　|$)")
+    caption = re.compile(r"^[图表]\s*\d")
+    cur = None
+    stats: Dict[str, List[int]] = {}
+    texts: Dict[str, List[str]] = {}
+
+    for b in blocks:
+        if b.kind != "p" or not b.text or b.chapter != 5:
+            continue
+        text = b.text.strip()
+        m = sec_head.match(text)
+        if m:
+            cur = m.group(1)
+            stats.setdefault(cur, [0, 0])
+            texts.setdefault(cur, [])
+            continue
+        if other_head.match(text):
+            cur = None
+            continue
+        if cur is None or caption.match(text) or len(text) < 12:
+            continue
+        if re.fullmatch(r"[0-9A-Za-z.,%×÷=+\-—–/\s（）()]+", text):
+            continue
+        stats[cur][0] += 1
+        stats[cur][1] += len(text)
+        texts[cur].append(text)
+
+    if not stats:
+        return findings
+
+    empty = sorted(s for s, (n, _c) in stats.items() if n == 0)
+    thin = sorted(f"{s}（{c} 字）" for s, (n, c) in stats.items() if n > 0 and c < 80)
+    if empty:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.CH5_NARRATIVE_MISSING",
+                category="章节完整性",
+                severity=SEV_P0,
+                title=f"第5章 {len(empty)} 个小节无分析叙述（只有图表/公式）",
+                detail="；".join(empty),
+                expected="5.2 四段式 / 5.3 定义段+结论评价段 / 5.4 规则段+逐品种推导（author 补写）",
+                actual=f"{len(empty)} 个小节 0 字叙述",
+                suggestion="在装配稿 ch5_import.md 上按 chapter5-templates 补写叙述段，重装后复验",
+            )
+        )
+    if thin:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.CH5_NARRATIVE_THIN",
+                category="章节完整性",
+                severity=SEV_P1,
+                title=f"第5章 {len(thin)} 个小节叙述偏薄（<80 字）",
+                detail="；".join(thin[:10]),
+                suggestion="按 chapter5-templates 的段落结构补足（同比/归因/结论评价）",
+            )
+        )
+    sec53 = sorted(s for s in stats if s.startswith("5.3."))
+    lack_def = [s for s in sec53 if not any("统计报告期内" in t for t in texts.get(s, []))]
+    lack_concl = [s for s in sec53 if not any("分别为" in t for t in texts.get(s, []))]
+    if lack_def or lack_concl:
+        bits = []
+        if lack_def:
+            bits.append("缺定义段（未见「统计报告期内」）：" + "、".join(lack_def))
+        if lack_concl:
+            bits.append("缺结论评价段（未见「分别为」）：" + "、".join(lack_concl))
+        findings.append(
+            Finding(
+                code="V3.STRUCT.CH5_SECTION_TEXT",
+                category="章节完整性",
+                severity=SEV_P1,
+                title="第5章 5.3.x 结构不完整（定义段/结论评价段缺失）",
+                detail="；".join(bits),
+                expected="指标定义段（标准原文）＋结论评价段（分别为x、y、z…）",
+                suggestion="按 chapter5-templates 5.3 各节模板补写",
+            )
+        )
+    sec54 = sorted(s for s in stats if s.startswith("5.4."))
+    lack_rule = [s for s in sec54
+                 if not any(("最近一年" in t or "三年平均" in t or "平均值" in t)
+                            for t in texts.get(s, []))]
+    if lack_rule:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.CH5_BASELINE_TEXT",
+                category="章节完整性",
+                severity=SEV_P1,
+                title="第5章 5.4.x 缺基准规则/推导文字",
+                detail="；".join("缺推导：" + s for s in lack_rule),
+                expected="规则段（三条规则）＋逐品种推导（各年数值→判定→基准值）",
+                suggestion="按 chapter5-templates 5.4 模板补写；数值不重算",
+            )
+        )
     return findings
 
 
@@ -432,8 +557,9 @@ def check_tables_and_placeholders(
         )
 
     # 表题检查（2026-09-20 新增）：**正文**每张表的上方一行应为「表X.Y 标题」/「附表X-Y 标题」
-    # 封面/信息表区域（第1章之前）不计；5.1 的参考表与封面三表在 CAPTIONLESS_ALLOWED 内豁免。
+    # 封面/信息表区域（第1章之前）不计；封面三表在 CAPTIONLESS_ALLOWED 内豁免；5.1 参考表走 CH5_REF_TABLES 专项检查。
     captionless: List[str] = []
+    ch5_ref: List[str] = []
     prev_text, prev_chapter = "", None
     for b in blocks:
         text = (b.text or "").strip()
@@ -444,6 +570,9 @@ def check_tables_and_placeholders(
         if b.kind != "tbl":
             continue
         if not prev_chapter:                      # 封面/信息表区域：不属于正文表格
+            continue
+        if prev_text in CH5_REF_TABLES:
+            ch5_ref.append(prev_text[:30] or "（表格上方无段落）")
             continue
         if RE_TABLE_CAPTION.match(prev_text) or prev_text in CAPTIONLESS_ALLOWED:
             continue
@@ -459,6 +588,20 @@ def check_tables_and_placeholders(
                 expected="每张正文表上方一行是 `表X.Y 标题`（附录用 `附表X-Y`）",
                 actual=f"{len(captionless)} 张表上方不是表题行",
                 suggestion="给每张表补 `表X.Y 标题` 行（章内连续编号、独占一行、紧邻表格上方；附录用附表X-Y）",
+            )
+        )
+
+    if ch5_ref:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.CH5_REF_TABLE",
+                category="章节完整性",
+                severity=SEV_P1,
+                title=f"第5章出现「写作参考」类数据表 {len(ch5_ref)} 张（禁止进正文）",
+                detail="；".join(f"第{i+1}处「{t}」" for i, t in enumerate(ch5_ref[:5])),
+                expected="5.1 无表（规范口径）；参考数据仅以文字行保留",
+                actual=f"{len(ch5_ref)} 张参考表被渲染为正文表格",
+                suggestion="从装配稿删除该表；参考数据改用文字行（保留「写作参考」字样供断言器拦截）",
             )
         )
 
@@ -750,6 +893,11 @@ def run(
     raw = read_json(project_data_path(project))
     base = (raw or {}).get("base") or {}
     truth_area = safe_float(base.get("building_area"))
+    garage_area = sum(
+        safe_float(b.get("garage_area"))
+        for b in ((raw or {}).get("buildings") or [])
+        if isinstance(b, dict)
+    )
     years = sorted(
         int(safe_float(row.get("year")))
         for row in ((raw or {}).get("energy_yearly") or [])
@@ -763,7 +911,8 @@ def run(
     findings += check_province_rules(blocks)
     findings += check_chapter6_h3(blocks)
     findings += check_chapter8_summary(blocks)
-    findings += check_area_consistency(extract_areas(blocks), truth_area)
+    findings += check_ch5_narrative(blocks)
+    findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area)
     findings += check_energy_consistency(blocks)
     if years:
         findings += check_year_coverage(blocks, years)

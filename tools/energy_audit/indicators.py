@@ -790,6 +790,7 @@ class YearlyEnergyData:
     transportation_petrol_kg: float = 0  # 交通能耗（汽油）kg
     transportation_diesel_kg: float = 0 # 交通能耗（柴油）kg
     building_area: float = 0      # 建筑面积 m²
+    garage_area: float = 0        # 地下车库面积 m²（D8：5.3.1/5.3.2 分母剔除）
     people_count: float = 0       # 用能人数
     # 费用
     electricity_cost_wan: float = 0
@@ -882,14 +883,14 @@ def calc_unit_area_non_heating_energy(
       E    = 综合能耗 (kgce/a)
       Egn  = 供暖能耗 (kgce/a)
       Ejt  = 交通能耗 (kgce/a)
-      M    = 建筑面积 (m²)
+      M    = 建筑面积 − 地下车库面积 (m²)（D8 分母口径）
 
     注: 医疗机构的大型医疗设备、数据中心、厨房炊事、洗衣房等特定功能用能不计入。
     返回 {kgce_per_m2, non_heating_kgce, building_area_m2, total_energy_tce,
           heating_energy_tce, transportation_energy_tce, formula}；
     建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
-    area = data.building_area - exclude_special_area
+    area = data.building_area - float(getattr(data, 'garage_area', 0) or 0) - exclude_special_area
     if area <= 0:
         return {'kgce_per_m2': 0, 'non_heating_kgce': 0, 'building_area_m2': 0,
                 'total_energy_tce': 0, 'heating_energy_tce': 0,
@@ -944,7 +945,7 @@ def calc_unit_area_electricity(
     式中:
       E_total_elec  = 年总用电量 (kWh)
       E_heating_elec = 供暖用电量 (kWh)
-      M             = 建筑面积 (m²)
+      M             = 建筑面积 − 地下车库面积 (m²)（D8 分母口径）
     注: 医疗设备、数据中心等特殊用能不计入常规用能系统。
 
     DB37/T 2673-2019 定额（医疗机构，与 _DEFAULT_BENCHMARKS 一致）：
@@ -953,7 +954,7 @@ def calc_unit_area_electricity(
     返回 {kwh_per_m2, total_electricity_kwh, building_area_m2, benchmark}；
     建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
-    area = data.building_area - exclude_special_area
+    area = data.building_area - float(getattr(data, 'garage_area', 0) or 0) - exclude_special_area
     if area <= 0:
         return {'kwh_per_m2': 0, 'total_electricity_kwh': 0, 'building_area_m2': 0,
                 'benchmark': None, 'error': '建筑面积无效'}
@@ -1235,6 +1236,7 @@ def calc_baseline(
     1. 各年能耗逐年递增或递减 → 取最近一年作为基准年
     2. 各年波动范围在 ±10% 以内 → 取三年平均值
     3. 波动超过 ±10% → 取三年平均值（标注波动范围）
+    费用基准与用量同规则判定（费用项含汽油/燃气，有值才出）。
 
     返回:
       usage:    {能源类型: {各年: [...], 基准值, 方法, 波动范围}}
@@ -1253,9 +1255,11 @@ def calc_baseline(
         ('heating_energy_heat', '热', 'GJ'),
     ]
     cost_items = [
-        ('electricity_cost_wan', '电费', '万元'),
-        ('water_cost_wan', '水费', '万元'),
-        ('heating_cost_wan', '热费', '万元'),
+        ('electricity_cost_wan', '电', '万元'),
+        ('petrol_cost_wan', '汽油', '万元'),
+        ('heating_cost_wan', '热', '万元'),
+        ('natural_gas_cost_wan', '天然气', '万元'),
+        ('water_cost_wan', '水', '万元'),
     ]
 
     usage_result = {}
@@ -1428,6 +1432,7 @@ def compute_project_indicators(project) -> dict:
         'institution_type': institution_type,
         'institution_category': base.institution_category or '',
         'building_area': float(base.building_area or 0),
+        'garage_area': 0.0,  # 地下车库面积（D8 分母口径）
         'people_count': float(base.people_count or 0),
         'beds_count': int(base.beds_count or 0),
         'yearly': [],
@@ -1471,6 +1476,14 @@ def compute_project_indicators(project) -> dict:
         heating_area += float(getattr(b, 'heating_area', 0) or 0)
     if heating_area <= 0:
         heating_area = float(base.building_area or 0)
+
+    # 地下车库面积：建筑表 garage_area 聚合（D8：5.3.1/5.3.2 分母 = 建筑面积 − 车库面积）
+    garage_area = 0.0
+    for b in (project.buildings or []):
+        garage_area += float(getattr(b, 'garage_area', 0) or 0)
+    result['garage_area'] = garage_area
+    for yd in yd_objects:
+        yd.garage_area = garage_area
 
     yearly_results = []
     for yd in yd_objects:

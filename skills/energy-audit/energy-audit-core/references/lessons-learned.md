@@ -15,7 +15,7 @@
 | D5 | 多版本并存时用"多数投票"消解冲突 → 选中错值（热力 2024/2025 颠倒） | 版本归一：**草稿优先 → version_code 大者 → id 大者**；指定 `--version-code` 只取该正式快照；**禁多数投票**，冲突输出告警 | `version-normalization.md` |
 | D6 | 费用 `energy_unit` 标"万元"实为"元"，量级差 1 万倍 | 费用单位字段不可信 → 用**单价反验**（电≈0.7 元/kWh、水≈5 元/m³、气≈4.2~4.6 元/m³、热≈89.6 元/GJ） | `energy-audit-pg-data/SKILL.md`（费用单位陷阱） |
 | D7 | 费用取到 0（旧版本 `real_value=0`） | 取费用用 `unit_total_value/10000`（元→万元）；实物量 dt=1/4/5 用 total 即可 | 同上（费用字段取数） |
-| D8 | 建筑面积口径含地下车库导致指标偏低 | 分母用 `build_area − garage_area`；采暖面积取 `build.heat_area`（不在 scene 表） | `conventions.md`、`energy-audit-pg-data/SKILL.md` |
+| D8 | 建筑面积口径含地下车库导致指标偏低 | 分母用 `build_area − garage_area`；采暖面积取 `build.heat_area`（不在 scene 表）；**2026-09-20 代码已实现**（indicators.calc_unit_area_* 扣减 garage_area；chapter5_agent/caliber 注入） | `conventions.md`、`energy-audit-pg-data/SKILL.md` |
 
 ## 二、标准与取值
 

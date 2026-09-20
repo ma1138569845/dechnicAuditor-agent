@@ -94,11 +94,14 @@ def load_from_db(config: dict) -> dict:
         # 建筑表：聚合供热面积（5.3.5 采暖建筑面积；部分建筑供暖项目不能拿总面积兜底）
         # 权威源 ts_institution_build.heat_area；查询失败/全 0 时上层再走建筑总面积兜底
         heating_area = 0.0
+        garage_area = 0.0
         try:
             buildings = db.get_institution_build(customer_id=customer_id)
             heating_area = sum(float(b.get('heat_area') or 0) for b in buildings)
+            garage_area = sum(float(b.get('garage_area') or 0) for b in buildings)
         except Exception:
             heating_area = 0.0
+            garage_area = 0.0
 
     def _in_range(r):
         try:
@@ -151,6 +154,7 @@ def load_from_db(config: dict) -> dict:
         'cost_data': cost_data,
         'sub_items': sub_items,
         'heating_area': heating_area,
+        'garage_area': garage_area,
         'from_db': True,
     }
 
@@ -167,6 +171,7 @@ def load_from_user(config: dict) -> dict:
         'heating_energy_kwh_map': config.get('heating_energy_kwh_map', {}) or {},
         # 折标系数（data.json 持久化）：md 与 indicators.json 同口径
         'coefficients': config.get('coefficients', {}) or {},
+        'garage_area': float(config.get('garage_area', 0) or 0),
         'from_db': False,
     }
 
@@ -284,12 +289,10 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
         md += "![图5.1 能源流向图](charts/energy_flow.png)\n\n"
 
-    # 各类型消费总量（写作参考，正式报告 5.1 无此表）
+    # 各类型消费总量（写作参考——纯文本行输出，禁止渲染为正文表格；正式报告 5.1 无表）
     latest_year = years[-1]
-    md += f"**能源消费结构（写作参考，不占正式表号）**\n\n"
-    md += "| 能源类型 | 消耗量 | 单位 | 折标系数 | 折标煤量(tce) | 占比 |\n"
-    md += "|----------|--------|------|----------|---------------|------|\n"
     total_tce = year_tce[latest_year]
+    _struct_parts = []
     for code in all_codes:
         info = en.get(latest_year, {}).get(code, {})
         total = info.get('total', 0)
@@ -298,21 +301,20 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         coeff = c['coeff'] * 1000 if std == 'heat' else c['coeff']
         tce_val = round(total * coeff / 1000, 2)
         pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
-        md += f"| {c['name']} | {total:,.2f} | {c['unit']} | {c['display']} | {tce_val:,.2f} | {pct}% |\n"
+        _struct_parts.append(f"{c['name']} {total:,.2f} {c['unit']}（{tce_val:,.2f} tce，占 {pct}%）")
+    md += "**能源消费结构（写作参考）**：" + "；".join(_struct_parts) + "\n\n"
     # 2026-09-05 口径：5.1 不列综合能耗数值（铁律：综合能耗数值只在 5.3.3 给出）
 
     # ===== 合署办公追溯说明 =====
     md += _co_location_note(en, latest_year, all_codes, unit_name)
 
-    # 逐年对比（写作参考）
+    # 逐年对比（写作参考——纯文本行输出，禁止渲染为正文表格）
     if len(years) > 1:
-        md += f"**逐年能耗对比（写作参考，不占正式表号）**\n\n"
-        header = "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
-        sep = "|------|" + "|".join(["------"] * len(years)) + "|\n"
-        md += header + sep
-        md += "| 综合能耗(tce) | " + " | ".join(f"{year_tce[y]:,.2f}" for y in years) + " |\n"
-        md += "| 人均能耗(tce/人) | " + " | ".join(f"{year_tce[y]/people:.4f}" if people else "0" for y in years) + " |\n"
-        md += "| 单位面积能耗(tce/m²) | " + " | ".join(f"{year_tce[y]/area:.4f}" if area else "0" for y in years) + " |\n\n"
+        _tce_txt = "/".join(f"{year_tce[y]:,.2f}" for y in years)
+        _pc_txt = "/".join(f"{year_tce[y]/people:.4f}" if people else "0" for y in years)
+        _m2_txt = "/".join(f"{year_tce[y]/area:.4f}" if area else "0" for y in years)
+        md += (f"**逐年能耗对比（写作参考）**：综合能耗 {_tce_txt} tce；"
+               f"人均能耗 {_pc_txt} tce/人；单位面积能耗 {_m2_txt} tce/m²。\n\n")
 
     # ===== 5.2 数据（按类型动态H3） =====
     md += "## 5.2 能源资源消耗/消费数据\n\n"
@@ -451,6 +453,11 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if hk:
             yd.heating_energy_kwh = float(hk)
 
+    # 注入地下车库面积（D8：5.3.1/5.3.2 分母 = 建筑面积 − garage_area）
+    garage_area = float((data.get('garage_area') or config.get('garage_area') or 0))
+    for yd in yd_list:
+        yd.garage_area = garage_area
+
     # 注入持久化折标系数（data.json coefficients，与 indicators.json 同口径；
     # 空 dict 跳过，indicators 内部走四级兜底）
     coeff = data.get('coefficients') or {}
@@ -475,16 +482,28 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         }
         _sn = _special_notes.get(institution_type, _special_notes['government'])
         md += f"注：本机构内{_sn}等特定功能用能不纳入非供暖能耗，计算时应同时剔除特殊用能系统对应的建筑面积（天然气/水/油不计入非供暖能耗）。\n\n"
+        _garage = float(getattr(yd_list[0], 'garage_area', 0) or 0) if yd_list else 0
+        if _garage > 0 and area:
+            md += (f"注：按定额标准统计口径，地下车库面积不计入建筑面积统计，"
+                   f"本指标计算分母按建筑面积扣除地下车库后 {area - _garage:,.0f} m²"
+                   f"（{area:,.0f} − {_garage:,.0f}）计取。\n\n")
         md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
         table_no += 1
         md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
         md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
-        row_nh = ["| 非供暖能耗(tce) |"]
-        row_nh_m2 = ["| 单位面积非供暖能耗(kgce/m²) |"]
-        row_nh_ev = ["| 评价结果 |"]
-        row_nh_cons = ["| 约束值 |"]
-        row_nh_base = ["| 基准值 |"]
-        row_nh_guide = ["| 引导值 |"]
+        _nh_rows = {
+            'nh_elec': ["| 年耗电量(kWh) |"],
+            'nh_heat_elec': ["| 供暖耗电量(kWh) |"],
+            'nh_coeff': ["| 折标系数(kgce/kWh) |"],
+            'nh': ["| 非供暖能耗(kgce) |"],
+            'area': ["| 建筑面积(m²) |"],
+            'm2': ["| 单位建筑面积非供暖能耗(kgce/(m²·a)) |"],
+            'cons': ["| 约束值 |"],
+            'base': ["| 基准值 |"],
+            'guide': ["| 引导值 |"],
+            'ev': ["| 评价结果 |"],
+        }
+        _elec_coeff = yd_list[0].get_coefficient('electricity') if yd_list else 0.31
         for yd in yd_list:
             r = calc_unit_area_non_heating_energy(yd)
             if 'benchmark' not in r:
@@ -492,18 +511,22 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 r['benchmark'] = compare_with_benchmark(
                     r['kgce_per_m2'], institution_type=institution_type,
                     sub_type=st_non_heating)
-            row_nh.append(f" {r['non_heating_kgce']/1000:,.2f} |")
-            row_nh_m2.append(f" {r['kgce_per_m2']:,.2f} |")
-            row_nh_ev.append(f" {r['benchmark']['评价结果']} |")
-            row_nh_cons.append(f" {r['benchmark'].get('约束值', ''):,.2f} |")
-            row_nh_base.append(f" {r['benchmark'].get('基准值', ''):,.2f} |")
-            row_nh_guide.append(f" {r['benchmark'].get('引导值', ''):,.2f} |")
-        md += "".join(row_nh) + "\n"
-        md += "".join(row_nh_m2) + "\n"
-        md += "".join(row_nh_cons) + "\n"
-        md += "".join(row_nh_base) + "\n"
-        md += "".join(row_nh_guide) + "\n"
-        md += "".join(row_nh_ev) + "\n\n"
+            _nh_rows['nh_elec'].append(f" {yd.electricity_kwh:,.2f} |")
+            _nh_rows['nh_heat_elec'].append(f" {float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f} |")
+            _nh_rows['nh_coeff'].append(f" {_elec_coeff:g} |")
+            _nh_rows['nh'].append(f" {r['non_heating_kgce']:,.2f} |")
+            _nh_rows['area'].append(f" {r['building_area_m2']:,.0f} |")
+            _nh_rows['m2'].append(f" {r['kgce_per_m2']:,.2f} |")
+            _nh_rows['cons'].append(f" {r['benchmark'].get('约束值', ''):,.2f} |")
+            _nh_rows['base'].append(f" {r['benchmark'].get('基准值', ''):,.2f} |")
+            _nh_rows['guide'].append(f" {r['benchmark'].get('引导值', ''):,.2f} |")
+            _nh_rows['ev'].append(f" {r['benchmark']['评价结果']} |")
+        if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
+            _nh_rows.pop('nh_heat_elec', None)
+        for _k in ('nh_elec', 'nh_heat_elec', 'nh_coeff', 'nh', 'area', 'm2', 'cons', 'base', 'guide', 'ev'):
+            if _k in _nh_rows:
+                md += "".join(_nh_rows[_k]) + "\n"
+        md += "\n"
 
         # 5.3.2 常规用能系统单位建筑面积电耗
         md += "### 5.3.2 常规用能系统单位建筑面积电耗\n\n"
@@ -511,17 +534,22 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if area:
             md += f"**表5.{table_no} 常规用能系统单位建筑面积电耗**\n\n"
             table_no += 1
-            # 转置布局（指标项为行、年份为列，与 5.3.1 及 chapter5-53-templates 统一，2026-09-06）
-            cols_elec = {"用电量(kWh)": [], "单位面积电耗(kWh/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
+            # 转置布局（指标项为行、年份为列；基础行按 chapter5-spec 补齐，2026-09-20）
+            cols_elec = {"年耗电量(kWh)": [], "供暖耗电量(kWh)": [], "建筑面积(m²)": [],
+                         "单位建筑面积电耗(kWh/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_unit_area_electricity(yd, institution_type=institution_type,
                                                sub_type=st_elec)
-                cols_elec["用电量(kWh)"].append(f"{r['total_electricity_kwh']:,.2f}")
-                cols_elec["单位面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:,.2f}")
+                cols_elec["年耗电量(kWh)"].append(f"{yd.electricity_kwh:,.2f}")
+                cols_elec["供暖耗电量(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f}")
+                cols_elec["建筑面积(m²)"].append(f"{r['building_area_m2']:,.0f}")
+                cols_elec["单位建筑面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:,.2f}")
                 cols_elec["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
                 cols_elec["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
                 cols_elec["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}")
                 cols_elec["评价结果"].append(str(r['benchmark']['评价结果']))
+            if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
+                cols_elec.pop("供暖耗电量(kWh)", None)
             md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_elec.items():
@@ -534,18 +562,41 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if people:
             md += f"**表5.{table_no} 人均综合能耗**\n\n"
             table_no += 1
-            # 转置布局（指标项为行、年份为列，2026-09-06）
-            cols_pc = {"综合能耗(kgce)": [], "用能人数": [], "人均综合能耗(kgce/人)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
+            # 转置布局（指标项为行、年份为列；基础行列按 chapter5-spec 计算过程表，2026-09-20）
+            cols_pc = {
+                "年耗电量(kWh)": [], "折标系数(kgce/kWh)": [],
+                "供热量(GJ)": [], "折标系数(tce/GJ)": [],
+                "用汽油量(kg)": [], "折标系数(kgce/kg)": [],
+                "天然气量(m³)": [], "折标系数(kgce/m³)": [],
+                "综合能耗(tce)": [], "用能人数": [],
+                "人均综合能耗(kgce/(p·a))": [],
+                "约束值": [], "基准值": [], "引导值": [], "评价结果": [],
+            }
             for yd in yd_list:
                 r = calc_per_capita_energy(yd, institution_type=institution_type,
                                            sub_type=st_capita)
-                cols_pc["综合能耗(kgce)"].append(f"{r['total_kgce']:,.2f}")
+                cols_pc["年耗电量(kWh)"].append(f"{yd.electricity_kwh:,.2f}")
+                cols_pc["折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
+                cols_pc["供热量(GJ)"].append(f"{yd.heating_energy_heat:,.2f}")
+                cols_pc["折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
+                cols_pc["用汽油量(kg)"].append(f"{yd.transportation_petrol_kg:,.2f}")
+                cols_pc["折标系数(kgce/kg)"].append(f"{yd.get_coefficient('gasoline'):g}")
+                cols_pc["天然气量(m³)"].append(f"{yd.natural_gas_m3:,.2f}")
+                cols_pc["折标系数(kgce/m³)"].append(f"{yd.get_coefficient('natural_gas'):g}")
+                cols_pc["综合能耗(tce)"].append(f"{r['total_kgce']/1000:,.2f}")
                 cols_pc["用能人数"].append(f"{people}")
-                cols_pc["人均综合能耗(kgce/人)"].append(f"{r['kgce_per_person']:,.2f}")
+                cols_pc["人均综合能耗(kgce/(p·a))"].append(f"{r['kgce_per_person']:,.2f}")
                 cols_pc["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
                 cols_pc["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
                 cols_pc["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}")
                 cols_pc["评价结果"].append(str(r['benchmark']['评价结果']))
+            for _qty, _coeff_key in (("年耗电量(kWh)", "折标系数(kgce/kWh)"),
+                                     ("供热量(GJ)", "折标系数(tce/GJ)"),
+                                     ("用汽油量(kg)", "折标系数(kgce/kg)"),
+                                     ("天然气量(m³)", "折标系数(kgce/m³)")):
+                if not any(v.strip() not in ('0.00', '') and float(v.replace(',', '')) > 0 for v in cols_pc[_qty]):
+                    cols_pc.pop(_qty, None)
+                    cols_pc.pop(_coeff_key, None)
             md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_pc.items():
@@ -639,20 +690,36 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
             md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
             table_no += 1
-            # 转置布局（指标项为行、年份为列，2026-09-06）
-            cols_h = {"供暖能耗(tce)": [], "采暖建筑面积(m²)": [], "单位面积供暖能耗(kgce/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
+            # 转置布局（指标项为行、年份为列；基础行列按 chapter5-spec 计算过程表，2026-09-20）
+            cols_h = {
+                "供暖电耗(kWh)": [], "电折标系数(kgce/kWh)": [],
+                "供热量(GJ)": [], "热力折标系数(tce/GJ)": [],
+                "供暖能耗(kgce)": [], "采暖建筑面积(m²)": [],
+                "单位采暖建筑面积供暖能耗(kgce/m²)": [],
+                "约束值": [], "基准值": [], "引导值": [], "评价结果": [],
+            }
             for yd in yd_list:
                 r = calc_unit_area_heating_energy(yd, heating_area=heating_area,
                                                   institution_type=institution_type,
                                                   sub_type=st_heating)
                 ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
-                cols_h["供暖能耗(tce)"].append(f"{r['heating_energy_kgce']/1000:,.2f}")
+                cols_h["供暖电耗(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f}")
+                cols_h["电折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
+                cols_h["供热量(GJ)"].append(f"{yd.heating_energy_heat:,.2f}")
+                cols_h["热力折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
+                cols_h["供暖能耗(kgce)"].append(f"{r['heating_energy_kgce']:,.2f}")
                 cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:,.0f}")
-                cols_h["单位面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:,.2f}")
+                cols_h["单位采暖建筑面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:,.2f}")
                 cols_h["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}" if r.get('benchmark') else '—')
                 cols_h["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}" if r.get('benchmark') else '—')
                 cols_h["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}" if r.get('benchmark') else '—')
                 cols_h["评价结果"].append(str(ev))
+            if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
+                cols_h.pop("供暖电耗(kWh)", None)
+                cols_h.pop("电折标系数(kgce/kWh)", None)
+            if not any((yd.heating_energy_heat or 0) > 0 for yd in yd_list):
+                cols_h.pop("供热量(GJ)", None)
+                cols_h.pop("热力折标系数(tce/GJ)", None)
             md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_h.items():
@@ -664,8 +731,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
     # 5.4.1 用量基准
     md += "### 5.4.1 能源资源用量基准\n\n"
-    md += "根据《山东省公共建筑节能改造节能量核定办法》（试行），各年能耗波动范围在±10%以内时，"
-    md += "取三年平均值作为基准年能耗。\n\n"
+    # 原半条规则句已移除：规则段＋逐品种推导由 author 按 chapter5-templates 补写（2026-09-20）
+    # 数值表由 calc_baseline 产出（三条规则），author 不重算
     bl = calc_baseline(yd_list) if yd_list else {'usage': {}, 'cost': {}}
     md += f"**表5.{table_no} 能源资源用量基准表**\n\n"
     table_no += 1
