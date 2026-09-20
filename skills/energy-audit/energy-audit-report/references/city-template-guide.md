@@ -27,7 +27,7 @@ metadata:
 
 - python-docx 在本机 **anaconda** python（`D:/develop/anaconda3/python.exe`）；项目 `.venv` 的 python 无 pip、无 python-docx（`pip`→3.13 anaconda，`python`→3.11 项目venv）。运行 docx 脚本一律用 anaconda 解释器。
 - 转换脚本：`_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（本技能自带，通用化参数）
-- 学校模板参考：`references/audit-examples.md`；源文件在 `~/AppData/Local/hermes/attachments/学校能源审计报告模板（示例数据）.md`（md+docx 均已生成）
+- 学校模板参考：`references/audit-examples.md` 的《学校实例模板》一节（虚拟单位示例数据，只作形态参照）
 - 原始市州模板：用户附件 `市州公共机构能源审计报告模板参考.pdf`（结构化内容已提炼进本 SKILL.md）
 
 ## 市州模板 0–11 章骨架（所有单位类型通用）
