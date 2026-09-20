@@ -54,6 +54,8 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **每批开工第一步（2026-09-18 新增）**：跑 `python <skills>/ea-authoring/scripts/prepare_writing_context.py <项目名>` 生成/刷新接续契约 `<项目>/chapter_md/_context.md`，并**先读它**——它固化了唯一口径、关键数字、已落盘章节、术语与写法。每批收工后重跑一次，刷新"已落盘章节"供下一批接续。
 
+> **每批第二步（2026-09-20 新增）：读本批蓝本（形态参照）**：`energy-audit-report/references/audit-examples.md` 的对应机构类型小节（法院/党政机关、医院、学校）——**只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；项目变量一律取本项目数据源，交付前跑 `ea-validation/scripts/verify_variables_provenance.py`。
+
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|
 | 卡1 基础章 | 封面+审计信息表、第1章（1.1~1.6）、第2/3/4章 | 1~2 次（1-2章一批、3-4章一批），每章 md 落盘 `chapter_md/chN.md` | `office_create` 建 docx → 每章 1 次 `doc_insert_markdown` 整章导入 | data.json 等上游产出 |

@@ -31,6 +31,32 @@ INDICATOR_LABELS = [
 
 VALUE_KEYS = ("kgce_per_m2", "kgce_per_person", "kwh_per_m2", "value", "v", "water_value")
 
+# 本批蓝本：按机构类型映射到 audit-examples.md 的对应小节（2026-09-20）
+BLUEPRINT_SECTIONS = {
+    "medical": "§医院实例（含 §三级医院案例）",
+    "government": "§法院/党政机关实例",
+    "education": "§学校实例模板",
+    "venue": "§法院/党政机关实例（场馆类暂无专用蓝本，形态参照机关）",
+    "service": "§法院/党政机关实例（政务服务中心暂无专用蓝本，形态参照机关）",
+}
+
+
+def blueprint_section(inst_type: str, category: str) -> str:
+    key = (inst_type or "").strip().lower()
+    if not key:
+        cat = category or ""
+        if "医" in cat:
+            key = "medical"
+        elif any(k in cat for k in ("教育", "学校", "高校", "学院")):
+            key = "education"
+        elif any(k in cat for k in ("场馆", "体育", "文化", "图书馆")):
+            key = "venue"
+        elif "政务" in cat:
+            key = "service"
+        else:
+            key = "government"
+    return BLUEPRINT_SECTIONS.get(key, BLUEPRINT_SECTIONS["government"])
+
 
 def projects_root() -> str:
     return os.environ.get("HERMES_PROJECTS_ROOT") or os.path.join(
@@ -172,7 +198,19 @@ def main(argv=None) -> int:
         "- 措辞与禁词：见 `energy-audit-style/references/rules.md`（评价短语、禁词表、句法骨架）。",
         "- 数值引用：只从 `data.json` / `indicators.json` / `chapter5.md` 读取；**禁止引用前序章节文本里的数字**。",
         "",
-        "## 五、本批开工/收工检查",
+        "## 五、本批蓝本（形态参照，只学形态）",
+        "",
+        "| 项 | 值 |",
+        "|---|---|",
+        "| 蓝本文件 | `energy-audit-report/references/audit-examples.md` |",
+        f"| 本机构类型小节 | {blueprint_section(ind.get('institution_type'), base.get('institution_category'))} |",
+        "| 可复用（形态 + 固定表述） | 章节骨架 / 表格习惯 / 措辞粒度；1.1 定义段、1.3 三段式、1.5 审计过程、1.6 依据清单、4.1 计量六条、5.3 指标定义等固定表述 |",
+        "| **必须替换为本项目数据** | 单位名 / 地址 / 人数 / 面积 / 能耗 / 费用 / 设备 / 定额取值 / 问题与建议 |",
+        "| 交付前自检 | `python <skills>/ea-validation/scripts/verify_variables_provenance.py <项目名> [--blueprint <本类成稿.md>]` |",
+        "",
+        "> 批1（封面+第1~4章）读本类小节的「报告结构 / 报告编写要点 / 表格骨架」；批2/批3（第5~8章）读「指标口径 / 节能潜力·问题清单」。",
+        "",
+        "## 六、本批开工/收工检查",
         "",
         "- [ ] 开工：已读本文件；数值口径与第一节一致",
         "- [ ] 写章：只写 `chapter_md/` 中尚不存在的章（见第三节）",
