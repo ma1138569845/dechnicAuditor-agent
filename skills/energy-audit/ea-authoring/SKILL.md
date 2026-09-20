@@ -56,6 +56,9 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **每批第二步（2026-09-20 新增）：读本批蓝本（形态参照）**：`energy-audit-report/references/audit-examples.md` 的对应机构类型小节（法院/党政机关、医院、学校）——**只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；项目变量一律取本项目数据源，交付前跑 `ea-validation/scripts/verify_variables_provenance.py`。
 
+> **"参考什么"以 `energy-audit-core/references/WORKFLOW.md` 第六节为唯一决策表**：形态层（蓝本，人工读）/ 事实层（本项目 data）/ 知识层（本地成稿库 → 向量 → wiki → 图谱）。
+> 写章节想找同类写法时：`reference_library.search_local_references(chapter, tags)`（本地、离线可用）优先，其次 `energy_audit_rag_search`；图谱输出**不是报告片段**，不得引用。
+
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|
 | 卡1 基础章 | 封面+审计信息表、第1章（1.1~1.6）、第2/3/4章 | 1~2 次（1-2章一批、3-4章一批），每章 md 落盘 `chapter_md/chN.md` | `office_create` 建 docx → 每章 1 次 `doc_insert_markdown` 整章导入 | data.json 等上游产出 |

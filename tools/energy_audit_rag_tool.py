@@ -198,6 +198,33 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
     include_kg = bool(args.get("include_knowledge_graph", True))
     system_filter = str(args.get("system", "")).strip()
 
+    # 0) 本地参考库（**永远可用、不依赖服务**）——2026-09-20 按《知识参考体系重构设计》
+    #    P2 把它提到第一层告知：这里只列"同类成稿清单"（不灌全文，避免响应膨胀）；
+    #    写具体章节时改用 reference_library.search_local_references(chapter, tags) 取全文。
+    local_files: List[str] = []
+    local_note = ""
+    try:
+        from tools.energy_audit.reference_library import (
+            list_reference_files, resolve_reference_dir, score_reference)
+        _root = resolve_reference_dir()
+        _files = list_reference_files(_root)
+        if _files:
+            _ranked = sorted(((score_reference(p, tags), p) for p in _files),
+                             key=lambda x: (-x[0], x[1].name))
+            _want_cat = str(tags.get("institution_category") or "").strip()
+            if _want_cat:
+                from tools.energy_audit.institution_classifier import classify_institution
+                _ranked = [(s, p) for s, p in _ranked
+                           if classify_institution(p.name)[0] == _want_cat]
+            local_files = [p.name for _s, p in _ranked[:5]]
+            if not local_files:
+                local_note = (f"本地参考库（{_root}）无 {_want_cat} 类成稿；"
+                              f"不要用不相关报告充当参考。")
+        else:
+            local_note = f"本地参考库（{_root}）为空。"
+    except Exception as _e:  # 本地库不可用不应阻断
+        local_note = f"本地参考库不可用：{_e}"
+
     # 1) 统一 RAG 检索（报告 + wiki）
     try:
         rag_results = search_reports(query, tags, top_k)
@@ -257,6 +284,9 @@ def _handle_energy_audit_rag_search(args: Dict[str, Any], **kwargs) -> str:
     output = {
         "query": query,
         "filters": tags,
+        # ★本地优先层（不依赖 Qdrant；写章节全文另用 reference_library 按章取）
+        "local_reference_files": local_files,
+        "local_reference_note": local_note,
         "source": rag_results.get("source", "none"),
         # ★2026-09-20：显式区分"检索到历史报告"与"降级到图谱推断"
         "is_report_retrieval": rag_results.get("is_report_retrieval", True),

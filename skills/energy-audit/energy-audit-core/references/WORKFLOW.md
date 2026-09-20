@@ -25,6 +25,7 @@
 | S13 | V3 审查 | datava | 落盘的 docx | `… --mode REPORT_REVIEW --report <docx>` | `report_review.json` | P0 阻塞；直跑轨结论**必须完整展示给用户确认** |
 | S14 | 变量一致性 | datava / author | 生成稿 + 蓝本 | `verify_variables_provenance.py <项目名> [--blueprint …]` | P0/P1 清单 | P0（蓝本变量泄漏）→ 必须改回本项目数据 |
 | S15 | 交付 | author | 上一步产物 | 复制（不移动） | `output/交付件/<单位>能源审计报告.docx\|pdf` | 交付件为唯一对外出口 |
+| **S16a** | **交付件入库** | author | `output/交付件/*.docx` | ① 落 `rag/report/<机构类型>/`（去重命名，禁"- 副本"）② `rag/ingestion/ingest_reports.py` 入向量库 ③ 生成 `_wiki` 页 ④ 刷新 `rag/ingest_log.json` | 知识层更新 | `_changes/verify_knowledge_assets.py` 退出码 0（P0=0） |
 | S16 | 沉淀 | 全员 | 本次踩坑 | 写进对应权威文件 + `lessons-learned.md` 登记一行 | 经验索引 | 只做索引，不复制细节 |
 
 ## 二、写章三步（每批固定，S7~S9 共用）
@@ -70,7 +71,46 @@
 - 角色 Profile 与技能矩阵：`kanban-energy-audit-orchestrator/references/role-definitions.md`。
 - 与直跑轨**阶段定义完全相同**（本文件第一节），差别只在"谁调度、谁执行、上下文如何隔离"。
 
-## 六、术语表（对外统一叫法）
+## 六、参考与知识读取（唯一决策表）
+
+> 前置：**「参考什么」的唯一定义在本节**。各角色 SKILL 只写"何时读哪一层"，不复述路径。
+
+### 6.1 参考 / 知识三层（按"回答什么问题"分，不按技术分）
+
+| 层 | 回答什么 | 唯一位置 | 怎么读 | 谁能写 |
+|---|---|---|---|---|
+| **形态层** | 写得**像**（骨架/表格习惯/措辞粒度/固定表述） | 技能包内 `energy-audit-report/references/audit-examples.md`（+ 逐章指南 `chapter*-guide.md`、措辞规则 `rules.md`） | **人工 Read**，无检索；契约第五节给"本批蓝本小节名" | 技能维护者（git） |
+| **事实层** | 本项目的**数与名** | `<项目>/data.json` · `indicators.json` · `chapter5.md` | 脚本读；**禁止从上下文/前序章节文本提取** | 采集/计算脚本 |
+| **知识层** | 外部知识（标准 → 成稿 → 方法论） | 见 6.2 | 见 6.2 | 见 6.2 |
+
+### 6.2 知识层（运行时）的目录与检索
+
+| 资产 | 唯一位置 | 检索入口 | 说明 |
+|---|---|---|---|
+| 标准原文 | `%LOCALAPPDATA%\hermes\rag\standards\` | 人工查阅；可导入向量库 | **不得**放进 `rag/report/`（会被当同类成稿） |
+| 历史成稿 | `%LOCALAPPDATA%\hermes\rag\report\<机构类>\` | `tools/energy_audit/reference_library.search_local_references(chapter, tags)` —— **本地打分、离线永远可用，第一层** | 只放已交付成稿；禁"- 副本" |
+| 向量索引 | Qdrant `energy_audit_reports`（+`_wiki`/`_entities`） | `rag.rag_search.search_reports(query, tags)` —— **第二层**；tags 只作 must-filter | 远端 `10.10.2.55:6334`（配置在 `config.yaml→knowledge_base`） |
+| 章节指南 / 生成 wiki 页 | `<HERMES_HOME>/skills/energy-audit/**/chapter*.md`、`<HERMES_HOME>/rag/wiki/generated/` | `search_wiki()` —— 第三层 | 关键字匹配 |
+| 知识图谱 | `rag/knowledge_graph/energy_kg.py` | `search_knowledge_graph()` —— 第四层 | **不是报告片段**（`is_report_chunk=false`），仅作诊断候选，**不得引用进报告** |
+| 入库台账 | `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | `_changes/verify_knowledge_assets.py` | 点对点对账 + 副本/死资产检查 |
+
+**降级链（顺序即优先级）**：`本地参考库 → 向量 → wiki → 图谱(标注非报告)`。
+任何一层失败都必须**显式**（返回值带 `degraded` / `note`，检索结果带 `is_report_retrieval`）；
+**Qdrant 不可用 ≠ 无参考可用**，不得因此编造，也不得用不相关报告充当参考。
+
+### 6.3 何时读哪一层（决策表）
+
+| 场景 | 读哪层 | 具体动作 |
+|---|---|---|
+| 写第 1~8 章正文（形态对齐） | 形态层 | S7~S9 每批：契约 → `audit-examples.md` 本机构类型小节 |
+| 第 3 章 3.1/3.2 无制度数据要"仿写" | 知识层·本地成稿 | `search_local_references("第3章", tags)` → 仿段落结构，专名数据换成本单位 |
+| 想找"同类项目怎么写某一章" | 知识层·向量 | `energy_audit_rag_search`（或 `search_reports`）；返回带 `is_report_retrieval` |
+| 查定额/折标系数 | 知识层·标准 + 事实层 | 数值一律取 `standards-values.md`（唯一权威）；标准原文在 `rag/standards/` 备查 |
+| 诊断"能耗为什么偏高" | 知识层·图谱 | `EnergyKnowledgeGraph`（datava V1 本地跑）；结论是**候选因果链**，须现场验证 |
+| 交付前查有没有串别人的数据 | 形态层 + 闸门 | `verify_variables_provenance.py --blueprint <同类成稿>` |
+| 交付后沉淀 | 知识层·写入 | **S16a**：成稿入 `rag/report/` → 入库 → 刷台账 |
+
+## 七、术语表（对外统一叫法）
 
 | 统一叫法 | 含义 |
 |---|---|
@@ -79,11 +119,13 @@
 | **断言** | `ea_docx_asserts.py` 的 10 项交付硬检查 |
 | **就位** | `prepare_chapter_md.py` 把 `chapter5.md` 变成装配输入 `chapter_md/ch5_import.md` |
 | **接续契约** | `prepare_writing_context.py` 生成的 `<项目>/chapter_md/_context.md`（每批开工必读） |
-| **蓝本** | 同类正式成稿（`audit-examples.md` / 项目侧成稿），只提供**形态** |
+| **蓝本** | **形态模板**：技能包内 `energy-audit-report/references/audit-examples.md`（法院/医院/学校三合一，静态随版本发布）。只提供**形态**，不含任何本项目事实。**不是**检索结果、不进知识库 |
+| **参考报告库** | **历史成稿的文件库**：`%LOCALAPPDATA%\hermes\rag\report\`。用 `reference_library.search_local_references(chapter, tags)` 按机构类型+地域打分检索，**离线可用**。与"蓝本"是两回事（一个是形态模板，一个是真实成稿） |
+| **知识库 / RAG** | **服务化的外部知识**：Qdrant 向量索引 + LLM Wiki 生成页 + 知识图谱，入口 `energy_audit_rag_search`。依赖远程 Qdrant（`10.10.2.55:6334`），不可用时按 6.2 降级并**显式告知** |
 | **变量一致性闸门** | `verify_variables_provenance.py`：检查"该变的是否真变"；文字相同不判违规 |
 | **直跑轨 / 批量轨** | 单项目会话内直跑 / ≥2 项目交 kanban 编排 |
 
-## 七、相关文件索引
+## 八、相关文件索引
 
 - 分诊：`energy-audit-routing/SKILL.md`
 - 共享口径：`energy-audit-core/references/AUTHORITY-INDEX.md`（主题→唯一权威）

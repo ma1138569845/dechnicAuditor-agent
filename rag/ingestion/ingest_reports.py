@@ -125,6 +125,11 @@ def ingest_to_qdrant(chunks: List[dict], tags: dict, filename: str):
                 'audit_type': tags['audit_type'],
                 'institution_category': tags['institution_category'],
                 'specific_type': tags['specific_type'],
+                # ★2026-09-20 补 `type`：与 rag/energy_audit_importer.py 的三级切片
+                # （summary/chapter/paragraph）保持同一 schema。此前本脚本不写该字段，
+                # 导致同一集合 290/358 条缺 type（治理脚本 verify_knowledge_assets.py 报 P0）。
+                # 本脚本按"第X章"切分，故统一标 chapter。
+                'type': 'chapter',
                 'char_count': len(chunk['text']),
             }
         ))
