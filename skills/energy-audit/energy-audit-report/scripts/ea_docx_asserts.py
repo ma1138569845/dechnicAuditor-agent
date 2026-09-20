@@ -91,21 +91,28 @@ def ch5_narrative_count(doc_xml: str) -> int:
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
-    识别：首格含「建筑名称/建筑物名称」。用途：building_tables / building_tables_cols 度量
-    （结构合规性由 V3 check_building_tables 负责 P1 检查）。
+    识别：前 3 行内出现「建筑名称/建筑物名称」（兼容「项目 | 内容」旧表头形态）。
+    用途：building_tables / building_tables_cols 度量（结构合规性由 V3 负责 P1 检查）。
     """
     cols = []
     for tm in re.finditer(r"<w:tbl[ >].*?</w:tbl>", doc_xml, flags=re.S):
         tbl = tm.group(0)
-        tr = re.search(r"<w:tr[ >].*?</w:tr>", tbl, flags=re.S)
-        if not tr:
+        rows = re.findall(r"<w:tr[ >].*?</w:tr>", tbl, flags=re.S)[:3]
+        if not rows:
             continue
-        tcs = re.findall(r"<w:tc[ >].*?</w:tc>", tr.group(0), flags=re.S)
-        if not tcs:
-            continue
-        first = "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", tcs[0]))
-        if "建筑名称" in first or "建筑物名称" in first:
-            cols.append(len(tcs))
+        n_cols = 0
+        hit = False
+        for k, tr in enumerate(rows):
+            tcs = re.findall(r"<w:tc[ >].*?</w:tc>", tr, flags=re.S)
+            if not tcs:
+                continue
+            if k == 0:
+                n_cols = len(tcs)
+            first = "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", tcs[0]))
+            if ("建筑名称" in first) or ("建筑物名称" in first):
+                hit = True
+        if hit:
+            cols.append(n_cols)
     return cols
 
 

@@ -364,7 +364,12 @@ def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
     """
     findings: List[Finding] = []
     issues: List[str] = []
-    for b in blocks:
+    apx_idx = None
+    for _i, _b in enumerate(blocks):
+        if _b.kind == "p" and (_b.text or "").strip().startswith("附录"):
+            apx_idx = _i
+            break
+    for _bi, b in enumerate(blocks):
         if b.kind != "tbl" or getattr(b, "obj", None) is None:
             continue
         try:
@@ -382,7 +387,9 @@ def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
                     break
         if not is_bldg:
             continue
-        loc = ("第%d章" % b.chapter) if getattr(b, "chapter", None) else "附录"
+        loc = "附录" if (apx_idx is not None and _bi > apx_idx) else (
+            ("第%d章" % b.chapter) if getattr(b, "chapter", None) else "附录"
+        )
         n_cols = len(rows[0].cells)
         if n_cols != 4:
             issues.append("%s 建筑表为 %d行×%d列（应为 4 列键值对）" % (loc, len(rows), n_cols))
