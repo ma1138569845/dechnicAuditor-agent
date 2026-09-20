@@ -60,5 +60,6 @@
 |---|---|---|---|
 | C1 | 非交互模式（`hermes chat -q/-Q`、kanban worker）里等用户敲 `/compact`，任务卡住 | 批间**压缩上下文**：交互会话用 `/compact`；非交互模式改为**每批一个独立会话/任务**（或 `--resume` 分次），批边界即任务边界 | `energy-audit-routing/SKILL.md` 直跑铁律 2 |
 | C2 | 长会话上下文膨胀、跨项目串味 | 一会话一项目；单会话上下文保持轻量（参考 <10 万 token） | 同上 + `lessons`（本表 C2） |
-| C3 | 手工改 profile 侧技能，下次 sync 被覆盖 | 只改 repo `skills/energy-audit/`，然后 `scripts/sync_ea_skills.py` 发布 + `--verify` 校验 | `soul-purity-principle.md`、`deployment-ops.md` |
+| C3 | 手工改 profile 侧技能，下次 sync 被覆盖；或直接改 repo 侧技能，导致镜像落后 | 技能内容**只改技能包镜像**（权威源，决定 A），然后 `scripts/deploy_ea_skills.py` 发布到 repo、`sync_ea_skills.py` 再发布到 profiles；两级都要 `--verify` 校验 | `deployment-ops.md`《四、技能包 ↔ repo 的同步》、`soul-purity-principle.md` |
 | C4 | 重大改动未确认就执行 | 先给方案 → 用户确认 → 再改；**不改已交付文件**，修订走"问题台账→逐项确认" | 本表 C4 指针：团队协作约定 |
+| C5 | 用 `robocopy /MIR` 把技能包镜像**整体覆盖** repo `skills/energy-audit`，抹掉目标侧未提交改动（2026-09-20，git 层面不可恢复）。同一天还发现该目录当时有**第二个写入者**在提交，所以目标"又脏又领先" | **`/MIR` 永久禁用**。镜像→repo 一律走 `scripts/deploy_ea_skills.py`：脏文件守卫（目标未提交即停）+ 部署基线守卫（目标内容 ≠ 上次发布记录即停），命中就停、不做任何改动；目标领先用 `--backport` 回流 | `deployment-ops.md`《四》、`scripts/deploy_ea_skills.py`、验收 `_changes/test_deploy_guard*.py` |

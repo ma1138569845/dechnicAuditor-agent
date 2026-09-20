@@ -8,7 +8,9 @@
     python scripts/sync_ea_skills.py --verify   # 只读校验：待发布差异 + hash 一致性（exit 非 0 = 未对齐）
 
 铁律:
-    1. repo `skills/energy-audit/` 是唯一权威源（git 管理），本脚本只做单向发布。
+    1. 本脚本是发布链的**第二级**：repo `skills/energy-audit/` → 主库 + 6 角色 profile，单向发布。
+       上游（第一级）是**技能包镜像**，由 `deploy_ea_skills.py` 发布到 repo；
+       权威源是镜像（2026-09-20 决定 A，见 `deployment-ops.md` 第四节）。**禁用 `robocopy /MIR`**。
     2. 禁止手工改 profile 侧技能后不回 repo——下次发布会覆盖。
     3. 角色安装矩阵与 kanban-energy-audit-orchestrator/references/role-definitions.md 保持一致。
 """

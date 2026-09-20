@@ -4,7 +4,9 @@
 **规则**：
 
 1. 每个主题**只有一个**权威文件；发现第二处副本 → 改成引用或归档（本索引的"禁止复述在"列就是副本黑名单）。
-2. 改权威文件后必须跑验收：`python scripts/sync_ea_skills.py --verify`（退出码 0 = 已对齐）。
+2. 改权威文件后必须跑验收：技能内容在**技能包镜像**改 → `python scripts/deploy_ea_skills.py --check`
+   （有阻挡先裁决）→ `deploy_ea_skills.py` 发布（内部续跑 `sync_ea_skills.py` + `--verify`，
+   两级退出码 0 = 已对齐）。**禁用 `robocopy /MIR`**（2026-09-20 事故，见教训 C5）。
 3. 新增主题必须登记到本表；SOUL 与 SKILL 都**不内嵌具体数值**。
 
 ## 一、口径类（最容易出错，历史上都出过事故）
@@ -46,7 +48,7 @@
 | PG 表结构 / 能源代码 / 图片链路 / 取数陷阱 | `energy-audit-pg-data/SKILL.md` | datacollection、datava | — |
 | 流程与调度（分诊 / 直跑 / 批量 / 角色矩阵） | `energy-audit-routing/SKILL.md`（分诊与直跑）+ `kanban-energy-audit-orchestrator/SKILL.md` 与 `references/{workflow.md, role-definitions.md, tools-reference.md}`（批量与角色） | default、editor、全角色 | 旧 `pipeline-architecture.md`（已归档）；**待办：合并为单一 workflow.md** |
 | SOUL 编写与发布 | `energy-audit-core/references/soul-purity-principle.md` + `skills/energy-audit/_soul/*.md` + `scripts/sync_ea_skills.py` | 全角色 | SOUL 不内嵌数值与框架生命周期 |
-| 部署前提与自检 / Hermes 运维 | `energy-audit-core/references/deployment-ops.md`（2026-09-18 三合一） | 全角色（新机/换机） | — |
+| 部署前提与自检 / Hermes 运维 / **技能包→repo→profile 发布链** | `energy-audit-core/references/deployment-ops.md`（2026-09-18 三合一；2026-09-20 增《四、技能包 ↔ repo 的同步》）+ 执行体 `scripts/deploy_ea_skills.py`、`scripts/sync_ea_skills.py` | 全角色（新机/换机、改技能后） | 各 SKILL 不复述镜像路径、守卫判据与命令行参数 |
 | 辅助视觉模型（图片识别：铭牌/仪表/图纸） | `energy-audit-core/references/deployment-ops.md`《辅助视觉模型配置》一节 | author、datacollection、视觉核验环节 | 别的技能不复述 provider/model/端点 |
 | 数据导出与整库导出 | `energy-audit-pg-data/references/data-export.md` | datacollection | — |
 | 跨项目经验（踩坑结论） | `energy-audit-core/references/lessons-learned.md`（索引式，2026-09-18 建） | 全角色（开工前扫一遍） | 细节仍以本表其它权威文件为准，本文件只做索引 |

@@ -45,6 +45,20 @@
 
 ### 四、技能包 ↔ repo 的同步（**唯一入口 `deploy_ea_skills.py`**）
 
+> **权威源（2026-09-20 决定 A）**：技能内容的**唯一权威源是技能包镜像**
+> —— `E:\杂\chatgpt技能包\energy-audit-v2\repo\skills\energy-audit\`。
+> 发布是**两级单向链**，任一级都不许手工复制：
+>
+> ```
+> 技能包镜像（权威，人工编辑）
+>    └─ deploy_ea_skills.py ──► repo  skills/energy-audit/   （D 盘，git 管理）
+>                                   └─ sync_ea_skills.py ──► 主库 + 6 角色 profile
+> ```
+>
+> 要改技能内容 → **只改镜像** → 跑 `deploy_ea_skills.py`（它内部会接着跑 sync 并 `--verify`）。
+> 反过来（repo 侧被改、镜像落后）→ 跑 `deploy_ea_skills.py --backport --yes` 回流，
+> 再回到正常链路。**不要在 repo 侧直接改技能**，否则镜像与 repo 立刻分叉。
+
 > **背景（2026-09-20 事故）**：此前用 `robocopy /MIR` 把技能包镜像**整体**覆盖到
 > repo `skills/energy-audit`，抹掉了目标侧未提交的文件改动，git 层面无法恢复。
 > 同日还发现 repo 有**第二个写入者**（另一会话在同分支连续提交），
