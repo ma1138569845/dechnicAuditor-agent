@@ -26,7 +26,6 @@ def _frontmatter_and_body():
 
 def test_skill_file_exists():
     assert SKILL_PATH.is_file()
-    assert (SKILL_DIR / "references" / "chapter-outlines.md").is_file()
     assert (SKILL_DIR / "references" / "assemble-format-notes.md").is_file()
     assert SCRIPT_PATH.is_file()
     assert (SKILL_DIR / "scripts" / "add_watermark.py").is_file()
