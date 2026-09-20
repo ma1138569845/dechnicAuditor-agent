@@ -811,7 +811,11 @@ def build_and_save_project(
     pg_children_func = str(pg_customer.get('children_func') or '').strip().upper()
     dict_cat, dict_spec = _classify_from_codes(pg_unit_func, pg_children_func)
     pg_institution_category = dict_cat or (classified_cat if classified_cat != '未分类' else '')
-    pg_specific_type = dict_spec or (classified_spec if classified_spec != '其他' else '')
+    # specific_type 保持"具体类型"语义（医院/大学/法院/机关），**不要**用字典二级码覆盖——
+    # 二级码是"等级/分档"（一/二/三级、省/市/市级以下、教育 8 档），与"具体类型"不是一回事；
+    # 报告与蓝本/同类报告匹配都按 specific_type 取。分档信息一律走 children_func（码）
+    # + dept_dict.children_label() 现算，见 2026-09-20 修正。
+    pg_specific_type = classified_spec if classified_spec != '其他' else ''
     if pg_unit_func and not dict_cat:
         print(f"[datacollection v2] ⚠️ 平台单位类型码 customer_func={pg_unit_func!r} 未在字典中，"
               f"已回退单位名分类器（请复核 tools/energy_audit/dept_dict.py）")
