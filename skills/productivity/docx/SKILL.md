@@ -144,18 +144,18 @@ cannot render PDFs, and layout fidelity requires a real renderer.
 
 ## Editing existing documents (OOXML surgery)
 
-Legacy `.doc` files must be converted first: `python scripts/office/soffice.py --headless --convert-to docx file.doc`.
+Legacy `.doc` files must be converted first: `soffice --headless --convert-to docx file.doc`.
 
 ```bash
+python scripts/docx_edit.py normalize doc.docx   # coalesce fragmented runs so text is findable (in place)
 unzip -q doc.docx -d unpacked/
 find unpacked -type l -delete   # strip symlink entries — docx from external parties is untrusted
-python scripts/merge_runs.py unpacked/   # coalesce fragmented runs so text is findable
 # edit unpacked/word/document.xml in place — do NOT reformat or pretty-print
 (cd unpacked && rm -f ../out.docx && zip -Xr ../out.docx .)
-python scripts/office/validate.py out.docx --original doc.docx   # XSD checks
+python scripts/docx_validate.py out.docx   # package health check
 ```
 
-Word splits text across many `<w:r>` runs (revision ids, spell-check markers), so a phrase often doesn't exist as a contiguous string in the XML. `merge_runs.py` merges adjacent identically-formatted runs.
+Word splits text across many `<w:r>` runs (revision ids, spell-check markers), so a phrase often doesn't exist as a contiguous string in the XML. `docx_edit.py normalize` merges adjacent identically-formatted runs (run it on the `.docx` before unzipping); for scripted XML edits prefer `docx_ooxml_patch.py`.
 
 ### Tracked changes (redlining)
 
@@ -164,7 +164,6 @@ When redlining, wrap runs in `<w:ins>`/`<w:del>` with `w:id`, `w:author`, `w:dat
 To produce a clean copy with all tracked changes accepted:
 ```bash
 python scripts/accept_tracked_changes.py input.docx --mode accept --out accepted.docx
-python scripts/accept_changes.py in.docx out.docx   # legacy LibreOffice-based fallback
 ```
 
 To add tracked-change replacements programmatically:
@@ -176,14 +175,16 @@ Accepting a deleted paragraph mark joins that paragraph to the one below it. Che
 
 ### Comments
 
-Comments require six cross-linked files. Use the helper:
+Comments require six cross-linked files; the helpers wrap that plumbing:
 ```bash
-# Against an already-unpacked directory (preferred when also placing markers)
-python scripts/comment.py unpacked/ "Fees & expenses cap is too low"
-python scripts/comment.py unpacked/ "Agreed" --parent 0
+python scripts/docx_comments.py list contract.docx
+python scripts/docx_comments.py add contract.docx --target "This cap is too low" --text "Fees & expenses cap is too low" --author "You"
+python scripts/docx_comments.py delete contract.docx --id 0
+```
 
-# Against a .docx directly
-python scripts/comment.py contract.docx "This cap is too low" -o annotated.docx
+For batch injection (many anchors in one pass):
+```bash
+python scripts/comments_add.py contract.docx --out annotated.docx --add "cap is too low=This cap is too low" --ignore_case
 ```
 
 For advanced comment workflows:
@@ -260,7 +261,7 @@ python render_docx.py input.docx --output_dir out/ --verbose
 
 Fallback for basic rendering:
 ```bash
-python scripts/office/soffice.py --headless --convert-to pdf output.docx
+soffice --headless --convert-to pdf output.docx
 pdftoppm -jpeg -r 100 output.pdf page
 ls page-*.jpg
 ```
@@ -299,6 +300,9 @@ python scripts/insert_toc.py input.docx --out with_toc.docx
 # Style lint
 python scripts/style_lint.py input.docx
 python scripts/style_normalize.py input.docx --out normalized.docx
+
+# Google Docs title cleanup (strips Title-style rule/border residue)
+python scripts/google_docs_title_sanitize.py input.docx --out clean.docx
 ```
 
 ---
@@ -312,18 +316,20 @@ python scripts/style_normalize.py input.docx --out normalized.docx
 | `heading_audit.py`, `section_audit.py` | `tasks/headings_numbering.md`, `tasks/sections_layout.md` |
 | `images_audit.py`, `a11y_audit.py` | `tasks/images_figures.md`, `tasks/accessibility_a11y.md` |
 | `captions_and_crossrefs.py` | `tasks/captions_crossrefs.md` |
-| `table_geometry.py`, `xlsx_to_docx_table.py` | `tasks/tables_spreadsheets.md` |
-| `fields_report.py`, `insert_ref_fields.py` | `tasks/fields_update.md` |
+| `insert_note.py`, `footnotes_report.py` | `tasks/footnotes_endnotes.md` |
+| `table_geometry.py`, `xlsx_to_docx_table.py`, `docx_table_to_csv.py` | `tasks/tables_spreadsheets.md` |
+| `fields_report.py`, `insert_ref_fields.py`, `fields_materialize.py`, `flatten_ref_fields.py` | `tasks/fields_update.md` |
 | `insert_toc.py` | `tasks/toc_workflow.md` |
 | `internal_nav.py` | `tasks/navigation_internal_links.md` |
 | `accept_tracked_changes.py`, `add_tracked_replacements.py` | `tasks/clean_tracked_changes.md` |
-| `comments_*.py`, `comment.py` | `tasks/comments_manage.md` |
+| `docx_comments.py`, `comments_*.py` | `tasks/comments_manage.md` |
 | `privacy_scrub.py` | `tasks/privacy_scrub_metadata.md` |
 | `redact_docx.py` | `tasks/redaction_anonymization.md` |
-| `watermark_*.py` | `tasks/watermarks_background.md` |
+| `watermark_add.py`, `watermark_audit_remove.py` | `tasks/watermarks_background.md` |
 | `content_controls.py`, `set_protection.py` | `tasks/forms_content_controls.md`, `tasks/protection_restrict_editing.md` |
 | `merge_docx_append.py` | `tasks/multi_doc_merge.md` |
 | `render_docx.py`, `render_and_diff.py` | `tasks/verify_render.md`, `tasks/compare_diff.md` |
+| `make_fixtures.py` | `tasks/fixtures_edge_cases.md` |
 | `docx_ooxml_patch.py` | `ooxml/tracked_changes.md`, `ooxml/comments.md` |
 
 ---
