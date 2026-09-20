@@ -134,17 +134,27 @@ def _add_toc_field(paragraph):
     set_font(run, 12)
 
 
-def _add_table(doc, rows):
-    """通用表格：12pt 居中、垂直居中、行高 1.01cm，首行加粗（对齐 45 页终稿）。"""
+def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None):
+    """通用表格：12pt 居中、垂直居中、行高 1.01cm，首行加粗（对齐 45 页终稿）。
+
+    bold_first_row=False：无表头行的表（建筑基本信息表：全表不加粗，2026-09-20）；
+    equal_width_cm：等宽列宽（建筑表 ≈3.66cm/列）。
+    """
     n_cols = max(len(r) for r in rows)
     t = doc.add_table(rows=len(rows), cols=n_cols)
     t.style = "Table Grid"
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    if equal_width_cm:
+        t.autofit = False
+        for ci in range(n_cols):
+            t.columns[ci].width = Cm(equal_width_cm)
     for ri, data in enumerate(rows):
         row = t.rows[ri]
         row.height = Cm(1.01)
         for ci in range(n_cols):
             cell = row.cells[ci]
+            if equal_width_cm:
+                cell.width = Cm(equal_width_cm)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -152,7 +162,7 @@ def _add_table(doc, rows):
             pf.space_before = Pt(0)
             pf.space_after = Pt(0)
             pf.line_spacing = 1.0
-            set_font(p.add_run(data[ci] if ci < len(data) else ""), 12, ri == 0)
+            set_font(p.add_run(data[ci] if ci < len(data) else ""), 12, bool(bold_first_row and ri == 0))
     return t
 
 
@@ -478,7 +488,10 @@ def _render_md(doc, md_path, ctx, appendix=False):
                     break
                 i += 1
             if rows:
-                _add_table(doc, rows)
+                # 建筑基本信息表（4 列键值对、无表头行）：首行不加粗、列等宽（2026-09-20）
+                is_bldg = bool(rows[0]) and rows[0][0].strip() == "建筑物名称"
+                _add_table(doc, rows, bold_first_row=not is_bldg,
+                           equal_width_cm=3.66 if is_bldg else None)
         elif "[FORMULA" in line:
             _render_formula_line(doc, line, omml)
         elif line.startswith("**表") and line.endswith("**"):

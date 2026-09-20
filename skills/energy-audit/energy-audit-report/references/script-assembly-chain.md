@@ -157,7 +157,7 @@ officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
 
 | 附录 | 内容 | 数据来源 |
 |---|---|---|
-| 附录1：建筑基本信息及设备统计表 | 建筑基本信息（18 字段）+ 设备统计（分系统设备表） | 引用正文表2.1 / 6.x + 说明 |
+| 附录1：建筑基本信息及设备统计表 | 建筑基本信息（4 列键值对、无表头行、不加粗；18 字段清单见 `ea-authoring/references/chapter-guides-1-4.md` §7 v4.0「附表1-1」）+ 设备统计（分系统设备表） | 引用正文表2.1 / 6.x + 说明 |
 | 附录2：建筑能耗数据信息表 | 每年一张 7 列表：月份×水量(m³)/水费(元)/单价(元/m³)/电量(kWh)/电费(元)/单价(元/kWh)，12 月+合计行 | 逐月费用从 DB 拉取，**合计必须与正文主表费用一致**（report-qa 铁律） |
 | 附录3：电费、水费、油费、燃气费充值发票 | 缴费发票照片（`proj.images` 分类'缴费发票'，caption 为"电费 1月~2月"等类型+期间，按 caption 前缀分组嵌入） | 发票照片采集自 ts_institution_energy_invoice+invoice_image 双表（2026-09-04 接入） |
 | 附录4：室内环境测量表 | 室内温度/湿度/照度等实测数据表；**如有室内环境测量表的附件图片则展示** | `proj.indoor_env`（ts_institution_environment，取 deleted=0 且 room_name 合理的记录） |

@@ -297,50 +297,65 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 #### 7. 建筑基本信息表定义（结构化）
 
-每栋建筑一张 `building_basic_info` 表。**LLM 输出 building 字段数据，不输出表格行/列宽/字体**；4 列键值对布局（16 行）、标签加粗、内容居中、表题在表格上方等由装配链按统一样式绘制（格式见 `energy-audit-core/references/report-format-spec.md`）。
+每栋建筑一张 **4 列键值对**表，写入 `chapter_md/ch2.md` 的 2.2 节（4 列 markdown 表格、**无表头行**：每行 2 组「标签 | 值」，首行即第 1、2 个字段；**字段有值才列、行数 = 有值字段数**——法院正式版 = 13 行 × 2 组 = 26 字段）。**全表不加粗**（标签与值均 12pt 不加粗）；4 列等宽（≈3.66cm/列）、宋体 12pt、水平/垂直居中、行高 1.01cm、表题在表格上方居中加粗——均由装配链 `build_energy_audit_docx.py` 统一绘制（按首格「建筑物名称」识别建筑表：首行不加粗、4 列等宽）。**禁止手写列宽/字体/加粗等排版信息**。
 
-```yaml
-table_type: building_basic_info
-layout:
-  columns: 4
-  arrangement: key_value_pair   # 键值对：标签 | 值 | 标签 | 值
-  caption: "表2-N {building.name}基本信息"   # 表题在表格上方，由装配链编号
-field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该行（值列单位 m² 由渲染层处理）
-  name: 建筑物名称
-  address: 建筑地址
-  year: 建造年代
-  function: 建筑功能
-  floors: 建筑层数
-  area: 建筑面积
-  structure: 建筑结构形式
-  window_type: 建筑外窗类型
-  insulation: 建筑外墙保温
-  orientation: 建筑朝向
-  function_zoning: 建筑功能分区
-  height: 建筑高度
-  cooling_source: 夏季空调冷源
-  heating_source: 冬季供暖热源
-  cooling_terminal: 夏季空调末端
-  heating_terminal: 冬季供暖末端
-  water_system: 建筑给水系统
-  fire_system: 建筑消防给水系统
-  hot_water: 生活热水系统
-  monitoring: 能耗在线监测系统
-  use_area: 使用面积
-  cooling_area: 供冷面积
-  heating_area: 供热面积
-  wall_body_material: 外墙主体材料
-  roof_insulation: 屋面保温
-  roof_insulation_material: 屋面保温材料
-  sunshade_type: 遮阳形式
-  sunshade_material: 遮阳材料
-  run_time: 建筑运行时间
-  storey_metrology: 楼层单独计量
-  garage: 地下车库
-  garage_area: 地下车库面积
-```
+**正文表字段与顺序（26 项，对齐公司《正式报告》表2.1）**：
 
-> field_mapping 须与 `tools/energy_audit/project_data.py` 的 `BuildingInfo` 字段保持一致（16 行渲染契约，字段缺失/为空时该行留空）；后续第3~6章表格（energy_consumption / equipment_parameter / monthly_energy / energy_balance / saving_measure / investment_analysis）沿用同一机制。
+| # | 标签 | BuildingInfo 字段 | 值格式/示例 |
+|---|------|-------------------|-------------|
+| 1 | 建筑物名称 | name | 原文 |
+| 2 | 建筑地址 | address | 原文（"烟台开发区衡山路20号"） |
+| 3 | 建造年代 | year | "2014年" |
+| 4 | 建筑功能 | function | 原文 |
+| 5 | 建筑层数 | floors | "地上12层，地下1层" |
+| 6 | 建筑面积 | area | "24300 m²" |
+| 7 | 使用面积 | use_area | "24300 m²"；未实测写"未实测（…）" |
+| 8 | 建筑高度 | height | "34.0 m" |
+| 9 | 建筑结构形式 | structure | 原文 |
+| 10 | 建筑朝向 | orientation | 原文 |
+| 11 | 外墙主体材料 | wall_body_material | 原文 |
+| 12 | 外墙保温 | insulation | "有，无破损" 式 |
+| 13 | 建筑外窗类型 | window_type | 原文 |
+| 14 | 屋面保温 | roof_insulation | "有"/"无" |
+| 15 | 遮阳形式 | sunshade_type | 原文 |
+| 16 | 功能分区 | function_zoning | 原文 |
+| 17 | 夏季空调冷源 | cooling_source | 原文 |
+| 18 | 冬季供暖热源 | heating_source | 原文（可带括注，如"（按热量计量缴费，热价89.61元/GJ）"） |
+| 19 | 夏季空调末端 | cooling_terminal | 原文 |
+| 20 | 冬季供暖末端 | heating_terminal | 原文 |
+| 21 | 供冷面积 | cooling_area | "24300 m²" |
+| 22 | 供热面积 | heating_area | "24300 m²" |
+| 23 | 建筑给水系统 | water_system | 原文 |
+| 24 | 消防给水系统 | fire_system | 原文 |
+| 25 | 生活热水系统 | hot_water | 原文 |
+| 26 | 能耗在线监测系统 | monitoring | "有"/"无" |
+
+**附表1-1 字段与顺序（18 项，附录1；标签与简式与正文表略有差异）**：
+
+| # | 标签 | BuildingInfo 字段 | 值格式/示例 |
+|---|------|-------------------|-------------|
+| 1 | 建筑物名称 | name | 原文 |
+| 2 | 建筑地址 | address | 原文 |
+| 3 | 建造年代 | year | "2014年" |
+| 4 | 建筑功能 | function | 原文 |
+| 5 | 建筑层数 | floors | "地上12层，地下1层" |
+| 6 | 建筑面积 | area | "24300 m²" |
+| 7 | 建筑功能分区 | function_zoning | 原文 |
+| 8 | 建筑结构形式 | structure | 原文 |
+| 9 | 建筑外窗类型 | window_type | 原文 |
+| 10 | 建筑外墙保温 | insulation | "有"/"无"（简式） |
+| 11 | 夏季空调冷源 | cooling_source | 原文 |
+| 12 | 冬季供暖热源 | heating_source | 简式（如"市政集中供暖"，不带括注） |
+| 13 | 夏季空调末端形式 | cooling_terminal | 原文 |
+| 14 | 冬季供暖末端形式 | heating_terminal | 原文 |
+| 15 | 建筑给水系统 | water_system | 原文 |
+| 16 | 建筑消防给水系统 | fire_system | 原文 |
+| 17 | 生活热水系统 | hot_water | 简式（如"有"） |
+| 18 | 能耗在线监测系统 | monitoring | "有"/"无" |
+
+**行规则**：字段无值 → **不列该组**（不写空值行；值为"无"要有数据依据才照实列示）；两表之外的其他有值字段（屋面保温材料/遮阳材料/建筑运行时间/楼层单独计量/供暖时间/地下车库及面积等）可作为附加组追加至表尾。表题：`表2.N {建筑名}基本信息`（正式版「表2.1 审判综合楼基本信息」，**不写"建筑"二字**）；附录1 附表1-1 表题按附录编号规范（见 `energy-audit-report/references/script-assembly-chain.md`）。
+
+> 字段名须与 `tools/energy_audit/project_data.py` 的 `BuildingInfo` 字段保持一致（上表「字段」列即代码字段名）；缺值不列；后续第3~6章表格（energy_consumption / equipment_parameter / monthly_energy / energy_balance / saving_measure / investment_analysis）沿用同一「数据 + 装配链绘制」机制。
 
 #### 8. 图片规则
 
@@ -389,7 +404,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 |---|---|
 | 事实 | 所有名称/数字必须来自输入数据（`proj.*` 字段），禁止编造；数据缺失走回退流程 |
 | 结构 | 2.1/2.2/2.3 齐全；2.2 含总览段、共性特征、面积汇总、逐栋段、收口句 |
-| 表格 | 每栋建筑对应一张 building_basic_info；building 字段与 field_mapping（BuildingInfo）一致，关键字段无缺失 |
+| 表格 | 每栋建筑对应一张建筑基本信息表（4 列键值对、无表头行、不加粗）；字段与 §7 v4.0 两套清单一致，关键字段无缺失 |
 | 图片 | building_exterior 1 张（单位整体外观=scene_img_id，无则建筑外观兜底）；building_photo（每栋照）可选不强制；路径真实存在 |
 | 逻辑 | 用能系统段与 energy_types 一一对应，无多余/遗漏系统；设备数量表述符合 §6 category 规则 |
 | 格式 | 不属于本章职责，由装配链与报告格式规范保证 |
@@ -398,43 +413,7 @@ field_mapping:  # 行顺序 = 表格行顺序；字段缺失/为空时跳过该�
 
 ### 建筑基本信息表定义（原 building-param-table-spec）
 
-> 权威依据：烟台经济技术开发区人民法院正式报告 R7 版 表2.1。旧 v2.0（10行×4列）已废弃。
-
-#### 表结构
-
-每栋建筑生成一张 **N行×2列** 的键值对参数表（表头 `项目 | 内容`），标题在表格上方："表2.N  建筑名基本信息"（正式版单栋=表2.1）。
-
-#### 字段（按正式版 表2.1 顺序，有数据才列出该行，缺失字段不列出）
-
-| 顺序 | 项目名 | BuildingInfo 字段 | 格式 |
-|------|--------|-------------------|------|
-| 1 | 建筑名称 | name | 原文 |
-| 2 | 地址 | address | 原文（"烟台开发区衡山路20号"式） |
-| 3 | 建成年代 | year | "2014年"式 |
-| 4 | 建筑面积(m²) | area | 裸数字 |
-| 5 | 使用面积 | use_area | 原文；未实测写"未实测（…）" |
-| 6 | 建筑层数 | floors | "地上12层，地下1层"式 |
-| 7 | 结构形式 | structure | 原文 |
-| 8 | 供暖方式 | heating_source | "市政集中供暖"式 |
-| 9 | 采暖期 | heat_time | "11月16日~次年3月31日"式 |
-| 10 | 供暖末端形式 | heating_terminal | 原文 |
-| 11 | 主要功能 | function | "审判法庭、办公办案"式 |
-| 12 | 其他有值字段 | （orientation/height/window_type/insulation/cooling_source/cooling_terminal 等） | 有值才补行 |
-
-> 字段无值 → **该行不列出**（不是写空值行）；有值字段即使不在上述 1-11 也补为附加行。严禁编造填充。
-
-#### 表号与位置
-
-- 表号："表2.N  建筑名基本信息"（N 从 1 起按栋递增；正式版单栋即"表2.1 审判综合楼建筑基本信息"）
-- 位置：第2章 2.2 建筑物概况，每栋建筑叙述段之后
-- 表头行：`项目 | 内容` 两列，宋体12pt 居中
-
-#### 关键 Pitfall
-
-- **两列键值对，不是四列**（旧 v2.0 的 4 列并排键值对已废弃）
-- 标题在表上方独立段（"表2.N  …基本信息"），不合并进表内
-- 空值行不列出；面积裸数字+表头带单位
-- 层数格式 "地上X层，地下Y层"；采暖期格式 "M月D日~次年M月D日"
+> **本节已废止（2026-09-20）**：建筑基本信息表以本章上方 §7 的 v4.0 口径为**唯一权威**（4 列键值对、无表头行、全表不加粗；正文 26 字段 / 附表1-1 18 字段清单见 §7）。旧「2 列」口径系执行跑偏后固化的错误产物，**不得再引用**。
 
 ## 第3章 能源资源管理状况（原 chapter3-guide）
 

@@ -19,6 +19,7 @@
     ch5_narrative     第5章分析叙述段计数 ≥ 15（防「只有图表无文字」，2026-09-20 新增）
 
 度量（总是输出）: oMath / captions / tables / drawings / media_files / ch5_body_paras
+                  building_tables / building_tables_cols（建筑基本信息表数量与各表列数）
                   pages / header_pages / footer_pages（需 --pdf）
 --expect 键: pages（容差 ±2）/ oMath / captions / tables / drawings / media_files
 """
@@ -87,6 +88,27 @@ def ch5_narrative_count(doc_xml: str) -> int:
     return n
 
 
+def building_tables_info(doc_xml: str):
+    """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
+
+    识别：首格含「建筑名称/建筑物名称」。用途：building_tables / building_tables_cols 度量
+    （结构合规性由 V3 check_building_tables 负责 P1 检查）。
+    """
+    cols = []
+    for tm in re.finditer(r"<w:tbl[ >].*?</w:tbl>", doc_xml, flags=re.S):
+        tbl = tm.group(0)
+        tr = re.search(r"<w:tr[ >].*?</w:tr>", tbl, flags=re.S)
+        if not tr:
+            continue
+        tcs = re.findall(r"<w:tc[ >].*?</w:tc>", tr.group(0), flags=re.S)
+        if not tcs:
+            continue
+        first = "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", tcs[0]))
+        if "建筑名称" in first or "建筑物名称" in first:
+            cols.append(len(tcs))
+    return cols
+
+
 def run(docx: str, pdf: str = None):
     z = zipfile.ZipFile(docx)
     znames = z.namelist()
@@ -100,6 +122,7 @@ def run(docx: str, pdf: str = None):
     text = visible_text(doc)
     tn = norm(text)
     ch5_n = ch5_narrative_count(doc)
+    bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
     if i >= 0:
@@ -140,6 +163,8 @@ def run(docx: str, pdf: str = None):
         "captions": count_captions(doc),
         "tables": len(re.findall(r"<w:tbl[ >]", doc)),
         "ch5_body_paras": ch5_n,
+        "building_tables": len(bldg_cols),
+        "building_tables_cols": ",".join(str(c) for c in bldg_cols) or "-",
         "drawings": len(re.findall(r"<w:drawing[ >]", doc)),
         "media_files": len(media),
     }

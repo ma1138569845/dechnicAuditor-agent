@@ -356,6 +356,63 @@ def check_ch5_narrative(blocks: Sequence[Block]) -> List[Finding]:
     return findings
 
 
+def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
+    """建筑基本信息表结构（2026-09-20 新增，对齐公司正式报告口径）。
+
+    识别：首格含「建筑名称/建筑物名称」（或「项目」表头且前 3 行出现建筑名称）。
+    要求：4 列键值对、无表头行、全表不加粗。
+    """
+    findings: List[Finding] = []
+    issues: List[str] = []
+    for b in blocks:
+        if b.kind != "tbl" or getattr(b, "obj", None) is None:
+            continue
+        try:
+            rows = b.obj.rows
+            if not rows:
+                continue
+            first_cell = rows[0].cells[0].text.strip()
+        except Exception:
+            continue
+        is_bldg = ("建筑名称" in first_cell) or ("建筑物名称" in first_cell)
+        if not is_bldg and first_cell == "项目":
+            for r in rows[:3]:
+                if any(("建筑名称" in c.text or "建筑物名称" in c.text) for c in r.cells):
+                    is_bldg = True
+                    break
+        if not is_bldg:
+            continue
+        loc = ("第%d章" % b.chapter) if getattr(b, "chapter", None) else "附录"
+        n_cols = len(rows[0].cells)
+        if n_cols != 4:
+            issues.append("%s 建筑表为 %d行×%d列（应为 4 列键值对）" % (loc, len(rows), n_cols))
+        if first_cell in ("项目", "序号") or (
+            n_cols >= 2 and rows[0].cells[1].text.strip() == "内容"
+        ):
+            issues.append("%s 建筑表出现表头行（应为无表头行）" % loc)
+        bold = False
+        for c in rows[0].cells:
+            for p in c.paragraphs:
+                for r in p.runs:
+                    if r.bold:
+                        bold = True
+        if bold:
+            issues.append("%s 建筑表首行存在加粗（应为全表不加粗）" % loc)
+    if issues:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.BLDG_TABLE",
+                category="章节完整性",
+                severity=SEV_P1,
+                title="建筑基本信息表结构不符（%d 处）" % len(issues),
+                detail="；".join(issues[:8]),
+                expected="4 列键值对、无表头行、全表不加粗（公司正式报告口径，见 chapter-guides-1-4.md §7 v4.0）",
+                suggestion="按 §7 v4.0 重写 ch2/appendix 中该表（4 列、无表头行；装配链按首格「建筑物名称」自动不加粗/等宽）",
+            )
+        )
+    return findings
+
+
 def check_energy_consistency(blocks: Sequence[Block]) -> List[Finding]:
     """第4章综合能耗与第5章综合能耗的最大陈述值比对。"""
     def max_tce(chapter: int) -> Optional[float]:
@@ -912,6 +969,7 @@ def run(
     findings += check_chapter6_h3(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
+    findings += check_building_tables(blocks)
     findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area)
     findings += check_energy_consistency(blocks)
     if years:
