@@ -22,7 +22,7 @@
 
 | 主题 | 唯一权威 | 谁引用它 | 禁止复述在 |
 |---|---|---|---|
-| 第1/2/3/4/6/7/8 章写作规则 | `ea-authoring/references/chapter*-guide.md`（第6章另见 `chapter6-sub-system-spec.md`） | author、datava V3 | 旧 8 章骨架（已归档）、`chapter-writing-specs.md`（已归档） |
+| 第1/2/3/4/6/7/8 章写作规则 | `ea-authoring/references/chapter*-guide.md`（第2章含建筑参数表定义、第6章含 6.1 分系统规范；2026-09-18 合并后以此为准） | author、datava V3 | 旧 8 章骨架、`chapter-writing-specs.md`、`chapter6-sub-system-spec.md`、`building-param-table-spec.md`（均已归档至 `_archive/`） |
 | 第5章结构 / 表号图号 / 写作细节 | `ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）★2026-09-18 合并后以此二者为准 | caliber、author 批2 | 原 8 个 5.x 文件（已归档 `_archive/2026-09-18/`） |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` | author、caliber | — |
 | 报告实例库（法院/医院/学校） | `energy-audit-report/references/examples/*.md` | author、energy-audit-style | 章节指南里不复述实例原文 |
@@ -49,3 +49,4 @@
 | 部署前提与自检 / Hermes 运维 | `energy-audit-core/references/deployment-ops.md`（2026-09-18 三合一） | 全角色（新机/换机） | — |
 | 辅助视觉模型（图片识别：铭牌/仪表/图纸） | `energy-audit-core/references/deployment-ops.md`《辅助视觉模型配置》一节 | author、datacollection、视觉核验环节 | 别的技能不复述 provider/model/端点 |
 | 数据导出与整库导出 | `energy-audit-pg-data/references/data-export.md` | datacollection | — |
+| 跨项目经验（踩坑结论） | `energy-audit-core/references/lessons-learned.md`（索引式，2026-09-18 建） | 全角色（开工前扫一遍） | 细节仍以本表其它权威文件为准，本文件只做索引 |

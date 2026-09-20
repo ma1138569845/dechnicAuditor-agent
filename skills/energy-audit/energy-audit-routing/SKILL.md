@@ -69,6 +69,8 @@ python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --m
 
 按 ea-authoring 同款批次划分（kanban 轨称"3 卡"，直跑轨称"3 批"，是同一件事——术语见 `energy-audit-core/SKILL.md` 术语表；**其余全部照 ea-authoring 执行**）：
 
+> **每批开工前先跑并读接续契约**：`python <skills>/ea-authoring/scripts/prepare_writing_context.py <项目名>` → 读 `<项目>/chapter_md/_context.md`（唯一口径/关键数字/已落盘章节/术语写法）；每批收工再跑一次刷新。
+
 - 批 1：封面数据 + 第 1~4 章 → `chapter_md/ch1~ch4.md`
 - 批 2：第 5 章装配（**装配稿由阶段 1 的 3.5 步就位**：`chapter_md/ch5_import.md`；作者可在其上并入叙述段，但**禁重算数值**）+ 第 6/7 章
 - 批 3：第 8 章 + 附录 → `chapter_md/ch8.md`、`chapter_md/appendix.md`

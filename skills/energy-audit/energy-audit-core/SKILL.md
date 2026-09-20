@@ -74,4 +74,5 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | `conventions.md` | ★通用约定（2026-09-18 五合一）：项目粒度 + 兜底原则 + config 结构 + 审计三张表结构 + ISO 日期转换 |
 | `deployment-ops.md` | ★部署与运维（2026-09-18 三合一）：新机自检清单 + Hermes 运维（含"SOUL 改动需重启 gateway"）+ 辅助视觉模型配置（Qwen-VL） |
 | `soul-purity-principle.md` | SOUL.md 编写原则（`skills/energy-audit/_soul/` 的唯一编写依据） |
+| `lessons-learned.md` | ★跨项目经验库（教训索引：现象→铁律→详见，按数据源/标准/报告/装配/协作五类，2026-09-18 建） |
 | `_archive/2026-09-17/`、`_archive/2026-09-18/` | 历史文档与合并前原件归档（仅供追溯，勿引用） |

@@ -71,6 +71,8 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 python <skill>/scripts/caliber_agent.py <项目名> [--skip-charts] [--output-dir <目录>]
 # 计算完成后，把第5章"就位"为装配稿（消灭手工搬运断点；不覆盖作者已并入的装配稿）
 python <skill>/scripts/prepare_chapter_md.py <项目名> [--force]
+# 定额取值溯源自检（标准号 + 表号锚点；exit 1 = 有缺项 → 第5章标【待核验】）
+python <skill>/scripts/verify_benchmark_sources.py <项目名>
 ```
 
 `prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。
