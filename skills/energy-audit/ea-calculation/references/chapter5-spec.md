@@ -657,10 +657,13 @@ self._add_table(cost_headers, cost_rows,
 
 ### 对标机制
 
-调用 `indicators.py` 的 `resolve_benchmark(institution_type, metric)`，三级兜底：
-- Layer 1: DB（ts_limit_config 系列表）
-- Layer 2: 用户提供
-- Layer 3: 内置 DB37/T 默认值（权威矩阵见 energy-audit-core/references/standards-values.md）
+调用 `indicators.py` 的 `resolve_benchmark(institution_type, metric, sub_type)`：
+
+- **取值 = 内置 DB37/T 默认值**（唯一来源；权威矩阵见 energy-audit-core/references/standards-values.md）
+- **DB（ts_limit_config）只做交叉校验**，不一致打 warning，不参与取值
+- `sub_type` 为二级维度查询串（`'等级·气候区'` / `'分档'` / `'场馆类型·省市档'` / `'分档·供暖类型'`），
+  拼接由 `project_sub_type(base, institution_type, metric)` 完成
+- 2026-09-20 起 `来源` 恒为 `Default`（原"用户提供"层已删除，详见 ea-calculation/SKILL.md Capability 4）
 
 ### 与 chapter5_agent.py 的关系
 

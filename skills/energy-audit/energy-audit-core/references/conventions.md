@@ -70,24 +70,18 @@ Layer 3: 内置默认值（GB/T 2589-2020）
 
 ### 定额对标 (`resolve_benchmark`)
 
+> ★2026-09-20 口径清理：**取值只有一个来源——内置默认 `_DEFAULT_BENCHMARKS`**
+> （= `energy-audit-core/references/standards-values.md` 的代码镜像），`来源` 恒为 `Default`。
+> DB `ts_limit_config` 只由 `audit_db_benchmark()` 旁路交叉校验、告警，**不参与取值**；
+> 原本标称的"Layer 2 用户提供"参数**从来没有调用方传值**，已删除（幽灵层）。
+> 详细契约与 `sub_type` 维度见 `ea-calculation/SKILL.md` Capability 4。
+
 ```
-Layer 1: DB (ts_limit_config, field_type + limit_type + climate_type)
-         ↓
-Layer 2: 用户提供 (约束值, 基准值, 引导值)
-         ↓
-Layer 3: 内置默认值 (_DEFAULT_BENCHMARKS)
+取值：内置默认 (_DEFAULT_BENCHMARKS)  ← 唯一来源
+校验：DB (ts_limit_config) → 不一致只 warning，不影响取值
 ```
 
-DB37/T 2673-2019 医疗机构（二级，A区）：
-| 指标 | 约束值 | 基准值 | 引导值 |
-|------|--------|--------|--------|
-| 单位面积非供暖能耗 | 22.6 | 15.3 | 9.4 |
-| 常规用能系统面积电耗 | 73.1 | 53.0 | 34.9 |
-| 人均综合能耗 | 907.4 | 556.9 | 428.3 |
-
-DB37/T 4452-2021 用水定额：
-| 二级医院 | 先进值 340 | 通用值 540 | L/(床·d) |
-| 机关 | 先进值 10 | 通用值 25 | m³/(人·a) |
+**定额三档值的权威单点是 `standards-values.md`，本文不复述数值**（见 AUTHORITY-INDEX 的"禁止复述"列）。
 
 ### 实现位置
 

@@ -4,11 +4,12 @@
 > 均为 DB37/T 2672-2019 党政机关口径、山东半岛寒冷地区），并经逐月账单/指标计算自洽核验。
 > 非山东省项目或非党政机构须向用户确认对应标准后替换，禁止编造标准值。
 >
-> ⚠️ **取值链（2026-09-20 用户确认）**：本文件是定额数值的**唯一权威**，
-> 代码侧镜像为 `tools/energy_audit/indicators.py::_DEFAULT_BENCHMARKS`。
-> 取值 = **用户显式提供 > 本文件（内置默认）**；DB `ts_limit_config` **不参与取值**，
-> 只由 `audit_db_benchmark()` 交叉校验并告警。改本文件必须同改代码，跑
-> `ea-calculation/scripts/verify_default_benchmarks.py`（0 退出码 = 两边逐值一致）。
+> ⚠️ **取值口径（2026-09-20 清理）**：本文件是定额数值的**唯一权威**，也是**取值的唯一来源**——
+> 代码侧镜像为 `tools/energy_audit/indicators.py::_DEFAULT_BENCHMARKS`，`来源` 恒为 `Default`。
+> DB `ts_limit_config` **不参与取值**，只由 `audit_db_benchmark()` 交叉校验并告警；
+> 原标称的"用户提供"层从来没有调用方传值，已删除（幽灵层）。
+> 改本文件必须同改代码，跑 `ea-calculation/scripts/verify_default_benchmarks.py`
+> （0 退出码 = 两边逐值一致）。
 
 # 山东省气候区划（A 区 / B 区）与供暖期计算参数
 

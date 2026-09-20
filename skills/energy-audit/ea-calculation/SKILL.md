@@ -111,7 +111,7 @@ proj = load_project(unit_name)
 | 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | Ejrcn=(综合−供暖−交通)/面积，全口径 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | (总电−供暖电)/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数 = 在岗 + 编外 + 门诊折算 + 床位折算 |
-| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆·政务=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, user_benchmark, bed_count, building_area)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均） |
+| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆·政务=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, bed_count, building_area, sub_type)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均）；场馆图书馆/博物馆按 4452 面积定额对标 |
 | 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 
 另：`calc_baseline(yearly_data)` 计算 5.4 节建筑能耗基准（用量基准 + 费用基准，多年区间/趋势）。
@@ -132,16 +132,20 @@ proj = load_project(unit_name)
 
 ---
 
-## Capability 3: 折标系数四级兜底
+## Capability 3: 折标系数兜底
 
-指标计算优先使用 `EnergyYearly.coefficients` 中持久化的折标煤系数；缺失时调用 `resolve_coefficient(energy_type, user_value)`：
+指标计算优先使用 `EnergyYearly.coefficients` 中持久化的折标煤系数（项目级人工/DB 值走的**就是这一路**）；
+缺失时调用 `resolve_coefficient(energy_type)`：
 
 ```
 Layer 0: data.json 中 EnergyYearly.coefficients（由 DataCollection 从 PG 采集并持久化）
 Layer 1: DB（ts_institution_energy_main.standard_coal_coefficient，合理性过滤）
-Layer 2: 用户提供
-Layer 3: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy-audit-core/references/coefficient-caliber.md）
+Layer 2: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy-audit-core/references/coefficient-caliber.md）
 ```
+
+> ★2026-09-20：删除了 `resolve_coefficient` 里**从无调用方传值**的 `user_value` 参数
+> （原标称"Layer 2 用户提供"，实际永远不走）。项目级系数覆盖能力由 Layer 0 的
+> `EnergyYearly.coefficients` 承载，不需要这个孤立参数。
 
 ### 内置默认值与合理性范围（超出范围跳过 Layer 1）
 
@@ -156,17 +160,26 @@ Layer 3: 内置默认（DB37/T 2672-2019 附录B 山东口径，权威见 energy
 
 ---
 
-## Capability 4: 定额对标（取值链 = 用户值 > 内置默认；DB 仅交叉校验）
+## Capability 4: 定额对标（取值只有一个来源：内置默认）
 
-> ★2026-09-20 口径变更（用户确认"以 Layer 3 内置默认为准"）：**DB `ts_limit_config` 退出取值链**。
-> 取值只来自两处，DB 改由 `audit_db_benchmark()` 旁路比对、不一致只打 warning（提示平台修数据），
-> **不影响报告取值**。好处：已交付项目重跑时定额值不会因"接通 DB"而变，可做逐值回归断言。
+> ★2026-09-20 口径清理（用户确认）：
+> 1. **取值 = 内置默认 `_DEFAULT_BENCHMARKS`**（= `standards-values.md` 的代码镜像），
+>    `来源` **恒为 `'Default'`**；
+> 2. **DB `ts_limit_config` 退出取值链**，只由 `audit_db_benchmark()` 旁路交叉校验，
+>    不一致打 warning（提示平台修数据），不影响报告取值；
+> 3. **删除了 `user_values` 参数**——它从来没有调用方传值（全仓复核），
+>    是"看起来能覆盖、实际永远不走"的幽灵层；`来源='User'` 已不存在。
+> 好处：口径单一、已交付项目重跑时定额值必然可复现。
 
 ```python
-resolve_benchmark(institution_type, metric, user_values=None, sub_type=None, db_audit=True)
-# → {约束值, 基准值, 引导值, 标准, 来源}；给了 sub_type 时额外带 '分档'
-# 来源 ∈ {User, Default}（不再出现 'DB'）
+resolve_benchmark(institution_type, metric, sub_type=None, db_audit=True)
+# → {约束值, 基准值, 引导值, 标准, 来源='Default'}；给了 sub_type 时额外带 '分档'
 ```
+
+> 若将来确需"人工核定定额"（例如场馆某类在 4452 中无定额、地方另有文件），
+> **不要只把这个参数加回来**——应连同：项目级 `benchmark_overrides`（含依据文字）、
+> 报告 1.6/5.3 的"来源：人工核定（依据：…）"标注、V2 校验（来源非 Default 必须给依据）
+> 一起建，避免再造半截机制。
 
 ### sub_type：二级维度查询串（`'·'` 分隔，**可只给一部分**，子集匹配）
 
@@ -297,7 +310,7 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 
 - **供暖电与非供暖电分离** — 依赖 `heating_energy_kwh`，缺失时假设为 0（非供暖指标会被高估，DataVA V2 会标 `HEATING_NOT_SPLIT`）
 - **医院用水用 bed_count** — 算床日用水量，不用人均；缺 bed_count 返回 error 占位（【待补充】标注，不降级人均取水量，防与 md 层/正式报告打架）
-- **定额来源标注** — Default/User 来源的定额在报告中必须注明（DataVA V2 记 `SOURCE_FALLBACK` P2）
+- **定额来源标注** — 定额来源恒为 `Default`（内置默认，= standards-values.md）；报告须注明所取**标准号+表号+分档**（如 `DB37/T 2671-2019 表1 高等教育·本科及以上`）。DB 与内置不一致由 V2 记告警、不改取值
 - **用水定额字段语义** — 内置默认表用水三元组为（通用值, 先进值, 0)，与能耗（约束/基准/引导）口径不同，报告表述按通用值/先进值
 - **5.2 分节** — 按用能类型动态 H3，只有有数据的类型才生成；表号固定：表5.1 费用统计表 / 5.2 无表 / 5.3 从表5.2 起，图号 5.1 起动态连号
 - **5.1 极简** — 只有一句话概述 + 能源流向图，不要饼图/趋势柱状图/能源结构表（已移除）

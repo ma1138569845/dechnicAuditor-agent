@@ -1,10 +1,13 @@
 """
 能源审计指标计算工具
 
-三级兜底查询（系数 & 定额）：
-  Layer 1: DB → ts_institution_energy_main.standard_coal_coefficient + ts_limit_config
-  Layer 2: 用户提供
-  Layer 3: 内置默认（GB/T 2589-2020 + DB37/T 2673-2019）+ web_search
+兜底链（2026-09-20 口径清理后）：
+  · 折标系数 resolve_coefficient：DB(ts_institution_energy_main) → 内置默认(COEFFICIENTS)
+    注：项目级"人工/DB 给定系数"由调用方走 YearlyEnergyData.coefficients（data.json 持久化）先行取值，
+        不经本函数参数；本函数只负责 DB → 默认。
+  · 定额对标 resolve_benchmark：内置默认（唯一权威，= standards-values.md 镜像）
+    DB(ts_limit_config) 只由 audit_db_benchmark() 交叉校验、不取值。
+  （原"Layer 2 用户提供"参数从未有调用方传值，已于 2026-09-20 删除——避免"看起来能覆盖其实不能"。）
 
 参考标准：
 - GB/T 2589-2020 综合能耗计算通则
@@ -644,12 +647,15 @@ def audit_db_benchmark(institution_type: str, metric: str, sub_type: Optional[st
             f"报告取值以内置默认（standards-values.md）为准，请复核平台数据")
 
 
-def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) -> float:
-    """三级兜底获取折标系数
+def resolve_coefficient(energy_type: str) -> float:
+    """获取折标系数（DB → 内置默认）
 
-    Layer 1: DB (ts_institution_energy_main)，合理性检查
-    Layer 2: 用户提供
-    Layer 3: 内置默认 (COEFFICIENTS)
+    Layer 1: DB (ts_institution_energy_main)，带合理性检查
+    Layer 2: 内置默认 (COEFFICIENTS)
+
+    ★2026-09-20：删除了从未有调用方传值的 `user_value` 参数。
+      项目级"人工/DB 给定系数"由 `YearlyEnergyData.get_coefficient()` 先读
+      `self.coefficients`（data.json 持久化）命中即返回，走不到本函数。
 
     合理性范围（超出则跳过 Layer 1，防 DB 旧错值被采信）：
       电 0.2~0.5（只接受 0.31 等价值口径；0.1229 当量旧值拒收）,
@@ -673,69 +679,60 @@ def resolve_coefficient(energy_type: str, user_value: Optional[float] = None) ->
     elif db_val is not None:
         logger.info(f"Layer1 DB value {db_val} out of range [{lo},{hi}], falling through")
 
-    # Layer 2
-    if user_value is not None:
-        logger.info(f"Layer2 User: energy_type={energy_type} coeff={user_value}")
-        return user_value
-
-    # Layer 3（权威默认与 COEFFICIENTS 单点一致，2026-09-05 删独立 defaults 防漂移）
+    # Layer 2（权威默认与 COEFFICIENTS 单点一致，2026-09-05 删独立 defaults 防漂移）
     val = COEFFICIENTS.get(energy_type, 0)
-    logger.info(f"Layer3 Default: energy_type={energy_type} coeff={val}")
+    logger.info(f"Layer2 Default: energy_type={energy_type} coeff={val}")
     return val
 
 
 def resolve_benchmark(institution_type: str = 'medical',
                       metric: str = 'unit_area_non_heating',
-                      user_values: Optional[Tuple[float, float, float]] = None,
                       sub_type: Optional[str] = None,
                       db_audit: bool = True) -> dict:
-    """定额对标取值 —— **取值链：用户显式提供 > 内置默认**。
+    """定额对标取值 —— **取值只有一个来源：内置默认**。
 
-    ★2026-09-20 口径变更（用户确认"以 Layer 3 内置默认为准"）：
-      - 取值只来自两处：用户显式给的三档值、或内置默认 _DEFAULT_BENCHMARKS
-        （= energy-audit-core/references/standards-values.md 的代码镜像）；
-      - DB ts_limit_config **退出取值链**，改由 audit_db_benchmark() 旁路交叉校验，
+    ★2026-09-20 口径清理（用户确认）：
+      - **取值 = 内置默认 `_DEFAULT_BENCHMARKS`**（= `energy-audit-core/references/
+        standards-values.md` 的代码镜像），`来源` 恒为 `'Default'`；
+      - DB `ts_limit_config` **退出取值链**，仅由 `audit_db_benchmark()` 旁路交叉校验，
         不一致只打 warning（提醒平台修数据），不影响报告取值；
-      - 好处：已交付项目重跑时定额值不会因"接通 DB"而变，回归可断言。
+      - **删除了 `user_values` 参数**：它从来没有调用方传值（全仓复核），
+        属于"看起来能覆盖、实际永远不走"的幽灵层，已移除，`来源='User'` 不再存在；
+      - 好处：口径单一、已交付项目重跑时定额值必然可复现。
 
     Args:
         institution_type: medical | government | education | venue | service
         metric: unit_area_non_heating | unit_area_heating | per_capita_energy
                 | unit_area_elec | eue | water_per_person | water_per_bed_day
-        user_values: 用户显式提供的 (约束值, 基准值, 引导值)；给了就用它
         sub_type: 二级维度查询串，'·' 分隔且**可只给一部分**（子集匹配），例如
                   '本科及以上' / '二级·B' / '博物馆·市级' / '二级·空调供暖'
         db_audit: 是否做 DB 一致性交叉校验（默认开；DB 不可用只记 debug，不影响取值）
 
     Returns:
         {'约束值', '基准值', '引导值', '标准', '来源'}；给了 sub_type 时额外带 '分档'。
+
+    注：若将来确需"人工核定定额"，不要恢复这个孤立参数——应连同
+    项目级 `benchmark_overrides`（含依据文字）、报告"来源：人工核定"标注、
+    V2 校验（来源非 Default 必须有依据）一起建，避免再造半截机制。
     """
     defaults = _DEFAULT_BENCHMARKS.get(institution_type, _DEFAULT_BENCHMARKS['government'])
 
-    # Layer 1（取值）：用户显式提供
-    if user_values and len(user_values) == 3:
-        result = {
-            '约束值': user_values[0], '基准值': user_values[1], '引导值': user_values[2],
-            '标准': '用户提供',
-            '来源': 'User',
-        }
-    else:
-        # Layer 2（取值）：内置默认（唯一权威）
-        vals = defaults.get(metric, (0, 0, 0))
-        if isinstance(vals, dict):
-            vals = _lookup_sub_quota(
-                vals, sub_type, _SUBTYPE_DEFAULT.get((institution_type, metric), ''))
-        # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
-        key = 'water_standard' if metric.startswith('water') else 'standard_name'
-        result = {
-            '约束值': vals[0], '基准值': vals[1], '引导值': vals[2],
-            '标准': defaults.get(key, ''),
-            '来源': 'Default',
-        }
+    # 取值：内置默认（唯一权威）
+    vals = defaults.get(metric, (0, 0, 0))
+    if isinstance(vals, dict):
+        vals = _lookup_sub_quota(
+            vals, sub_type, _SUBTYPE_DEFAULT.get((institution_type, metric), ''))
+    # 用水指标优先报告用水标准名（水三元组语义为 先进/通用，与能耗三值口径不同）
+    key = 'water_standard' if metric.startswith('water') else 'standard_name'
+    result = {
+        '约束值': vals[0], '基准值': vals[1], '引导值': vals[2],
+        '标准': defaults.get(key, ''),
+        '来源': 'Default',
+    }
     if sub_type:
         result['分档'] = sub_type
 
-    # Layer 3（仅校验）：DB 交叉核对，不参与取值（2026-09-20 口径变更）
+    # 仅校验：DB 交叉核对，不参与取值
     if db_audit:
         try:
             warn = audit_db_benchmark(institution_type, metric, sub_type, result)
@@ -914,15 +911,14 @@ def calc_unit_area_non_heating_energy(
 
 def compare_with_benchmark(kgce_per_m2: float, institution_type: str = 'medical',
                           metric: str = 'unit_area_non_heating',
-                          user_benchmark: Optional[Tuple[float, float, float]] = None,
                           sub_type: Optional[str] = None) -> dict:
     """
-    定额对标（取值链：用户值 > 内置默认；DB 仅交叉校验）
+    定额对标（取值 = 内置默认；DB 仅交叉校验）
 
     sub_type: 二级维度查询串（分档/等级·气候区/场馆类型·省市档/供暖类型），
               见 resolve_benchmark。不传则用该 (机构, 指标) 的默认行。
     """
-    bm = resolve_benchmark(institution_type, metric, user_benchmark, sub_type)
+    bm = resolve_benchmark(institution_type, metric, sub_type)
     if kgce_per_m2 <= bm['引导值']:
         level = '低于引导值'
     elif kgce_per_m2 <= bm['基准值']:
@@ -939,11 +935,10 @@ def calc_unit_area_electricity(
     data: YearlyEnergyData,
     exclude_special_area: float = 0,
     institution_type: str = 'medical',
-    user_benchmark: Optional[Tuple[float, float, float]] = None,
-    sub_type: Optional[str] = None,  # venue 子类型（图书馆/博物馆/剧院/体育馆/科技馆）
+    sub_type: Optional[str] = None,  # 二级维度（等级·气候区 / 分档 / 场馆类型·省市档）
 ) -> dict:
     """
-    常规用能系统单位建筑面积电耗（三级兜底）
+    常规用能系统单位建筑面积电耗（定额取内置默认）
 
     公式: Eja = (E_total_elec - E_heating_elec) / M
     式中:
@@ -967,7 +962,7 @@ def calc_unit_area_electricity(
     kwh_per_m2 = round(non_heat_elec / area, 2)
 
     # 三级兜底对标
-    benchmark = resolve_benchmark(institution_type, 'unit_area_elec', user_benchmark, sub_type)
+    benchmark = resolve_benchmark(institution_type, 'unit_area_elec', sub_type)
     if kwh_per_m2 <= benchmark['引导值']:
         evaluation = '低于引导值'
     elif kwh_per_m2 <= benchmark['基准值']:
@@ -989,8 +984,7 @@ def calc_unit_area_heating_energy(
     data: YearlyEnergyData,
     heating_area: float = 0,
     institution_type: str = 'medical',
-    user_benchmark: Optional[Tuple[float, float, float]] = None,
-    sub_type: Optional[str] = None,  # venue 子类型
+    sub_type: Optional[str] = None,  # '等级/分档 · 供暖类型'
 ) -> dict:
     """
     单位采暖建筑面积供暖能耗（DB37/T 2672-2019 表2）
@@ -1000,9 +994,9 @@ def calc_unit_area_heating_energy(
       Egn = 供暖能耗 (tce/a，含热力/供暖电耗/供暖燃气，见 YearlyEnergyData.heating_energy_tce)
       Mgn = 采暖建筑面积 (m²)；缺失时用建筑面积兜底（2026-09-02 用户确认）
 
-    定额（表2，不分机构等级，按供暖类型）：
-      市政集中供暖(按热计量) 12.7/11.1/8.3；空调供暖 12.4/8.9/6.4；燃气(油)供暖 12.3/8.4/4.8
-      默认取市政集中供暖（按热计量）口径，其他供暖类型由调用方传 user_benchmark 覆盖。
+    定额（表2，按供暖类型取行）：用 sub_type 的第二段指定供暖类型
+      （'市政集中供暖（按热计量）' / '空调供暖' / '燃气（油）供暖'）；
+      不传则取该机构类的默认供暖类型（市政集中供暖按热计量）。
 
     返回 {kgce_per_m2, heating_energy_kgce, heating_area_m2, benchmark}；
     采暖建筑面积无效或项目无供暖能耗时返回同结构全 0 + error 字段，供上层安全降级。
@@ -1015,7 +1009,7 @@ def calc_unit_area_heating_energy(
     heating_kgce = data.heating_energy_tce * 1000
     kgce_per_m2 = round(heating_kgce / area, 2)
 
-    benchmark = resolve_benchmark(institution_type, 'unit_area_heating', user_benchmark, sub_type)
+    benchmark = resolve_benchmark(institution_type, 'unit_area_heating', sub_type)
     if kgce_per_m2 <= benchmark['引导值']:
         evaluation = '低于引导值'
     elif kgce_per_m2 <= benchmark['基准值']:
@@ -1036,11 +1030,10 @@ def calc_unit_area_heating_energy(
 def calc_per_capita_energy(
     data: YearlyEnergyData,
     institution_type: str = 'medical',
-    user_benchmark: Optional[Tuple[float, float, float]] = None,
-    sub_type: Optional[str] = None,  # venue 子类型
+    sub_type: Optional[str] = None,  # '等级·气候区' / '分档'
 ) -> dict:
     """
-    人均综合能耗（三级兜底）
+    人均综合能耗（定额取内置默认）
 
     公式: Er = E / P
     式中:
@@ -1049,9 +1042,8 @@ def calc_per_capita_energy(
 
     医疗机构用能人数包括：在岗在编人员 + 编外工作人员 + 门诊人数折算 + 床位数折算。
 
-    DB37/T 2673-2019 定额（医疗机构，与 _DEFAULT_BENCHMARKS 一致）：
-      约束值 907.4、基准值 556.9、引导值 428.3 kgce/(人·a)
-    （注：该值因地区气候、医院等级差异较大，优先查 DB/用户）
+    DB37/T 2673-2019 表3 按「机构等级 × 气候区」6 行取值（见 _DEFAULT_BENCHMARKS），
+    用 sub_type='二级·A' 这类查询串选行；不传则取默认行（二级·A）。
 
     返回 {kgce_per_person, total_kgce, people_count, benchmark}；
     用能人数无效时返回同结构全 0 + error 字段，供上层安全降级。
@@ -1071,7 +1063,7 @@ def calc_per_capita_energy(
     per_person = round(kgce_total / data.people_count, 2)
 
     # 三级兜底对标
-    benchmark = resolve_benchmark(institution_type, 'per_capita_energy', user_benchmark, sub_type)
+    benchmark = resolve_benchmark(institution_type, 'per_capita_energy', sub_type)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         # 内置兜底也查不到时给提示
         evaluation = '暂无定额标准可对标'
@@ -1095,13 +1087,12 @@ def calc_per_capita_energy(
 def calc_water_indicator(
     data: YearlyEnergyData,
     institution_type: str = 'medical',
-    user_benchmark: Optional[Tuple[float, float, float]] = None,
     bed_count: Optional[int] = None,  # 医院使用
     building_area: Optional[float] = None,  # 政务服务中心/场馆使用（面积口径）
     sub_type: Optional[str] = None,  # 二级维度（教育类分档等），透传给 resolve_benchmark
 ) -> dict:
     """
-    取水指标（按机构类型分派三种口径，三级兜底）
+    取水指标（按机构类型分派三种口径；定额取内置默认）
 
     公式（机关/教育）: Wr = W / P  (m³/人·a)            人均取水量
     公式（医院）:      Vz = Wz / Nbed  (L/(床·d))        单位开放床日用水量
@@ -1152,7 +1143,7 @@ def calc_water_indicator(
         # 采集侧无住院部用水拆分字段，暂用全院总水量 water_m3 近似。
         water_total = data.water_m3
         L_per_bed_day = round(water_total * 1000 / (bed_count * 365), 2)  # m³→L, year→day
-        benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', user_benchmark, sub_type)
+        benchmark = resolve_benchmark(institution_type, 'water_per_bed_day', sub_type)
         # 水三元组槽序与能耗一致：引导值(无)=0, 约束值=通用值, 基准值=先进值（越小越好）
         if L_per_bed_day <= benchmark['基准值']:
             evaluation = '低于先进值'
@@ -1183,7 +1174,7 @@ def calc_water_indicator(
         bm = {}
         evaluation = '—'
         if institution_type == 'venue':
-            bm = resolve_benchmark('venue', 'water_per_area', user_benchmark, sub_type)
+            bm = resolve_benchmark('venue', 'water_per_area', sub_type)
             general, advanced = bm['约束值'], bm['基准值']   # 通用值 / 先进值（m³/(m²·a)）
             if general > 0:
                 if L_per_area <= advanced * 1000:
@@ -1214,7 +1205,7 @@ def calc_water_indicator(
 
     per_person = round(data.water_m3 / data.people_count, 2)
 
-    benchmark = resolve_benchmark(institution_type, 'water_per_person', user_benchmark, sub_type)
+    benchmark = resolve_benchmark(institution_type, 'water_per_person', sub_type)
     if benchmark['约束值'] == 0 and benchmark['基准值'] == 0:
         evaluation = '暂无定额标准可对标'
     elif per_person <= benchmark['基准值']:
