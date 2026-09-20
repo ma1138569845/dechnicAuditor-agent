@@ -180,10 +180,21 @@ def load_from_user(config: dict) -> dict:
 # 数据转换与计算（统一复用 indicators.py）
 # ============================================================
 
-def _convert_to_yearly_energy_data(energy_data: dict, config: dict) -> List[YearlyEnergyData]:
-    """把 chapter5_agent 的 energy_data 结构转换为 indicators.YearlyEnergyData 列表。"""
+def _convert_to_yearly_energy_data(energy_data: dict, config: dict,
+                                   cost_data: Optional[dict] = None) -> List[YearlyEnergyData]:
+    """把 chapter5_agent 的 energy_data / cost_data 结构转换为 indicators.YearlyEnergyData 列表。
+
+    cost_data（万元）一并注入 *_cost_wan 字段，供 5.4.2 费用基准按「三条规则」判定
+    （2026-09-20 补：此前漏注导致 calc_baseline 的 cost 为空、表5.8 走全均值兜底，与正式报告口径分叉）。
+    """
     area = config.get('building_area', 0)
     people = config.get('people_count', 0)
+    cost_data = cost_data or {}
+    _cost_field = {
+        'electricity': 'electricity_cost_wan', 'water': 'water_cost_wan',
+        'natural_gas': 'natural_gas_cost_wan', 'heat': 'heating_cost_wan',
+        'gasoline': 'petrol_cost_wan',
+    }
 
     yd_list = []
     for y in sorted(energy_data.keys()):
@@ -208,6 +219,10 @@ def _convert_to_yearly_energy_data(energy_data: dict, config: dict) -> List[Year
                 kwargs['transportation_petrol_kg'] = kwargs.get('transportation_petrol_kg', 0) + val
             elif std == 'diesel':
                 kwargs['transportation_diesel_kg'] = kwargs.get('transportation_diesel_kg', 0) + val
+        for code, info in (cost_data.get(y) or {}).items():
+            fld = _cost_field.get(_normalize_energy_code(code))
+            if fld:
+                kwargs[fld] = kwargs.get(fld, 0) + float(info.get('total', 0) or 0)
         yd_list.append(YearlyEnergyData(**kwargs))
     return yd_list
 
@@ -434,7 +449,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     # 统一转换为 YearlyEnergyData 并计算指标
     institution_type = institution_category_to_type(config.get('institution_category', ''))
     bed_count = config.get('beds_count', 0) or 0
-    yd_list = _convert_to_yearly_energy_data(en, config)
+    yd_list = _convert_to_yearly_energy_data(en, config, co)
 
     # 二级维度查询串（2026-09-20）：分档/等级·气候区/场馆类型·省市档；表2 用「·供暖类型」。
     # config 由 caliber_agent 注入 unit_func/children_func/地址/行政区划代码；缺值时返回 ''

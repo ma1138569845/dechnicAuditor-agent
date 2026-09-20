@@ -96,7 +96,14 @@ except ImportError as e:
 # ================================================================
 
 def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
-    """从 AuditProject 提取 YearlyEnergyData 列表"""
+    """从 AuditProject 提取 YearlyEnergyData 列表
+
+    2026-09-20 补：注入车库面积（D8 分母剔除）与费用字段——与
+    compute_project_indicators / chapter5_agent 同口径，防 indicators.json 与报告分叉。
+    """
+    # 地下车库面积：建筑表 garage_area 聚合（D8：5.3.1/5.3.2 分母 = 建筑面积 − 车库面积）
+    garage_area = sum(float(getattr(b, 'garage_area', 0) or 0)
+                      for b in getattr(proj, 'buildings', []) or [])
     data_list = []
     for ey in proj.energy_yearly:
         year = getattr(ey, 'year', 0)
@@ -113,6 +120,14 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
             building_area=float(getattr(proj.base, 'building_area', 0) or 0),
             people_count=float(getattr(proj.base, 'people_count', 0) or 0),
             coefficients=dict(getattr(ey, 'coefficients', {}) or {}),
+            # 费用字段（5.4 费用基准「三条规则」输入；缺失=0）
+            electricity_cost_wan=float(getattr(ey, 'electricity_cost_wan', 0) or 0),
+            water_cost_wan=float(getattr(ey, 'water_cost_wan', 0) or 0),
+            natural_gas_cost_wan=float(getattr(ey, 'natural_gas_cost_wan', 0) or 0),
+            heating_cost_wan=float(getattr(ey, 'heating_cost_wan', 0) or 0),
+            petrol_cost_wan=float(getattr(ey, 'petrol_cost_wan', 0) or 0),
+            # D8 地下车库面积（分母剔除；缺失=0）
+            garage_area=garage_area,
         )
         data_list.append(d)
     return sorted(data_list, key=lambda x: x.year)
