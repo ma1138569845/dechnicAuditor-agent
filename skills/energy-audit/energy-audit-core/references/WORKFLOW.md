@@ -106,7 +106,8 @@
 | 第 3 章 3.1/3.2 无制度数据要"仿写" | 知识层·本地成稿 | `search_local_references("第3章", tags)` → 仿段落结构，专名数据换成本单位 |
 | 想找"同类项目怎么写某一章" | 知识层·向量 | `energy_audit_rag_search`（或 `search_reports`）；返回带 `is_report_retrieval` |
 | 查定额/折标系数 | 知识层·标准 + 事实层 | 数值一律取 `standards-values.md`（唯一权威）；标准原文在 `rag/standards/` 备查 |
-| 诊断"能耗为什么偏高" | 知识层·图谱 | `EnergyKnowledgeGraph`（datava V1 本地跑）；结论是**候选因果链**，须现场验证 |
+| 诊断"能耗为什么偏高" | 知识层·图谱 | **S3 已产出 `<项目>/diagnosis_chapter7_material.txt`**（问题+系统+严重度+推断原因/置信度+验证方法+措施）；契约第六节给摘要，**写第7章 7.1 前必读原文**。结论是**候选因果链**，须用本项目台账验证 |
+| 写第6/7章（分系统 / 问题与建议） | 知识层·本地成稿 + 诊断素材 | 先读素材原文（上一条）；再按章取同类成稿全文：`search_local_references("第7章", tags)` |
 | 交付前查有没有串别人的数据 | 形态层 + 闸门 | `verify_variables_provenance.py --blueprint <同类成稿>` |
 | 交付后沉淀 | 知识层·写入 | **S16a**：成稿入 `rag/report/` → 入库 → 刷台账 |
 

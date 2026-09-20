@@ -58,6 +58,12 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 > **"参考什么"以 `energy-audit-core/references/WORKFLOW.md` 第六节为唯一决策表**：形态层（蓝本，人工读）/ 事实层（本项目 data）/ 知识层（本地成稿库 → 向量 → wiki → 图谱）。
 > 写章节想找同类写法时：`reference_library.search_local_references(chapter, tags)`（本地、离线可用）优先，其次 `energy_audit_rag_search`；图谱输出**不是报告片段**，不得引用。
+>
+> **写第 6/7 章另有一份现成素材（2026-09-20 接入）**：S3 产出的 `<项目>/diagnosis_chapter7_material.txt`
+> （逐月/逐年异常已诊断好：问题 + 严重程度 + 推断原因/置信度 + 验证方法 + 措施及节能率）。
+> 契约 `_context.md` 第六节给了条目摘要；**写 7.1 前必须打开原文**，并遵守四条纪律
+> （推断原因是候选须验证 / 措施区间须对齐实际 / critical·warning 必进 7.1 / 不替代实锤类），
+> 详见 `references/chapter-guides-6-8.md` 第7章 7.1 节。
 
 | 卡 | 职责 | LLM 调用 | 写入方式 | 前置 |
 |---|---|---|---|---|

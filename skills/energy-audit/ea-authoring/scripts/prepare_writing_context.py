@@ -98,6 +98,32 @@ def first_heading(md_path: str) -> str:
     return ""
 
 
+# S3（datava V1 DATA_CHECK）产出的第7章写作素材。2026-09-20 接入契约：
+# 此前它只在 datava 侧落盘、author 侧**没有任何指令去读**（P3-2 的缺口）。
+DIAGNOSIS_FILE = "diagnosis_chapter7_material.txt"
+
+
+def diagnosis_digest(pdir: str, limit: int = 8):
+    """解析第7章素材 → [(问题标题, 严重程度)]，按严重程度排序（critical 优先）。"""
+    path = os.path.join(pdir, DIAGNOSIS_FILE)
+    if not os.path.isfile(path):
+        return []
+    rows, cur = [], ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for raw in fh:
+                s = raw.strip()
+                if s.startswith("### "):
+                    cur = s[4:].strip()
+                elif cur and s.startswith("- 严重程度"):
+                    rows.append((cur, s.split(":", 1)[-1].strip()))
+                    cur = ""
+    except OSError:
+        return []
+    order = {"critical": 0, "warning": 1, "info": 2}
+    rows.sort(key=lambda r: order.get(r[1], 3))
+    return rows[:limit]
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="生成写章接续契约 _context.md")
     ap.add_argument("project", help="项目名（对应 ~/projects/energy-audit/<项目名>/）或项目目录")
@@ -210,9 +236,54 @@ def main(argv=None) -> int:
         "",
         "> 批1（封面+第1~4章）读本类小节的「报告结构 / 报告编写要点 / 表格骨架」；批2/批3（第5~8章）读「指标口径 / 节能潜力·问题清单」。",
         "",
-        "## 六、本批开工/收工检查",
+        "## 六、本批可用素材（写作输入；先用现成的，不要临场编）",
+        "",
+    ]
+
+    # 6.1 第7章诊断素材（S3 产出）
+    diag = diagnosis_digest(pdir)
+    diag_path = os.path.join(pdir, DIAGNOSIS_FILE)
+    if diag:
+        lines += [
+            f"**第7章诊断素材**：`<项目>/{DIAGNOSIS_FILE}`（S3 产出，共 {len(diag)} 条，按严重度排序）",
+            "",
+            "| # | 诊断出的问题 | 严重程度 |",
+            "|---|---|---|",
+        ]
+        for i, (title, sev) in enumerate(diag, 1):
+            lines.append(f"| {i} | {title} | {sev} |")
+        lines += [
+            "",
+            "> **使用规则（写 7.1 前必读原文）**：",
+            "> 1. 素材里的「推断原因」是**候选**（带置信度）——必须用本项目台账/逐月数据验证后再写，**不得直接当结论**；验证不了就写「疑似」并注明待核实。",
+            "> 2. 素材里的「建议措施」及节能率/投资级别/回收期是**通用区间**，写进 7.2 前须与本项目实际（设备型号/投资额/运行工况）对齐，或明确标注为参考区间。",
+            "> 3. `critical` / `warning` 的条目**必须**进 7.1；再按 `chapter-guides-6-8.md` 第7章的「实锤类」规则补足；问题条数 = 数据异常类（素材） + 实锤类，与 7.2 建议一一对应。",
+            "> 4. 素材只覆盖「数据异常类」，**不能替代**实锤类问题（计量/设备/围护结构）。",
+            "",
+        ]
+    elif os.path.isfile(diag_path):
+        lines += [f"- 第7章诊断素材存在但未解析出条目：`{diag_path}`（请人工查看）", ""]
+    else:
+        lines += [
+            f"- ⚠️ **无第7章诊断素材**（`{DIAGNOSIS_FILE}` 不存在）：请确认 S3（datava `--mode DATA_CHECK`）已跑；",
+            "  7.1 只能按 `chapter-guides-6-8.md` 第7章的规则从本项目数据自行归纳，**不得编造异常**。",
+            "",
+        ]
+
+    # 6.2 同类成稿参考（按章取全文）
+    inst_cat = base.get("institution_category") or ""
+    lines += [
+        "**同类成稿参考（按章取全文）**：`reference_library.search_local_references(chapter, tags)`"
+        "（本地打分、离线可用；无同类型时返回空并给出 note，**不要用不相关报告充当参考**）",
+        "",
+        f"- tags 至少含 `institution_category={inst_cat or '【待补充】'}`；`chapter` 取本章名（如 `第7章`）。",
+        "- 想跨库扩大召回：`energy_audit_rag_search`（多路召回 + 重排，返回带 route/rerank 可解释）。",
+        "- 「参考什么」的完整决策表见 `energy-audit-core/references/WORKFLOW.md` 第六节。",
+        "",
+        "## 七、本批开工/收工检查",
         "",
         "- [ ] 开工：已读本文件；数值口径与第一节一致",
+        "- [ ] 开工：写第 6/7 章前已读第六节列出的素材（尤其第7章诊断素材原文）",
         "- [ ] 写章：只写 `chapter_md/` 中尚不存在的章（见第三节）",
         "- [ ] 收工：本章已落盘 `chapter_md/chN.md`，并**重跑本脚本**刷新第三节",
         "",
