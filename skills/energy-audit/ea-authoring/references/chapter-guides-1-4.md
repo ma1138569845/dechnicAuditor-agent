@@ -22,7 +22,7 @@
 | `base` | 项目基本信息（审计主体与周期）：审计类型 `unit_type`、审计机构 `auditor`、审计项目负责人 `project_manager`、审计起止时间 `audit_start`/`audit_end`、数据统计周期 `data_start`/`data_end`、省份 `province`、报告日期 `report_date`、客户ID `customer_id` | `proj.base`（ProjectBase） | 1.1 审计目的（委托机构）；1.3 审计周期；1.6 审计依据（省份→地方规章检索） |
 | `project_context` | 被审计单位概况：单位全称 `unit_name`、简称 `unit_short`、行政归属 `admin_affiliation`、地址 `address`、内设机构/科室 `department_count`、用能人数 `people_count`、床位数 `beds_count`、机构类别 `institution_category`（医疗/教育/党政机关/场馆…）、具体类型 `specific_type`、单位基本情况 `basic_situation`、总建筑面积 `building_area`、建筑数量 `building_count` | `proj.base` + `len(proj.buildings)` | 1.1 审计目的（单位简称）；1.2 审计范围（地址、N 栋建筑）；tags → 1.6 机构类型 |
 | `building_data[]` | 建筑列表（每栋）：`name` 建筑名称、`address` 地址、`year` 竣工年份、`function` 建筑功能、`floors` 层数（地上X层/地下Y层）、`height` 高度、`structure` 结构形式、`area` 建筑面积、`use_area` 使用面积、`function_zoning` 功能分区 | `proj.buildings`（List[BuildingInfo]） | 1.2 审计范围（“位于…的 N 栋建筑”）；派生汇总：`building_count = len(proj.buildings)`、`total_area = Σ b.area` |
-| `rag_reference[]` | 同类报告第一章写作参考：报告名称、机构类型标签（tags）、章节=第1章、小节（1.1–1.6）、参考正文；检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')` | `rag.rag_search.search_for_chapter()` | 1.1–1.6 的措辞、结构、审计依据清单参考；**不得**覆盖 `base`/`project_context` 中的本项目事实数据 |
+| 蓝本（同类成稿） | 同类正式成稿，用于对齐 1.1–1.6 的**形态**（章节骨架/表格习惯/措辞粒度） | `energy-audit-report/references/audit-examples.md`（法院/医院/学校）+ 流程指定的成稿 md | 只学形态；**项目变量必须来自本项目数据源**（`base`/`project_context`），不得照搬蓝本的数值/专名 |
 
 补充一行（可自动推导，非人工必填）：
 
@@ -110,7 +110,7 @@
 - 其他省份：必须经 web_search 搜索确认某省真实存在的规章
 - 禁止简单字符串替换省份名
 
-> **取值**：{省份}/{机构类型} → `proj.base.province` / `proj.base.institution_category`（决定省级规章与机构类型映射）；国标清单固定；地方规章/同类报告参考 → `rag_reference[]`（检索键 `search_for_chapter('第1章', tags, '能源审计执行概要')`），山东项目可直接用 `province_regulations.get_provincial_regulations(province, inst_type)`。
+> **取值**：{省份}/{机构类型} → `proj.base.province` / `proj.base.institution_category`（决定省级规章与机构类型映射）；国标清单固定；地方规章 → `province_regulations.get_provincial_regulations(province, inst_type)`（山东项目可直接调用）；同类成稿参考（仅形态）→ `energy-audit-report/references/audit-examples.md`。
 
 **标准清单模板（固定，按机构类型微调）**：
 
@@ -179,7 +179,7 @@
 | `proj.equipment[]` | 用能设备（category: 空调/照明/办公/厨房…） |
 | `proj.energy_yearly[]` | 各能源字段（electricity_kwh/water_m3/…）>0 判定用能类型 |
 | `proj.images[]` | 照片（`ImageItem`，category `单位整体外观`（scene_img_id）→ 2.1 段落后图2.1；`建筑外观`/`各建筑外观` → 2.2 每栋照（可选）） |
-| rag_reference[] | 同类报告写作参考 |
+| 蓝本（同类成稿） | 同类报告写作参考（仅形态）：`energy-audit-report/references/audit-examples.md` |
 
 数据缺失时按 ea-authoring 主 SKILL.md「输入内容」回退流程处理，禁止编造。
 

@@ -25,7 +25,7 @@
 | 第1/2/3/4/6/7/8 章写作规则 | `ea-authoring/references/chapter*-guide.md`（第2章含建筑参数表定义、第6章含 6.1 分系统规范；2026-09-18 合并后以此为准） | author、datava V3 | 旧 8 章骨架、`chapter-writing-specs.md`、`chapter6-sub-system-spec.md`、`building-param-table-spec.md`（均已归档至 `_archive/`） |
 | 第5章结构 / 表号图号 / 写作细节 | `ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）★2026-09-18 合并后以此二者为准 | caliber、author 批2 | 原 8 个 5.x 文件（已归档 `_archive/2026-09-18/`） |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` | author、caliber | — |
-| 报告实例库（法院/医院/学校） | `energy-audit-report/references/examples/*.md` | author、energy-audit-style | 章节指南里不复述实例原文 |
+| 报告实例库 / 蓝本（法院/医院/学校） | `energy-audit-report/references/audit-examples.md`（2026-09-18 三合一） | author、energy-audit-style | 章节指南里不复述实例原文；蓝本只提供**形态**，变量必须来自本项目数据源 |
 | 写作论证链 / 句式 / 防抄 | `energy-audit-style/references/rules.md`、`rules.md`、`rules.md` | author、editor（**注意：当前未接入写作主流程，待决**） | — |
 
 ## 三、成品与校验类

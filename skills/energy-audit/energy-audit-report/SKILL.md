@@ -36,7 +36,7 @@ agent_created: true
 
 ## 资产使用场景
 
-1. **找同类报告参考**：按机构类型查 `references/examples/`（法院/医院/学校），写报告前先读同型实例。
+1. **找同类报告参考（蓝本）**：按机构类型查 `references/audit-examples.md`（法院/医院/学校 三合一），写报告前先读同型实例——**只学形态**（章节骨架/表格习惯/措辞粒度），项目变量一律取本项目数据源。
 2. **市州项目**：按 `city-template-guide.md` 的 0-11 章骨架选模板。
 3. **报告装配**（仿写/组装模式）：按 `script-assembly-chain.md`——正文写进 spec.json，`assemble_report.py` 组装，附录手动追加，最后 40+ 项数值断言。
 4. **Word 成品处理**：`references/script-assembly-chain.md`（构建→收尾→断言三命令、页眉/水印/页脚/目录要点）+ `_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（legacy）。
