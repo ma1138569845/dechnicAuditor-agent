@@ -93,6 +93,15 @@ python <skills>/energy-audit-core/scripts/verify_knowledge_assets.py
 | 实体/关系为 0 | ① 抽取调 LLM 读超时（偶发）；② **LLM 返回的 JSON 里有裸控制字符**，`json.loads` 严格模式整块丢弃（实测日志 `Invalid control character at: line 21 column 42`） | ① 补跑 `start_graph_build(doc_id)`；② **已修**：`_llm_extract_graph` 改用 `json.loads(..., strict=False)` + 控制字符兜底清理（2026-09-21）。不影响条文检索 |
 | 图谱构建报 `FOREIGN KEY constraint failed` | **并发构建同一文档**：`build_document_graph` 是逐块 `DELETE`+`INSERT`，两个进程同时跑会互相删掉对方刚插入的实体，导致后续"关系"外键失败（实测：补跑脚本与入库管道同时触发） | **同一文档的图谱构建必须串行**。补跑脚本已改为"数值稳定"等待；实务上**不要在批量入库进行中跑补跑脚本** |
 | 补跑后实体数上下波动（307→137→290） | 等待判据写成了 `entities > 0`——而图谱构建**中途就会 >0** | 判据要"**非零且连续两次不变**"才算完成（`_changes/backfill_graph_wiki.py::wait_stable`） |
+
+## 八、已知未修（记录在案，不影响主链）
+
+| 项 | 现状 | 影响 | 修的话要做什么 |
+|---|---|---|---|
+| **报告库 `audit_type` 恒为"公共机构"** | `rag/energy_audit_importer.py::build_chunks` 把 `audit_type` **写死**（2026-09-21 核查确认）；`institution_category` 是**正确**的 | 按 `audit_type` 过滤的**向量检索**对工业企业/公共建筑报告会漏（本地成稿目录那一侧是对的，它从目录名推断）。实测 21 份里 1 份（永锋纺织）被标成公共机构 | 要让审计类型有可靠来源：**入库时保留相对子目录**（目录名即类型），或给入库脚本加 `--audit-type` 参数 |
+| `GB 55015-2021` 用维基文库转录 | 内容核对无误 | 非官方来源 | 有官方版（住建部公告附件）时替换 |
+| `GB/T 2589-2020` 字体缺 ToUnicode | NFKC 救回全角拉丁/数字；少数字符仍乱（`GB`→`犌犅`） | 条文检索基本可用 | 换一份字体正常的 PDF |
+| 两份 OCR 转录稿的表格数值 | 文件名带 `【OCR转录稿·数值以原件为准】` | 数值不可直接引用 | 拿到带文字层的版本后替换 |
 | 投了但没进库 | 文件名 / 目录投错，或 sha256 已存在 | `--dry-run` 看识别结果 |
 
 ## 七、待办清单（谁维护本文谁更新这一节）
