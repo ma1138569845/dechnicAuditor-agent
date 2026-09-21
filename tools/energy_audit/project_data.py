@@ -276,6 +276,14 @@ class MeteringInfo:
     aircon_staff_num: int = 0                # 空调系统运维人数（4.2 专职人员判定）
     light_staff_num: int = 0                 # 照明系统运维人数
     power_room_staff_num: int = 0            # 配电室运维人数
+    # 供暖口径（2026-09-21 新增）：现场情况表 ts_institution_scene 的供暖字段，
+    # 此前只用于拼"供暖信息未记录"提示、没有落进 data.json，报告里的热价只能凭蓝本记忆写。
+    # 现在它们是 2.2 表2.1「冬季供暖热源」、5.2.3 用热分析、6.1.1 供暖段的**唯一来源**。
+    heat_pay_type: str = ""                  # 供暖缴费方式 — heat_pay_type（按计量表缴费/按面积缴费）
+    heat_price: Optional[float] = None       # 热价（元/GJ；按热量计量时的结算单价） — heat_price
+    heat_measurement_price: Optional[float] = None  # 计量热价（元/GJ） — measurement_price
+    heat_area: Optional[float] = None        # 供热面积 m² — heat_area
+    heat_day: Optional[int] = None           # 供热天数（天） — heat_day
 
 
 @dataclass

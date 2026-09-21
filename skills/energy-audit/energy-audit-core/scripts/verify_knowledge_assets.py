@@ -35,6 +35,24 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+
+def _utf8_stdout() -> None:
+    """Windows 控制台编码兜底：GBK 控制台下打印 ✓/⚠️ 会抛 UnicodeEncodeError（→ 假失败）。"""
+    for stream in ("stdout", "stderr"):
+        fh = getattr(sys, stream, None)
+        if fh is None:
+            continue
+        try:
+            fh.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            try:
+                fh.reconfigure(errors="replace")                 # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+
+
+_utf8_stdout()
+
 # repo 根：env 覆盖 → 常见默认。装到别的机器时用 EA_REPO_ROOT 指过去。
 REPO = os.environ.get("EA_REPO_ROOT") or r"D:\data\pyProject\dc_agent\dechnicAuditor-agent"
 sys.path.insert(0, REPO)

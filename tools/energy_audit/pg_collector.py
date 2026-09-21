@@ -657,6 +657,15 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'aircon_staff_num': _int(scene.get('aircon_staff_num')),
             'light_staff_num': _int(scene.get('light_staff_num')),
             'power_room_staff_num': _int(scene.get('power_room_staff_num')),
+            # 供暖口径（2026-09-21 新增）：现场情况表 ts_institution_scene 的供暖字段
+            # 此前**只被用来拼 missing 提示、没有落进 data.json**，于是报告 2.2 表2.1 /
+            # 5.2.3 / 6.1.1 里的"热价"只能凭蓝本记忆写（89.61 元/GJ 就是这么来的）。
+            # 现按"有值才落"带出到 MeteringInfo → data.json，写作侧只认 data.json。
+            'heat_pay_type': (scene.get('heat_pay_type') or '').strip(),
+            'heat_price': _num(scene.get('heat_price'), None),
+            'heat_measurement_price': _num(scene.get('measurement_price'), None),
+            'heat_area': _num(scene.get('heat_area'), None),
+            'heat_day': _int(scene.get('heat_day'), 0) or None,
         }
         result['found']['metering'] = metering
         if scene.get('work_staff'):

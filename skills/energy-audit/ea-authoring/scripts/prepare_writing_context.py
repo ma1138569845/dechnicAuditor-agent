@@ -31,6 +31,63 @@ INDICATOR_LABELS = [
 
 VALUE_KEYS = ("kgce_per_m2", "kgce_per_person", "kwh_per_m2", "value", "v", "water_value")
 
+# 指标 → 定额标准中的期望表号（与 ea-calculation/scripts/verify_benchmark_sources.py 同一口径；
+#   两处口径若不一致，契约会误报「缺锚点」——2026-09-21 修的正是这个分叉）。
+EXPECTED_TABLE = {
+    "unit_area_non_heating_energy": "1",
+    "unit_area_heating": "2",
+    "unit_area_electricity": "4",
+    "per_capita_energy": "3",
+    "water_indicator": "2",
+}
+
+# 权威单点（★来源锚点的唯一出处）
+STD_ANCHORS_FILE = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "..", "energy-audit-core", "references", "standards-values.md",
+))
+
+
+def norm_std(text) -> str:
+    """标准名归一成可比较的号，如 DB37/T2672-2019（与 verify_benchmark_sources 同实现）。"""
+    import re
+    t = str(text or "").replace(" ", "").replace("—", "-").replace("–", "-")
+    m = re.search(r"(DB\d+/T\d+-\d{4}|GB/?T?\d+[-.]?\d*)", t)
+    return m.group(1).replace("GBT", "GB/T") if m else ""
+
+
+def load_std_anchors(path: str = None) -> set:
+    """解析 standards-values.md 的 ★来源锚点 → {(标准号, 表号)}。"""
+    import re
+    anchors = set()
+    path = path or STD_ANCHORS_FILE
+    if not os.path.isfile(path):
+        return anchors
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if "★来源锚点" not in line:
+                continue
+            m = re.search(r"表\s*(\d+)", line)
+            anchors.add((norm_std(line), m.group(1) if m else ""))
+    return anchors
+
+
+def resolve_anchor(key: str, bench: dict, anchors: set):
+    """返回 (锚点展示串, 是否可溯源)。
+
+    优先用 benchmark 自带的「锚点」字段；没有时按 (标准号, 期望表号) 去权威单点定位——
+    与 verify_benchmark_sources.py 的 derivable 判定一致，避免"数值明明可溯源却报缺锚点"。
+    """
+    explicit = bench.get("锚点") or bench.get("原文锚点")
+    if explicit:
+        return str(explicit), True
+    std = norm_std(bench.get("标准"))
+    exp = EXPECTED_TABLE.get(key, "")
+    if std and (std, exp) in anchors:
+        return f"表{exp}（已由 standards-values.md 锚点定位）", True
+    return "【缺锚点】", False
+
+
 # 本批蓝本：机构类型 → audit-examples.md 里的 `##` 小节（2026-09-20 改"正文注入"）
 #   改之前：契约只给"文件路径 + 小节名"两个字符串 —— 模型不真去读就绕过去了，
 #   于是报告形态实际由 chapter-guides（规则）决定，蓝本形同虚设（这就是"钩子 1"）。
@@ -274,6 +331,7 @@ def main(argv=None) -> int:
 
     base = data.get("base") or {}
     ind = load_json(os.path.join(pdir, "indicators.json")) or {}
+    anchors = load_std_anchors()          # ★来源锚点（定额可溯源性判定，见 resolve_anchor）
     md_dir = os.path.join(pdir, "chapter_md")
     os.makedirs(md_dir, exist_ok=True)
 
@@ -316,7 +374,7 @@ def main(argv=None) -> int:
                 str(bench.get(k)) for k in ("约束值", "基准值", "引导值") if bench.get(k) is not None
             ) or "—"
             std = bench.get("标准") or "—"
-            anchor = bench.get("锚点") or bench.get("原文锚点") or "【缺锚点】"
+            anchor, _anchored = resolve_anchor(key, bench, anchors)
             lines.append(
                 f"| {label} | {value if value is not None else '【待补充】'} {unit} | {quota} "
                 f"| {std}（来源 {bench.get('来源') or '—'}；锚点 {anchor}） | {bench.get('评价结果') or '—'} |"
@@ -332,6 +390,41 @@ def main(argv=None) -> int:
                     )
     else:
         lines.append("> ⚠️ 未找到 `indicators.json`：请先跑 `caliber_agent.py` 再写章（第5章与指标以它为唯一来源）。")
+
+    # 供暖与热价（2026-09-21 新增）：供暖热价只有一个来源 —— data.json → metering.*
+    # （采集自 `ts_institution_scene.heat_price` / `heat_pay_type`）；
+    # 禁止凭蓝本记忆或前序章节文本填数（此前 2.2 表2.1 的"热价89.61元/GJ"就属于无源写法）。
+    metering = data.get("metering") or {}
+    bld0 = (data.get("buildings") or [{}])[0] or {}
+    heat_rows = []
+
+    def _has(v) -> bool:
+        return v is not None and str(v).strip() not in ("", "None", "0.0", "0")
+
+    for label, val, src in (
+        ("供暖缴费方式", metering.get("heat_pay_type"), "data.json → metering.heat_pay_type"),
+        ("热价（元/GJ）", metering.get("heat_price"), "data.json → metering.heat_price"),
+        ("计量热价（元/GJ）", metering.get("heat_measurement_price"),
+         "data.json → metering.heat_measurement_price"),
+        ("供热面积（m²）", metering.get("heat_area"), "data.json → metering.heat_area"),
+        ("供热天数（天）", metering.get("heat_day"), "data.json → metering.heat_day"),
+        ("供暖热源", bld0.get("heating_source"), "data.json → buildings[0].heating_source"),
+        ("采暖期", bld0.get("heat_time"), "data.json → buildings[0].heat_time"),
+    ):
+        if _has(val):
+            heat_rows.append((label, val, src))
+    if heat_rows:
+        lines += [
+            "",
+            "### 供暖与热价（第2.2 表2.1 / 第5.2.3 / 第6.1.1 引用）",
+            "",
+            "> 热价**只取自 data.json**（采集自 `ts_institution_scene`）；蓝本里的热价是别的项目的历史值，不得沿用。",
+            "",
+            "| 项 | 值 | 来源 |",
+            "|---|---|---|",
+        ]
+        for label, val, src in heat_rows:
+            lines.append(f"| {label} | {val} | {src} |")
 
     lines += ["", "## 三、已落盘章节（其余为待写；**禁止重复生成已存在的章**）", ""]
     order = [f"ch{i}.md" for i in range(1, 9)] + ["appendix.md"]
@@ -481,10 +574,12 @@ def main(argv=None) -> int:
             missing = [
                 label for key, label, _ in INDICATOR_LABELS
                 if isinstance(ind.get(key), dict)
-                and not ((ind[key].get("benchmark") or {}).get("锚点"))
+                and not resolve_anchor(key, ind[key].get("benchmark") or {}, anchors)[1]
             ]
             if missing:
                 print(f"       ⚠️ 以下指标的定额值缺「原文锚点」（建议跑 verify_benchmark_sources.py 并补锚点）：{'、'.join(missing)}")
+            else:
+                print("       ✅ 指标定额锚点齐全（缺失时按 (标准号, 表号) 在 standards-values.md 定位）")
     return 0
 
 

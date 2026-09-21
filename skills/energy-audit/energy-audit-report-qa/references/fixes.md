@@ -164,3 +164,32 @@
   同方德诚（山东）科技股份公司 / 山东省济南市历下区鲁商国奥城5号楼23楼 /
   吕晓晗 / 15628998185——机构名称/地址/负责人/联系方式均可从 DB 直接取到，
   不再出现地址为空。
+
+### 2026-09-21 三项收口（烟台法院实战验收暴露）
+
+1. **供暖热价落到 data.json（采集链缺口 D9）**
+   - 现象：`ts_institution_scene` 的 heat_pay_type/heat_price/measurement_price/
+     heat_area/heat_day 在 pg_collector 里**只用于拼"供暖信息未记录"提示**，
+     从来不进 `result['found']['metering']`；`MeteringInfo` 也没有这些字段。
+     结果：报告 2.2 表2.1「冬季供暖热源」的热价（89.61 元/GJ）没有数据来源，
+     只能凭蓝本记忆写，变量闸门记成"未在本项目数据源找到"（P1）。
+   - 修法：`pg_query.get_institution_scene` SELECT 补 `measurement_price`；
+     `pg_collector` 的 metering 增加 `heat_pay_type/heat_price/heat_measurement_price/
+     heat_area/heat_day`；`project_data.MeteringInfo` 增同名字段（有值才落）。
+   - 取值链（唯一）：`ts_institution_scene → pg_collector → data.json.metering.heat_*`
+     → 2.2 表2.1 / 5.2.3 / 6.1.1；`prepare_writing_context.py` 新增「供暖与热价」小节
+     把 7 个供暖口径值写进写章契约。
+   - 实证：烟台法院 `heat_price=89.61 元/GJ`、`heat_pay_type='按计量表缴费'`（5 个版本一致，
+     `heat_area/heat_day/measurement_price` 为 NULL）。
+2. **契约"缺锚点"误报（判据分叉 S13）**
+   - 现象：`verify_benchmark_sources.py` 判"可溯源（通过）"，而
+     `prepare_writing_context.py` 只看 `benchmark["锚点"]` 是否非空 → 每批写章都告警
+     "以下指标的定额值缺原文锚点"（5 项全报）。
+   - 修法：`prepare_writing_context.py` 增加 `norm_std/load_std_anchors/resolve_anchor`，
+     口径与 verify 脚本对齐（`bench.锚点` 优先，否则按 (标准号, EXPECTED_TABLE[指标])
+     在 standards-values.md 定位）；只有真缺才告警，否则打印 ✅。
+3. **入库脚本"成功却 exit=1"（P5）**
+   - 现象：`ingest_kb_files.py` 打印 `✓ 向量化完成…` 在 GBK 控制台抛
+     UnicodeEncodeError → exit=1 → S16a 被上层判为失败。
+   - 修法：`ingest_kb_files.py` / `sync_report_library.py` / `verify_knowledge_assets.py`
+     在 import 时做 `_utf8_stdout()`（reconfigure utf-8 + errors=replace）。

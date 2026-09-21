@@ -74,9 +74,10 @@
 - 客户定位：`ts_institution_project.audited_name` / `ts_customer_info.customer_name` 模糊匹配；**勿用 audit_dept_name（那是审计机构名，如“同方德诚测试公司-1”）**
 - **多版本陷阱**：energy_main / build / meter / 设备表均有 is_draft + version_code 多版本 → 取 is_draft=0、deleted=0、version_code 最大（PL2026080402 > 0401）；2025 电量曾两版并存（1040085 vs 1011885）取最新版
 - **费用单位混乱**：unit 元/万元混标，total_value 按量级判断（752854 实为“元”）；data_type 2=费用、7=热力费、8=油费
-- **费用-用量交叉验证**：供热按计量表缴费时用 scene.heat_price 反推（89.61 元/GJ）——烟台 2024/2025 用量与费用录入交叉，修正后三年单价全部吻合；修正必须在报告 5.2.3 加表注说明
+- **费用-用量交叉验证**：供热按计量表缴费时用 scene.heat_price 反推——烟台 2024/2025 用量与费用录入交叉，修正后三年单价全部吻合；修正必须在报告 5.2.3 加表注说明。
+  ⚠️ 该热价 2026-09-21 起由采集侧落进 `data.json → metering.heat_price`，**报告一律从 data.json 取**；本条里的历史值只作方法示例，不得当成默认值抄进别的项目
 - 用能人数：`ts_institution_scene.work_staff`（ts_annual_energy_user 常空表）
-- 供暖信息：scene.heat_pay_type（按计量表/按面积）+ heat_price + 采暖期（烟台：11月16日—次年3月31日，《烟台市供热管理办法》）
+- 供暖信息：scene.heat_pay_type（按计量表/按面积）+ heat_price + 采暖期（烟台：11月16日—次年3月31日，《烟台市供热管理办法》）；**四项已落 `data.json`**：`metering.heat_pay_type` / `metering.heat_price`（+`heat_measurement_price`/`heat_area`/`heat_day`）与 `buildings[].heat_time` —— 2.2 表2.1、5.2.3、6.1.1 取数只认 data.json
 - 逐月数据：ts_institution_energy_data 的 energy_value 可能全空（烟台缺失）→ 如实写“未获取完整逐月记录”，不要编
 - 能源代码映射（勿信表头）：01=水（常误标天然气）、25=天然气、45=电、50=热力、300301=汽油
 - 设备：12 个 `ts_institution_device_*` 分类表（air/light/office/other/power/special/substation/td/terminal…），按 (名称, 功率, 数量) 去重取最新版；照明名称在 other_device_name 字段（device_name 全是“其它特殊灯具等”）

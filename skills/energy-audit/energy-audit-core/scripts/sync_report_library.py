@@ -50,6 +50,24 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def _utf8_stdout() -> None:
+    """Windows 控制台编码兜底：GBK 控制台下打印 ✓ 会抛 UnicodeEncodeError（→ 假失败）。"""
+    for stream in ("stdout", "stderr"):
+        fh = getattr(sys, stream, None)
+        if fh is None:
+            continue
+        try:
+            fh.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            try:
+                fh.reconfigure(errors="replace")                 # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+
+
+_utf8_stdout()
+
 HERE = Path(__file__).resolve().parent
 INGEST = HERE / "ingest_kb_files.py"
 

@@ -16,6 +16,7 @@
 | D6 | 费用 `energy_unit` 标"万元"实为"元"，量级差 1 万倍 | 费用单位字段不可信 → 用**单价反验**（电≈0.7 元/kWh、水≈5 元/m³、气≈4.2~4.6 元/m³、热≈89.6 元/GJ） | `energy-audit-pg-data/SKILL.md`（费用单位陷阱） |
 | D7 | 费用取到 0（旧版本 `real_value=0`） | 取费用用 `unit_total_value/10000`（元→万元）；实物量 dt=1/4/5 用 total 即可 | 同上（费用字段取数） |
 | D8 | 建筑面积口径含地下车库导致指标偏低 | 分母用 `build_area − garage_area`；采暖面积取 `build.heat_area`（不在 scene 表）；**2026-09-20 代码已实现**（indicators.calc_unit_area_* 扣减 garage_area；chapter5_agent/caliber 注入） | `conventions.md`、`energy-audit-pg-data/SKILL.md` |
+| D9 | **取到了却没落盘**：`ts_institution_scene` 的供暖字段（heat_pay_type/heat_price/measurement_price/heat_area/heat_day）在采集器里**只被用来拼"供暖信息未记录"提示**，没有写进 `data.json` → 报告 2.2 表2.1/5.2.3/6.1.1 的热价（89.61 元/GJ）只能凭蓝本记忆写，变量闸门把它记成"未在本项目数据源找到" | 凡"取到了"的字段必须**落进 data.json 才算数**：`scene.heat_* → MeteringInfo.heat_* → data.json → 写作侧唯一来源`（2026-09-21 接线）。写章取值一律先看 data.json 有没有这个键，没有就报缺、不许凭记忆填 | `tools/energy_audit/pg_collector.py`（6. 用能场景）、`project_data.py::MeteringInfo`、`ea-authoring/references/chapter-guides-1-4.md` §7 第18项 |
 
 ## 二、标准与取值
 
@@ -33,6 +34,7 @@
 | S4 | 未剔除供暖电耗，非供暖能耗/常规电耗偏高约 15% | 从总电耗中剔除供暖循环泵/风机电耗后再算非供暖类指标 | `coefficient-caliber.md`、`ea-calculation/SKILL.md` |
 | S5 | 教育类项目（DB37/T 2671）曾无定额矩阵，运行时兜底还写错标准号（写成不存在的 DB37/T 2674）并带编造的电耗/人均值 | 教育类定额**已全档收录**（原文核验 2026-09-20）；取值必须按**机构类型+二级分档**（不分气候区），禁止跨机构类型借用 EUE 等同类值 | `standards-values.md`《教育机构能源消耗定额标准》一节、`tools/energy_audit/indicators.py` `_DEFAULT_BENCHMARKS['education']` |
 | S6 | 教育类报告自相矛盾：同一份报告**表里写约束值 16.5**、**正文写 25.5** kgce/(m²·a)（济南大学 0620 稿） | 表格与正文的定额值必须**同源**（都从 `standards-values.md` 取）；25.5 是党政机关省级约束值，属**跨标准串档**，教育类无此值 | `standards-values.md`（教育类表1）、`ea-validation/scripts/datava/mode_indicator_review.py` |
+| S13 | **同一件事两个判据**：「指标定额有没有原文锚点」被两套逻辑分别实现——`verify_benchmark_sources.py` 认"bench 无锚点但能在 standards-values.md 按 (标准号, 期望表号) 定位 → 可溯源"（结论：通过），`prepare_writing_context.py` 只看 `bench["锚点"]` 字段是否非空 → 每批写章都告警"5 项指标缺锚点"（实测烟台法院：24 条 ★锚点、5 项全部可定位，却天天报缺） | 同一判定必须**只有一份实现**（或口径显式对齐）：锚点判定 = `bench.锚点` **或** `(norm_std(标准), EXPECTED_TABLE[指标]) ∈ standards-values.md ★锚点`；告警只对真·缺锚点发。**新增判据时先 grep 有没有第二个实现** | `ea-authoring/scripts/prepare_writing_context.py::resolve_anchor`、`ea-calculation/scripts/verify_benchmark_sources.py` |
 
 ## 三、报告与写作
 
@@ -53,6 +55,7 @@
 | P2 | 交付前未跑断言，目录/水印/页码缺失 | 每份必跑断言器 10 项（zip/TOC/updateFields/水印/分隔线/页码/无 VML/无残留标记…），失败不得报"完成" | 同上 |
 | P3 | Word COM 用相对路径报"找不到您的文件"；Word 保存剥离 `updateFields` | COM 一律**绝对路径**；收尾脚本 zip 级补写 `updateFields` | 同上 |
 | P4 | 交付件与正本混放 | 正本在 `output/_script_build/`，对外交付**复制**到 `output/交付件/`（复制不移动） | 同上 |
+| P5 | **成功却报失败**：`ingest_kb_files.py` 入库成功后打印 `✓ 向量化完成…`，Windows GBK 控制台下抛 `UnicodeEncodeError` → 进程 exit=1，上层把已成功的 S16a 当失败（2026-09-21 烟台法院实测） | 带 ✓/⚠️ 的脚本必须在**入口处**做 stdout 兜底：`sys.stdout.reconfigure(encoding="utf-8", errors="replace")`（import 时或 main 开头，参照 `scripts/deploy_ea_skills.py::_utf8_stdout`）。已修：`ingest_kb_files.py` / `sync_report_library.py` / `verify_knowledge_assets.py` | `energy-audit-core/scripts/*.py`、`scripts/deploy_ea_skills.py` |
 
 ## 五、协作与流程
 
