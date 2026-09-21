@@ -1884,11 +1884,20 @@ def _llm_extract_graph(text: str, context: str = "") -> dict:
     raw = _call_llm(messages, temperature=0.1, max_tokens=1500, task="kb_graph")
     if not raw:
         return {"entities": [], "relationships": []}
+    # ★2026-09-21 修：LLM 常在 JSON 字符串里塞**裸控制字符**（换行/制表），
+    #   `json.loads` 默认 strict=True 会直接抛 JSONDecodeError → 整块图谱结果丢弃。
+    #   实测日志：`Invalid control character at: line 21 column 42`。
+    #   strict=False 允许字符串内出现控制字符；再无脑清一遍控制字符兜底。
+    block = _extract_json_block(raw)
     try:
-        return json.loads(_extract_json_block(raw))
+        return json.loads(block, strict=False)
     except Exception:
-        logger.exception("Graph extraction JSON parse failed: %s", raw[:200])
-        return {"entities": [], "relationships": []}
+        try:
+            cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", block)
+            return json.loads(cleaned, strict=False)
+        except Exception:
+            logger.exception("Graph extraction JSON parse failed: %s", raw[:200])
+            return {"entities": [], "relationships": []}
 
 
 def _llm_generate_wiki(text: str, title: str = "", temperature: float = 0.4, max_tokens: int = 1500) -> dict:

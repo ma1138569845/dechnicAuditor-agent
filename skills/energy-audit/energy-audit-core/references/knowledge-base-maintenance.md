@@ -90,7 +90,9 @@ python <skills>/energy-audit-core/scripts/verify_knowledge_assets.py
 |---|---|---|
 | 库是空的，或只有 1 条切片 | 解析器按报告逻辑切标准（2026-09-20 已修）；或 PDF 是扫描件无文本层 | 重跑 `--reindex-only`；扫描件先 OCR |
 | 检索命中不了条文 | 切片是 summary 垃圾 | 看切片（`dump` 一下内容），重入 |
-| 实体/关系为 0 | 抽取调 LLM 读超时（偶发） | 补跑 `start_graph_build(doc_id)`；不影响条文检索 |
+| 实体/关系为 0 | ① 抽取调 LLM 读超时（偶发）；② **LLM 返回的 JSON 里有裸控制字符**，`json.loads` 严格模式整块丢弃（实测日志 `Invalid control character at: line 21 column 42`） | ① 补跑 `start_graph_build(doc_id)`；② **已修**：`_llm_extract_graph` 改用 `json.loads(..., strict=False)` + 控制字符兜底清理（2026-09-21）。不影响条文检索 |
+| 图谱构建报 `FOREIGN KEY constraint failed` | **并发构建同一文档**：`build_document_graph` 是逐块 `DELETE`+`INSERT`，两个进程同时跑会互相删掉对方刚插入的实体，导致后续"关系"外键失败（实测：补跑脚本与入库管道同时触发） | **同一文档的图谱构建必须串行**。补跑脚本已改为"数值稳定"等待；实务上**不要在批量入库进行中跑补跑脚本** |
+| 补跑后实体数上下波动（307→137→290） | 等待判据写成了 `entities > 0`——而图谱构建**中途就会 >0** | 判据要"**非零且连续两次不变**"才算完成（`_changes/backfill_graph_wiki.py::wait_stable`） |
 | 投了但没进库 | 文件名 / 目录投错，或 sha256 已存在 | `--dry-run` 看识别结果 |
 
 ## 七、待办清单（谁维护本文谁更新这一节）
