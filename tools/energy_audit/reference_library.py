@@ -277,15 +277,51 @@ def _extract_plain_text(path: Path) -> str:
     return ""
 
 
+# 目录行/目录块识别（2026-09-20）：见 chunk_report_text 的说明。
+# 两种目录形态：
+#   PDF  → 点线（`能源资源管理状况........6`）
+#   DOCX → 章名/节号 + TAB + 页码（`第1章  能源审计执行概要\t1`、`1.1审计目的\t1`）
+# 注意：只用"TAB+数字结尾"会误伤正文表格行（`建筑面积\t24300`），所以第二种形态
+# 必须**同时**以章号/节号开头才算目录项。
+_TOC_DOTS_RE = re.compile(r"(?:\.{5,}|…{3,}|·{5,})")
+_TOC_HEAD_RE = re.compile(
+    r"^(?:第\s*[一二三四五六七八\d]+\s*章|附录\s*\d*|\d+(?:\.\d+){1,3})")
+_TOC_TAB_TAIL_RE = re.compile(r"\t\s*\d{1,3}\s*$")
+
+
+def _is_toc_line(line: str) -> bool:
+    if _TOC_DOTS_RE.search(line):
+        return True
+    return bool(_TOC_HEAD_RE.match(line)) and bool(_TOC_TAB_TAIL_RE.search(line))
+
+
+def _is_toc_block(text: str) -> bool:
+    """目录块判据：目录样式行 ≥2 条；或 1 条但块很短（单条目目录碎片）。"""
+    lines = [l.strip() for l in (text or "").splitlines() if l.strip()]
+    if not lines:
+        return True
+    toc_lines = sum(1 for l in lines if _is_toc_line(l))
+    if toc_lines >= 2:
+        return True
+    return toc_lines == 1 and len(lines) <= 3 and len(text.strip()) < 120
+
+
 def chunk_report_text(text: str, filename: str = "") -> List[Dict[str, str]]:
-    """把报告全文按「第X章」切开。"""
+    """把报告全文按「第X章」切开，并**丢掉目录块**。
+
+    ★2026-09-20 新增目录块过滤：实测岚山区检察院 PDF 切出 17 块，其中 8 块是目录——
+    每块 = 一个裸「第X 章」标签行 + 若干点线目录项（`第3 章`＋
+    `能源资源管理状况..........6`），于是查"第3章"时 3 条命中里 2 条是目录。
+    判据：**点线行 ≥2 条**即判目录；或 1 条点线但占比高且文本很短（单条目目录碎片）。
+    真正文块的实测点线行数是 0，所以不会误伤。
+    """
     chunks: List[Dict[str, str]] = []
     current_chapter = "封面"
     buf: List[str] = []
 
     def _flush():
         body = "\n".join(buf).strip()
-        if body:
+        if body and not _is_toc_block(body):
             chunks.append({"chapter": current_chapter, "text": body, "filename": filename})
 
     for raw in (text or "").splitlines():
