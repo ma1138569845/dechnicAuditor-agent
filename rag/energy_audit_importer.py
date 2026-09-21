@@ -36,6 +36,27 @@ UNIT_NAME_TAIL_RE = re.compile(
 TOC_TAIL_RE = re.compile(r"(?:[\t.．·…\u2026]{1,}|\s{2,})\d{1,3}\s*$")
 
 
+# 审计类型启发式（2026-09-21）：原先 `build_chunks` 把 audit_type 写死成"公共机构"，
+# 于是工业企业/公共建筑报告在**按审计类型过滤的向量检索**里会被漏掉（实测 21 份里
+# 永锋纺织被标成公共机构）。报告入库时文件是**平铺**进 kb 根的，路径带不出类型，
+# 只能从文件名判；因此这里**取保守策略**：只在高置信词命中时才改判，其余回退
+# "公共机构"。要根治得让入库保留相对子目录（目录名即类型）或加显式参数。
+_AUDIT_TYPE_HINTS = (
+    ("工业企业", ("工业", "公司", "厂", "纺织", "钢铁", "化工", "水泥",
+                "造纸", "矿业", "制造", "冶炼")),
+    ("公共建筑", ("公共建筑",)),
+)
+
+
+def infer_audit_type_from_name(filename: str) -> str:
+    """按文件名判审计类型；判不出回退"公共机构"（历史默认）。"""
+    name = filename or ""
+    for audit_type, hints in _AUDIT_TYPE_HINTS:
+        if any(h in name for h in hints):
+            return audit_type
+    return "公共机构"
+
+
 def _iter_document_pages(path: str) -> list:
     """把文档切成"页文本"列表。
 
@@ -387,7 +408,7 @@ def build_chunks(structure: dict) -> list[dict]:
         "filename": structure["filename"],
         "file_path": structure.get("file_path", ""),
         "file_type": structure.get("file_type", ""),
-        "audit_type": "公共机构",
+        "audit_type": infer_audit_type_from_name(structure["filename"]),
         "institution_category": cat,
         "specific_type": spec_type,
         "unit_name": structure.get("unit_name", ""),

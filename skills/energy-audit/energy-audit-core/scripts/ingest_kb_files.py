@@ -35,6 +35,8 @@
     # 报告库：把本地成稿目录同步进向量库（--vector-only = 只做切片+向量，实体/wiki 后补）
     python ingest_kb_files.py --kb energy_audit_reports \
         --from "<...>\\hermes\\rag\\report" --no-archive --vector-only
+    # 投递即交出：入库+归档成功后自动清掉投递区原件
+    python ingest_kb_files.py --move
 
 退出码：0 = 全部成功（或无需处理）；1 = 有失败项
 """
@@ -104,6 +106,15 @@ def is_source_file(p: Path) -> bool:
     if p.suffix.lower() not in LANGS or p.name.startswith("."):
         return False
     return not p.name.lower().startswith(SKIP_NAME_PREFIX)
+
+
+def _inside(path: Path, root: Path) -> bool:
+    """路径是否落在 root 内（--move 删除前的自我约束）。"""
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def sha256(path: Path) -> str:
@@ -183,8 +194,13 @@ def main() -> int:
                          "批量入料时用，避免逐份等 LLM 而频繁读超时；实体/wiki 可事后补跑")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--allow-low-cjk", action="store_true",
-                    help=f"放行中文占比低于 {CJK_MIN_RATIO:.0%} 的 PDF（默认拒绝："
+                    # 注意：argparse 的 help 会走 `%` 格式化，百分号必须写 `%%`
+                    help=f"放行中文占比低于 {int(CJK_MIN_RATIO * 100)}%% 的 PDF（默认拒绝："
                          "疑似扫描件或'浏览保护版'，文本层不可用）")
+    ap.add_argument("--move", action="store_true",
+                    help="入库并归档成功后，把投递区里的原件删掉（'投递=交出'）。"
+                         "只删投递区内的文件；与 --no-archive 同用时**不删**，"
+                         "以免只剩库内一份、丢了归档副本")
     args = ap.parse_args()
 
     # 1) 收集待入文件 → (源文件, 目标 kb)
@@ -315,6 +331,17 @@ def main() -> int:
             arch.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, arch / src.name)
             print(f"   →  原件已归档 {arch}")
+
+        # 7b) --move：归档成功后把投递区原件清掉（投递=交出，不留重复）
+        if args.move and not args.reindex_only:
+            if args.no_archive:
+                print("   ⏭  --move 与 --no-archive 同用：**不删**投递区原件"
+                      "（否则只剩库内一份、丢了归档副本）")
+            elif _inside(src, INBOX) and src.is_file():
+                src.unlink()
+                print(f"   →  --move：已从投递区移除 {src.name}")
+            else:
+                print(f"   ⏭  --move：{src} 不在投递区内，保留不动")
 
         # 8) 台账
         rec = {"file": src.name, "sha256": h, "kb_id": kb_id, "doc_id": doc_id,
