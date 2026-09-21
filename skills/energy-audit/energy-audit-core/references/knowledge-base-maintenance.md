@@ -98,4 +98,9 @@ python <skills>/energy-audit-core/scripts/verify_knowledge_assets.py
 - `energy_audit_technical_guidelines` 库首批 17 份规范原文待投递
   （清单见技能包 `_changes/guidelines库喂料清单-20260920.md`）
 - `energy_quota_standards` 中 4 份文档实体为 0（LLM 超时），待补跑
-- `公共建筑（大型超市）能耗定额.pdf` 为扫描件、0 切片，待 OCR 后重入
+- `公共建筑（大型超市）能耗定额.pdf`（经视觉模型识别封面 = **DB37/T 935—2016**，
+  代替 DB37/ 935—2007，2016-10-08 发布）：6 页**纯扫描件、无文本层**，入库后 0 切片。
+  **2026-09-21 处置：从库中摘除，原件保留在 `rag/standards/住建厅/`。**
+  理由是「往依据库里放一个可能被 OCR 读错的定额数值，比不放更危险」，且当前管道
+  不处理大型超市（`tools/energy_audit` 里没有任何大型超市分档）。将来真要做大型超市项目时：
+  先找**带文本层**的版本；退而求其次用视觉模型逐页转录 + 双模型交叉校验，并在文首标注"转录稿"。

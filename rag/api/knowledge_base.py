@@ -2078,6 +2078,23 @@ def start_summary_build(doc_id: str) -> dict:
     return {"id": doc_id, "status": "processing"}
 
 
+def _doc_category(file_name: str) -> str:
+    """文档级机构类别（供"摘要点"与标签筛选使用）。
+
+    ★2026-09-21 修：`_embed_doc_summary` 原先写进主集合的 payload **只有**
+    filename/file_path/file_type/text/chapter/source/doc_id，**缺 `type` 与
+    `institution_category`** —— 而按类别过滤检索（search_reports 的 must-filter）
+    要求后者存在。于是每生成一次文档摘要就往集合里塞一条"检索不到、还被治理脚本
+    判 P0"的点（实测报告库 762 点里 3 条如此）。这里与报告导入器用同一个分类器。
+    """
+    try:
+        from tools.energy_audit.institution_classifier import classify_institution
+        cat, _spec = classify_institution(file_name or "")
+        return cat or "未分类"
+    except Exception:  # noqa: BLE001  分类器不可用时不阻断摘要
+        return "未分类"
+
+
 def _embed_doc_summary(doc: dict, summary: str) -> None:
     """Embed a document summary into the KB's chunk collection as a doc-level
     point. Uses a deterministic UUID so re-summarization overwrites in place."""
@@ -2100,6 +2117,9 @@ def _embed_doc_summary(doc: dict, summary: str) -> None:
                     "file_type": Path(doc["file_name"]).suffix.lower().lstrip("."),
                     "text": summary,
                     "chapter": "文档摘要",
+                    # ★2026-09-21：补 type / institution_category，见 _doc_category 说明
+                    "type": "summary",
+                    "institution_category": _doc_category(doc["file_name"]),
                     "source": "summary",
                     "doc_id": doc["id"],
                 },

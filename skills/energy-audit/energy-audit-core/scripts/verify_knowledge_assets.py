@@ -321,7 +321,21 @@ def write_log(client, collection: str) -> None:
         "total_points": sum(e["points"] for e in files),
         "files": files,
     }
-    LOG_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # ★2026-09-21 修：原先直接覆盖整个台账文件，会把 `kb_ingests[]`（每次入库的历史，
+    #   由 ingest_kb_files.py 追加）一起抹掉。现在只覆盖本次生成的键，其它原样保留。
+    existing: dict = {}
+    if LOG_PATH.is_file():
+        try:
+            existing = json.loads(LOG_PATH.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                existing = {}
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+    kept = [k for k in existing if k not in payload]
+    existing.update(payload)
+    LOG_PATH.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+    if kept:
+        print(f"  （保留了原有台账段：{'、'.join(kept)}）")
     print(f"\n[完成] 台账已写入 {LOG_PATH}")
     print(f"  {len(files)} 文件 / {sum(e['points'] for e in files)} 切片")
     miss = [e["file"] for e in files if not e["local_path"]]
