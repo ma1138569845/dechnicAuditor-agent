@@ -33,6 +33,7 @@ import sys
 import threading
 import time
 import traceback
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -3600,6 +3601,12 @@ def _chunk_general_document(file_path: Path, max_size: int = 512, overlap: int =
         raise ValueError(f"Unsupported file type for generic chunking: {suffix}")
 
     content = content.strip()
+    # ★2026-09-21：NFKC 归一化。中文标准/规范的 PDF 常用"全角拉丁+全角数字"排版
+    #   （实测 GB/T 2589-2020：`ＧＢ／Ｔ２５８９`、`２０２０`），不归一会让
+    #   "GB/T 2589" 这类查询在语义检索里对不上；NFKC 把全角拉丁/数字/斜杠还原为
+    #   ASCII，对中文正文无影响（中文不在兼容区）。少数字体的私有映射（如 GB→犌犅）
+    #   NFKC 救不回来，那种只能换原件或 OCR。
+    content = unicodedata.normalize("NFKC", content).strip()
     if not content:
         return []
 
