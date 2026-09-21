@@ -17,12 +17,14 @@
 
 每份文件的处理（幂等）：
     1 查重：sha256 已在 knowledge_documents.file_hash → 跳过
-    2 复制到 kb 根目录 rag/data/<kb>/（保留相对子目录）
+    2 复制到 kb 根目录 rag/data/<kb>/（**文件名扁平存放**，与既有文档保持一致；
+      原文档写"保留相对子目录"与实现不符，2026-09-20 更正）
     3 reconcile_knowledge_base(kb) 扫盘 → 建 folder/document 记录
     4 start_vectorization_v2(doc_id) → 等完成（切片 → Qdrant <base>）
     5 start_graph_build(doc_id)      → 等实体落库（→ <base>_entities）
     6 start_wiki_build(doc_id)       → 等 wiki 页落库（→ <base>_wiki）
-    7 归档原件到 rag/standards/<类别>/（--no-archive 可跳过）
+    7 归档原件到 rag/standards/<类别>/（--no-archive 可跳过；报告库一般用 --no-archive，
+      因为 rag/report/<机构类>/ 本身就是归档位）
     8 追加台账 rag/ingest_log.json → kb_ingests[]
 
 用法：
@@ -30,6 +32,9 @@
     python ingest_kb_files.py                           # 入投递区全部
     python ingest_kb_files.py --kb energy_quota_standards \
         --from "<...>\\rag\\standards\\机关事务局" --from "<...>\\rag\\standards\\住建厅" --no-archive
+    # 报告库：把本地成稿目录同步进向量库（--vector-only = 只做切片+向量，实体/wiki 后补）
+    python ingest_kb_files.py --kb energy_audit_reports \
+        --from "<...>\\hermes\\rag\\report" --no-archive --vector-only
 
 退出码：0 = 全部成功（或无需处理）；1 = 有失败项
 """
@@ -149,6 +154,9 @@ def main() -> int:
     ap.add_argument("--only", default="", help="只处理文件名含该子串的（便于单份验证）")
     ap.add_argument("--reindex-only", action="store_true",
                     help="只对已在 kb 根目录里的文件重建索引（跳过复制/查重；用于改过解析器后重入）")
+    ap.add_argument("--vector-only", action="store_true",
+                    help="只做切片+向量（检索必需），跳过实体抽取与 wiki 生成——"
+                         "批量入料时用，避免逐份等 LLM 而频繁读超时；实体/wiki 可事后补跑")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -195,16 +203,21 @@ def main() -> int:
             print(f"[提示] 没有文件名含 '{args.only}' 的待入文件")
             return 0
 
-    print(f"[计划] 待入 {len(todo)} 份：")
+    # ★2026-09-20 修：干跑原先不做 sha256 查重，会把"已在库"的也列成待入（虚报）。
+    #   现在先算一次哈希，清单如实标注哪几份将被跳过。
+    seen = existing_hashes()
+    will_skip = [p for p, _ in todo if not args.reindex_only and sha256(p) in seen]
+    print(f"[计划] 候选 {len(todo)} 份；其中已在库（将跳过）{len(will_skip)} 份，"
+          f"实际入库 {len(todo) - len(will_skip)} 份：")
     for p, kb_id in todo:
-        print(f"   {kb_id:<38} {p.name}")
+        tag = "  ⏭ 已在库" if p in will_skip else ""
+        print(f"   {kb_id:<38} {p.name}{tag}")
     if args.dry_run:
         print("\n[dry-run] 未做任何改动")
         return 0
 
     from rag.api import knowledge_base as kb  # noqa: E402  重量级导入放最后
 
-    seen = existing_hashes()
     done, skipped, failed = [], [], []
     for src, kb_id in todo:
         print(f"\n── {src.name}  →  {kb_id}")
@@ -249,12 +262,14 @@ def main() -> int:
             continue
         print(f"   ✓ 向量化完成（{j.get('chunks_done')}/{j.get('chunks_total')} 切片）")
 
-        # 5) 实体 + 关系
-        kb.start_graph_build(doc_id)
-        wait_until(lambda: doc_counts(doc_id)["entities"] > 0, "实体抽取", timeout=900)
-        # 6) wiki 页
-        kb.start_wiki_build(doc_id)
-        wait_until(lambda: doc_counts(doc_id)["wiki"] > 0, "wiki 生成", timeout=600)
+        # 5) 实体 + 关系  6) wiki 页（--vector-only 时跳过，事后可补跑）
+        if args.vector_only:
+            print("   ⏭  --vector-only：跳过实体/wiki（可事后补跑 start_graph_build / start_wiki_build）")
+        else:
+            kb.start_graph_build(doc_id)
+            wait_until(lambda: doc_counts(doc_id)["entities"] > 0, "实体抽取", timeout=900)
+            kb.start_wiki_build(doc_id)
+            wait_until(lambda: doc_counts(doc_id)["wiki"] > 0, "wiki 生成", timeout=600)
         c = doc_counts(doc_id)
         print(f"   ✓ 实体 {c['entities']} / 关系 {c['relations']} / wiki {c['wiki']}")
 

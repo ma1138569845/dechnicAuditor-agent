@@ -24,9 +24,68 @@ CHAPTER_PATTERN = re.compile(r"第(\d+(?:\.\d+)?)\s*章\s*(.*)")
 SECTION_PATTERN = re.compile(r"(\d+\.\d+)\s+(.+)")
 
 
+# 封面取名：单位名的"可信尾巴"。
+# ★2026-09-20 补：原白名单只有 医院/中心/局/学校/大学/学院/委/馆，
+#   缺「厅/部/办/处/所」→「山东省科学技术厅」被漏掉，反而抓到人员表里的
+#   「…科技服务中心…」（含"中心"）。这是 DOCX 入库时实测出来的。
+UNIT_NAME_TAIL_RE = re.compile(
+    r"(?:医院|中心|学校|大学|学院|局|厅|部|办|处|所|站|馆|宫|园|社|院|公司|集团|委员会)$"
+)
+# 目录行尾巴：点线/制表符/多个空格 + 页码。DOCX 的目录是「章名<TAB>页码」（无点线），
+# 只认 `...` 会把整份目录当正文章节标题（实测省厅那批 17 个"章节"里 8 个是目录行）。
+TOC_TAIL_RE = re.compile(r"(?:[\t.．·…\u2026]{1,}|\s{2,})\d{1,3}\s*$")
+
+
+def _iter_document_pages(path: str) -> list:
+    """把文档切成"页文本"列表。
+
+    ★2026-09-20 新增 DOCX 支持：报告库管道原先只吃 PDF（`pymupdf.open`），
+    而本地成稿目录里有 10 份是 .docx（省厅那批 / 济南大学 / 省法院），
+    直接入会失败。这里对 .docx 用 python-docx 按**文档顺序**抽段落与表格，
+    再按约 2400 字合成"伪页"——只为让下面"前两页取单位名、前 5 页取目录"
+    这两条启发式仍成立，不改动任何按行处理的逻辑。
+
+    PDF 分支与改动前完全等价（同一句 `page.get_text()`）。
+    """
+    suffix = Path(path).suffix.lower()
+    if suffix == ".pdf":
+        doc = pymupdf.open(path)
+        try:
+            return [doc[i].get_text() for i in range(doc.page_count)]
+        finally:
+            doc.close()
+    if suffix == ".docx":
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+
+        document = Document(path)
+        blocks = []
+        for child in document.element.body.iterchildren():
+            tag = str(getattr(child, "tag", ""))
+            if tag.endswith("}p"):
+                blocks.append(Paragraph(child, document).text)
+            elif tag.endswith("}tbl"):
+                table = Table(child, document)
+                for row in table.rows:
+                    cells = [c.text.strip() for c in row.cells]
+                    if any(cells):
+                        blocks.append("\t".join(cells))
+        pages, current = [], ""
+        for block in blocks:
+            current = f"{current}\n{block}" if current else block
+            if len(current) >= 2400:
+                pages.append(current)
+                current = ""
+        if current:
+            pages.append(current)
+        return pages
+    raise ValueError(f"extract_pdf_structure 不支持的文件类型：{suffix}（支持 .pdf / .docx）")
+
+
 def extract_pdf_structure(pdf_path: str) -> dict:
     """
-    提取 PDF 的结构化信息:
+    提取报告的结构化信息（**支持 .pdf 与 .docx**，函数名沿用历史叫法）:
     Returns: {
         "filename": str,
         "file_path": str,
@@ -38,7 +97,7 @@ def extract_pdf_structure(pdf_path: str) -> dict:
         "standards": [str, ...],
     }
     """
-    doc = pymupdf.open(pdf_path)
+    pages = _iter_document_pages(pdf_path)
     filename = os.path.basename(pdf_path)
     full_pages = []
 
@@ -51,21 +110,27 @@ def extract_pdf_structure(pdf_path: str) -> dict:
     current_chapter_text = []
 
     # 提取所有文本
-    for i in range(doc.page_count):
-        text = doc[i].get_text()
+    for i, text in enumerate(pages):
         full_pages.append(text)
 
         # 提取单位名称（前两页）
         if i <= 1 and not unit_name:
             for line in text.split("\n"):
                 line = line.strip()
-                if line and "能源审计报告" not in line and "同方德诚" not in line \
-                        and "机构信息" not in line and "审计机构" not in line \
-                        and len(line) >= 4 and len(line) <= 30:
-                    if "医院" in line or "中心" in line or "局" in line or "学校" in line or \
-                       "大学" in line or "学院" in line or "委" in line or "馆" in line:
-                        unit_name = line
-                        break
+                # 表格行（含制表符）不是单位名：人员的「组长 科技服务中心 …」
+                # 和表头「机构名称 山东省市场监督管理局」都是从这儿误抓的
+                if not line or "\t" in line:
+                    continue
+                cand = re.sub(r"能源审计报告\s*$", "", line).strip()
+                if not cand or "能源审计报告" in cand or "同方德诚" in cand \
+                        or "机构信息" in cand or "审计机构" in cand:
+                    continue
+                if len(cand) < 4 or len(cand) > 30:
+                    continue
+                # 按"可信尾巴"判：单位名以 厅/局/医院/学校… 结尾
+                if UNIT_NAME_TAIL_RE.search(cand):
+                    unit_name = cand
+                    break
 
         # 提取审计机构
         if not auditor and "同方德诚" in text:
@@ -79,9 +144,11 @@ def extract_pdf_structure(pdf_path: str) -> dict:
                     ch_num = match.group(1)
                     # 去掉页码、点号和多余空白
                     ch_title_raw = line[line.index("章")+1:].strip()
-                    ch_title = re.sub(r"[\s.]{3,}\d*\s*$", "", ch_title_raw).strip()
+                    ch_title = re.sub(r"(?:[\t.．·…\u2026]{1,}|\s{2,})\d*\s*$", "",
+                                      ch_title_raw).strip()
                     if ch_title:
-                        toc_items.append((ch_num, ch_title, None))
+                        if not any(t[0] == ch_num and t[1] == ch_title for t in toc_items):
+                            toc_items.append((ch_num, ch_title, None))
 
         # 提取标准引用
         std_matches = re.findall(r"[（(]([A-Z]+(?:/\w+)*\s+\d+[.\d]*-?\d*)[）)]", text)
@@ -99,10 +166,14 @@ def extract_pdf_structure(pdf_path: str) -> dict:
             if ch_match:
                 ch_title_tail = ch_match.group(2).strip()
                 has_dots = "..." in line_clean or "…" in line_clean
-                is_toc_line = has_dots and len(line_clean) > 20
+                # 目录行判据：点线（PDF）或 制表符/多空格 + 页码（DOCX 的表格化目录）
+                is_toc_line = bool(TOC_TAIL_RE.search(line_clean)) or \
+                    (has_dots and len(line_clean) > 20)
                 is_short = len(line_clean) < 40
-                # 必须是短行（章节标题行）且非目录行
-                if not is_short or is_toc_line:
+                if is_toc_line:
+                    continue        # 目录行既不进正文、也不当章节起点
+                # 必须是短行（章节标题行）
+                if not is_short:
                     if current_chapter and line_clean:
                         current_chapter_text.append(line_clean)
                     continue
@@ -161,7 +232,6 @@ def extract_pdf_structure(pdf_path: str) -> dict:
     full_text = "\n".join(full_pages)
     full_text = re.sub(r"同方德诚[（(]山东[）)]科技股份公司\s*", "", full_text)
 
-    doc.close()
     return {
         "filename": filename,
         "file_path": pdf_path,
@@ -274,6 +344,30 @@ def _smart_split(text: str, max_chars: int = 800) -> list[str]:
         chunks.append(_restore_text(current, placeholders))
 
     return chunks
+
+
+# 单条切片字符上限。嵌入模型（DashScope text-embedding-v3）单条输入上限 8192 token，
+# 中文近似 1 字 1 token，这里按字符留足余量。
+# ★2026-09-20 加：实测 `省法院报告0620.docx` / `省人社厅能源审计报告0620.docx` /
+#   `山东永锋纺织有限公司能源审计报告.pdf` 三份整份入库失败，报
+#   `Range of input length should be [1, 8192]`——根因是 `_smart_split` 对
+#   "超过 max_chars 且没有句读的整块文本"（典型是整页表格）会原样返回一整块。
+MAX_CHUNK_CHARS = 3000
+
+
+def _split_oversized(text: str, max_chars: int = MAX_CHUNK_CHARS,
+                     overlap: int = 200) -> list[str]:
+    """超长文本按字符窗口硬切（带重叠）。只用于兜底，正常切片走 _smart_split。"""
+    if len(text) <= max_chars:
+        return [text]
+    parts, start = [], 0
+    while start < len(text):
+        end = min(start + max_chars, len(text))
+        parts.append(text[start:end])
+        if end >= len(text):
+            break
+        start = max(0, end - overlap)
+    return parts
 
 
 def build_chunks(structure: dict) -> list[dict]:
@@ -396,7 +490,24 @@ def build_chunks(structure: dict) -> list[dict]:
             chunk_entry["parent_chunk_id"] = f"chunk_{chapter_idx}"
         chunks.append(chunk_entry)
 
-    return chunks
+    # ── 收尾兜底：把仍超长的切片切开（见 MAX_CHUNK_CHARS 处的实测说明）──
+    #    对正常切片是**空操作**（已入库的 14 份没有超长切片，切分结果不变），
+    #    只影响 _smart_split 漏网的整块长文本。
+    final: list[dict] = []
+    for c in chunks:
+        text = str(c.get("text") or "")
+        if len(text) <= MAX_CHUNK_CHARS:
+            final.append(c)
+            continue
+        parts = _split_oversized(text)
+        for part in parts:
+            piece = dict(c)
+            piece["text"] = part
+            piece["oversized_split"] = len(parts)
+            final.append(piece)
+    for i, c in enumerate(final):
+        c["chunk_index"] = i
+    return final
 
 
 # ── 向量化 + 写入 Qdrant ──
