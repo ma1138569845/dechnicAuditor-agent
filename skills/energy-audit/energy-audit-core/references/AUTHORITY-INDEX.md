@@ -58,5 +58,6 @@
 | **参考与知识读取**（读哪层 / 目录 / 检索入口 / 降级链） | `energy-audit-core/references/WORKFLOW.md` **第六节**（2026-09-20 建） | 全角色；knowledger 亦以本节为准 | 各 SKILL/SOUL 只写"何时读哪层"，不复述路径与目录（`rag/standards`/`rag/report`/`rag/data`/`rag/wiki` 的语义只在第六节） |
 | **知识库维护（写侧）**：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令 | `energy-audit-core/references/knowledge-base-maintenance.md`（2026-09-20 建） | knowledger（专属）、author（S16a）、editor | 各 SKILL/SOUL 只写"何时入料/巡检"，不复述边界表与判据 |
 | 知识层资产治理（目录规约 / 元数据 / 副本 / 点数对账 / 死资产 / 切片体检 / 归档完备） | `energy-audit-core/scripts/verify_knowledge_assets.py`（2026-09-20 建，同日由 `_changes/` 移入技能）+ `%LOCALAPPDATA%\hermes\rag\ingest_log.json` | editor、knowledger | — |
-| 知识库入料入口（投递区 → 向量化/实体/wiki → 归档 + 台账） | `energy-audit-core/scripts/ingest_kb_files.py`（2026-09-20 建，同日移入技能） | knowledger（标准/规范）、author（S16a 成稿） | 不复述脚本参数与七步流程 |
+| 知识库入料入口（投递区 → 向量化/实体/wiki → 归档 + 台账） | `energy-audit-core/scripts/ingest_kb_files.py`（2026-09-20 建，同日移入技能） | knowledger（标准/规范） | 不复述脚本参数与七步流程 |
+| **交付件入库 / 成稿库一致性（S16a）** | `energy-audit-core/scripts/sync_report_library.py`（2026-09-21 建）＋ 判据见 `knowledge-base-maintenance.md` | author（S16a）、knowledger、editor | 各 SKILL 只写"何时跑 `--add`"，不复述落位规则与两张清单口径 |
 | **标准条文检索**（定额/规范条文原文，`kbs="standards"`） | `rag/rag_search.py: search_standards()` + `rag/config.py: kb_collection()/STANDARD_KB_IDS`（2026-09-20 P3-3 建）+ `tools/energy_audit_rag_tool.py` 的 `kbs` 参数 | author、knowledger、caliber（查依据） | 各 SKILL 只写"何时用 kbs=standards"，不复述库名/集合名/参数细节 | 

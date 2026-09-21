@@ -29,13 +29,14 @@
 
 | 触发 | 谁 | 时机 | 动作 |
 |---|---|---|---|
-| 报告交付定稿 | author | **S16a**（每次交付，固定动作） | 成稿入 `rag/report/<机构类>/` → 入库 → 刷台账（见 `WORKFLOW.md` S16a） |
+| 报告交付定稿 | author | **S16a**（每次交付，固定动作） | **一条命令**：`python <skills>/energy-audit-core/scripts/sync_report_library.py --add <交付件>`（内部：落 `rag/report/<审计类型>/<类别>/` → 入向量库；`--check` 自检） |
 | 拿到新的/换版标准原文 | **knowledger** | 收到即办，不攒 | 投递区 → `ingest_kb_files.py`（第三节） |
 | 例行巡检 | **knowledger** | 每季度，或"检索查不到东西"时随时 | `verify_knowledge_assets.py` + 抽查检索（第四节） |
 | 删除错误入库 | **knowledger** | 发现即删 | **先确认归档副本存在**（第五节） |
 
-> 交付件入库是 author 的固定动作；**标准/规范的维护是 knowledger 的专属职责**，
-> 两者都不要等别人提醒。
+> 交付件入库是 author 的固定动作（2026-09-21 接线：`ea-authoring/SKILL.md` 有专节、
+> kanban 卡3 有收尾步、门禁 = 本文件第五节的治理脚本第 8 项）；
+> **标准/规范的维护是 knowledger 的专属职责**。两者都不要等别人提醒。
 
 ## 三、喂料流程（唯一入口）
 

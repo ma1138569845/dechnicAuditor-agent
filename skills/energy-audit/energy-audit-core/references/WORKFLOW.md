@@ -25,7 +25,7 @@
 | S13 | V3 审查 | datava | 落盘的 docx | `… --mode REPORT_REVIEW --report <docx>` | `report_review.json` | P0 阻塞；直跑轨结论**必须完整展示给用户确认** |
 | S14 | 一致性与证据 | datava / author | 生成稿 + 蓝本 + 检索台账 | `verify_variables_provenance.py <项目名> [--blueprint …]`；`verify_retrieval_evidence.py <项目名>` | P0/P1 清单 | 变量泄漏 P0 → 改回本项目数据；**证据台账 P0（缺失/必需章空白）→ 补登记** |
 | S15 | 交付 | author | 上一步产物 | 复制（不移动） | `output/交付件/<单位>能源审计报告.docx\|pdf` | 交付件为唯一对外出口 |
-| **S16a** | **交付件入库** | author | `output/交付件/*.docx` | ① 落 `rag/report/<机构类型>/`（去重命名，禁"- 副本"）② `rag/ingestion/ingest_reports.py` 入向量库 ③ 生成 `_wiki` 页 ④ 刷新 `rag/ingest_log.json` | 知识层更新 | `energy-audit-core/scripts/verify_knowledge_assets.py` 退出码 0（P0=0） |
+| **S16a** | **交付件入库** | author | `output/交付件/*.docx` | **一条命令**：`python <skills>/energy-audit-core/scripts/sync_report_library.py --add <交付件>`（内部：落 `rag/report/<审计类型>/<类别>/` → 入向量库；`--full` 才跑实体/wiki） | 知识层更新 | `sync_report_library.py --check` 两张清单为 0；`verify_knowledge_assets.py` P0=0 |
 | S16 | 沉淀 | 全员 | 本次踩坑 | 写进对应权威文件 + `lessons-learned.md` 登记一行 | 经验索引 | 只做索引，不复制细节 |
 
 ## 二、写章三步（每批固定，S7~S9 共用）

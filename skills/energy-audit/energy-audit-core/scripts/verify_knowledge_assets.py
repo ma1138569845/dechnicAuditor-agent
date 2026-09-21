@@ -6,7 +6,7 @@
 > 职责与验收标准见 `energy-audit-core/references/knowledge-base-maintenance.md`。
 > knowledger 巡检：退出码 0（P0=0）才算知识层健康。
 
-检查七项（对应《知识参考体系重构设计》§4.5）：
+检查八项（对应《知识参考体系重构设计》§4.5）：
   1 目录规约：rag/standards/ 存在；rag/report/ 下**不得**混放标准 PDF
   2 元数据 schema：Qdrant `energy_audit_reports` 每条须有 type 与 institution_category
   3 重复 / 副本：文件名含"副本/copy/(1)" → 报错；源文件 sha256 重复 → 告警
@@ -16,6 +16,8 @@
     垃圾摘要"——2026-09-20 发现的报告解析器误用 bug 就是这种症状）
   7 归档完备性：rag/data/<kb>/ 里的每份文件都必须在 rag/standards/ 有同名/同哈希副本
     （2026-09-20 教训：delete_knowledge_document 会连磁盘原件一起 unlink）
+  8 报告料源一致性：本地成稿目录 rag/report/ ↔ 向量库 energy_audit_reports
+    （S16a 交付件入库的门禁：孤儿 P0 / 待入库 P1；比对逻辑复用 sync_report_library.py）
 
 用法:
   python verify_knowledge_assets.py                # 只检查（需要 Qdrant 才查第 2/4 项）
@@ -264,6 +266,34 @@ def check_archive_completeness() -> None:
         ok(f"{checked} 份库内文件均有归档副本（归档区共 {len(arch)} 份去重文件）")
 
 
+def check_report_catalog_sync() -> None:
+    """8 报告料源一致性：本地成稿目录 ↔ 向量库（S16a 的门禁）。
+
+    比对逻辑复用同目录的 sync_report_library.py，避免两处判据漂移。
+    """
+    print("\n=== 8 报告料源一致性（S16a 门禁）===")
+    import sys as _sys
+    here = str(Path(__file__).resolve().parent)
+    if here not in _sys.path:
+        _sys.path.insert(0, here)
+    try:
+        from sync_report_library import catalog_vs_kb
+    except Exception as exc:  # noqa: BLE001
+        warn(f"无法导入 sync_report_library（跳过本项）：{exc}")
+        return
+    try:
+        r = catalog_vs_kb()
+    except Exception as exc:  # noqa: BLE001
+        warn(f"比对失败（跳过本项）：{exc}")
+        return
+    for n in r["only_kb"]:
+        p0(f"向量库有、成稿目录没有（孤儿：无归档副本，误删不可恢复）：{n}")
+    for n in r["only_catalog"]:
+        warn(f"成稿目录有、向量库没有（待入库，跑 sync_report_library.py）：{n}")
+    if not r["only_kb"] and not r["only_catalog"]:
+        ok(f"{r['catalog_count']} 份成稿：目录与向量库一致")
+
+
 def write_log(client, collection: str) -> None:
     if client is None:
         print("[错误] Qdrant 不可达，无法生成台账")
@@ -318,6 +348,7 @@ def main() -> int:
     check_dead_assets()
     check_standard_kb_chunks()
     check_archive_completeness()
+    check_report_catalog_sync()
 
     print("\n=== 结论 ===")
     print(f"  P0 问题 {len(problems)} 项；告警 {len(warnings)} 项")

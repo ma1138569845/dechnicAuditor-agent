@@ -42,6 +42,21 @@ metadata:
    - **占位章回退**：无该图时，用 `seal_text`（审计机构名）生成红色圆形默认章
    - 盖章位置：封面底部居中（审计机构名称落款处）
 
+## 交付后入库（S16a，**强制收尾动作**；2026-09-21 接线）
+
+交付件定稿后，跑**一条命令**把它回灌知识库——下一份报告的"同类成稿参考"就是靠这个积累的：
+
+```bash
+python <skills>/energy-audit-core/scripts/sync_report_library.py \
+    --add "<项目>/output/交付件/<单位>能源审计报告.docx"
+```
+
+- 脚本负责：按机构类型落 `hermes/rag/report/能源审计报告/<审计类型>/<类别>/` → 入向量库
+- 自检：`sync_report_library.py --check` ——"待入库"与"孤儿"两张清单**都应为 0**
+- 边界、验收与禁令见 `energy-audit-core/references/knowledge-base-maintenance.md`
+- **不做这一步的后果**：知识库永远是旧的，写下一份报告时"同类成稿参考"查不到东西
+- 默认只做切片+向量（检索必需）；要同时生成实体/wiki 加 `--full`
+
 ## 何时使用 / 不使用
 
 - ✅ 编写任意章节正文、生成/修改 .docx、排版样式、公式、图片与表格嵌入
