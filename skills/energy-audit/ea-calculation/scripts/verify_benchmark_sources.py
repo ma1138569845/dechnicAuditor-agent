@@ -42,6 +42,28 @@ EXPECTED_TABLE = {
 }
 
 
+def _utf8_stdout() -> None:
+    """Windows 控制台编码兜底：GBK 控制台下打印 ✓/⚠️/✅ 会抛 UnicodeEncodeError。
+
+    这类崩溃发生在**成功路径的最后一行输出**，会把 exit code 变成 1，
+    让上层把"成功"判成"失败"（2026-09-21 实测：入库 / profiles 同步 / 写章契约）。
+    """
+    for stream in ("stdout", "stderr"):
+        fh = getattr(sys, stream, None)
+        if fh is None:
+            continue
+        try:
+            fh.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            try:
+                fh.reconfigure(errors="replace")                 # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+
+
+_utf8_stdout()
+
+
 def projects_root() -> str:
     return os.environ.get("HERMES_PROJECTS_ROOT") or os.path.join(
         os.path.expanduser("~"), "projects", "energy-audit"
