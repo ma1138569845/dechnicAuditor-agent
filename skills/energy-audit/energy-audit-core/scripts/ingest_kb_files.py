@@ -44,6 +44,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -74,6 +75,29 @@ LANGS = {".pdf", ".docx", ".doc", ".txt", ".md", ".xlsx", ".pptx", ".html", ".ht
 # 投递区里的"说明类"文件不是料：README / 待投递清单 / 说明 / 下划线开头的一律跳过。
 # 2026-09-20 实测：`guidelines/待投递清单.md` 被当成待入文件（--dry-run 里露出来了）。
 SKIP_NAME_PREFIX = ("readme", "待投递", "说明", "index", "_")
+
+# ── 文本层质量闸门（2026-09-21 教训：**"有文本层" ≠ "文本可用"**）──
+# 实测两份"看起来正常"的标准 PDF，文本层实际不可用：
+#   · 山东省公共建筑节能监测系统技术标准.pdf ——"信息公开浏览专用"版，
+#     136 页每页只提取到 19 个中文字符，正文是 `<=>VW#3-.` 之类乱码
+#   · 室内空气质量标准.pdf —— 正文中文被抹掉（第3页 1501 字里仅 3 个中文）
+# 判据：抽样前几页，**中文占非空白字符的比例** ≥ 阈值才放行。
+CJK_MIN_RATIO = 0.30
+CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def cjk_ratio(path: Path, pages: int = 6) -> float:
+    """抽样估"中文占比"。非 PDF 直接放行（返回 1.0）；读不了也放行，交给后续流程报错。"""
+    if path.suffix.lower() != ".pdf":
+        return 1.0
+    try:
+        import pymupdf
+        with pymupdf.open(str(path)) as doc:
+            txt = "".join(doc[i].get_text() for i in range(min(pages, doc.page_count)))
+    except Exception:  # noqa: BLE001
+        return 1.0
+    nonblank = re.sub(r"\s+", "", txt)
+    return (len(CJK_RE.findall(nonblank)) / len(nonblank)) if nonblank else 0.0
 
 
 def is_source_file(p: Path) -> bool:
@@ -158,6 +182,9 @@ def main() -> int:
                     help="只做切片+向量（检索必需），跳过实体抽取与 wiki 生成——"
                          "批量入料时用，避免逐份等 LLM 而频繁读超时；实体/wiki 可事后补跑")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-low-cjk", action="store_true",
+                    help=f"放行中文占比低于 {CJK_MIN_RATIO:.0%} 的 PDF（默认拒绝："
+                         "疑似扫描件或'浏览保护版'，文本层不可用）")
     args = ap.parse_args()
 
     # 1) 收集待入文件 → (源文件, 目标 kb)
@@ -225,6 +252,15 @@ def main() -> int:
         if h in seen and not args.reindex_only:
             print(f"   ⏭  已存在（sha256 命中 {seen[h][1]}），跳过")
             skipped.append(src.name)
+            continue
+
+        # 文本层质量闸门（见 CJK_MIN_RATIO 处的说明）
+        ratio = cjk_ratio(src)
+        if ratio < CJK_MIN_RATIO and not args.allow_low_cjk:
+            print(f"   ✗ 文本层中文占比仅 {ratio:.0%}（阈值 {CJK_MIN_RATIO:.0%}）——"
+                  "疑似扫描件或'浏览保护版'，文本层不可用，已跳过；"
+                  "确认要入请加 --allow-low-cjk")
+            failed.append(src.name)
             continue
 
         # 2) 复制到 kb 根（--reindex-only 时文件已在根目录，跳过）
