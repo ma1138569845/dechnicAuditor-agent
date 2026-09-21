@@ -119,6 +119,37 @@ def check_dir_convention() -> None:
         ok("rag/report/ 下无标准类 PDF")
 
 
+def fix_missing_payload(client, collection: str) -> None:
+    """给缺 `type` / `institution_category` 的点补字段（**非破坏**：只 set_payload）。
+
+    背景：文档摘要点由 `_embed_doc_summary` 写入，2026-09-21 之前它没写这两个字段。
+    代码已修，但**早启动的常驻进程仍带着旧代码**，可能再写出个别这样的点。
+    本开关让这类残留一条命令自愈，不必再单独写脚本。
+    """
+    if client is None:
+        print("  ⚠️ Qdrant 不可达，跳过")
+        return
+    import re as _re
+    from tools.energy_audit.institution_classifier import classify_institution
+
+    fixed = 0
+    for p in scroll_all(client, collection):
+        pl = p.payload or {}
+        if pl.get("type") and pl.get("institution_category"):
+            continue
+        name = str(pl.get("filename") or "")
+        cat, _spec = classify_institution(name)
+        patch = {}
+        if not pl.get("type"):
+            patch["type"] = "summary" if pl.get("chapter") == "文档摘要" else "text"
+        if not pl.get("institution_category"):
+            patch["institution_category"] = cat or "未分类"
+        client.set_payload(collection_name=collection, payload=patch, points=[p.id], wait=True)
+        fixed += 1
+        print(f"  ✓ 补字段 {name} → {patch}")
+    print(f"  [fix-payload] 共补 {fixed} 点")
+
+
 def check_metadata(client, collection: str) -> None:
     print("\n=== 2 元数据 schema ===")
     if client is None:
@@ -346,11 +377,16 @@ def write_log(client, collection: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="知识层资产治理检查")
     ap.add_argument("--write-log", action="store_true", help="从 Qdrant 反查生成 ingest_log.json")
+    ap.add_argument("--fix-payload", action="store_true",
+                    help="先给缺 type / institution_category 的点补字段（非破坏 set_payload）再检查")
     args = ap.parse_args()
 
     client, collection = load_qdrant()
     if args.write_log:
         write_log(client, collection or "energy_audit_reports")
+    if args.fix_payload:
+        print("=== 0 补字段（--fix-payload）===")
+        fix_missing_payload(client, collection or "energy_audit_reports")
 
     print("=" * 62)
     print(f"知识层资产治理检查   rag={RAG}")
