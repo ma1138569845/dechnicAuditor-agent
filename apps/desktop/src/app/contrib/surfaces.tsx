@@ -39,7 +39,7 @@ const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')
 const KnowledgeView = lazy(async () => ({ default: (await import('../knowledge')).KnowledgeView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const OfficeView = lazy(async () => ({ default: (await import('../office')).OfficeView }))
-const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
+const CapabilitiesView = lazy(async () => ({ default: (await import('../capabilities')).CapabilitiesView }))
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -185,7 +185,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
     <Routes>
       <Route element={chatView} index />
       <Route element={chatView} path=":sessionId" />
-      <Route element={page(<SkillsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="skills" />
+      <Route element={page(<CapabilitiesView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="capabilities" />
       <Route element={page(<KnowledgeView />)} path="knowledge" />
       <Route element={page(<KnowledgeView />)} path="knowledge/:kbId" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />

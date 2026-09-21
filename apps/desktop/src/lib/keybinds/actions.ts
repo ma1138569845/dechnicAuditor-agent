@@ -109,7 +109,7 @@ export const KEYBIND_ACTIONS: readonly KeybindActionMeta[] = [
   { id: 'nav.commandCenter', category: 'navigation', defaults: ['mod+.'] },
   { id: 'nav.settings', category: 'navigation', defaults: ['mod+,'] },
   { id: 'nav.profiles', category: 'navigation', defaults: [] },
-  { id: 'nav.skills', category: 'navigation', defaults: [] },
+  { id: 'nav.capabilities', category: 'navigation', defaults: [] },
   { id: 'nav.knowledge', category: 'navigation', defaults: [] },
   { id: 'nav.messaging', category: 'navigation', defaults: [] },
   { id: 'nav.artifacts', category: 'navigation', defaults: [] },
@@ -119,6 +119,9 @@ export const KEYBIND_ACTIONS: readonly KeybindActionMeta[] = [
 
   // ── View (layout + appearance + the shortcuts panel itself) ───────────────
   { id: 'view.toggleSidebar', category: 'view', defaults: ['mod+b'] },
+  // Expose the sidebar's mouse-only grouping control to keyboard-first users.
+  // Ships unbound so it is opt-in and cannot claim another global chord.
+  { id: 'view.cycleSidebarGrouping', category: 'view', defaults: [] },
   { id: 'view.toggleRightSidebar', category: 'view', defaults: ['mod+j'] },
   // ⌘⇧S — "s" for status bar. VS Code ships
   // `workbench.action.toggleStatusbarVisibility` unbound (it's a chord-free

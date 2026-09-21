@@ -13,12 +13,19 @@ import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { $routeTiles, closeRouteTile, type RouteTile } from '@/store/route-tiles'
 
-// FORK: keep KNOWLEDGE_ROUTE (our knowledge surface); adopt upstream's $routesVersion.
-import { $routesVersion, ARTIFACTS_ROUTE, contributedRoutes, KNOWLEDGE_ROUTE, MESSAGING_ROUTE, ROUTES_AREA, SKILLS_ROUTE } from '../routes'
+import {
+  $routesVersion,
+  ARTIFACTS_ROUTE,
+  CAPABILITIES_ROUTE,
+  contributedRoutes,
+  KNOWLEDGE_ROUTE,
+  MESSAGING_ROUTE,
+  ROUTES_AREA
+} from '../routes'
 
 import { paneMirror } from './pane-mirror'
 
-const SkillsView = lazy(async () => ({ default: (await import('../skills')).SkillsView }))
+const CapabilitiesView = lazy(async () => ({ default: (await import('../capabilities')).CapabilitiesView }))
 const KnowledgeView = lazy(async () => ({ default: (await import('../knowledge')).KnowledgeView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
@@ -28,7 +35,7 @@ const BUILTIN_PAGES: Record<string, { render: () => ReactNode; title: string }> 
   [ARTIFACTS_ROUTE]: { render: () => <ArtifactsView />, title: 'Artifacts' },
   [KNOWLEDGE_ROUTE]: { render: () => <KnowledgeView />, title: 'Knowledge' },
   [MESSAGING_ROUTE]: { render: () => <MessagingView />, title: 'Messaging' },
-  [SKILLS_ROUTE]: { render: () => <SkillsView />, title: 'Capabilities' }
+  [CAPABILITIES_ROUTE]: { render: () => <CapabilitiesView />, title: 'Capabilities' }
 }
 
 /** Humanize a route path into a tab title: `/my-atlas` → `My Atlas`. */

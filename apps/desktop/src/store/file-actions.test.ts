@@ -17,7 +17,7 @@ const downloadGatewayMediaFile = vi.mocked(media.downloadGatewayMediaFile)
 const desktopFs = await import('@/lib/desktop-fs')
 const revealDesktopPath = vi.mocked(desktopFs.revealDesktopPath)
 
-const { downloadRemoteFile, revealFile, shouldOfferRemoteFileDownload } = await import('./file-actions')
+const { downloadRemoteFile, revealFile, shouldOfferLocalReveal, shouldOfferRemoteFileDownload } = await import('./file-actions')
 
 describe('shouldOfferRemoteFileDownload', () => {
   it('is only for files on a remote backend', () => {
@@ -55,6 +55,20 @@ describe('revealFile', () => {
     expect($notifications.get()[0]?.kind).toBe('error')
     expect($notifications.get()[0]?.title).toBe('Could not reveal the file')
     expect($notifications.get()[0]?.message).toBe('Could not reveal the file')
+  })
+})
+
+describe('shouldOfferLocalReveal', () => {
+  // The OS file manager can only show what is on this computer (#115167): the
+  // focused row's backend decides; the primary's mode only when it is untagged.
+  it.each([
+    ['', false, true],
+    ['', true, false],
+    ['local', true, true],
+    ['mini', false, false],
+    [undefined, true, false]
+  ])('connection %s with primaryRemote=%s -> %s', (connectionId, primaryRemote, expected) => {
+    expect(shouldOfferLocalReveal(connectionId, primaryRemote)).toBe(expected)
   })
 })
 

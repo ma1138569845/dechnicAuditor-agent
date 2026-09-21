@@ -160,7 +160,8 @@ export async function desktopDefaultCwd(): Promise<{ branch: string; cwd: string
 
 // Reveal a path in the OS file manager (Finder / Explorer / Files). Local only.
 // Resolves to false when the bridge is absent or the main process reports the
-// path could not be revealed (e.g. the file no longer exists).
+// path could not be revealed (e.g. the file no longer exists, or a remote
+// backend's workspace is not on this computer).
 export async function revealDesktopPath(path: string): Promise<boolean> {
   const ok = await bridge().revealPath?.(path)
 

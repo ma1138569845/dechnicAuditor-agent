@@ -41,7 +41,8 @@ export function registerFsIpc({
 
   // Reveal a path in the OS file manager (Finder / Explorer / Files).
   // Missing paths must return false — `showItemInFolder` silently no-ops on
-  // them, and the renderer treats `true` as success (no error surfaced).
+  // them (and a remote backend's paths are missing here by construction), and
+  // the renderer treats `true` as success (no error surfaced).
   ipcMain.handle('hermes:fs:reveal', async (_event, targetPath) =>
     revealPathForIpc(targetPath, {
       dirname: value => path.dirname(value),

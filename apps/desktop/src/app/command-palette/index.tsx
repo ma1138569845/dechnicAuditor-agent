@@ -90,10 +90,11 @@ import { luminance } from '@/themes/color'
 import { type ThemeMode, useTheme } from '@/themes/context'
 import { isUserTheme, resolveTheme } from '@/themes/user-themes'
 
-import { openSession, openSessionIntentFromModifiers } from '../open-session'
+import { openSessionFromPicker, openSessionIntentFromModifiers } from '../open-session'
 import {
   AGENTS_ROUTE,
   ARTIFACTS_ROUTE,
+  CAPABILITIES_ROUTE,
   COMMAND_CENTER_ROUTE,
   CRON_ROUTE,
   KNOWLEDGE_ROUTE,
@@ -102,7 +103,6 @@ import {
   NEW_CHAT_ROUTE,
   PROFILES_ROUTE,
   SETTINGS_ROUTE,
-  SKILLS_ROUTE,
   STARMAP_ROUTE
 } from '../routes'
 import { SECTIONS } from '../settings/constants'
@@ -693,7 +693,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
   // sidebar, minus the sidebar's licence to spend main.
   const goSession = useCallback(
     (sessionId: string) => (event?: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }) => {
-      openSession(sessionId, navigate, openSessionIntentFromModifiers(event, 'stack'))
+      openSessionFromPicker(sessionId, navigate, openSessionIntentFromModifiers(event, 'stack'))
     },
     [navigate]
   )
@@ -814,12 +814,12 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             run: go(SETTINGS_ROUTE)
           },
           {
-            action: 'nav.skills',
+            action: 'nav.capabilities',
             icon: Wrench,
             id: 'nav-skills',
             keywords: ['skills', 'tools', 'toolsets', 'mcp', 'capabilities'],
-            label: cc.nav.skills.title,
-            run: go(SKILLS_ROUTE)
+            label: cc.nav.capabilities.title,
+            run: go(CAPABILITIES_ROUTE)
           },
           {
             action: 'nav.knowledge',
@@ -1087,7 +1087,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     // Deep-link straight to a Capabilities sub-tab. The root "Go to" entry only
     // lands on the top-level Skills view; typing "mcp"/"tools"/"skills" should
     // jump to the exact tab (matches the "not just the top lvl" ask).
-    const capLabel = t.commandCenter.nav.skills.title
+    const capLabel = t.commandCenter.nav.capabilities.title
 
     result.push({
       heading: capLabel,
@@ -1097,28 +1097,28 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           id: 'cap-skills',
           keywords: ['skills', 'capabilities'],
           label: `${capLabel}: ${t.skills.tabSkills}`,
-          run: go(`${SKILLS_ROUTE}?tab=skills`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=skills`)
         },
         {
           icon: SlidersHorizontal,
           id: 'cap-toolsets',
           keywords: ['tools', 'toolsets', 'capabilities'],
           label: `${capLabel}: ${t.skills.tabToolsets}`,
-          run: go(`${SKILLS_ROUTE}?tab=toolsets`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=toolsets`)
         },
         {
           icon: Layers3,
           id: 'cap-mcp',
           keywords: ['mcp', 'servers', 'tools', 'capabilities', 'model context protocol'],
           label: `${capLabel}: ${t.skills.tabMcp}`,
-          run: go(`${SKILLS_ROUTE}?tab=mcp`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=mcp`)
         },
         {
           icon: Package,
           id: 'cap-plugins',
           keywords: ['plugins', 'extensions', 'desktop plugins', 'agent plugins', 'catalog', 'addon', 'add-on'],
           label: `${capLabel}: ${t.skills.tabPlugins}`,
-          run: go(`${SKILLS_ROUTE}?tab=plugins`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=plugins`)
         }
       ]
     })
@@ -1190,7 +1190,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
       })
     }
 
-    const fieldItems = [...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
+    const fieldItems = [...settingsCatalog.subpageEntries, ...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
 
     if (fieldItems.length > 0) {
       result.push({ heading: t.commandCenter.settingsFields, items: fieldItems })
@@ -1205,7 +1205,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           id: `sp-${entry.id}`,
           keywords: [entry.context, entry.description ?? '', ...entry.keywords],
           label: entry.label,
-          run: go(`${SKILLS_ROUTE}?tab=plugins&plugin=${encodeURIComponent(entry.plugin)}`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=plugins&plugin=${encodeURIComponent(entry.plugin)}`)
         }))
       })
     }
@@ -1225,7 +1225,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           id: `mcp-${name}`,
           keywords: ['mcp', 'server', 'tool'],
           label: name,
-          run: go(`${SKILLS_ROUTE}?tab=mcp&server=${encodeURIComponent(name)}`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=mcp&server=${encodeURIComponent(name)}`)
         }))
       })
     }
@@ -1312,7 +1312,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     if (search.trim()) {
       result.push({
         heading: cc.settingsFields,
-        items: [...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
+        items: [...settingsCatalog.subpageEntries, ...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
       })
 
       if (settingsCatalog.credentialEntries.length > 0) {
