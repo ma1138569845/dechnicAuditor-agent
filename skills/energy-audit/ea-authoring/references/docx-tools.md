@@ -179,7 +179,10 @@ officecli set report.docx /header/p[1] --prop pbdr.bottom=single\;6\;000000
 officecli set report.docx /footer/default --prop text="" --prop font=宋体 --prop size=10.5
 officecli add report.docx /footer/default --type pageNumber
 
-## 页码从正文开始（封面无页码）
+## 页码从正文开始（前置页无页码）
+## 2026-09-22 更新：多页前置（封面/信息表/目录）请用「分节」方案——前置节不引用页脚、
+## 正文节页脚 PAGE + w:pgNumType w:start="1"（脚本装配主链 build_energy_audit_docx.py 已实现）。
+## 下方 titlePg 配方仅清「首页」页眉（单页封面场景），前置多页时不足以清干净：
 officecli set report.docx /sectPr --prop titlePg=true
 ```
 

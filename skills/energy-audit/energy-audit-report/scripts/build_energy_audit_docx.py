@@ -4,7 +4,7 @@
 一次构建报告 docx 的固定版式 + 章节正文 + 附录 + 页眉/水印/页脚：
   封面（3空 + 单位22pt + 报告名26pt + 8空 + 机构/日期 + 分页）
   三张信息表（能源审计机构 / 审计组 / 配合人员，数据源 data.json）
-  目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-3"，其后不插分页）
+  目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-3"，其后插「下一页」分节符（前置节｜正文节分界）
   第 1~8 章渲染（chapter_md/chN.md → Heading 样式 + 正文 + 表格 + 图 + OMML 公式）
   附录渲染（chapter_md/appendix.md → '附录：'总页 + 附表 + 附录说明文字）
 
@@ -22,12 +22,14 @@ T3 附录渲染特例：
   - '附录N：…' 清单行：1.5 行距、无缩进、无对齐覆盖
   - '附表X-Y …' 行：居中 12pt 加粗表题；其余同章节（正文/表格/说明段）
 
-T4 页眉/水印/页脚（构建内直写，对齐 45 页终稿）：
-  - 页眉：单位全称 + 两空格 + "能源审计报告"，右对齐宋体 10.5pt + 底边线（pBdr）
-  - 水印：EAWatermark DrawingML（behindDoc=1、页面居中）——assets/header_template.xml
-  - 页脚：— PAGE —（居中 10.5pt）——assets/footer_template.xml
+T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页脚按节装配）：
+  - 分节：目录后插「下一页」分节符——前置节（封面/信息表/目录）｜正文节（第1~8章+附录）
+  - 前置节页眉：仅 EAWatermark 水印（无文字、无边框）——assets/header_template_prebody.xml
+  - 正文节页眉：单位全称 + 两空格 + "能源审计报告"，右对齐宋体 10.5pt + 底边线 + 水印——assets/header_template.xml
+  - 正文节页脚：居中 PAGE 纯数字（从 1 重起，w:pgNumType start=1）——assets/footer_template.xml
+  - 前置节无页脚引用（封面/信息表/目录不显示页眉文字与页脚）；水印按规范覆盖全部页面
   - settings.xml 写 updateFields（打开提示更新域）；模板单位名以 {{UNIT}} 占位注入。
-  模板来源：烟台法院 45 页终稿（2026-09 验收版），随技能资产维护。
+  模板来源：烟台法院 45 页终稿（2026-09 验收版；前置页排除为 2026-09-22 新口径，有意偏离终稿）。
 
 后续阶段（T5 收尾 PDF）在此骨架上叠加。
 
@@ -47,6 +49,7 @@ import sys
 import zipfile
 
 from docx import Document
+from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
@@ -201,12 +204,13 @@ def _build_toc_page(doc):
 
 
 def _setup_page(doc):
-    s = doc.sections[0]
-    s.page_width, s.page_height = Cm(21.0), Cm(29.7)
-    s.top_margin = s.bottom_margin = Cm(2.54)
-    s.left_margin = s.right_margin = Cm(3.17)
-    s.header_distance = Cm(1.5)
-    s.footer_distance = Cm(1.75)
+    """页面参数按节应用（幂等；分节后对全部节再跑一次）。"""
+    for s in doc.sections:
+        s.page_width, s.page_height = Cm(21.0), Cm(29.7)
+        s.top_margin = s.bottom_margin = Cm(2.54)
+        s.left_margin = s.right_margin = Cm(3.17)
+        s.header_distance = Cm(1.5)
+        s.footer_distance = Cm(1.75)
 
 
 def _setup_styles(doc):
@@ -271,35 +275,111 @@ def _set_update_fields(doc):
         el.append(uf)
 
 
+def _set_pg_num_start(doc, start=1):
+    """正文节（最后一节）页码从 start 重起：插入 <w:pgNumType w:start="1"/>（按 CT_SectPr 顺序）。"""
+    sectPr = doc.sections[-1]._sectPr
+    for el in sectPr.findall(qn("w:pgNumType")):
+        sectPr.remove(el)
+    pg = OxmlElement("w:pgNumType")
+    pg.set(qn("w:start"), str(start))
+    sectPr.insert_element_before(
+        pg, "w:cols", "w:formProt", "w:vAlign", "w:noEndnote", "w:titlePg",
+        "w:textDirection", "w:bidi", "w:rtlGutter", "w:docGrid",
+        "w:printerSettings", "w:sectPrChange")
+
+
 def _ensure_hf_parts(doc):
-    """先创建页眉/页脚部件（内容由 _inject_header_footer 按模板 zip 级注入）。"""
-    sec = doc.sections[0]
-    for hf in (sec.header, sec.footer):
-        hf.is_linked_to_previous = False
+    """分节创建页眉/页脚部件（内容由 _inject_header_footer 按节映射 zip 级注入）。
+
+    前置节：仅页眉部件（将注入「仅水印」模板）；不建页脚引用（前置页无页脚）。
+    正文节：页眉 + 页脚。调用时机必须在 add_section 之后（否则创建会被节克隆串件）。
+    """
+    if len(doc.sections) != 2:
+        print("WARN: 期望 2 节（前置/正文），实际 %d 节" % len(doc.sections))
+    pre, body = doc.sections[0], doc.sections[-1]
+    pre.header.is_linked_to_previous = False
+    body.header.is_linked_to_previous = False
+    body.footer.is_linked_to_previous = False
+
+
+def _hf_target_map(z):
+    """解析每节的页眉/页脚部件名：sectPr 引用 → r:id → rels → Target。
+
+    返回按 document.xml 中 sectPr 出现顺序的列表；节序 = 前置节在前、正文节（body 级）在后。
+    规避 Python 库保存时 header1/header2 部件序号分配顺序的不可依赖性。
+    """
+    doc = parse_xml(z.read("word/document.xml"))
+    rid_map = {}
+    try:
+        rels = parse_xml(z.read("word/_rels/document.xml.rels"))
+    except KeyError:
+        rels = None
+    if rels is not None:
+        for rel in rels:
+            rid_map[rel.get("Id")] = rel.get("Target")
+    out = []
+    for sp in doc.findall(".//" + qn("w:sectPr")):
+        entry = {"header": [], "footer": []}
+        for tag, key in ((qn("w:headerReference"), "header"),
+                         (qn("w:footerReference"), "footer")):
+            for ref in sp.findall(tag):
+                tgt = (rid_map.get(ref.get(qn("r:id"))) or "").lstrip("/")
+                if tgt and not tgt.startswith("word/"):
+                    tgt = "word/" + tgt
+                if tgt:
+                    entry[key].append(tgt)
+        out.append(entry)
+    return out
 
 
 def _inject_header_footer(out_path, unit):
-    """把 assets 模板（{{UNIT}} 替换）注入 headerN/footerN 部件（对齐 45 页终稿）。"""
+    """按节映射注入页眉/页脚（2026-09-22 分节版）。
+
+    - 前置节（封面/信息表/目录）：页眉 = 仅水印（header_template_prebody.xml）；无页脚。
+    - 正文节（第1~8章+附录）：页眉 = 单位名+报告名+水印（header_template.xml）；
+      页脚 = 居中 PAGE 纯数字（footer_template.xml）。
+    """
     hdr_path = os.path.join(_ASSETS_DIR, "header_template.xml")
+    hdr_pre_path = os.path.join(_ASSETS_DIR, "header_template_prebody.xml")
     ftr_path = os.path.join(_ASSETS_DIR, "footer_template.xml")
-    if not (os.path.exists(hdr_path) and os.path.exists(ftr_path)):
-        print("WARN: 页眉/页脚模板缺失，跳过注入")
-        return
+    for p in (hdr_path, hdr_pre_path, ftr_path):
+        if not os.path.exists(p):
+            print("WARN: 模板缺失 %s，跳过页眉页脚注入" % p)
+            return
     with open(hdr_path, encoding="utf-8") as f:
         hdr = f.read().replace("{{UNIT}}", unit)
+    with open(hdr_pre_path, encoding="utf-8") as f:
+        hdr_pre = f.read().replace("{{UNIT}}", unit)
     with open(ftr_path, encoding="utf-8") as f:
         ftr = f.read()
     out_path = os.fspath(out_path)
     tmp = out_path + ".tmp"
-    with zipfile.ZipFile(out_path) as src, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as dst:
-        for item in src.infolist():
-            fn = item.filename
-            if re.fullmatch(r"word/header\d*\.xml", fn):
-                dst.writestr(item, hdr.encode("utf-8"))
-            elif re.fullmatch(r"word/footer\d*\.xml", fn):
-                dst.writestr(item, ftr.encode("utf-8"))
-            else:
-                dst.writestr(item, src.read(fn))
+    with zipfile.ZipFile(out_path) as src:
+        sec_maps = _hf_target_map(src)
+        if len(sec_maps) != 2:
+            print("WARN: 文档节数=%d（期望 2），按首节/末节处理" % len(sec_maps))
+        pre_map, body_map = sec_maps[0], sec_maps[-1]
+        if pre_map["footer"]:
+            print("WARN: 前置节存在页脚引用 %s（应为空）" % pre_map["footer"])
+        override = {}
+        for name in pre_map["header"]:
+            override[name] = hdr_pre
+        for name in body_map["header"]:
+            override[name] = hdr
+        for name in body_map["footer"]:
+            override[name] = ftr
+        if len(pre_map["header"]) != 1 or len(body_map["header"]) != 1 \
+                or len(body_map["footer"]) != 1 or pre_map["footer"]:
+            print("WARN: 节引用异常（前置 header=%d footer=%d；正文 header=%d footer=%d）"
+                  % (len(pre_map["header"]), len(pre_map["footer"]),
+                     len(body_map["header"]), len(body_map["footer"])))
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as dst:
+            for item in src.infolist():
+                fn = item.filename
+                if fn in override:
+                    dst.writestr(item, override[fn].encode("utf-8"))
+                else:
+                    dst.writestr(item, src.read(fn))
     os.replace(tmp, out_path)
 
 
@@ -578,10 +658,11 @@ def build(project_dir, out_path=None):
     _setup_styles(doc)
     _setup_bullet_numbering(doc)
     _set_update_fields(doc)
-    _ensure_hf_parts(doc)
     _build_cover(doc, unit, org, date_text)
     _build_info_page(doc, *_info_rows(base, data))
     _build_toc_page(doc)
+    doc.add_section(WD_SECTION.NEW_PAGE)  # 2026-09-22：前置节（封面/信息表/目录）｜正文节（1~8章+附录）
+    _setup_page(doc)  # 幂等：分节后两节统一页面参数
     ctx = {
         "project_dir": project_dir,
         "omml": _load_omml(),
@@ -589,6 +670,8 @@ def build(project_dir, out_path=None):
     }
     _render_chapters(doc, project_dir, ctx)
     _render_appendix(doc, project_dir, ctx)
+    _set_pg_num_start(doc)   # 正文节页码从 1 重起
+    _ensure_hf_parts(doc)    # 分节后创建：前置节仅页眉、正文节页眉+页脚
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     doc.save(out_path)
     _inject_header_footer(out_path, unit)

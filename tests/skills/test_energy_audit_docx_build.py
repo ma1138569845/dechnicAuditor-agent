@@ -8,8 +8,8 @@
 章表 + 表题、OMML 公式注入（[FORMULAn] 三段式）、图片（清单匹配）+ 图注、子标题。
 覆盖 T3：'附录：' H1（12pt 不加粗左对齐）、附录清单行（1.5 行距无缩进）、
 H2 附录标题、附表题（居中加粗）、附录表格。
-覆盖 T4：页眉（单位名+报告名+pBdr）、水印（EAWatermark/behindDoc、无 textpath）、
-页脚（— PAGE —）、settings updateFields（zip 级校验）。
+覆盖 T4：分节（2 节：前置/正文）、页眉按节（前置=仅水印，无文字/边框；正文=单位名+报告名+pBdr+水印）、
+页脚（纯数字 PAGE、无「—」）、正文节 pgNumType start=1、settings updateFields（zip 级校验）。
 覆盖 T5：收尾器（finalize_energy_audit_pdf.py）--help 冒烟（COM 路径不在单元测试内）。
 """
 from __future__ import annotations
@@ -137,7 +137,8 @@ def built(tmp_path_factory):
 
 def test_cover_structure(built):
     paras = built.paragraphs
-    # 3 空行 + 单位(22pt bold) + 报告名(26pt bold) + 期间(14pt)
+    # 3 空行 + 单位(22pt bold) + 报告名(26pt bold) + 8 空行 + 机构(14pt) + 日期 + 分页
+    # （2026-09-22 定案：封面不再有期间副标题行；机构名不加前缀）
     assert all(not p.text.strip() for p in paras[0:3])
     p_unit = paras[3]
     assert p_unit.text == UNIT
@@ -146,15 +147,13 @@ def test_cover_structure(built):
     p_title = paras[4]
     assert p_title.text == "能源审计报告"
     assert p_title.runs[0].font.size.pt == 26 and p_title.runs[0].font.bold is True
-    p_period = paras[5]
-    assert p_period.text == "（审计期间：2023年—2025年）"
-    assert p_period.runs[0].font.size.pt == 14 and not p_period.runs[0].font.bold
     # 8 空行 + 机构 + 日期
-    assert all(not p.text.strip() for p in paras[6:14])
-    assert paras[14].text == f"审计机构：{ORG}"
-    assert paras[15].text == "2026年1月"
+    assert all(not p.text.strip() for p in paras[5:13])
+    assert paras[13].text == ORG
+    assert paras[13].runs[0].font.size.pt == 14
+    assert paras[14].text == "2026年1月"
     # 分页符
-    brs = [b.get(qn("w:type")) for b in paras[16]._p.findall(".//" + qn("w:br"))]
+    brs = [b.get(qn("w:type")) for b in paras[15]._p.findall(".//" + qn("w:br"))]
     assert brs == ["page"]
     # 封面段落字体：中文宋体
     rf = paras[3].runs[0]._element.find(qn("w:rPr")).find(qn("w:rFonts"))
@@ -209,20 +208,28 @@ def test_toc_page_and_field(built):
     assert toc_title.alignment == WD_ALIGN_PARAGRAPH.CENTER
     xml = built.element.body.xml
     assert 'TOC \\o "1-3"' in xml
-    # 目录后不得有分页符（第1章随目录后顺延，与 45 页终稿一致）
+    # 目录后为「下一页」分节符（前置节｜正文节分界，2026-09-22 定）；不得再有普通分页符
+    assert len(built.sections) == 2
     toc_i = paras.index(toc_title)
+
+    def _has_sectpr(p):
+        ppr = p._p.find(qn("w:pPr"))
+        return ppr is not None and ppr.find(qn("w:sectPr")) is not None
+
+    assert len([p for p in paras[toc_i:] if _has_sectpr(p)]) == 1
     for p in paras[toc_i:]:
         brs = [b.get(qn("w:type")) for b in p._p.findall(".//" + qn("w:br"))]
         assert "page" not in brs
 
 
 def test_page_setup_and_heading_styles(built):
-    s = built.sections[0]
-    assert (round(s.page_width.cm, 2), round(s.page_height.cm, 2)) == (21.0, 29.7)
-    assert round(s.top_margin.cm, 2) == 2.54 == round(s.bottom_margin.cm, 2)
-    assert round(s.left_margin.cm, 2) == 3.17 == round(s.right_margin.cm, 2)
-    assert round(s.header_distance.cm, 2) == 1.5
-    assert round(s.footer_distance.cm, 2) == 1.75
+    assert len(built.sections) == 2
+    for s in built.sections:
+        assert (round(s.page_width.cm, 2), round(s.page_height.cm, 2)) == (21.0, 29.7)
+        assert round(s.top_margin.cm, 2) == 2.54 == round(s.bottom_margin.cm, 2)
+        assert round(s.left_margin.cm, 2) == 3.17 == round(s.right_margin.cm, 2)
+        assert round(s.header_distance.cm, 2) == 1.5
+        assert round(s.footer_distance.cm, 2) == 1.75
     for lv, size in ((1, 15), (2, 14), (3, 12)):
         st = built.styles[f"Heading {lv}"]
         assert st.font.size.pt == size and st.font.bold is True
@@ -353,22 +360,58 @@ def test_appendix(built):
 # ---------------------------------------------------------------- T4
 
 def test_header_footer_watermark_and_updatefields(built):
+    import xml.etree.ElementTree as ET
+    WX = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    RX = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+
+    def _refs(sp, tag):
+        return ["word/" + rid[r.get(RX + "id")] for r in sp.findall(WX + tag)]
+
     with zipfile.ZipFile(built.out) as z:
-        names = z.namelist()
-        hdr = next(n for n in names if re.fullmatch(r"word/header\d*\.xml", n))
-        ftr = next(n for n in names if re.fullmatch(r"word/footer\d*\.xml", n))
-        h = z.read(hdr).decode("utf-8")
-        f = z.read(ftr).decode("utf-8")
+        docxml = z.read("word/document.xml")
+        relsx = z.read("word/_rels/document.xml.rels")
         s = z.read("word/settings.xml").decode("utf-8")
-    # 页眉：单位名 + 报告名 + 底边线 + 水印（DrawingML，禁 textpath）
+    root = ET.fromstring(docxml)
+    rid = {rel.get("Id"): rel.get("Target") for rel in ET.fromstring(relsx)}
+    sectprs = root.findall(".//%ssectPr" % WX)
+    assert len(sectprs) == 2  # 前置节 + 正文节
+    pre_h, pre_f = _refs(sectprs[0], "headerReference"), _refs(sectprs[0], "footerReference")
+    body_h, body_f = _refs(sectprs[1], "headerReference"), _refs(sectprs[1], "footerReference")
+    assert len(pre_h) == 1 and pre_f == []   # 前置节：仅页眉（仅水印）、无页脚
+    assert len(body_h) == 1 and len(body_f) == 1
+    with zipfile.ZipFile(built.out) as z:
+        h_pre = z.read(pre_h[0]).decode("utf-8")
+        h = z.read(body_h[0]).decode("utf-8")
+        f = z.read(body_f[0]).decode("utf-8")
+    # 前置节页眉：仅水印（无文字、无边框、无 textpath）
+    assert "EAWatermark" in h_pre and 'behindDoc="1"' in h_pre
+    assert UNIT in h_pre
+    assert "能源审计报告" not in h_pre and "pBdr" not in h_pre
+    assert "textpath" not in h_pre
+    # 正文节页眉：单位名 + 报告名 + 底边线 + 水印（DrawingML，禁 textpath）
     assert UNIT in h and "能源审计报告" in h
     assert "pBdr" in h
     assert "EAWatermark" in h and 'behindDoc="1"' in h
     assert "textpath" not in h
-    # 页脚：— PAGE — 域
-    assert "PAGE" in f and "—" in f and "MERGEORMAT" not in f
+    # 正文节页脚：居中 PAGE 纯数字（无破折号）
+    assert "PAGE" in f and "—" not in f
+    # 正文节页码从 1 重起（pgNumType start=1）
+    pg = sectprs[1].find(WX + "pgNumType")
+    assert pg is not None and pg.get(WX + "start") == "1"
     # updateFields
     assert "updateFields" in s
+
+
+def test_section_split_prebody_structure(built):
+    """分节结构（2026-09-22 增补）：分节符在目录后、第1章前，且全篇仅此一处节界。"""
+    paras = built.paragraphs
+    ti = next(i for i, p in enumerate(paras) if p.text == "目  录")
+    ci = next(i for i, p in enumerate(paras) if p.text.startswith("第1章"))
+    sect_i = [i for i, p in enumerate(paras)
+              if p._p.find(qn("w:pPr")) is not None
+              and p._p.find(qn("w:pPr")).find(qn("w:sectPr")) is not None]
+    assert len(sect_i) == 1
+    assert ti < sect_i[0] < ci
 
 
 # ---------------------------------------------------------------- T5

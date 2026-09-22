@@ -21,7 +21,7 @@ python skills/energy-audit/energy-audit-report/scripts/build_energy_audit_docx.p
 python skills/energy-audit/energy-audit-report/scripts/finalize_energy_audit_pdf.py \
     --project-dir <项目目录> [--no-seal] [--seal-text 审计机构名]
 
-## ③ 交付断言（每份必跑；docx 级 10 项硬检查 + PDF 级度量）
+## ③ 交付断言（每份必跑；docx 级 15 项硬检查 + PDF 级 2 项：前置页清洁 / 页脚序列）
 python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
     <报告.docx> [--pdf <报告.pdf>] [--expect pages=45]
 ```
@@ -44,9 +44,9 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 
 - 封面：3 空行 + 单位 22pt + 报告名 26pt + 8 空行 + 机构名/日期 + 分页（2026-09-22 定：移除原「审计期间」副标题行；机构名直接列示、不加「审计机构：」前缀；此前装配的历史报告不含回改）；
 - 三张信息表（机构/审计组/配合人员）；
-- 目录页：'目  录'（无标题样式防自收录）+ TOC 域 `\o "1-3"`；**其后不插分页**（第1章同页顺延，复刻终稿）；
+- 目录页：'目  录'（无标题样式防自收录）+ TOC 域 `\o "1-3"`；**其后插「下一页」分节符**（前置节｜正文节分界；第1章从新页开始——2026-09-22 定，原「同页顺延」废止）；
 - 章节：H1 15pt 居中 / H2 14pt / H3 12pt；正文 1.5 行距 + 两端对齐 + 首行缩进 2 字符（firstLineChars=200）；表 Table Grid、12pt 居中、行高 1.01cm；图 12cm 独立居中段 + 图注段；公式三段式（按式→OMML 居中段→计算）；项目符号 Wingdings 圆点；
-- 页眉（单位全称 + 两空格 + 能源审计报告，右对齐宋体 10.5pt + pBdr 底边线 + EAWatermark 水印 behindDoc）/ 页脚（— PAGE —）/ settings updateFields；
+- 页眉/页脚按节（2026-09-22 定，前置页无页眉页脚）：**前置节**（封面/信息表/目录）页眉=仅 EAWatermark 水印（无文字、无边框）、无页脚；**正文节**页眉=单位全称 + 两空格 + 能源审计报告（右对齐宋体 10.5pt + pBdr 底边线 + EAWatermark 水印 behindDoc）、页脚=居中 PAGE 纯数字（从 1 起，`w:pgNumType w:start="1"`）；settings updateFields；
 - 附录：'附录：' 总页（H1 样式、12pt 非粗、左对齐）+ 清单行（1.5 行距无缩进）+ H2 附录标题 + 附表题（居中加粗）+ 表格。
 
 ### 收尾（Word COM）要点
@@ -62,18 +62,20 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 2. 表列宽：脚本 = 全幅均分（8312 twips）；终稿 = 导入链自然宽（3280~8340 不等）。行数/行高/单元格格式一致。
 3. Word 收尾按字体脚本边界**拆分 run**（渲染不变）：对收尾后 docx 的文本正则必须按段落拼接 `w:t` 后再匹配（断言器图注度量已按此实现）。
 4. 目录占位文本"（打开文档后目录将自动更新）"由收尾刷新为缓存条目；断言器区分"未缓存占位（合法）"与"自收录错误"。
+5. 页眉页脚按节装配（2026-09-22）：前置节（封面/信息表/目录）无页眉文字、无页脚；正文节页码从 1 重起——与 45 页终稿在该点上有意不同（对齐平台基准件与格式规范）。
 
 ### 模板资产（随技能维护）
 
 | 资产 | 来源 | 用途 |
 |---|---|---|
-| `assets/header_template.xml` | 烟台法院 45 页终稿 header（单位名→`{{UNIT}}` 占位、去 pStyle 引用） | 页眉文字 + 水印注入（zip 级替换 headerN.xml） |
-| `assets/footer_template.xml` | 同上 footer（— PAGE —） | 页脚注入 |
+| `assets/header_template.xml` | 烟台法院 45 页终稿 header（单位名→`{{UNIT}}` 占位、去 pStyle 引用） | 正文节页眉注入：文字 + 水印（zip 级替换） |
+| `assets/header_template_prebody.xml` | header_template.xml 裁去「文字段+边框」仅存水印（2026-09-22） | 前置节页眉注入（仅水印；zip 级替换） |
+| `assets/footer_template.xml` | 同上 footer（PAGE 域；2026-09-22 去破折号=纯数字） | 正文节页脚注入 |
 | `assets/omml_formulas.json` | R7 终稿提取的 5 个已验证 OMML | `[FORMULAn]` 占位行注入 |
 
 ### 验证
 
-- 单元：`pytest tests/skills/test_energy_audit_docx_build.py -q`（17 项：结构/样式/公式/图/附录/页眉/收尾 --help/缺键告警/变体注入）；
+- 单元：`pytest tests/skills/test_energy_audit_docx_build.py -q`（18 项：结构/样式/公式/图/附录/页眉分节/收尾 --help/缺键告警/变体注入）；
 - E2E：法院项目全量重跑，对照 45 页终稿（文本 diff=0、断言全绿、耗时记录）；
 - 交付：每份必跑断言器；数值断言仍走 `tools/energy_audit/report_qa.py`（口径不变）。
 
