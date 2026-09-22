@@ -136,6 +136,26 @@ def _official_auditor_org(pg, brand: str = '德诚') -> dict:
 _MEDICAL_SPECIFIC_HINTS = ('医院', '卫生院', '妇幼', '保健', '疗养', '诊所', '卫生服务')
 
 
+def _people_parts_warnings(staff_parts: dict) -> list:
+    """用能人数四要素的合理性告警（**只告警、不改值**，交人核）。
+
+    缘起（2026-09-22 实测）：山东省立医院东院区的 scene 四要素是 11/11/11/11
+    （明显是占位/演示数据），照口径求和会得出"用能人数 44 人"——大型医院写 44 人，
+    人均综合能耗会荒谬爆表。按"可疑就显式告警、不静默降级"的原则：
+    值照实落盘（可审计），同时把疑点写进 `missing` 提醒核实。
+    """
+    keys = ('work_staff', 'logistics_staff', 'clinic_num', 'bed_num')
+    vals = [int((staff_parts or {}).get(k) or 0) for k in keys]
+    nz = [v for v in vals if v > 0]
+    warns = []
+    if len(nz) >= 3 and len(set(nz)) == 1:
+        warns.append(f"用能人数要素取值完全相同（各 {nz[0]}），疑似占位/演示数据，"
+                     f"请核实 ts_institution_scene 的 work_staff/logistics_staff/clinic_num/bed_num")
+    if vals[3] and sum(vals) < vals[3]:
+        warns.append("用能人数合计小于床位数，口径异常，请核实")
+    return warns
+
+
 def _pg_people_count(pg_result: dict, institution_category: str = '',
                      specific_type: str = ''):
     """PG 侧的「用能人数」口径（2026-09-22 用户确认）。
@@ -736,6 +756,8 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         }
         if any(staff_parts.values()):
             result['found']['staff_parts'] = staff_parts
+        # 合理性告警（只告警不改值）：四要素全等 / 合计小于床位数 → 写 missing 提醒核实
+        result['missing'].extend(_people_parts_warnings(staff_parts))
         if scene.get('work_staff'):
             result['found']['people_count'] = scene.get('work_staff')
         # 床位（2026-09-22 新增）：ts_institution_scene.bed_num 此前**整条链没人读**——
