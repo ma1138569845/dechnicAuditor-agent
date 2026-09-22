@@ -177,7 +177,7 @@ def _build_cover(doc, unit, org, date_text):
             _para(doc, text, size=size, bold=bold, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=1.5, space_before=0, space_after=0)
     _spacers(doc, 8)
-    for text in (f"审计机构：{org}", date_text):
+    for text in (org, date_text):
         if text:
             _para(doc, text, size=14, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=1.5, space_before=0, space_after=0)
