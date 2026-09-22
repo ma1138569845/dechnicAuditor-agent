@@ -102,7 +102,7 @@ python <skills>/energy-audit-core/scripts/verify_knowledge_assets.py
 |---|---|
 | 报告库 `audit_type` 恒为"公共机构" | **已修**：`energy_audit_importer.infer_audit_type_from_name()` 按文件名保守判类型（只在高置信词命中时改判，其余回退公共机构），并把已有 38 点回填（永锋纺织 → 工业企业；分布变为 公共机构 743 / 工业企业 37）。**根治仍建议**入库保留相对子目录，或加显式 `--audit-type` |
 | 投递区入库后留重复件 | **已加 `--move`**（入库+归档成功后清掉投递区原件；与 `--no-archive` 同用时拒绝删除，避免只剩库内一份） |
-| `_deploy/` 回流备份目录 | **已清理**（2.42 MB）；清理前把 163+6 个文件的清单与 sha256 登记到 `_deploy/backport_backup_manifest.md` |
+| `_deploy/` 回流备份目录 | **已清理**（2.42 MB）。清单与 sha256 原登记在 `_deploy/backport_backup_manifest.md`（18,665 B，sha256 `218C9408…0614C6`）；**该文件已于 2026-09-22 删除**——它的内容保留在镜像 git 库的**首次提交 `1a30ad0`** 里（`git -C <镜像> show 1a30ad0:_deploy/backport_backup_manifest.md` 可完整取回），运行期不再需要 |
 
 ### 维持现状（已尽力找，公开渠道无更干净版本）
 

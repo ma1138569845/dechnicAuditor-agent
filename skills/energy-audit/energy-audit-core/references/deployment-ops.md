@@ -59,6 +59,15 @@
 > 反过来（repo 侧被改、镜像落后）→ 跑 `deploy_ea_skills.py --backport --yes` 回流，
 > 再回到正常链路。**不要在 repo 侧直接改技能**，否则镜像与 repo 立刻分叉。
 
+> **镜像已纳入 git（2026-09-22 起）**：`repo/` 目录本身是独立 git 库（分支 `main`，**纯本地、无远端**）。
+> 此前镜像是"不在任何 VCS 内"的状态——出现并行写入者后，改完未发布就出事故**没有 diff 可回滚**
+> （只能靠发布到 D 盘 repo 的那一跳留痕）。现行标准四步：
+> **改镜像 → 在镜像里 commit → 跑 `deploy_ea_skills.py` → 在 D 盘 repo commit（必要时 push）**。
+> 镜像库的 `.gitignore` 有意排除 `__pycache__/`、`*.pyc`、`_deploy/last_deploy.json`（每次发布重写的机器状态）；
+> 位于 `repo/` 之外的 `_changes/`（草稿区：备份与临时产物）、`profiles/`（sync 生成物）、
+> `_sandbox_*/`、`_snapshot_原文/`、`_包外附件/` **均不在**该库内。
+> 取回历史里的已删文件：`git -C <镜像> show <commit>:<path>`（例：`1a30ad0:_deploy/backport_backup_manifest.md`）。
+
 > **背景（2026-09-20 事故）**：此前用 `robocopy /MIR` 把技能包镜像**整体**覆盖到
 > repo `skills/energy-audit`，抹掉了目标侧未提交的文件改动，git 层面无法恢复。
 > 同日还发现 repo 有**第二个写入者**（另一会话在同分支连续提交），
