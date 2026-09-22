@@ -29,8 +29,8 @@ metadata:
 
 ## Prerequisites
 
-- python-docx 在本机 **anaconda** python（`D:/develop/anaconda3/python.exe`）；项目 `.venv` 的 python 无 pip、无 python-docx（`pip`→3.13 anaconda，`python`→3.11 项目venv）。运行 docx 脚本一律用 anaconda 解释器。
-- 转换脚本：`_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（本技能自带，通用化参数）
+- 解释器：**不要写死任何个人解释器绝对路径**（历史文档曾写死 `D:/develop/anaconda3/python.exe`）。现行为 = 装配主链走项目 `.venv`（`D:\data\pyProject\dc_agent\dechnicAuditor-agent\.venv\Scripts\python.exe`）；仅**旧链 md_to_docx** 需要本机装了 python-docx 的解释器，用哪个按当前环境实测，写在运行时而不是写进文档。
+- 转换脚本（**legacy 旧链，仅存量报告**）：`skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（通用化参数）
 - 学校模板参考：`references/audit-examples.md` 的《学校实例模板》一节（虚拟单位示例数据，只作形态参照）
 - 原始市州模板：用户附件 `市州公共机构能源审计报告模板参考.pdf`（结构化内容已提炼进本 SKILL.md）
 
@@ -90,9 +90,10 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 仿写路径（energy-audit-imitate 技能，bundled 不可改）：章节正文支持 markdown 表格——`表X.Y 标题` 行 + `| a | b |` 行（首行表头），report_generator._write_imitated_body 自动渲染为规范表格（12pt 居中、1.01cm 行高），组装无需手工建表。
 - **skill 双副本同步方向**：energy-audit-imitate 存在 repo `skills/productivity/`（权威源，bundled 只读）与 profile 副本两处；repo 若被 profile 旧版覆盖，其自带验收测试（tests/skills/test_energy_audit_imitate_skill.py）会立刻红（resolve_unit_name/format-spec 引用）——改 repo 后必须同步回 profile，反之会把测试打回 0.1.0 时代。
 - **仿写模式图表（2026-08 新能力）**：正文插 `[[图:类型|图注]]` 标记行即可嵌入图表，类型含 flow/trend/pie/cost_pie/monthly_electricity_kwh/monthly_water_m3/monthly_natural_gas_m3；数据来自 spec 的 `chart_data` 块（cost_pie 需各年费用字段 `*_cost_wan`）。不加标记 → 报告无任何图（用户会问"图表怎么没了"）。chart_data JSON 形状与渲染细节见 `energy-audit-imitate/references/assemble-format-notes.md`
-- **组装收尾工作流（2026-09 烟台法院实测）**：spec.json → assemble_report.py（生成 8 章）→
+- **仿写轨收尾工作流（2026-09 烟台法院实测）**：spec.json → assemble_report.py（生成 8 章）→
   officecli 追加附录（assemble 不支持附录；`office_cli_command` add/set 实现，禁用 python-docx）→
-  40+ 项数值断言（与 DB 计算值比对）+ 占位符扫描（"测试"命中先确认是否"水平衡测试"术语）。
+  数值断言（与 DB 计算值比对，走 `tools/energy_audit/report_qa.py`；**不写死条数**）+ 占位符扫描（"测试"命中先确认是否"水平衡测试"术语）。
+  ⚠ **主链不是这条**：8 章 + 附录的常规交付用装配脚本链（`build → finalize → asserts`，断言数见 `references/script-assembly-chain.md`）。
   ⚠ 图表口径：trend/pie 已改等价口径（2026-09-05：0.31/1.2143，水不折标不进图），与正文一致；
   cost_pie 费用类型仅含>0 项（电/水/气/热/汽油/柴油分开显示，无合并；油费=0 时不显示）。
   定额以 `references/quota-supplement.md` 为准（indicators.py 内置 government 默认已核验 DB37/T 2672，

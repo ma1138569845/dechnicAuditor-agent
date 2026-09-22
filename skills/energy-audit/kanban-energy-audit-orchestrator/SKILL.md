@@ -169,6 +169,7 @@ SKILL.md                                          ← 本文件
 scripts/
   bootstrap_pipeline.py                           ← plan.json → setup.sh
   monitor.py                                      ← 监控轮询
+  verify_bootstrap_dryrun.py                      ← 生成物自检（不落盘跑一遍 setup.sh 的 dry-run 校验）
 assets/
   setup.sh.tmpl                                   ← setup.sh 模板
 references/

@@ -30,6 +30,10 @@ metadata:
 | 折标系数 | `energy-audit-core/references/coefficient-caliber.md`（权威单点） |
 | 格式（字体/表格/页眉/水印） | `energy-audit-core/references/report-format-spec.md` |
 
+**本技能 `scripts/similarity_check.py`**：查重器（lcs_ratio / ngram_overlap / 最长连续相同 / 匹配片段；`--strict` 关白名单）。
+阈值与 rules 见 `references/rules.md`《变量一致性闸门》——**注意它与 `verify_variables_provenance.py` 分工相反**：
+相似度查重只作参考信息，判"该变的是否真变"用后者。
+
 本包只负责**跨章共性**：论证链怎么走、语言怎么组织、防抄怎么查。
 
 ## 本包文件

@@ -76,4 +76,14 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | `deployment-ops.md` | ★部署与运维（2026-09-18 三合一）：新机自检清单 + Hermes 运维（含"SOUL 改动需重启 gateway"）+ 辅助视觉模型配置（Qwen-VL） |
 | `soul-purity-principle.md` | SOUL.md 编写原则（`skills/energy-audit/_soul/` 的唯一编写依据） |
 | `lessons-learned.md` | ★跨项目经验库（教训索引：现象→铁律→详见，按数据源/标准/报告/装配/协作五类，2026-09-18 建） |
+| `knowledge-base-maintenance.md` | ★知识库维护（**写侧**）：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令（knowledger 专属；author 的 S16a、editor 的巡检都引它） |
+| `standards-sources/` | 定额**原文摘录件**（包内机读件：`DB37T2671-2019-全文抽取.txt`、`DB37-5026-2022-气候区划表3.0.1.md`）。**原始 PDF 已移出包**（与知识库重复件，2026-09-22 瘦身），位置见 `standards-values.md` 内的指针 |
 | `_archive/2026-09-17/`、`_archive/2026-09-18/` | 历史文档与合并前原件归档（仅供追溯，勿引用） |
+
+**本技能 `scripts/`（随技能发布，knowledger/author/editor 直接用）**：
+
+| 脚本 | 用途 |
+|---|---|
+| `ingest_kb_files.py` | 投递区 → 向量化/实体/wiki → 归档 + 台账（`--dry-run` / `--move` / `--vector-only`） |
+| `sync_report_library.py` | **S16a**：交付件入库 + 成稿库↔向量库两张清单门禁（`--add` / `--check`） |
+| `verify_knowledge_assets.py` | 知识层资产治理检查（目录规约/元数据/副本/点数对账/死资产/切片体检/归档完备；`--fix-payload`、`--write-log`） |

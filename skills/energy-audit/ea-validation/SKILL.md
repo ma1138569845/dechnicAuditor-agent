@@ -92,6 +92,8 @@ python <skill>/scripts/data_verification_agent.py <项目名> --mode REPORT_REVI
 |------|------|
 | `references/kg-architecture.md` | 因果知识图谱架构（knowledge_schema.py / energy_kg.py / data_analysis.py，V1 因果诊断用） |
 | `references/kg-keyword-pitfalls.md` | KG 关键词匹配规范（anomaly_keywords 只用领域专有词，禁泛化词） |
+| `scripts/data_verification_agent.py` | 三模式唯一入口：`--mode DATA_CHECK / INDICATOR_REVIEW / REPORT_REVIEW`（V1/V2/V3），P0/P1/P2 分级裁决 |
+| `scripts/datava/`（实现包） | `common.py`（projects_root 等公共件）、`bootstrap.py`（`EA_TOOLS_ROOT` 探测）、`mode_data_check.py` / `mode_indicator_review.py` / `mode_report_review.py`（三模式实现）、`tests/test_datava.py`（自测）。**改模式逻辑改这里，不要再往 SKILL.md 复制判据** |
 
 ## Capability 1: V1 DATA_CHECK（采集后）
 

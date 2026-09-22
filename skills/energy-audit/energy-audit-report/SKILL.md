@@ -30,7 +30,7 @@ agent_created: true
 | `references/audit-examples.md` | 医院实例（DB37/T 2673-2019、床日用水量、特殊用能） |
 | `references/audit-examples.md` | 学校实例（寄宿制修正、寒暑假日历） |
 | `references/city-template-guide.md` | 市州模板 0-11 章骨架 + 单位类型适配 + 示例数据自洽规则 |
-| `references/script-assembly-chain.md` | **报告装配主链（唯一权威，2026-09-17 起）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`；提交断言以断言器实测为准（11 项检查 + 度量，勿写"40+ 项"）。**文件内另含"仿写轨"工艺**（spec.json → `assemble_report.py` → 附录 → `report_qa` 数值断言），仅走 `energy-audit-imitate` 时适用 |
+| `references/script-assembly-chain.md` | **报告装配主链（唯一权威，2026-09-17 起）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`；断言数以断言器实测为准（**docx 级 15 项**，给 `--pdf` 时另加 3 项；勿再写"11 项/40+ 项"）。**文件内另含"仿写轨"工艺**（spec.json → `assemble_report.py` → 附录 → `report_qa` 数值断言），仅走 `energy-audit-imitate` 时适用 |
 | ~~`references/word-finishing.md`~~ | 已归档至 `_archive/2026-09-17/energy-audit-report/references/`（旧 report_generator/assemble 链路工艺）；**当前主链 = 装配脚本链**（见下行 `script-assembly-chain.md`），office_editor 路径为备用 |
 | `references/quota-supplement.md` | 定额补充（EUE 表5、区域供热办法、省级规章验证铁律） |
 | `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数；**legacy**，新链见下行）——路径相对 **repo 根** |
@@ -38,7 +38,7 @@ agent_created: true
 | `scripts/build_energy_audit_docx.py` | **装配主链①**：一次构建报告 docx（封面/信息表/目录/8章/附录/页眉水印/页脚） |
 | `scripts/finalize_energy_audit_pdf.py` | **装配主链②**：Word COM 刷目录缓存 + 导出签章 PDF |
 | `scripts/ea_docx_asserts.py` | 交付断言器（docx+PDF 级硬检查与度量，每份必跑） |
-| `assets/`（header/footer_template.xml、omml_formulas.json） | 页眉/页脚/OMML 模板资产 |
+| `assets/`（header_template.xml、**header_template_prebody.xml**（前置节专用，2026-09-22 分节改造新增）、footer_template.xml、omml_formulas.json） | 页眉/页脚/OMML 模板资产 |
 
 ## 资产使用场景
 

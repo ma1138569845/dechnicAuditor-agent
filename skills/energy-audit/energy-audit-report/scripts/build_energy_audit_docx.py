@@ -38,7 +38,7 @@ T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页�
   数据源: <项目目录>/data.json + chapter_md/ + report_images.json
   默认输出: <项目目录>/output/_script_build/<单位全称>能源审计报告.docx
 
-格式基准: ea-authoring/references/docx-ooxml-techniques.md
+格式基准: ea-authoring/references/docx-techniques.md（现行；旧 docx-ooxml-techniques.md 已归档）
 交付基准: 烟台经开区法院 45 页终稿（2026-09）
 """
 import argparse

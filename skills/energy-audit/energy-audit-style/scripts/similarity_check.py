@@ -6,7 +6,8 @@
     python similarity_check.py <生成稿.md|txt> <参考1.md|txt> [参考2.txt ...] [--strict]
 
 输出：每份参考的 lcs_ratio / ngram_overlap / 最长连续相同 / 匹配片段，以及
-总体是否通过。阈值与 rules 见 energy-audit-style/references/anti-copy-gate.md。
+总体是否通过。阈值与 rules 见 energy-audit-style/references/rules.md（现行《变量一致性闸门》一节；
+旧 anti-copy-gate.md 已归档至 _archive/2026-09-18/）。
 默认启用**白名单**（标题/表格骨架/标准原文/固定条文不计入），--strict 关闭白名单按裸文本判定。
 """
 from __future__ import annotations
