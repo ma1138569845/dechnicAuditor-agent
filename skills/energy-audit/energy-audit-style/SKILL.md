@@ -22,9 +22,9 @@ metadata:
 
 | 问题 | 权威位置（本包不重复） |
 |---|---|
-| 8 章结构 / 章间联动铁律 | `ea-authoring/references/chapter*-guide.md`（逐章）+ `energy-audit-report/references/city-template-guide.md` |
+| 8 章结构 / 章间联动铁律 | `ea-authoring/references/chapter-guides-1-4.md`（第1~4章）+ `chapter-guides-6-8.md`（第6~8章）+ `energy-audit-report/references/city-template-guide.md`（市州模板） |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` |
-| 每章写作模板与数据源 | `ea-authoring/references/chapter*-guide.md` |
+| 每章写作模板与数据源 | `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md` |
 | 指标计算 / 第5章 | `ea-calculation` + `ea-calculation/references/` |
 | 定额数值 | `energy-audit-core/references/standards-values.md`（权威单点） |
 | 折标系数 | `energy-audit-core/references/coefficient-caliber.md`（权威单点） |

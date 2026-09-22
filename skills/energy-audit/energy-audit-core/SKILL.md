@@ -58,7 +58,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
   一个公共机构 = 一个项目 = 一份报告。每项目 8 步串行（采集→V1验证→计算→V2复核→报告卡1基础章→报告卡2数据章→报告卡3收尾章→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
-- 报告章节细节与编写规范见逐章指南（`ea-authoring/references/chapter*-guide.md`；第5章见 `ea-calculation/references/chapter5-*.md`）；"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
+- 报告章节细节与编写规范见逐章指南（`ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md`；第5章见 `ea-calculation/references/chapter5-spec.md` + `chapter5-templates.md`）；"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
 
 ## 参考文件索引
 

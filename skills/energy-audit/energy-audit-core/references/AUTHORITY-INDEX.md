@@ -24,11 +24,17 @@
 
 | 主题 | 唯一权威 | 谁引用它 | 禁止复述在 |
 |---|---|---|---|
-| 第1/2/3/4/6/7/8 章写作规则 | `ea-authoring/references/chapter*-guide.md`（第2章含建筑参数表定义、第6章含 6.1 分系统规范；2026-09-18 合并后以此为准） | author、datava V3 | 旧 8 章骨架、`chapter-writing-specs.md`、`chapter6-sub-system-spec.md`、`building-param-table-spec.md`（均已归档至 `_archive/`） |
+| 第1/2/3/4 章写作规则 | `ea-authoring/references/chapter-guides-1-4.md`（含第2章建筑参数表定义 §7 v4.0、1.6 依据清单、2.3 用能系统句、3.x/4.x 规则） | author、datava V3 | 旧 `chapter1~4-guide.md`、`building-param-table-spec.md`（均已归档至 `_archive/`） |
+| 第6/7/8 章写作规则 | `ea-authoring/references/chapter-guides-6-8.md`（第6章 6.1.1~6.1.6 分系统 + 6.2/6.3 结构、第7章问题/建议一一对应、第8章结论与表8.1） | author、datava V3 | 旧 `chapter6~8-guide.md`、`chapter6-sub-system-spec.md`（均已归档） |
 | 第5章结构 / 表号图号 / 写作细节 | `ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）★2026-09-18 合并后以此二者为准 | caliber、author 批2 | 原 8 个 5.x 文件（已归档 `_archive/2026-09-18/`） |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` | author、caliber | — |
 | 报告实例库 / 蓝本（法院/医院/学校） | `energy-audit-report/references/audit-examples.md`（2026-09-18 三合一） | author、energy-audit-style | 章节指南里不复述实例原文；蓝本只提供**形态**，变量必须来自本项目数据源 |
 | 写作论证链 / 句式 / 防抄 | `energy-audit-style/references/rules.md`、`rules.md`、`rules.md` | author、editor（**注意：当前未接入写作主流程，待决**） | — |
+| Word 版式技术细则（页码域/前置节与正文节/首行缩进/水印/OOXML） | `ea-authoring/references/docx-techniques.md` | author、editor | 各 SKILL 只写"必做"，不复述命令与 XML 细节 |
+| OfficeCLI 集成与第5章公式方案（A/B/C） | `ea-authoring/references/docx-tools.md` | author（仅 office_editor 备用路径） | 装配主链不复述公式注入细节 |
+| 流向图 / KG 可视化 / 报告参考库检索 | `ea-calculation/references/ea-calculation-support.md`（**检索入口一节已压成指针**） | caliber | 检索入口与目录只在 `WORKFLOW.md` 第六节；本文件不复述 |
+| 定额补充（EUE 表5 / 区域供热办法 / 省级规章验证铁律） | `energy-audit-report/references/quota-supplement.md` | caliber、author 1.6 | `standards-values.md` 不复述地方办法条文 |
+| 写作规范提取（样板报告 → 三遍提取 → 泛化） | `energy-audit-style-extractor/SKILL.md` + `references/extraction-schema.md` | 技能维护者（规则更新时） | 运行期各角色不复述提取流程 |
 
 ## 三、成品与校验类
 
@@ -61,3 +67,10 @@
 | 知识库入料入口（投递区 → 向量化/实体/wiki → 归档 + 台账） | `energy-audit-core/scripts/ingest_kb_files.py`（2026-09-20 建，同日移入技能） | knowledger（标准/规范） | 不复述脚本参数与七步流程 |
 | **交付件入库 / 成稿库一致性（S16a）** | `energy-audit-core/scripts/sync_report_library.py`（2026-09-21 建）＋ 判据见 `knowledge-base-maintenance.md` | author（S16a）、knowledger、editor | 各 SKILL 只写"何时跑 `--add`"，不复述落位规则与两张清单口径 |
 | **标准条文检索**（定额/规范条文原文，`kbs="standards"`） | `rag/rag_search.py: search_standards()` + `rag/config.py: kb_collection()/STANDARD_KB_IDS`（2026-09-20 P3-3 建）+ `tools/energy_audit_rag_tool.py` 的 `kbs` 参数 | author、knowledger、caliber（查依据） | 各 SKILL 只写"何时用 kbs=standards"，不复述库名/集合名/参数细节 | 
+| 数据修复流程（发现问题 → 定位 → 修 → 复核） | `energy-audit-pg-data/references/data-repair-procedure.md` | datacollection、datava | — |
+| kanban 部署与配置（setup / 调度 / 工作区） | `kanban-energy-audit-orchestrator/references/kanban-setup.md` | editor、default（部署期） | 各 SKILL 不复述 setup 步骤与参数 |
+| 气候区划原文摘录（备查件） | `energy-audit-core/references/standards-sources/DB37-5026-2022-气候区划表3.0.1.md` —— **摘录件**，权威值仍是 `standards-values.md`《山东省气候区划》 | —（备查；取值一律回 standards-values） | 报告不复述整张对照表 |
+
+> **本文件自身不登记**（它是索引，不是被引用的权威）；`_archive/**` 一律不进本表。
+> 2026-09-22 清理：写作类原先写的 `chapter*-guide.md` 通配**已失效**（合并后文件名变成 `chapter-guides-1-4.md` / `chapter-guides-6-8.md`），已改为真实文件名；
+> 同批补入 7 条此前未登记的 live 文件。仍未登记的 3 个（`ea-validation/references/kg-architecture.md`、`kg-keyword-pitfalls.md`、`energy-audit-pg-data/references/legacy-table-trace.md`）**待定是否归档**，第二批处置。

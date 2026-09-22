@@ -12,7 +12,7 @@
 | 方案 | 适用 | 说明 |
 |------|------|------|
 | **A. office_edit `doc_insert_math`（唯一首选）** | 报告生成流程中的 5.3 全部公式 | 引擎 C++ 层把 LaTeX 解析为 OMML，结构保证 Word 识别；经实测渲染为正常公式样式 |
-| B. `_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py` 脚本 | **仅存量报告**后处理（已含文本公式的旧 docx） | zip+lxml 注入，需自行保证 xmlns:m 声明正确；新报告不得走此路径 |
+| B. `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py` 脚本（路径相对 repo 根） | **仅存量报告**后处理（已含文本公式的旧 docx） | zip+lxml 注入，需自行保证 xmlns:m 声明正确；**新报告不得走此路径** |
 | C. OfficeCLI equation | 无分式的简单式子 | 不支持分式（\frac 不解析、/ 不转 m:f，实测 m:f=0），5.3 公式禁用 |
 
 **默认用方案 A**：在 author 写第5章 5.3 各指标段时，直接用 office_edit 工具集调用
@@ -63,12 +63,12 @@ office_edit(
 
 > 变量符号（Ejrcn/Eja/Er/Vuc/Egnm + 取水按类型 Vuc/Vu/Vs/Vz/Vui）以正式报告与 DB37/T 4452-2021 为准（2026-09-05 用户确认对齐；2026-09-05 晚按烟台法院正式版勘误：5.3.1=Ejrcn、5.3.2=Eja，此前 Ejfgn/Ejd 为误记）；报告中的符号不可自行改名。
 
-### 方案 B：存量报告后处理（_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py）
+### 方案 B：存量报告后处理（`skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py`）
 
 仅用于修复**历史生成的报告**（5.3 还是文本公式的旧 docx）：
 
 ```bash
-python skills/energy-audit/energy-audit-report/_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py <报告.docx> [--dry-run]
+python skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py <报告.docx> [--dry-run]
 ```
 
 ⚠ 该脚本历史上存在两类失败（2026-09-06 实测定位）：

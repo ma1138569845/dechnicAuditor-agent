@@ -443,16 +443,13 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 **第3章文本由 author（LLM）基于项目数据写作**：读取 `project.management` 与最新一条 `project.energy_saving`（按 `statistical_year` 降序取第一条），按本节模板与字段规则逐节写作。采集阶段 `enrich_management_info` 已由制度文件 LLM 提炼正文，通常可直接采用。三种方式：
 
 1. **直接采用提炼正文（默认）**：`project.management.management_org` / `management_policy` 非空时，直接作为 3.1/3.2 正文；`es` 改造字段生成 3.4。
-2. **仿写参考（参考同类报告）**：调用 `energy_audit_imitate_paragraph` 工具或 `/api/energy-audit/imitate` 接口，检索同类报告第3章并按段落结构仿写正文：
-   ```python
-   # 直接调用（项目名 = proj.base.unit_name）
-   run_imitate("莘县县政府", chapter="第3章", section="3.1 机构职责")
-   ```
-   ```bash
-   # CLI 方式
-   python -m tools.energy_audit.imitate_pipeline --project 莘县县政府 --chapter 第3章
-   ```
-   章节上下文：`imitate_pipeline.CHAPTER_CONTEXTS["第3章"] = "能源资源管理状况"`；`normalize_chapter("3.1")` 会自动归一为 `(第3章, 3.1)`。
+2. **同类成稿参考（推荐）**：按 `energy-audit-core/references/WORKFLOW.md` 第六节取参考——
+   `reference_library.search_local_references("第3章", tags)`（本地、离线永远可用）拿同类成稿的
+   3.1/3.2 段落，**只仿段落结构与句式层级**；机构名、制度文件名称、荣誉、数字一律换成本单位实际
+   （未知标【待补充】）。**每查一次登记** `<项目>/chapter_md/_retrieval_log.md`（第3章是 S14 必需登记章）。
+   旧仿写轨（`energy_audit_imitate_paragraph` 工具 / `python -m tools.energy_audit.imitate_pipeline`，
+   属 `energy-audit-imitate` 技能）**降为可选兜底**：仅当本地成稿库与报告向量库都不可用时使用，
+   取回文本同样按上面口径替换专名（`imitate_pipeline.CHAPTER_CONTEXTS["第3章"]` 仍可用作章节归一口径）。
 3. **LLM 增强写作**：提炼文本不足时，author 基于「数据来源」字段 + 本指南模板/句式重写该节（写作原则：先有字段值才有段落，字段空则按模板/兜底）。
 
 **必须提供照片**：管理文件截图、节能荣誉证书等现场照片（数据模型按分类路由，见「图片路由」节）。嵌入方式同第2章（装配链插入 + 图注）。
@@ -531,12 +528,14 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 
 **为空时的兜底与增强**：
 
-①、② 均无数据（无制度文件附件、无法提炼）时，**首选仿写同类报告 3.2 段落**：
+①、② 均无数据（无制度文件附件、无法提炼）时，**首选取同类成稿的 3.2 段落作结构与句式参照**：
 
-- 调用 `run_imitate(项目名, chapter="第3章", section="3.2 管理目标和方针")`，或 CLI：`python -m tools.energy_audit.imitate_pipeline --project XX --chapter 第3章`
+- 入口：`reference_library.search_local_references("第3章", tags)`（本地、离线永远可用；tags 至少含 `institution_category`），跨库召回用 `energy_audit_rag_search` —— 目录与降级链以 `energy-audit-core/references/WORKFLOW.md` 第六节为准，本指南不复述
+- **每查一次登记** `<项目>/chapter_md/_retrieval_log.md`（S14 必需章）
 - 仿写范围=**段落结构与句式风格**；机构名、制度文件名称、荣誉等具体信息必须替换为本单位实际（未知则标【待补充】），**禁止照抄其他单位名称**
-- 仿写后仍需与字段互核：`es.energy_management == 0` 时不得写成"已建立完善制度"，`== None` 时不得虚构制度名
-- 仿写不可用时（无同类报告），再走下面兜底：
+- 与字段互核：`es.energy_management == 0` 时不得写成"已建立完善制度"，`== None` 时不得虚构制度名
+- 旧仿写轨（`run_imitate` / `python -m tools.energy_audit.imitate_pipeline --project XX --chapter 第3章`，属 `energy-audit-imitate` 技能）降为**可选兜底**，仅在本地成稿库与向量库都不可用时用
+- 同类成稿也不可用时，再走下面兜底：
 
 本指南兜底模板（2026-09-04 对齐正式报告口径），结构为：
 

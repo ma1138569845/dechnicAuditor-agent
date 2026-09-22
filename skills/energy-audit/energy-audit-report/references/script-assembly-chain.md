@@ -21,7 +21,7 @@ python skills/energy-audit/energy-audit-report/scripts/build_energy_audit_docx.p
 python skills/energy-audit/energy-audit-report/scripts/finalize_energy_audit_pdf.py \
     --project-dir <项目目录> [--no-seal] [--seal-text 审计机构名]
 
-## ③ 交付断言（每份必跑；docx 级 15 项硬检查 + PDF 级 2 项：前置页清洁 / 页脚序列）
+## ③ 交付断言（每份必跑；docx 级 **15 项**硬检查 + 给 `--pdf` 时追加 **3 项** PDF 级：前置页清洁 / 页脚起始页码 / 页脚编号序列）
 python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
     <报告.docx> [--pdf <报告.pdf>] [--expect pages=45]
 ```
@@ -87,14 +87,16 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 
 ---
 
-## 报告装配工作流（spec.json → assemble_report.py → 附录 → 数值断言；含仿写链工艺）
+## 仿写轨装配工作流（spec.json → assemble_report.py → 附录 → 数值断言）
+
+> ⚠️ **本节是仿写轨（`energy-audit-imitate`）的工艺，不是装配主链**。主链见本文件开头的《装配脚本链（build → finalize → asserts）》一节（2026-09-17 起）。
 
 完整编制一份 Word 报告的实操链路。
 
 ### 0. 路径定位（2026-09-04 定；2026-09-17 更新）
 
 - **主链（2026-09-17 起）= 装配脚本链**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`（见 `script-assembly-chain.md`）；内容仍由 LLM 逐章写 `chapter_md/`，脚本只做版式装配与收尾。
-- **备用路径 = office_editor（ea-authoring 内）**：author 按 skill 逐章 LLM 写作 → office_editor 组装 Word → 三件套 + 附录（officecli）。
+- **备用路径 = office_editor（ea-authoring 内）**：author 按 skill 逐章 LLM 写作 → office_editor 组装 Word → 收尾三项（目录域刷新／正文首行缩进／页眉文字+分隔线+水印）+ 附录（officecli）。
 - **本文件描述的是仿写路径**：spec.json → assemble_report.py（energy-audit-imitate 工具，内部用 python-docx 渲染）→ 附录追加（officecli）→ 数值断言。仅当走"仿写同类报告"模式时使用。
 - 正文生成脚本（report_generator 的 build_chapter1~8）已退役，任何路径都不再调用。
 
@@ -174,7 +176,7 @@ officecli set report.docx '/body/table[K]/col[2]' --prop width=5cm
 
 ### 4. 组装后数值断言（必做）
 
-对 .docx 全文（段落+表格）做 40+ 项关键数值断言，与 DB 计算值逐一比对：
+对 .docx 全文（段落+表格）做关键数值断言，与 DB 计算值逐一比对（走 `tools/energy_audit/report_qa.py`；装配主链另跑 `ea_docx_asserts.py` 的 15 项结构/格式断言）：
 电量/水量/气量/热量/油量三年值、五项指标值（含供暖）、费用合计、同比率、定额三档值、
 用能人数、建筑面积、热价。再扫残留占位符——"测试"命中先确认是否"水平衡测试"
 等专业术语，"待补充"应为真实缺失数据（建筑外窗/保温/消防、附件等）。

@@ -23,7 +23,7 @@
 ## 权威指针（只写路径，不抄内容）
 
 - 指标定义、兜底链、第5章渲染：`ea-calculation/SKILL.md`
-- 第5章写作规则：`ea-calculation/references/chapter5-*.md`（结构权威 `chapter5-52-final-spec.md`、细节 `chapter5-52-writing-lessons.md`、模板 `chapter5-53-templates.md`）
+- 第5章写作规则：`ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）——2026-09-18 合并后以此二者为准（旧 `chapter5-52-*` / `chapter5-53-*` 原件已归档，勿引用）
 - 定额值：`energy-audit-core/references/standards-values.md`（唯一权威）
 - 折标系数与综合能耗口径：`energy-audit-core/references/coefficient-caliber.md`（唯一权威）
 - 总索引：`energy-audit-core/references/AUTHORITY-INDEX.md`

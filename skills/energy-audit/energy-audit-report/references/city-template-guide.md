@@ -102,9 +102,9 @@ autocommit 陷阱、附件体系（WebUI 文件服务，外部不可直接下载
 - 表格 12pt 居中、行高 1.01cm（AT_LEAST）、垂直居中、表头加粗、Table Grid 边框
 - 表注（`>` 引用块）灰色 12pt 无缩进；表题（**表X-X**）居中加粗
 - 页脚居中页码域（PAGE）、目录 TOC 域（`TOC \o "1-3" \h \z \u` + outlineLvl），打开 Word 后 Ctrl+A → F9 更新
-- **报告收尾三件套（assemble 自动完成，用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印——由 `energy-audit-imitate/scripts/add_watermark.py` 注入（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**（页眉文字+分隔线由 `_archive/2026-09-18/energy-audit-report/scripts/fix_header_footer.py` 注入）。**主链（脚本装配）对应实现见 `references/script-assembly-chain.md`**；用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
+- **报告收尾三项：目录域刷新 / 页眉文字+分隔线+水印 / 页脚 PAGE 域（用户视作必有项）**：① 目录自动刷新——`word/settings.xml` 写 `<w:updateFields w:val="true"/>`，Word/WPS 打开即刷目录，不再依赖手动 F9；② 页眉 DrawingML 水印（被审计单位全称 unit_name，behindDoc=1，浅灰宋体约45°；**禁止 VML textpath**）；③ 页脚页码——**仅 PAGE 域数字，居中，10.5pt**。**主链（脚本装配）由 `build_energy_audit_docx.py` 一次注入这三项，见 `references/script-assembly-chain.md`**；仿写轨才由 `energy-audit-imitate/scripts/add_watermark.py` 注入水印；`skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_header_footer.py`（相对 repo 根）**仅存量 docx 修补**，新报告不得走。用户报"没有目录/水印/页码"时先 zip 检查这三部件，勿盲目重跑
 - 封面：单位名 22pt + "能源审计报告" 26pt 居中 + 报告信息表（md 第一个表格）
-- 运行：`D:/develop/anaconda3/python.exe _archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`
+- 运行（**legacy 旧链，仅存量报告**）：`python skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py <in.md> <out.docx> [单位名] [审计期]`（路径相对 repo 根；解释器用当前环境 python，勿写个人 Anaconda 绝对路径）
 
 ## Procedure
 

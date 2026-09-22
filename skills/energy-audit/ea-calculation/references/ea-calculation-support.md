@@ -95,83 +95,17 @@ pipeline 4.0a 自动集成：用户确认 anomaly + 填写 reason → 自动反�
 
 ---
 
-## 报告参考库与 RAG 检索（原 reports-vector-db）
 
-### 数据概览
+## 报告参考库与 RAG 检索
 
-- 32份山东省直能源审计报告
-- 按章节切分为 286 chunks
-- 三级标签：audit_type → institution_category → specific_type
-- 存储：Qdrant collection `energy_audit_reports` @ 10.10.2.55:6333
-
-### 标签分布
-
-| 类别 | 报告数 | 具体类型 |
-|------|--------|----------|
-| 党政机关 | 12 | 人社厅/法院/纪委监委/司法厅/市场监管局/生态环境厅/科技厅/科协/信访局/监狱局/贸促会/共青团 |
-| 教育 | 4 | 济南大学/技师学院/省委党校/东营职业学院 |
-| 医疗 | 2 | 省二院/省卫健委 |
-| 场馆机构 | 2 | 图书馆/老干部活动中心 |
-| 体育 | 1 | 体育训练中心 |
-
-### 检索入口
-
-```python
-from rag.rag_search import search_reports, search_for_chapter
-```
-
-#### 三层兜底
-
-```
-search_reports(query, tags)
-  ├─ Layer 0: Qdrant 标签直查（filter by tags，无需 API key）
-  ├─ Layer 1: Qdrant 向量检索（语义匹配，需要 API key）
-  └─ Layer 2: 本地知识库关键词搜索
-       ├─ references/chapter*.md（能源审计章节指南）
-       └─ Obsidian wiki E:/data/wiki（AI Agent/LLM 研究笔记）
-```
-
-#### Obsidian wiki 集成
-
-`rag/rag_search.py` 的 Layer 2 额外搜素 `E:/data/wiki` 下的所有 `.md` 文件：
-
-- 递归遍历全部子目录（entities/, concepts/, comparisons/, queries/）
-- 自动排除 `_meta/`, `raw/`, `未命名.base/`, `.obsidian/` 及 `index.md`, `log.md`, `SCHEMA.md`
-- 解析 YAML frontmatter 的 `title:` 字段作为章节名
-- 结果标记 `source: obsidian_wiki`，与原 `local_wiki` 来源可区分
-- 关键字匹配（全词命中计数排序），上限10条
-
-#### 常用调用
-
-```python
-## 查同类机构同章节作为写作参考
-ref = search_for_chapter('第2章', {'institution_category': '医疗'})
-
-## 验证指标计算（查同类医院第5章对标）
-ref = search_for_chapter('第5章', {'specific_type': '医院'}, '单位建筑面积')
-
-## 参考节能建议
-ref = search_for_chapter('第7章', {'institution_category': '教育'}, 'LED')
-```
-
-### 嵌入报告生成流程
-
-```python
-## 生成前设标签
-report_data['tags'] = {'institution_category': '医疗', 'specific_type': '医院'}
-
-## LLM生成某章前检索参考
-builder = WordReportBuilder('公共机构')
-builder.set_data(report_data)
-ref = builder.get_chapter_reference('第2章', '公共机构概况')
-## → 返回 Markdown 参考文本，嵌入 LLM prompt
-```
-
-### 入库脚本
-
-```bash
-python rag/ingestion/ingest_reports.py   # 旧 tools/energy_audit/ingest_reports.py 为 DEPRECATED 壳
-```
-
-分类规则：从文件名关键词匹配（医院/大学/法院/科技厅…）。
-Embedding: DashScope `text-embedding-v3`, 1024维。
+> **入口、目录与降级链的唯一定义在 `energy-audit-core/references/WORKFLOW.md` 第六节**
+> （参考/知识三层 + 目录 + 检索入口 + 降级链 + "何时读哪层"决策表）。本文件**不复述**这些内容。
+>
+> 2026-09-22 清理说明：本节原内容（三层兜底 / `search_reports`·`search_for_chapter` /
+> Obsidian `E:/data/wiki` / 21 份报告的标签统计）**已过期**——现行第一入口是本地成稿库
+> `reference_library.search_local_references(chapter, tags)`（离线永远可用），跨库召回与
+> 标准条文见第六节 6.2；`E:/data/wiki` 在本机**并不存在**；库内报告份数请以
+> `energy-audit-core/scripts/verify_knowledge_assets.py` 的实测为准，勿在文档里写死。
+>
+> 写作时**每查一次**都要往 `<项目>/chapter_md/_retrieval_log.md` 登记一行（S14 闸门，
+> 必需章：第3、6、7章），自检 `ea-validation/scripts/verify_retrieval_evidence.py <项目名>`。

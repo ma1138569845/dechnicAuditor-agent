@@ -65,21 +65,21 @@ Director ←──────────────────────�
 
 - **Worker:** author Profile（技能: ea-authoring + energy-audit-core + energy-audit-report + energy-audit-imitate）
 - **输入:** data.json + validation.json + indicators.json + indicator_review.json
-- **产出:** 第1~4章 LLM 分 1~2 批生成 md 落盘 `chapter_md/ch1~ch4.md` → `office_create` 建 docx + `doc_insert_markdown` 整章导入（封面/审计信息表模板注入，第1章 1.1~1.6）→ 格式修复链 → `office_save` 落盘
+- **产出:** 第1~4章 LLM 分 1~2 批生成 md 落盘 `chapter_md/cover.md` + `chapter_md/ch1~ch4.md`。**本卡只落 md，不建 docx、不做装配**（2026-09-22 定；装配统一在 5c 一次完成）
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
 
 #### Step 5b — 报告卡2（数据章）
 
 - **Worker:** author Profile（技能同上）
-- **输入:** data.json + indicators.json + chapter5.md + 卡1落盘的 docx
-- **产出:** 第6~7章 LLM 1 次批生成 md 落盘 `chapter_md/ch6~ch7.md` → `office_open` 接续 → 第5章 chapter5.md 直接 `doc_insert_markdown` 导入（不重算）+ 第6/7章整章导入 + 设备照片 `doc_insert_image` → 格式修复链 → `office_save` 落盘
+- **输入:** data.json + indicators.json + chapter5.md + 卡1 的 md（`chapter_md/`）
+- **产出:** 第6~7章 LLM 1 次批生成 md 落盘 `chapter_md/ch6~ch7.md`，第5章以装配稿 `chapter_md/ch5_import.md` 落盘（数值禁重算）。**同样只落 md**；设备照片不手工插——装配链按 `report_images.json` 的图注精确匹配注入
 - **完成标记:** `kanban_complete(metadata={"report_path": "..."})`
 
 #### Step 5c — 报告卡3（收尾章）
 
 - **Worker:** author Profile（技能同上）
-- **输入:** data.json + indicators.json + validation.json + 卡2落盘的 docx
-- **产出:** 第8章 LLM 生成 md 落盘 `chapter_md/ch8.md` 整章导入 → 格式修复链 → 附录1~7（officecli）→ 收尾三件套（目录/缩进/页眉分隔线）→ 水印 → PDF 签章（双文件交付）
+- **输入:** data.json + indicators.json + validation.json + 卡2 的 md（`chapter_md/`）
+- **产出:** 第8章 `chapter_md/ch8.md` + 附录 `chapter_md/appendix.md` 落盘 → **跑一次装配主链三命令**（`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`，见 `energy-audit-report/references/script-assembly-chain.md`）→ 交付件（docx + 签章 PDF）。收尾三项（目录域刷新／正文首行缩进／页眉文字+分隔线+水印）由装配链一次注入
 - **完成标记:** `kanban_complete(metadata={"report_path": "...", "pdf_path": "..."})`
 
 **另加收尾：交付件入库（S16a，2026-09-21 接线）** —— 交付件定稿后跑一条命令把成稿回灌知识库：

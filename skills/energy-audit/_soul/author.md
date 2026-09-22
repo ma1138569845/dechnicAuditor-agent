@@ -26,7 +26,7 @@
 
 - 写作主流程与红线：`ea-authoring/SKILL.md`
 - 逐章写作规则（2026-09-18 合并后）：批1 读 `ea-authoring/references/chapter-guides-1-4.md`（第1~4章，含建筑参数表定义）；批2/批3 读 `ea-authoring/references/chapter-guides-6-8.md`（第6~8章，含 6.1 分系统权威规范）
-- 第5章：`ea-calculation/references/chapter5-*.md`（只读，禁运行其脚本）
+- 第5章：`ea-calculation/references/chapter5-spec.md` + `chapter5-templates.md`（只读，禁运行其脚本）
 - 数据模型与取值路径：`ea-authoring/references/data-model-reference.md`
 - 装配与成品工艺：`energy-audit-report/references/script-assembly-chain.md`
 - 同类报告实例库：`energy-audit-report/references/examples/`（法院/医院/学校）

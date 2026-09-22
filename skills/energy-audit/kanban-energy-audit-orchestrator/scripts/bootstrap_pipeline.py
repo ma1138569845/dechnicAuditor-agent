@@ -354,13 +354,10 @@ echo "    → ${v2_var}"''')
 4. 第3章 能源资源管理状况
 5. 第4章 能源资源计量及统计状况（4.2/4.3 从数据推断，禁止虚构计量缺失）
 
-写入方式（md 整章导入，禁逐段插入）:
-- 第1~4章 LLM 分 1~2 批生成章节 markdown，落盘 {CH_MD}/ch1.md ~ ch4.md
-- 用 office_create 创建 docx: {RPT}
-- 每章 1 次 office_edit(operation="doc_insert_markdown") 整章导入（idx 用 doc_get_last_operable_pos）
-- 全部导入后跑格式修复链（doc_get_outline 定位 → doc_modify_paragraph 批量标题样式 → doc_update_text_property 批量字体 → doc_set_table_properties/doc_set_table_layout 批量表格格式），操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」
-- 图片单独 doc_insert_image 嵌入（第2章建筑图）
-- 完成后 office_save 落盘
+写入方式（**只落 md，不建 docx、不导入、不跑格式修复链**；装配统一在卡3 一次完成，2026-09-22 定）:
+- 第1~4章 LLM 分 1~2 批生成章节 markdown，落盘 {CH_MD}/cover.md 与 {CH_MD}/ch1.md ~ ch4.md
+- 图片不手工插：第2章建筑图由装配链按 report_images.json 的图注精确匹配注入
+- 封面/审计信息表由装配链按 md 渲染，无需 office_create / office_save
 
 输入:
 - 项目数据: {DATA}
@@ -391,20 +388,18 @@ echo "    → ${r1_var}"''')
     --body "$(cat <<'BODY_EOF'
 你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 2 卡 / 共 3 卡：数据章】。
 
-上游已完成: 封面+第1~4章已写入 {RPT}，勿动。
+上游已完成: 封面+第1~4章已落盘 {CH_MD}/（cover.md + ch1~ch4.md），勿动。
 
 本卡职责（只写以下内容，禁止越界写后续章节）:
-1. 第5章 能源资源消费/消耗指标分析——装配稿 {CH_MD}/ch5_import.md：先按 ea-calculation/references/chapter5-templates.md **补写分析叙述段**（5.2 各节四段式；5.3 各节定义段+结论评价段；5.4 规则段+逐品种推导段），再整章 doc_insert_markdown 导入（数值一律取自装配稿，禁重算），charts/ 图表 doc_insert_image 嵌入
-2. 第6章 主要能源资源利用系统分析——6.1 用电 / 6.2 用水 / 6.3 用热 / 6.4 其他用能 / 6.5 室内环境；分系统有数据才写段，按类别嵌设备照片
-3. 第7章 节能效果与节能潜力分析——从数据推断问题，每个问题至少对应一条建议
+1. 第5章 能源资源消费/消耗指标分析——装配稿 {CH_MD}/ch5_import.md：先按 ea-calculation/references/chapter5-templates.md **补写分析叙述段**（5.2 各节四段式；5.3 各节定义段+结论评价段；5.4 规则段+逐品种推导段），**只落 md**（数值一律取自装配稿，禁重算）；charts/ 图由装配链按 report_images.json 注入
+2. 第6章 **主要用能系统分析**（R7 口径，旧「6.1 用电/6.2 用水/6.3 用热/6.4 其他/6.5 室内环境」**已废弃**）——6.1 主要用能系统运行分析（6.1.1~6.1.6 分系统）+ 6.2 主要用能设备统计（表6.1）+ 6.3 用能系统运行评价；详见 ea-authoring/references/chapter-guides-6-8.md
+3. 第7章 节能效果与节能潜力分析——从数据推断问题（**先读 {CH_MD}/../diagnosis_chapter7_material.txt 原文**），每个问题至少对应一条建议
 
-写入方式（md 整章导入，禁逐段插入）:
+写入方式（**只落 md**；装配统一在卡3 一次完成）:
 - 第6~7章 LLM 1 次批生成章节 markdown，落盘 {CH_MD}/ch6.md、ch7.md
-- 用 office_open 打开 {RPT} 在末尾接续（勿重建文件，勿动已有内容）
-- 第5章装配稿 {CH_MD}/ch5_import.md（含补写后的叙述段）直接 md 导入；第6/7章每章 1 次 doc_insert_markdown 整章导入
-- 全部导入后跑格式修复链（同卡1，操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」）
-- 设备照片单独 doc_insert_image 嵌入
-- 完成后 office_save 落盘
+- 第5章装配稿 {CH_MD}/ch5_import.md（含补写后的叙述段）同样只落 md —— 它是装配链的唯一输入
+- **本卡不打开 docx、不导入、不嵌图、不跑格式修复链**（图片与版式由装配链统一注入）
+- 每章写完按 ea-authoring 的要求登记 {CH_MD}/_retrieval_log.md（第6/7章是 S14 必需登记章）
 
 输入:
 - 项目数据: {DATA}
@@ -433,15 +428,18 @@ echo "    → ${r2_var}"''')
     --body "$(cat <<'BODY_EOF'
 你是小德 Agent（能源审计报告生成专家）。请为「{name}」生成报告【第 3 卡 / 共 3 卡：收尾章+附录+交付】。
 
-上游已完成: 第1~7章已写入 {RPT}，勿动。
+上游已完成: 第1~7章已落盘 {CH_MD}/（cover.md + ch1~ch7.md，其中第5章为 ch5_import.md），勿动。
 
 本卡职责:
-1. 第8章 审计结论——LLM 自然语言综合，拉前7章数据（数值以 {DATA}/{IND} 为准），生成 markdown 落盘 {CH_MD}/ch8.md，用 doc_insert_markdown 整章导入（禁逐段插入）
-2. 格式修复链（同卡1/卡2，操作序列见 ea-authoring/references/docx-ooxml-techniques.md「md 导入与格式修复链」）
-3. 附录1~7（无发票照片则无附录3，后续序号依次前移）——officecli 追加，标题 H2 宋体14pt 中文冒号，Table Grid 12pt 居中行高1.01cm
-4. 收尾三件套: 目录刷新 updateFields=true + 正文首行缩进 firstLineChars=200 + 页眉单段落（单位全称+两空格+能源审计报告，右对齐宋体10.5pt）+分隔线 pbdr.bottom=single 自检
-5. 水印: 页眉 DrawingML 注入单位全称（behindDoc=1）
-6. PDF 转换 + 默认签章: {RPT_PDF}（office_render format=pdf + seal_text=审计机构名）
+1. 第8章 审计结论——LLM 自然语言综合，拉前7章数据（数值以 {DATA}/{IND} 为准），生成 markdown 落盘 {CH_MD}/ch8.md
+2. 附录落盘 {CH_MD}/appendix.md（附表题用「附表X-Y 标题」，正文附表X.Y；无发票照片则无附录3、后续序号依次前移）
+3. **装配主链三命令**（本步才第一次产出 docx，2026-09-22 定）：
+   - `python <skills>/energy-audit-report/scripts/build_energy_audit_docx.py --project-dir <项目目录>`
+   - `python <skills>/energy-audit-report/scripts/finalize_energy_audit_pdf.py --project-dir <项目目录>`
+   - `python <skills>/energy-audit-report/scripts/ea_docx_asserts.py <docx>`（必须 0 项失败）
+   - 收尾三项（目录域刷新／正文首行缩进／页眉文字+分隔线+水印）由 build 一次注入，不需手工 steps
+4. 交付件：把 `output/_script_build/` 的两份**复制**到 `output/交付件/`（复制不移动），再按 S16a 入库
+5. 签章：由 finalize 脚本按 `data.json → base.audit_org_name` 注入（勿再用 office_render 手工转 PDF）
 
 输入:
 - 项目数据: {DATA}
@@ -449,8 +447,8 @@ echo "    → ${r2_var}"''')
 - 数据验证: {VAL}
 
 铁律:
-- 用 office_open 打开 {RPT} 接续编辑（勿重建文件）
-- 全部完成后双文件（.docx + .pdf）落盘 output/ 并自检存在
+- **不要在 Word 里逐章拼装**；docx 只由装配主链生成，`.docx/.pdf` 产物见 `output/_script_build/` 与 `output/交付件/`
+- 装配前必须确认 {CH_MD}/ 里 ch1~ch8 + appendix.md 全部落盘（缺章装配会告警并跳过）
 
 完成后调用 kanban_complete(summary="报告完成(第8章+附录+双文件)", metadata={{"report_path":"{RPT}", "pdf_path":"{RPT_PDF}"}})。
 BODY_EOF

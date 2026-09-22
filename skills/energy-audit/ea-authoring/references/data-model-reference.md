@@ -36,7 +36,7 @@ if proj is None:
 | 2.2 建筑物概况 | 每栋建筑全部参数 | 遍历 `proj.buildings`，字段见 `BuildingInfo`（完整清单见 `chapter-guides-1-4.md` §7） |
 | 2.3 用能系统 | 设备名称/数量/能源类型 | `proj.equipment[]`（name/category/quantity），能源类型由 `proj.energy_yearly[]` 各能耗字段是否 >0 判定 |
 | 3.1 机构职责 | 管理机构职责正文 | **优先** `proj.management.management_org`（采集阶段已由制度文件 LLM 提炼）；为空则按 `proj.base.institution_category` 选模板 |
-| 3.2 目标方针 | 目标/方针正文 | **优先** `proj.management.management_policy` / `proj.management.management_goals`；为空则**仿写同类报告 3.2**（run_imitate），仿写不可用再走通用兜底句 |
+| 3.2 目标方针 | 目标/方针正文 | **优先** `proj.management.management_policy` / `proj.management.management_goals`；为空则**取同类成稿 3.2 段落作结构参照**（`reference_library.search_local_references("第3章", tags)` + 登记 `_retrieval_log.md`；旧 `run_imitate` 轨仅为可选兜底），都不可用再走通用兜底句 |
 | 3.3 成效问题 | 荣誉/痛点 | `proj.management.honors` / `proj.energy_saving[].has_awards` / `award_name` / `energy_pain_points` |
 | 第4章 表数/监测 | 电/水/气/热表数量、监测系统、分户、独立计量电表 | `proj.metering.electric_meters` / `water_meters` / `gas_meters` / `heat_meters` / `has_monitoring_system` / `has_household_metering` / `has_household_payment` / `has_separate_metering` |
 | 第4章 分类独立计量 | 场景表：空调用电/照明插座/特殊用电/动力/施工用水电 | `proj.metering.independent_aircon` / `independent_light_socket` / `independent_special` / `independent_power` / `independent_construction_elec` / `independent_construction_water` / `independent_other_special` |

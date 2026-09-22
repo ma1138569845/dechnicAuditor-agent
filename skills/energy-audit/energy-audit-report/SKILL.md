@@ -16,7 +16,7 @@ agent_created: true
 > **本 skill 不再定义"编制报告"的写作规则**（2026-09-03 定位修正）。
 > - 第1/2/3/4/6/7/8章正文写作 → `ea-authoring`（author 专属）
 > - 第5章计算与写作 → `ea-calculation`（caliber 专属）
-> - 报告 8 章结构与章间联动铁律 → 逐章指南 `ea-authoring/references/chapter*-guide.md` + `references/city-template-guide.md`
+> - 报告 8 章结构与章间联动铁律 → 逐章指南 `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md` + `references/city-template-guide.md`
 > - 定额矩阵/折标系数/版本归一权威单点 → `energy-audit-core/references/`
 >
 > 本 skill 提供的是**跨角色共享的资产与工艺**：同类报告实例、市州模板骨架、
@@ -30,12 +30,11 @@ agent_created: true
 | `references/audit-examples.md` | 医院实例（DB37/T 2673-2019、床日用水量、特殊用能） |
 | `references/audit-examples.md` | 学校实例（寄宿制修正、寒暑假日历） |
 | `references/city-template-guide.md` | 市州模板 0-11 章骨架 + 单位类型适配 + 示例数据自洽规则 |
-| `references/script-assembly-chain.md` | 报告装配工作流（spec.json → assemble_report.py → 附录追加 → 40+ 数值断言） |
+| `references/script-assembly-chain.md` | **报告装配主链（唯一权威，2026-09-17 起）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`；提交断言以断言器实测为准（11 项检查 + 度量，勿写"40+ 项"）。**文件内另含"仿写轨"工艺**（spec.json → `assemble_report.py` → 附录 → `report_qa` 数值断言），仅走 `energy-audit-imitate` 时适用 |
 | ~~`references/word-finishing.md`~~ | 已归档至 `_archive/2026-09-17/energy-audit-report/references/`（旧 report_generator/assemble 链路工艺）；**当前主链 = 装配脚本链**（见下行 `script-assembly-chain.md`），office_editor 路径为备用 |
-| `references/script-assembly-chain.md` | **装配脚本链使用说明（2026-09-17 起主链）**：build/finalize/asserts 三命令、输入契约、已知偏差、操作坑 |
 | `references/quota-supplement.md` | 定额补充（EUE 表5、区域供热办法、省级规章验证铁律） |
-| `_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数；**legacy**，新链见下行） |
-| `_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py` | 存量第5章公式修复（方案B，仅旧 docx 后处理；用法见 ea-authoring/references/docx-tools.md） |
+| `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数；**legacy**，新链见下行）——路径相对 **repo 根** |
+| `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py` | 存量第5章公式修复（方案B，**仅旧 docx 后处理；新报告不得走**；用法见 ea-authoring/references/docx-tools.md） |
 | `scripts/build_energy_audit_docx.py` | **装配主链①**：一次构建报告 docx（封面/信息表/目录/8章/附录/页眉水印/页脚） |
 | `scripts/finalize_energy_audit_pdf.py` | **装配主链②**：Word COM 刷目录缓存 + 导出签章 PDF |
 | `scripts/ea_docx_asserts.py` | 交付断言器（docx+PDF 级硬检查与度量，每份必跑） |
@@ -46,7 +45,7 @@ agent_created: true
 1. **找同类报告参考（蓝本）**：按机构类型查 `references/audit-examples.md`（法院/医院/学校 三合一），写报告前先读同型实例——**只学形态**（章节骨架/表格习惯/措辞粒度），项目变量一律取本项目数据源。
 2. **市州项目**：按 `city-template-guide.md` 的 0-11 章骨架选模板。
 3. **报告装配**（仿写/组装模式）：按 `script-assembly-chain.md`——正文写进 spec.json，`assemble_report.py` 组装，附录手动追加，最后 40+ 项数值断言。
-4. **Word 成品处理**：`references/script-assembly-chain.md`（构建→收尾→断言三命令、页眉/水印/页脚/目录要点）+ `_archive/2026-09-18/energy-audit-report/scripts/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`（legacy）。
+4. **Word 成品处理**：一律走 `references/script-assembly-chain.md` 的装配主链（构建→收尾→断言三命令、页眉/水印/页脚/目录要点）。旧链脚本（`skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`，路径相对 repo 根）为 **legacy，仅存量报告**。
 5. **数据导出**：PG 整库导出流程已移至 `energy-audit-pg-data/references/data-export.md`。
 6. **报告装配（脚本主链，默认）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py` 三步，见 `references/script-assembly-chain.md`；office_editor 路径降为**备用**（存量修改/应急）。
 
@@ -59,7 +58,7 @@ agent_created: true
 | 第3章 | `ea-authoring/references/chapter-guides-1-4.md` |
 | 第4章 | `ea-authoring/references/chapter-guides-1-4.md` |
 | 第5章 | `ea-calculation/references/chapter5-templates.md`（模板+生成逻辑）+ `chapter5-spec.md`（结构+逻辑+细节）★2026-09-18 合并 |
-| 第6章 | `ea-authoring/references/chapter6-*.md` |
+| 第6章 | `ea-authoring/references/chapter-guides-6-8.md` |
 | 第7章 | `ea-authoring/references/chapter-guides-6-8.md` |
 | 第8章 | `ea-authoring/references/chapter-guides-6-8.md` |
-| 8章结构/章间联动 | `ea-authoring/references/chapter*-guide.md`（逐章）+ `references/city-template-guide.md`（市州模板） |
+| 8章结构/章间联动 | `ea-authoring/references/chapter-guides-1-4.md`（第1~4章）+ `chapter-guides-6-8.md`（第6~8章）+ `references/city-template-guide.md`（市州模板） |
