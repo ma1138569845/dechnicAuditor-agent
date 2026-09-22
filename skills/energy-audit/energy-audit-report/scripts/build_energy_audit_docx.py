@@ -2,7 +2,7 @@
 """能源审计报告装配器（脚本化装配 B1）—— T1 骨架 + T2 章节 + T3 附录 + T4 页眉水印页脚
 
 一次构建报告 docx 的固定版式 + 章节正文 + 附录 + 页眉/水印/页脚：
-  封面（3空 + 单位22pt + 报告名26pt + 审计期间 + 8空 + 机构/日期 + 分页）
+  封面（3空 + 单位22pt + 报告名26pt + 8空 + 机构/日期 + 分页）
   三张信息表（能源审计机构 / 审计组 / 配合人员，数据源 data.json）
   目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-3"，其后不插分页）
   第 1~8 章渲染（chapter_md/chN.md → Heading 样式 + 正文 + 表格 + 图 + OMML 公式）
@@ -170,9 +170,9 @@ def _info_title(doc, text):
     return _para(doc, text, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, line=1.0)
 
 
-def _build_cover(doc, unit, period, org, date_text):
+def _build_cover(doc, unit, org, date_text):
     _spacers(doc, 3)
-    for text, size, bold in ((unit, 22, True), ("能源审计报告", 26, True), (period, 14, False)):
+    for text, size, bold in ((unit, 22, True), ("能源审计报告", 26, True)):
         if text:
             _para(doc, text, size=size, bold=bold, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=1.5, space_before=0, space_after=0)
@@ -568,8 +568,6 @@ def build(project_dir, out_path=None):
     unit = base.get("unit_name") or "××单位"
     org = base.get("audit_org_name") or ""
     date_text = base.get("report_date") or ""
-    years = sorted({y.get("year") for y in data.get("energy_yearly", []) if y.get("year")})
-    period = f"（审计期间：{years[0]}年—{years[-1]}年）" if years else ""
 
     if not out_path:
         out_path = os.path.join(project_dir, "output", "_script_build",
@@ -581,7 +579,7 @@ def build(project_dir, out_path=None):
     _setup_bullet_numbering(doc)
     _set_update_fields(doc)
     _ensure_hf_parts(doc)
-    _build_cover(doc, unit, period, org, date_text)
+    _build_cover(doc, unit, org, date_text)
     _build_info_page(doc, *_info_rows(base, data))
     _build_toc_page(doc)
     ctx = {

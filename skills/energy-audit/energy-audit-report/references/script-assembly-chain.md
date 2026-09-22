@@ -34,7 +34,7 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 
 | 输入 | 说明 |
 |---|---|
-| `data.json` | base（unit_name/audit_org_name/audit_org_address/contact/phone/report_date）、energy_yearly（审计期间年）、audit_team、cooperation |
+| `data.json` | base（unit_name/audit_org_name/audit_org_address/contact/phone/report_date）、audit_team、cooperation |
 | `chapter_md/ch1..ch8.md` | LLM 逐章正文（第5章用 caliber 产出的 `ch5_import.md`，脚本优先匹配 `chN_import.md`）。`ch5_import.md` 由 `ea-calculation/scripts/prepare_chapter_md.py <项目名>` 就位（不覆盖作者已并入叙述段的版本；退出码 2 = 装配稿早于计算产物需人工确认） |
 | `chapter_md/appendix.md` | 附录（7 附录约定；有发票插发票附录） |
 | `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径}]}`；caption 须与 md 图注行**精确一致**（`图4.1` 双图=两条同 caption 记录） |
@@ -42,7 +42,7 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 
 ### 装配覆盖（对齐 45 页终稿）
 
-- 封面：3 空行 + 单位 22pt + 报告名 26pt + 审计期间 + 8 空行 + 机构/日期 + 分页；
+- 封面：3 空行 + 单位 22pt + 报告名 26pt + 8 空行 + 机构/日期 + 分页（2026-09-22 定：移除原「审计期间」副标题行；此前装配的历史报告不含回改）；
 - 三张信息表（机构/审计组/配合人员）；
 - 目录页：'目  录'（无标题样式防自收录）+ TOC 域 `\o "1-3"`；**其后不插分页**（第1章同页顺延，复刻终稿）；
 - 章节：H1 15pt 居中 / H2 14pt / H3 12pt；正文 1.5 行距 + 两端对齐 + 首行缩进 2 字符（firstLineChars=200）；表 Table Grid、12pt 居中、行高 1.01cm；图 12cm 独立居中段 + 图注段；公式三段式（按式→OMML 居中段→计算）；项目符号 Wingdings 圆点；
