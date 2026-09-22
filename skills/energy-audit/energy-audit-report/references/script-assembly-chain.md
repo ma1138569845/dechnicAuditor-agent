@@ -21,7 +21,10 @@ python skills/energy-audit/energy-audit-report/scripts/build_energy_audit_docx.p
 python skills/energy-audit/energy-audit-report/scripts/finalize_energy_audit_pdf.py \
     --project-dir <项目目录> [--no-seal] [--seal-text 审计机构名]
 
-## ③ 交付断言（每份必跑；docx 级 **15 项**硬检查 + 给 `--pdf` 时追加 **3 项** PDF 级：前置页清洁 / 页脚起始页码 / 页脚编号序列）
+## ③ 交付断言（每份必跑；docx 级 **15 项**硬检查 + 给 `--pdf` 时追加 **2 项** PDF 级：前置页清洁 / 页脚编号序列）
+
+> 计数以**实跑输出**为准（2026-09-22 实测：带 `--pdf` 打 17 行 `[OK]` = 15 + 2）。
+> 注意 `pdf_footer_from_1` 是**失败时才出现的诊断键**，不算独立检查项——照代码里的赋值个数去数会多数一项（本轮就踩过）。
 python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
     <报告.docx> [--pdf <报告.pdf>] [--expect pages=45]
 ```
