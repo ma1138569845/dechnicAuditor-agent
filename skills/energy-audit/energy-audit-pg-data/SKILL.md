@@ -207,8 +207,10 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   2023/2024 用水实物量、2025 电量等曾出现 DB 版本与账单不符，采信前必须校验。
 - **旧表陷阱**：`ts_energy_audit_project` / `ts_energy_audit_report` 是旧版
   空/历史表（coder/author profile 的旧 skill 仍引用），真实数据在
-  `ts_institution_*` 表。查项目/报告内容勿按旧表名直查。溯源证据链见
-  `references/legacy-table-trace.md`。
+  `ts_institution_*` 表。查项目/报告内容勿按旧表名直查。
+  （2026-08 那次溯源事件的证据链已**归档**至
+  `skills/energy-audit/_archive/2026-09-22/energy-audit-pg-data/references/legacy-table-trace.md`，
+  路径相对 repo 根；2026-09-22 复核：profiles 侧已无旧表引用，事件闭环。）
 - **必须 autocommit=True**：直连不设置时，一条字段错误会 abort 整个事务，
   后续所有查询返回"当前事务被终止"。
 - **版本归一 SQL 陷阱（DISTINCT ON + LEFT JOIN 丢明细行）**：

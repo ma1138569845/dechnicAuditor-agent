@@ -69,8 +69,12 @@
 | **标准条文检索**（定额/规范条文原文，`kbs="standards"`） | `rag/rag_search.py: search_standards()` + `rag/config.py: kb_collection()/STANDARD_KB_IDS`（2026-09-20 P3-3 建）+ `tools/energy_audit_rag_tool.py` 的 `kbs` 参数 | author、knowledger、caliber（查依据） | 各 SKILL 只写"何时用 kbs=standards"，不复述库名/集合名/参数细节 | 
 | 数据修复流程（发现问题 → 定位 → 修 → 复核） | `energy-audit-pg-data/references/data-repair-procedure.md` | datacollection、datava | — |
 | kanban 部署与配置（setup / 调度 / 工作区） | `kanban-energy-audit-orchestrator/references/kanban-setup.md` | editor、default（部署期） | 各 SKILL 不复述 setup 步骤与参数 |
+| 知识图谱（诊断层）架构与关键词匹配坑 | `ea-validation/references/kg-architecture.md` + `kg-keyword-pitfalls.md`（层序与入口见 `WORKFLOW.md` 第六节 6.2 第四层） | datava（诊断）、caliber | KG 输出**不是报告片段**（`is_report_chunk=false`），只作诊断候选，**不得引用进报告** |
 | 气候区划原文摘录（备查件） | `energy-audit-core/references/standards-sources/DB37-5026-2022-气候区划表3.0.1.md` —— **摘录件**，权威值仍是 `standards-values.md`《山东省气候区划》 | —（备查；取值一律回 standards-values） | 报告不复述整张对照表 |
 
 > **本文件自身不登记**（它是索引，不是被引用的权威）；`_archive/**` 一律不进本表。
 > 2026-09-22 清理：写作类原先写的 `chapter*-guide.md` 通配**已失效**（合并后文件名变成 `chapter-guides-1-4.md` / `chapter-guides-6-8.md`），已改为真实文件名；
-> 同批补入 7 条此前未登记的 live 文件。仍未登记的 3 个（`ea-validation/references/kg-architecture.md`、`kg-keyword-pitfalls.md`、`energy-audit-pg-data/references/legacy-table-trace.md`）**待定是否归档**，第二批处置。
+> 同批补入 8 条此前未登记的 live 文件。
+> **第二批处置结论（同日）**：`kg-architecture.md` / `kg-keyword-pitfalls.md` **保留并登记**（KG 是 `WORKFLOW.md` 第六节 6.2 的第四层，`rag/rag_search.py::search_knowledge_graph` 真实存在）；
+> `energy-audit-pg-data/references/legacy-table-trace.md` **已归档**至 `_archive/2026-09-22/`（2026-09-22 复核：profiles 侧已无 `ts_energy_audit_*` 旧表引用，事件闭环）；
+> 原「合并重叠文档」项经按节重测**撤销**（见 `lessons-learned.md` D11）。

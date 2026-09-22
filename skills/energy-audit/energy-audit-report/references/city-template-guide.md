@@ -14,6 +14,10 @@ metadata:
 
 # 能源审计报告（Energy Audit Reports）Skill
 
+> **适用范围（2026-09-22 补注）**：本文覆盖的是**市州模板轨**（《市州公共机构能源审计报告模板参考》的 0–11 章骨架 + 自洽示例数据 + 仿写链工艺）。
+> **已交付项目走的是另一条轨**——党政机关/法院/医院/学校类用 **8 章 + 7 附录**（无法票照片时 6 附录），结构权威见 `ea-authoring/references/chapter-guides-1-4.md` / `chapter-guides-6-8.md`，装配走 `references/script-assembly-chain.md` 的脚本主链。
+> 拿不准走哪条时看 `energy-audit-core/references/WORKFLOW.md` 与项目机构类型，**不要混用两轨的章号**。
+
 编写公共机构能源审计报告及模板：按《市州公共机构能源审计报告模板参考》的 0–11 章骨架，适配具体单位类型（学校/医院/党政机关/场馆等），编造**自洽**的示例数据，并按用户格式规范生成 Word。用户对数据不一致零容忍——示例数据必须程序化校验。
 
 ## When to Use
