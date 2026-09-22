@@ -223,6 +223,10 @@ proj = build_and_save_project(project_name, excel_data=excel_data, pg_result=res
 
 由 `SourceResolver` 统一记录（`pg_collector.py`），来源取值：`PG` / `Excel` / `default`。最终写入 `AuditProject.data_sources`（`Dict[str, str]`）。
 
+> **床位口径（2026-09-22）**：`beds_count` 的取值链 = `PG（ts_institution_scene.bed_num）→ Excel → default 0`。
+> 医院项目若 `data_sources.beds_count == 'default'`，说明**标准链没取到**（该标签只在所有候选都未命中时出现，
+> 此时值应为 0）；一旦出现"值是 260 却标 default"，那一定不是本链写的，属人工/Agent 补录，须回查。
+
 ---
 
 ## Capability 6: Completeness Check

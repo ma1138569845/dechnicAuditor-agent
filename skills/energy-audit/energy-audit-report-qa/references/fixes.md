@@ -193,3 +193,27 @@
      UnicodeEncodeError → exit=1 → S16a 被上层判为失败。
    - 修法：`ingest_kb_files.py` / `sync_report_library.py` / `verify_knowledge_assets.py`
      在 import 时做 `_utf8_stdout()`（reconfigure utf-8 + errors=replace）。
+
+### 2026-09-22 床位字段接入（采集链缺口 D10）
+
+- 现象（用户在报告生成时收到提示"床位数据在PG有记录但采集链未接入"，查证属实）：
+  `ts_institution_scene.bed_num` 有值（中医医院 customer 2100168253474533377 = **260**，
+  3 草稿 + 3 正式 `PL2026092001` 共 6 行全有），但
+  ① `pg_query.get_institution_scene` 的 SELECT 没有 `bed_num`；
+  ② `pg_collector` 的 `beds_count=sr.resolve('beds_count', ('Excel', excel_data), ('default', 0))`
+     **没有 PG 候选**；
+  ③ 全仓 `.py` 搜 `bed_num` **零命中**。
+  → 医院项目 `base.beds_count` 只能人工/公开资料补写，`data_sources.beds_count` 还会标成
+  `default`（该标签本应只在"候选全未命中、值为 0"时出现，值是 260 却标 default = 人工补录的铁证）。
+- 影响：5.3.4 单位开放床日用水量（4452 式(5)）、2.1 概况床位数、datava V2
+  「医疗机构缺床位数」告警（`indicators.py` 缺床位时不再降级人均口径，直接报缺）。
+- 修法（**只接床位，用能人数口径维持现状**，2026-09-22 用户确认方案 1）：
+  `pg_query.get_institution_scene` SELECT 补 `s.bed_num`；
+  `pg_collector` 场景块把 `bed_num` 落进 `result['found']['bed_num']`（有值才落）；
+  `beds_count` 解析链改为 `('PG', found['bed_num']) → ('Excel') → ('default', 0)`。
+  未接：`flow_staff` / `logistics_staff`（医院用能人数折算法需要它们 + 床位占用率 + 门诊量，
+  其中占用率/门诊量 DB 无字段）——属待决，不在本次范围。
+- 验证：见 `_changes/` 探针（`probe_bed_fields.py` / `verify_bed_chain.py`）——
+  `collect_from_pg` 返回 `found['bed_num']=260`，解析链命中 `('PG', 260)`；
+  既有项目 `中医医院/data.json` 不回采（避免覆盖人工补写的 `people_count=821` 与
+  `basic_situation`）。

@@ -68,7 +68,7 @@ conn.autocommit = True  # 必须！否则单条查询报错会 abort 整个事�
 | 能耗主数据 | ts_institution_energy_main（折标系数/is_alone/总量；data_type：1=实物量 2=费用 3=供冷 4=供热能耗 5=交通能耗 7=供热费用 8=交通费用） | customer_id |
 | 计量表具 | ts_institution_energy_meter（电/水表数量、分项计量、计量深度） | customer_id |
 | 节能管理 | ts_institution_energy_saving（制度/奖项/改造记录） | customer_id |
-| 场景/人数 | ts_institution_scene（work_staff 用能人数；**供暖口径 heat_pay_type/heat_price/measurement_price/heat_area/heat_day → 落 data.json 的 `metering.heat_*`**（2026-09-21 接线：此前这些字段只用于拼"供暖信息未记录"提示、**没进 data.json**，报告热价只能凭蓝本记忆写）；⚠️ heat_area/heat_day 常为 NULL） | customer_id |
+| 场景/人数 | ts_institution_scene（work_staff 用能人数；**`bed_num` 床位数 → `base.beds_count`**（2026-09-22 接线：此前 pg_query 不查该列、collector 不落、全仓 .py 零命中，医院床位只能靠人工补写；医院项目缺它 → 5.3.4 单位开放床日用水量做不了）；**供暖口径 heat_pay_type/heat_price/measurement_price/heat_area/heat_day → 落 data.json 的 `metering.heat_*`**（2026-09-21 接线）；⚠️ heat_area/heat_day 常为 NULL；`flow_staff`/`logistics_staff` 目前仍未接入，医院用能人数口径待决） | customer_id |
 | 供热面积 | **权威源 ts_institution_build.heat_area（每栋建筑供热面积，法院=24300 有值）**，非 scene.heat_area；指标计算供暖能耗定额时聚合 build.heat_area，缺失/全 0 时用建筑面积兑底（2026-09-02 用户确认） | customer_id |
 | 设备分类 | ts_institution_device_{air,light,office,power,hygiene,hotwater,steam,special,other,td} | customer_id |
 | 图片/附件 | **单位整体外观=ts_institution_scene.scene_img_id（2.1 段落后图2.1）**；建筑外观=ts_institution_build.build_img（2.2 每栋照可选）；电水表照片=ts_institution_energy_meter.device_img；**设备照片=设备分表 _img 列（device_img/system_img/tower_img/pump_img 等）**；**发票照片=ts_institution_energy_invoice（主表）+ ts_institution_energy_invoice_image（明细，record_id 关联，file_id→ts_attachment.group_id）**；计量台账=meter.ledger_files/year_files/month_files；管理制度/奖项=ts_institution_energy_saving.management_files/award_certificate | 均为 ts_attachment.group_id |

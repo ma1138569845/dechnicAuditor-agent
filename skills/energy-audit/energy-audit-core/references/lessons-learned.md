@@ -17,6 +17,7 @@
 | D7 | 费用取到 0（旧版本 `real_value=0`） | 取费用用 `unit_total_value/10000`（元→万元）；实物量 dt=1/4/5 用 total 即可 | 同上（费用字段取数） |
 | D8 | 建筑面积口径含地下车库导致指标偏低 | 分母用 `build_area − garage_area`；采暖面积取 `build.heat_area`（不在 scene 表）；**2026-09-20 代码已实现**（indicators.calc_unit_area_* 扣减 garage_area；chapter5_agent/caliber 注入） | `conventions.md`、`energy-audit-pg-data/SKILL.md` |
 | D9 | **取到了却没落盘**：`ts_institution_scene` 的供暖字段（heat_pay_type/heat_price/measurement_price/heat_area/heat_day）在采集器里**只被用来拼"供暖信息未记录"提示**，没有写进 `data.json` → 报告 2.2 表2.1/5.2.3/6.1.1 的热价（89.61 元/GJ）只能凭蓝本记忆写，变量闸门把它记成"未在本项目数据源找到" | 凡"取到了"的字段必须**落进 data.json 才算数**：`scene.heat_* → MeteringInfo.heat_* → data.json → 写作侧唯一来源`（2026-09-21 接线）。写章取值一律先看 data.json 有没有这个键，没有就报缺、不许凭记忆填 | `tools/energy_audit/pg_collector.py`（6. 用能场景）、`project_data.py::MeteringInfo`、`ea-authoring/references/chapter-guides-1-4.md` §7 第18项 |
+| D10 | **字段"在表里"不等于"在链路里"**：`ts_institution_scene.bed_num`（医院床位数）PG 里明明有值（中医医院 260，6 个版本全有），但 `pg_query` 的 SELECT 不查它、`pg_collector` 的 `beds_count` 解析链只有 `('Excel'), ('default', 0)`、全仓 `.py` 搜 `bed_num` **零命中** → 医院 5.3.4 单位开放床日用水量只能靠人工/公开资料补写，`data_sources` 还自相矛盾地标成 `default`（该标签本应只在值为 0 时出现） | 加字段要**三层一起查**：DB 列 → `pg_query` SELECT → `pg_collector` 落 `found` + 解析链有 PG 候选。校验口诀：`data_sources.<字段>=='default'` 而值非 0/非空 ⇒ 一定不是标准链写的（人工补录）。2026-09-22 已接床位；`flow_staff`/`logistics_staff`（医院用能人数口径）仍未接，属待决 | `tools/energy_audit/pg_query.py::get_institution_scene`、`pg_collector.py`（6. 用能场景 + ProjectBase.beds_count）、`ea-datacollection/SKILL.md`（床位口径）、`energy-audit-pg-data/SKILL.md` |
 
 ## 二、标准与取值
 

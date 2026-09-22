@@ -693,6 +693,13 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         result['found']['metering'] = metering
         if scene.get('work_staff'):
             result['found']['people_count'] = scene.get('work_staff')
+        # 床位（2026-09-22 新增）：ts_institution_scene.bed_num 此前**整条链没人读**——
+        # pg_query 的 SELECT 没有它、collector 不落它、全仓 .py 搜 `bed_num` 零命中，
+        # 于是医院项目的 base.beds_count 只能靠人工/公开资料补写（data_sources 还会
+        # 自相矛盾地标成 'default'）。现在按"有值才落"带出，供 5.3.4 单位开放床日
+        # 用水量与 2.1 概况的床位数使用。
+        if _int(scene.get('bed_num'), 0):
+            result['found']['bed_num'] = _int(scene.get('bed_num'), 0)
         mode_rows = pg.get_institution_scene_mode(
             customer_id=customer_id, scene_id=scene.get('id'),
         ) or []
@@ -999,6 +1006,7 @@ def build_and_save_project(
                                     ('Excel', excel_data),
                                     ('default', 300)),
             beds_count=sr.resolve('beds_count',
+                                  ('PG', pg_result['found'].get('bed_num')),
                                   ('Excel', excel_data),
                                   ('default', 0)),
             admin_affiliation=sr.resolve('admin_affiliation',
