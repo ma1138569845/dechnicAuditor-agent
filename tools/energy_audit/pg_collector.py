@@ -133,6 +133,35 @@ def _official_auditor_org(pg, brand: str = '德诚') -> dict:
     return {}
 
 
+_MEDICAL_SPECIFIC_HINTS = ('医院', '卫生院', '妇幼', '保健', '疗养', '诊所', '卫生服务')
+
+
+def _pg_people_count(pg_result: dict, institution_category: str = '',
+                     specific_type: str = ''):
+    """PG 侧的「用能人数」口径（2026-09-22 用户确认）。
+
+    医疗机构 = 在岗在编（work_staff）+ 各类编外（logistics_staff）
+             + 门诊人数（clinic_num）+ 床位数（bed_num）；
+    其他机构类型 = 在岗员工数量（work_staff，沿用旧行为）。
+
+    - 四个分项来自 `ts_institution_scene`，由 collect_from_pg 落在
+      `found['staff_parts']`（有值时）。
+    - 严格按标准式还应含"床位占用比例""年门诊人次/365"，但 DB 无对应列；
+      采集侧用等价要素求和（门诊取人数、床位按满床），报告按此口径表述。
+    - 返回 None 表示 PG 无可用值 → 交给 SourceResolver 走 Excel / default 兜底。
+    """
+    found = (pg_result or {}).get('found') or {}
+    parts = found.get('staff_parts') or {}
+    cat, spec = str(institution_category or ''), str(specific_type or '')
+    is_medical = ('医疗' in cat) or any(k in spec for k in _MEDICAL_SPECIFIC_HINTS)
+    if is_medical:
+        total = sum(int(parts.get(k) or 0) for k in
+                    ('work_staff', 'logistics_staff', 'clinic_num', 'bed_num'))
+        if total > 0:
+            return total
+    return found.get('people_count')
+
+
 def _expand_energy_monthly(energy_yearly) -> list:
     """从 EnergyYearly 的 monthly_* 列表展开为 EnergyMonthly 行（第5章图表用）。"""
     rows = []
@@ -691,6 +720,22 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'heat_day': _int(scene.get('heat_day'), 0) or None,
         }
         result['found']['metering'] = metering
+        # 用能人数分项（2026-09-22 新增）：平台已把「用能人数」的口径要素拆成列——
+        #   在岗员工数量 work_staff / 编外人员数量 logistics_staff /
+        #   门诊人数 clinic_num / 床位数 bed_num（另有流动人员数量 flow_staff，本口径不计入）
+        # 此前只取 work_staff（=只算在编），医疗机构的编外/门诊/床位折算全丢，
+        # 会让人均综合能耗（分母）虚高数倍、评价结论从"达标"翻成"超标"。
+        # 这里把四个分项如实落盘（供 report 概述与口径审计），合计口径在
+        # build_and_save_project 里按机构类型计算（仅医疗机构求和）。
+        staff_parts = {
+            'work_staff': _int(scene.get('work_staff'), 0),
+            'logistics_staff': _int(scene.get('logistics_staff'), 0),
+            'clinic_num': _int(scene.get('clinic_num'), 0),
+            'bed_num': _int(scene.get('bed_num'), 0),
+            'flow_staff': _int(scene.get('flow_staff'), 0),
+        }
+        if any(staff_parts.values()):
+            result['found']['staff_parts'] = staff_parts
         if scene.get('work_staff'):
             result['found']['people_count'] = scene.get('work_staff')
         # 床位（2026-09-22 新增）：ts_institution_scene.bed_num 此前**整条链没人读**——
@@ -1001,10 +1046,34 @@ def build_and_save_project(
                                      ('PG', pg_building_area),
                                      ('Excel', excel_data),
                                      ('default', 0)),
+            # 用能人数口径（2026-09-22 用户确认）：
+            #   医疗机构 = 在岗在编 + 各类编外 + 门诊人数 + 床位数（四项均取自
+            #   ts_institution_scene 的 work_staff / logistics_staff / clinic_num / bed_num）；
+            #   其他机构类型 = 沿用 work_staff（在岗员工数量）。
+            # 说明：标准（standards-values.md）的严格式还含"床位占用比例""年门诊人次/365"，
+            # 但 DB 无对应列，故采集侧采用等价要素求和（门诊取人数、床位按满床），
+            # 报告 2.1/5.3 按"用能人数=在岗+编外+门诊+床位"口径表述。
             people_count=sr.resolve('people_count',
-                                    ('PG', pg_result['found'].get('people_count')),
+                                    ('PG', _pg_people_count(pg_result, pg_institution_category,
+                                                            pg_specific_type)),
                                     ('Excel', excel_data),
                                     ('default', 300)),
+            work_staff=sr.resolve('work_staff',
+                                  ('PG', (pg_result['found'].get('staff_parts') or {}).get('work_staff')),
+                                  ('Excel', excel_data),
+                                  ('default', 0)),
+            logistics_staff=sr.resolve('logistics_staff',
+                                       ('PG', (pg_result['found'].get('staff_parts') or {}).get('logistics_staff')),
+                                       ('Excel', excel_data),
+                                       ('default', 0)),
+            clinic_num=sr.resolve('clinic_num',
+                                  ('PG', (pg_result['found'].get('staff_parts') or {}).get('clinic_num')),
+                                  ('Excel', excel_data),
+                                  ('default', 0)),
+            flow_staff=sr.resolve('flow_staff',
+                                  ('PG', (pg_result['found'].get('staff_parts') or {}).get('flow_staff')),
+                                  ('Excel', excel_data),
+                                  ('default', 0)),
             beds_count=sr.resolve('beds_count',
                                   ('PG', pg_result['found'].get('bed_num')),
                                   ('Excel', excel_data),

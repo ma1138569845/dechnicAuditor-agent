@@ -219,7 +219,10 @@ LLM 只产出「需要什么内容 / 什么表 / 什么图」，不产出「怎�
 **正文直取 `proj.base.basic_situation`**（数据采集阶段已从 ts_customer_info 解析，溯源 PG → Excel）；为空或不完整时由 author agent 依据以下字段补全（LLM 自然生成，非模板填充），一段式，覆盖：
 
 - 全称 `unit_name` → 简称 `unit_short` → 行政归属 `admin_affiliation` → 地址 `address` → 性质 `specific_type`/`institution_category`（机构性质与职能定位）
-- 内设机构 `department_count` → 人员编制 `people_count`（医院另取床位数 `beds_count`）→ 建筑数量 `len(proj.buildings)`
+- 内设机构 `department_count` → 人员编制 `people_count` → 建筑数量 `len(proj.buildings)`
+  > **医院类注意（2026-09-22）**：`people_count` 已按口径算好 = 在岗(`work_staff`) + 编外(`logistics_staff`) + 门诊(`clinic_num`) + 床位(`beds_count`)；
+  > 写 2.1 时**直接引用 `people_count`，不要自行相加**；需要解释口径时按"用能人数=在岗+编外+门诊+床位"表述，
+  > 床位数另在"床位约 N 张"处引用 `beds_count`。严格式（含床位占用比例、年门诊/365）见 `standards-values.md`。
 - 主体建筑描述 → 建筑面积 `building_area`
 
 **要求：**

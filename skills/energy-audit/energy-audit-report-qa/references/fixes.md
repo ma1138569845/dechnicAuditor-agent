@@ -194,7 +194,20 @@
    - 修法：`ingest_kb_files.py` / `sync_report_library.py` / `verify_knowledge_assets.py`
      在 import 时做 `_utf8_stdout()`（reconfigure utf-8 + errors=replace）。
 
-### 2026-09-22 床位字段接入（采集链缺口 D10）
+### 2026-09-22 床位 + 用能人数口径接入（采集链缺口 D10）
+
+**（同日追加）用能人数四要素接通**（用户口径：医疗机构用能人数 = 在岗在编 + 各类编外 + 门诊人数 + 床位数）：
+- 关键发现：`ts_institution_scene` 里**门诊人数字段叫 `clinic_num`**（列注释"门诊人数"）——
+  此前几轮只搜 `staff/flow` 关键词，漏了 `clinic`，一度误判"门诊量 DB 无字段"。
+- 改动：`pg_query.get_institution_scene` SELECT 补 `logistics_staff / clinic_num / flow_staff`；
+  `pg_collector` 场景块落 `found['staff_parts']`（在岗/编外/门诊/床位/流动 五值）；
+  新增 `_pg_people_count()`：**医疗机构 people_count = work_staff + logistics_staff + clinic_num + bed_num**，
+  其他机构类型仍取 work_staff；`ProjectBase` 增 `work_staff/logistics_staff/clinic_num/flow_staff` 四字段（分项落 data.json 可审计）。
+- 实证（中医医院）：在岗 300 + 编外 50 + 门诊 470 + 床位 260 = **1080**（此前人工填 820；
+  若按旧行为"只取在岗"则为 300 → 人均综合能耗虚高约 3.6 倍，评价会从"低于约束值"翻成"高于约束值"）。
+- 口径依据：`ea-calculation/SKILL.md` 指标表 + `standards-values.md`《医院用能人数计算规则》；
+  严格式还含"床位占用比例""年门诊人次/365"，DB 无列 → 采集侧等价要素求和，报告按此口径表述。
+- 未纳入：`flow_staff`（流动人员数量）已采集但不计入当前口径（用户明确列的四项不含它）。
 
 - 现象（用户在报告生成时收到提示"床位数据在PG有记录但采集链未接入"，查证属实）：
   `ts_institution_scene.bed_num` 有值（中医医院 customer 2100168253474533377 = **260**，

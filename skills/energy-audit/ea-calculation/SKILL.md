@@ -116,7 +116,7 @@ proj = load_project(unit_name)
 |---|------|------|------|
 | 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | Ejrcn=(综合−供暖−交通)/面积，全口径 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | (总电−供暖电)/面积 |
-| 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数 = 在岗 + 编外 + 门诊折算 + 床位折算 |
+| 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数（**采集侧已按口径落 `base.people_count`**）= 在岗 + 编外 + 门诊人数 + 床位数，仅医疗机构求和；四要素字段名 `base.work_staff/logistics_staff/clinic_num/beds_count`。严格式（含床位占用比例、年门诊/365）见 `standards-values.md`《医院用能人数计算规则》 |
 | 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆·政务=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, bed_count, building_area, sub_type)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均）；场馆图书馆/博物馆按 4452 面积定额对标 |
 | 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 

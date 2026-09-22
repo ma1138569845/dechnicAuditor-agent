@@ -223,9 +223,16 @@ proj = build_and_save_project(project_name, excel_data=excel_data, pg_result=res
 
 由 `SourceResolver` 统一记录（`pg_collector.py`），来源取值：`PG` / `Excel` / `default`。最终写入 `AuditProject.data_sources`（`Dict[str, str]`）。
 
-> **床位口径（2026-09-22）**：`beds_count` 的取值链 = `PG（ts_institution_scene.bed_num）→ Excel → default 0`。
-> 医院项目若 `data_sources.beds_count == 'default'`，说明**标准链没取到**（该标签只在所有候选都未命中时出现，
-> 此时值应为 0）；一旦出现"值是 260 却标 default"，那一定不是本链写的，属人工/Agent 补录，须回查。
+> **用能人数与床位口径（2026-09-22 接线）**：`ts_institution_scene` 已有全套要素列，
+> 采集器现在按口径带出——`work_staff`（在岗员工）/ `logistics_staff`（编外人员）/
+> `clinic_num`（**门诊人数**）/ `bed_num`（床位数）→ `base.work_staff`·`logistics_staff`·`clinic_num`·`beds_count`；
+> **医疗机构 `base.people_count` = 在岗 + 编外 + 门诊 + 床位**（`pg_collector._pg_people_count`），
+> 其他机构类型 = `work_staff`。`flow_staff`（流动人员数量）已采集、当前**不计入**。
+> 依据：`ea-calculation/SKILL.md` 指标表与 `standards-values.md`《医院用能人数计算规则》（严格式还含
+> 床位占用比例、年门诊人次/365，DB 无对应列 → 采集侧用等价要素求和，报告按此口径表述）。
+>
+> `beds_count` / `people_count` 的取值链 = `PG → Excel → default`。提示：若 `data_sources.x == 'default'`
+> 而值非 0/非空，说明**不是标准链写的**（该标签本应只在候选全未命中、值为 0 时出现），属人工/Agent 补录，须回查。
 
 ---
 

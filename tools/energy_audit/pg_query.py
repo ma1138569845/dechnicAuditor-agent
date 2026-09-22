@@ -693,6 +693,7 @@ class PgDataQuery:
                     s.id, s.year, s.mode, s.split_measure, s.split_payment,
                     s.energy_metering, s.separate_meter, s.heat_area, s.heat_day, s.heat_price,
                     s.heat_pay_type, s.measurement_price, s.work_staff, s.bed_num,
+                    s.logistics_staff, s.clinic_num, s.flow_staff,
                     s.light_socket_meter, s.power_meter, s.aircon_meter, s.special_meter,
                     s.other_special_meter, s.construction_elec_meter, s.construction_water_meter,
                     s.install_position, s.position_reasonable, s.metering_standard,

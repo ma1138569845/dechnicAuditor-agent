@@ -72,6 +72,13 @@ class ProjectBase:
     building_area: float = 0           # 总建筑面积 m²
     people_count: int = 0              # 用能人数/职工数
     beds_count: int = 0                # 床位数（医院用）
+    # 用能人数口径分项（2026-09-22 新增）：平台把口径要素拆在 ts_institution_scene，
+    # 医疗机构用能人数 = 在岗员工 + 编外人员 + 门诊人数 + 床位数（见 pg_collector._pg_people_count）。
+    # 四个分项落盘是为了让 people_count 的来源可审计（不再出现"值 820 却标 PG"这种错标）。
+    work_staff: int = 0                 # 在岗员工数量 — scene.work_staff
+    logistics_staff: int = 0            # 编外人员数量 — scene.logistics_staff
+    clinic_num: int = 0                 # 门诊人数 — scene.clinic_num
+    flow_staff: int = 0                 # 流动人员数量 — scene.flow_staff（当前不计入用能人数口径）
     admin_affiliation: str = ""        # 行政归属 ex: "山东省卫生健康委员会"
     department_count: str = ""         # 内设机构/科室 ex: "23个临床科室、7个医技科室"
     project_manager: str = ""          # 审计项目负责人
