@@ -1108,10 +1108,10 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
         },
         {
           icon: Layers3,
-          id: 'cap-mcp',
-          keywords: ['mcp', 'servers', 'tools', 'capabilities', 'model context protocol'],
-          label: `${capLabel}: ${t.skills.tabMcp}`,
-          run: go(`${CAPABILITIES_ROUTE}?tab=mcp`)
+          id: 'cap-connectors',
+          keywords: ['connectors', 'apps', 'mcp', 'servers', 'tools', 'capabilities', 'model context protocol'],
+          label: `${capLabel}: ${t.connectorsPage.title}`,
+          run: go(`${CAPABILITIES_ROUTE}?tab=connectors`)
         },
         {
           icon: Package,
@@ -1190,7 +1190,11 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
       })
     }
 
-    const fieldItems = [...settingsCatalog.subpageEntries, ...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
+    const fieldItems = [
+      ...settingsCatalog.subpageEntries,
+      ...settingsCatalog.appearanceEntries,
+      ...settingsCatalog.configEntries
+    ].map(settingsEntryItem)
 
     if (fieldItems.length > 0) {
       result.push({ heading: t.commandCenter.settingsFields, items: fieldItems })
@@ -1225,7 +1229,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
           id: `mcp-${name}`,
           keywords: ['mcp', 'server', 'tool'],
           label: name,
-          run: go(`${CAPABILITIES_ROUTE}?tab=mcp&server=${encodeURIComponent(name)}`)
+          run: go(`${CAPABILITIES_ROUTE}?tab=connectors&server=${encodeURIComponent(name)}`)
         }))
       })
     }
@@ -1312,7 +1316,11 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
     if (search.trim()) {
       result.push({
         heading: cc.settingsFields,
-        items: [...settingsCatalog.subpageEntries, ...settingsCatalog.appearanceEntries, ...settingsCatalog.configEntries].map(settingsEntryItem)
+        items: [
+          ...settingsCatalog.subpageEntries,
+          ...settingsCatalog.appearanceEntries,
+          ...settingsCatalog.configEntries
+        ].map(settingsEntryItem)
       })
 
       if (settingsCatalog.credentialEntries.length > 0) {
