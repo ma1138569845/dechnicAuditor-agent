@@ -336,7 +336,29 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     # ---- 1. 查找项目 ----
     proj = pg.find_project_by_name(project_name)
     if not proj:
-        result['missing'].append('项目基本信息（未在PG中找到该项目）')
+        # 兜底（2026-09-23）：平台可能把"规范全称"那条项目记录**软删**（deleted=1），
+        # 只留简称行——实测：报告用「莘县中医医院」，而存活行 audited_name 是「中医医院」。
+        # 上面那次查询是 `audited_name ILIKE '%请求名%'`，简称装不下全称 → 反向匹配不到 →
+        # **静默什么都不采**（全字段回退 default），当日事故就是这么被卡住的。
+        # 这里补"反向包含匹配"：请求名里包含某个存活 audited_name；取最长者（更具体），
+        # 同长取最新（get_institution_project 已按 create_time DESC），并显式告警。
+        try:
+            live_projects = pg.get_institution_project() or []
+        except Exception as e:  # noqa: BLE001
+            live_projects = []
+            result['missing'].append(f'项目反查失败（项目表查询异常：{e}）')
+        needle = str(project_name or '').strip()
+        cands = [r for r in live_projects
+                 if needle and str(r.get('audited_name') or '').strip()
+                 and needle.find(str(r['audited_name']).strip()) >= 0]
+        if cands:
+            cands.sort(key=lambda r: len(str(r.get('audited_name') or '')), reverse=True)
+            proj = cands[0]
+            result['missing'].append(
+                f"项目名不精确：按「{project_name}」未直接命中，已按存活记录"
+                f"「{proj.get('audited_name')}」继续采集（平台可能已把规范全称那条软删）——请核对")
+    if not proj:
+        result['missing'].append('项目基本信息（未在PG中找到该项目；已试 audited_name 正向模糊 与 反向包含）')
         return result
 
     result['project_id'] = proj['id']

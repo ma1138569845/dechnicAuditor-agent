@@ -202,6 +202,28 @@ def wait_until(fn, label: str, timeout: int = 900, interval: int = 5) -> bool:
     return False
 
 
+def wiki_page_on_disk(file_name: str, min_bytes: int = 512) -> bool:
+    """wiki 页是否已**落盘**（库内计数常滞后/超时，落盘文件才是真相）。
+
+    2026-09-23 实测事故：`wait_until(... doc_counts()["wiki"] > 0 ...)` 报了
+    "⚠️ wiki 生成 等待超时（600s）"，但同日复核发现 wiki 页
+    `rag/wiki/generated/<库名>/<单位>能源审计报告.md` 已 **2881 B 完整落盘**、
+    `backfill_graph_wiki.py --dry-run` 也判"齐全"——即**误报**（该计数来自
+    `knowledge_wiki_pages` 表，而构建器先写文件、表行滞后或缺失）。
+    判据：wiki 目录下存在文件名包含该文档 stem 且 ≥ min_bytes 的 .md。
+    """
+    stem = re.sub(r"[\s　]", "", Path(file_name).stem)   # 去掉 .docx/.pdf
+    root = HERMES / "rag" / "wiki" / "generated"
+    if not stem or not root.is_dir():
+        return False
+    for p in root.rglob("*.md"):
+        if p.name.startswith("_"):
+            continue
+        if stem in re.sub(r"[\s　]", "", p.name) and p.stat().st_size >= min_bytes:
+            return True
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="知识库投递入库")
     ap.add_argument("--kb", choices=[GUIDELINES, QUOTA, REPORTS], help="只入某个库（配 --from 用）")
@@ -343,9 +365,14 @@ def main() -> int:
             kb.start_graph_build(doc_id)
             wait_until(lambda: doc_counts(doc_id)["entities"] > 0, "实体抽取", timeout=900)
             kb.start_wiki_build(doc_id)
-            wait_until(lambda: doc_counts(doc_id)["wiki"] > 0, "wiki 生成", timeout=600)
+            # 判据 = 库内计数 **或** 落盘文件（见 wiki_page_on_disk 的事故说明）
+            wait_until(lambda: doc_counts(doc_id)["wiki"] > 0 or wiki_page_on_disk(dst.name),
+                       "wiki 生成", timeout=600)
         c = doc_counts(doc_id)
-        print(f"   ✓ 实体 {c['entities']} / 关系 {c['relations']} / wiki {c['wiki']}")
+        wiki_hint = ""
+        if not args.vector_only and c["wiki"] == 0 and wiki_page_on_disk(dst.name):
+            wiki_hint = "（库内计数未刷新；wiki 页已落盘，按文件判定为已生成）"
+        print(f"   ✓ 实体 {c['entities']} / 关系 {c['relations']} / wiki {c['wiki']}{wiki_hint}")
 
         # 7) 归档原件
         if not args.no_archive and not args.reindex_only:

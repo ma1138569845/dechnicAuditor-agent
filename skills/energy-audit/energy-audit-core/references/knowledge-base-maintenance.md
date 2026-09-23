@@ -92,7 +92,7 @@ python <skills>/energy-audit-core/scripts/verify_knowledge_assets.py
 | 检索命中不了条文 | 切片是 summary 垃圾 | 看切片（`dump` 一下内容），重入 |
 | 实体/关系为 0 | ① 抽取调 LLM 读超时（偶发）；② **LLM 返回的 JSON 里有裸控制字符**，`json.loads` 严格模式整块丢弃（实测日志 `Invalid control character at: line 21 column 42`） | ① 补跑 `start_graph_build(doc_id)`；② **已修**：`_llm_extract_graph` 改用 `json.loads(..., strict=False)` + 控制字符兜底清理（2026-09-21）。不影响条文检索 |
 | 图谱构建报 `FOREIGN KEY constraint failed` | **并发构建同一文档**：`build_document_graph` 是逐块 `DELETE`+`INSERT`，两个进程同时跑会互相删掉对方刚插入的实体，导致后续"关系"外键失败（实测：补跑脚本与入库管道同时触发） | **同一文档的图谱构建必须串行**。补跑脚本已改为"数值稳定"等待；实务上**不要在批量入库进行中跑补跑脚本** |
-| 补跑后实体数上下波动（307→137→290） | 等待判据写成了 `entities > 0`——而图谱构建**中途就会 >0** | 判据要"**非零且连续两次不变**"才算完成（`_changes/backfill_graph_wiki.py::wait_stable`） |
+| 补跑后实体数上下波动（307→137→290） | 等待判据写成了 `entities > 0`——而图谱构建**中途就会 >0** | 判据要"**非零且连续两次不变**"才算完成（`energy-audit-core/scripts/backfill_graph_wiki.py::wait_stable`；2026-09-23 由草稿区 `_changes/` 移入技能，与 `ingest_kb_files.py` 同目录） |
 
 ## 八、遗留项（2026-09-21 逐项处置后）
 
