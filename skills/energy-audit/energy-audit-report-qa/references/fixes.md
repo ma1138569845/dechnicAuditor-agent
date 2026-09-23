@@ -226,7 +226,7 @@
   `beds_count` 解析链改为 `('PG', found['bed_num']) → ('Excel') → ('default', 0)`。
   未接：`flow_staff` / `logistics_staff`（医院用能人数折算法需要它们 + 床位占用率 + 门诊量，
   其中占用率/门诊量 DB 无字段）——属待决，不在本次范围。
-- 验证：当时用**草稿区** `energy-audit-v2/_changes/` 下的探针（`probe_bed_fields.py` / `verify_bed_chain.py`，**不在技能包内**）；
+- 验证：当时用**草稿区** `energy-audit-v2/_changes/` 下的探针（`probe_bed_fields.py` / `verify_bed_chain.py`，**不在技能包内**〔草稿区 `energy-audit-v2/_changes/` 已于 2026-09-23 清空，旧文件打包在 `energy-audit-v2/_archive_drafts_20260923.zip`，解压即恢复〕）；
   `collect_from_pg` 返回 `found['bed_num']=260`，解析链命中 `('PG', 260)`；
   既有项目 `中医医院/data.json` 不回采（避免覆盖人工补写的 `people_count=821` 与
   `basic_situation`）。

@@ -66,6 +66,12 @@
 > 镜像库的 `.gitignore` 有意排除 `__pycache__/`、`*.pyc`、`_deploy/last_deploy.json`（每次发布重写的机器状态）；
 > 位于 `repo/` 之外的 `_changes/`（草稿区：备份与临时产物）、`profiles/`（sync 生成物）、
 > `_sandbox_*/`、`_snapshot_原文/`、`_包外附件/` **均不在**该库内。
+> **草稿区已于 2026-09-23 清空**（原 465 文件 / 128.1 MB）：其中 200 个页面渲染 PNG（86 MB，
+> 可由 PDF 再生）与缓存直接删除；13 个标准 PDF + 脚本/记录/JSON（265 项 / 41.7 MB）打包成
+> `energy-audit-v2/_archive_drafts_20260923.zip`（36.2 MB）；`_changes/` 现为空目录（脚本仍可写入）。
+> 包内文档引用过的草稿区脚本/记录（`audit_checks.py`、`audit_overlap_detail.py`、`pdf_to_text.py`、
+> `T2-直跑验证记录.md`、`test_deploy_guard*.py`、`probe_bed_fields.py`、`verify_bed_chain.py` 等）
+> **都在该 zip 里**，恢复：`Expand-Archive -LiteralPath <zip> -DestinationPath <_changes> -Force`。
 > 取回历史里的已删文件：`git -C <镜像> show <commit>:<path>`（例：`1a30ad0:_deploy/backport_backup_manifest.md`）。
 
 > **背景（2026-09-20 事故）**：此前用 `robocopy /MIR` 把技能包镜像**整体**覆盖到
