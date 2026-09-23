@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { type FC, useCallback, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useInRouterContext, useNavigate } from 'react-router'
 
 import { useComposerScope } from '@/app/chat/composer/scope'
 import { useSessionView } from '@/app/chat/session-view'
@@ -28,6 +28,11 @@ import type { ChangedFile } from './changed-files'
 const PREVIEW_COUNT = 4
 const EXPANDED_MAX_HEIGHT = '18rem'
 
+// Shared by the footer's two "View all" variants: the unfold control and the
+// Router-gated navigate control.
+const VIEW_ALL_CLASS =
+  'inline-flex min-w-0 cursor-pointer items-center gap-0.5 text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)'
+
 /**
  * Cursor-style artifact tiles closing out a settled assistant turn: a 2-column
  * grid of file cards. The main control opens that file in the right preview
@@ -47,12 +52,12 @@ export const ChangedFilesCard: FC<{
 }> = ({ extraPaths, extraTexts, parts }) => {
   const { t } = useI18n()
   const copy = t.assistant.thread
-  const files = useMemo(
-    () => deriveChangedFiles(parts, extraTexts, extraPaths),
-    [extraPaths, extraTexts, parts]
-  )
+
+  const files = useMemo(() => deriveChangedFiles(parts, extraTexts, extraPaths), [extraPaths, extraTexts, parts])
+
   const [expanded, setExpanded] = useState(false)
-  const navigate = useNavigate()
+  // Safe anywhere; useNavigate() is NOT (see ViewAllArtifactsAction).
+  const inRouter = useInRouterContext()
   // Review THIS surface's repo: a tile transcript pins the pane to the tile's
   // worktree; the primary passes null (follow the active session, as before).
   const view = useSessionView()
@@ -104,15 +109,9 @@ export const ChangedFilesCard: FC<{
     [copy.revealFileFailed, viewCwd]
   )
 
-  const onViewAll = () => {
-    if (!expanded && files.length > PREVIEW_COUNT) {
-      setExpanded(true)
-
-      return
-    }
-
-    navigateToWorkspacePage(navigate, ARTIFACTS_ROUTE)
-  }
+  // First click unfolds the rest; only the second one navigates, so the
+  // Router-dependent half lives in its own child (see ViewAllArtifactsAction).
+  const canExpand = !expanded && files.length > PREVIEW_COUNT
 
   if (files.length === 0) {
     return null
@@ -142,14 +141,14 @@ export const ChangedFilesCard: FC<{
         list
       )}
       <div className="mt-2 flex items-center gap-2 text-[length:var(--conversation-tool-font-size)]">
-        <button
-          className="inline-flex min-w-0 cursor-pointer items-center gap-0.5 text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)"
-          onClick={onViewAll}
-          type="button"
-        >
-          <span className="truncate">{copy.viewAllArtifacts(files.length)}</span>
-          <ChevronRight className="size-3.5 shrink-0" />
-        </button>
+        {canExpand ? (
+          <button className={VIEW_ALL_CLASS} onClick={() => setExpanded(true)} type="button">
+            <span className="truncate">{copy.viewAllArtifacts(files.length)}</span>
+            <ChevronRight className="size-3.5 shrink-0" />
+          </button>
+        ) : (
+          inRouter && <ViewAllArtifactsAction label={copy.viewAllArtifacts(files.length)} />
+        )}
         <span className="min-w-0 flex-1" />
         <button
           className="shrink-0 cursor-pointer text-(--ui-text-tertiary) transition-colors hover:text-(--ui-text-primary)"
@@ -160,6 +159,26 @@ export const ChangedFilesCard: FC<{
         </button>
       </div>
     </div>
+  )
+}
+
+/**
+ * The card's footer "View all" control once the preview is no longer collapsed.
+ *
+ * Isolated because `useNavigate()` THROWS outside a `<Router>` — this card
+ * mounts on every assistant message, and threads also render in bare test
+ * harnesses and router-free embedded panes. The parent gates the mount on
+ * `useInRouterContext()`, which is safe anywhere (same shape as
+ * `SettingsLinkAction` in assistant-message.tsx).
+ */
+const ViewAllArtifactsAction: FC<{ label: string }> = ({ label }) => {
+  const navigate = useNavigate()
+
+  return (
+    <button className={VIEW_ALL_CLASS} onClick={() => navigateToWorkspacePage(navigate, ARTIFACTS_ROUTE)} type="button">
+      <span className="truncate">{label}</span>
+      <ChevronRight className="size-3.5 shrink-0" />
+    </button>
   )
 }
 
