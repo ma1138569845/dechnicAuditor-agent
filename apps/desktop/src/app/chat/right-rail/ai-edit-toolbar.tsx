@@ -139,7 +139,6 @@ export function AiEditToolbar({ anchor, onDismiss, onPromptingChange, onSubmit }
             className={cn(PRIMARY_ICON_BTN, 'flex shrink-0 items-center justify-center')}
             data-slot="ai-edit-confirm"
             disabled={!prompt.trim()}
-            title={t.preview.aiEditConfirm}
             type="submit"
           >
             <Codicon name="arrow-up" size="0.875rem" />

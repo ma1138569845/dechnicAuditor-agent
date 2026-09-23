@@ -227,7 +227,6 @@ const ChangedFileTile: FC<{
           aria-label={revealLabel}
           className="flex shrink-0 cursor-pointer items-start py-2.5 pr-3 pl-1 text-muted-foreground transition-colors hover:text-foreground"
           onClick={onReveal}
-          title={revealLabel}
           type="button"
         >
           <span className="rounded-md p-1 hover:bg-muted/55">

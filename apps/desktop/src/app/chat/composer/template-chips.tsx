@@ -6,6 +6,7 @@
  * can review/edit before sending.
  */
 
+import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
@@ -47,19 +48,19 @@ export function TemplateChips({ templates, title, onSelect, onClose }: TemplateC
       </div>
       <div className="flex flex-wrap gap-1.5">
         {templates.map(template => (
-          <button
-            className={cn(
-              'group relative flex max-w-[14rem] items-center gap-1.5 rounded-md border border-border',
-              'bg-(--ui-bg-primary) px-2 py-1 text-left transition-colors',
-              'hover:border-primary hover:bg-(--ui-bg-primary)'
-            )}
-            key={template.id}
-            onClick={() => onSelect(template)}
-            title={template.description}
-            type="button"
-          >
-            <span className="truncate text-xs font-medium text-foreground">{template.label}</span>
-          </button>
+          <Tip key={template.id} label={template.description}>
+            <button
+              className={cn(
+                'group relative flex max-w-[14rem] items-center gap-1.5 rounded-md border border-border',
+                'bg-(--ui-bg-primary) px-2 py-1 text-left transition-colors',
+                'hover:border-primary hover:bg-(--ui-bg-primary)'
+              )}
+              onClick={() => onSelect(template)}
+              type="button"
+            >
+              <span className="truncate text-xs font-medium text-foreground">{template.label}</span>
+            </button>
+          </Tip>
         ))}
       </div>
     </div>

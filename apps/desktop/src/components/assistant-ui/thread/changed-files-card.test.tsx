@@ -109,7 +109,9 @@ describe('ChangedFilesCard', () => {
 
     const reveal = screen.getByRole('button', { name: REVEAL_LABEL })
 
-    expect(reveal.getAttribute('title')).toMatch(REVEAL_LABEL)
+    // The label lives in `aria-label`, not native `title=`: repo convention
+    // bans `title=` on buttons (see ui/__tests__/no-native-title.test.ts).
+    expect(reveal.getAttribute('aria-label')).toMatch(REVEAL_LABEL)
 
     fireEvent.click(reveal)
 

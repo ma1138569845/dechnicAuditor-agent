@@ -242,6 +242,14 @@ export function deriveChangedFiles(
       continue
     }
 
+    // A call still running has no result yet, so nothing has landed and there
+    // is no card to show. Upstream got this for free from its `if (!diff)
+    // continue` gate; this fork deliberately keeps result-bearing writes that
+    // carry no diff (`write_file` rehydrates that way), so it must say so.
+    if (part.result === undefined && part.toolResultMetadata === undefined) {
+      continue
+    }
+
     const result = toolResultRecord(part)
     const diff = inlineDiffFromResult(result)
 
