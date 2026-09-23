@@ -9,6 +9,7 @@ import { type AppendMessage, ExportedMessageRepository } from '@assistant-ui/rea
 // carve-out in thread.tsx.
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
@@ -52,9 +53,11 @@ function IncrementalHarness({ onEdit }: { onEdit: (message: AppendMessage) => Pr
   })
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <Thread />
-    </AssistantRuntimeProvider>
+    <MemoryRouter>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <Thread />
+      </AssistantRuntimeProvider>
+    </MemoryRouter>
   )
 }
 
@@ -68,9 +71,11 @@ function StockHarness({ onEdit }: { onEdit: () => Promise<void> }) {
   })
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <Thread />
-    </AssistantRuntimeProvider>
+    <MemoryRouter>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <Thread />
+      </AssistantRuntimeProvider>
+    </MemoryRouter>
   )
 }
 

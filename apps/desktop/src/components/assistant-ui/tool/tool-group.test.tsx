@@ -1,5 +1,6 @@
 import { type ThreadMessage } from '@assistant-ui/react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { $displayTimestamps } from '@/store/display-timestamps'
@@ -376,10 +377,15 @@ function movedOnMessage(): ThreadMessage {
   } as unknown as ThreadMessage
 }
 
+// A Router is required because the fork's ChangedFilesCard navigates to the
+// Artifacts page (`useNavigate`) — upstream's version used store callbacks and
+// never needed one, so this harness had none.
 const GroupHarness = ({ message }: { message: ThreadMessage }) => (
-  <ThreadRuntime messages={[message]}>
-    <Thread />
-  </ThreadRuntime>
+  <MemoryRouter>
+    <ThreadRuntime messages={[message]}>
+      <Thread />
+    </ThreadRuntime>
+  </MemoryRouter>
 )
 
 beforeEach(() => {

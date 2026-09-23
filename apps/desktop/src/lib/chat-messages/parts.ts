@@ -90,13 +90,18 @@ const _MEDIA_EXT_ALTERNATION = [...MEDIA_DELIVERY_EXTS].sort((a, b) => b.length 
  */
 const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})(?=[\\s\`"'*_,;:)\\]}]|MEDIA:|$)`
 
+// The `[`"'*_]{0,3}` wrappers around `MEDIA:` swallow markdown emphasis the
+// model leaks into the tag (`**MEDIA: /tmp/report.docx**`). The unquoted branch
+// excludes `*`/`_`/quotes so a trailing `**` never lands in the path — without
+// both halves the artifact card renders a link wrapped in literal asterisks and
+// the Office/PDF preview misses its file.
 const MEDIA_LINE_RE = new RegExp(
-  `(^|\\n)[\\t ]*[\`"']?MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|\\S+)[\`"']?[\\t ]*(\\n|$)`,
+  `(^|\\n)[\\t ]*[\`"'*_]{0,3}MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|[^\\s\`"'*]+)[\`"'*]{0,3}[\\t ]*(\\n|$)`,
   'g'
 )
 
 const MEDIA_TAG_RE = new RegExp(
-  `[\`"']?MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|\\S+)[\`"']?`,
+  `[\`"'*_]{0,3}MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|[^\\s\`"'*]+)[\`"'*]{0,3}`,
   'g'
 )
 
