@@ -7,9 +7,9 @@
 
 > **2026-09-24 改版**：图5.1 由"graphviz 彩色三层推断图"改为
 > **横式层级黑白图**（引擎 `tools/energy_audit/energy_flow_chart_v3.py`），
-> 样式与参照包 `skills/productivity/energy-audit/scripts/make_flow_figs_v3.py`
-> + 其 `references/energy-flow-diagrams.md` 一致（用户 2026-09-24 拍板：**只保留 1 张综合图、
-> 只换风格**；旧 graphviz 实现保留为兜底，不删依赖）。
+> 样式与外部参照包（`E:\桌面文件\1\能源审计技能包` 下 productivity/energy-audit 的
+> `make_flow_figs_v3.py` 及同包的能源流向图画法说明）逐项一致
+> （用户 2026-09-24 拍板：**只保留 1 张综合图、只换风格**；旧 graphviz 实现保留为兜底，不删依赖）。
 
 ### 5.1 规范
 
