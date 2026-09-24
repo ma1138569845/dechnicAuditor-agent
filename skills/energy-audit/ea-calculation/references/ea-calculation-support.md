@@ -5,40 +5,64 @@
 
 ## 能源流向图生成规范（原 energy-flow-diagram-spec）
 
-### 原理
-
-用 **graphviz** (dot engine) 生成三层能源流向图，替代 matplotlib 版本。
-
-### 架构
-
-```
-能源输入(圆角矩形) → 用能系统(直角矩形) → 终端设备(直角矩形)
-    实线 = 主能源流   虚线 = 辅助/间接能源流
-    颜色: 电=橙/水=蓝/气=绿/热=红/汽油=琥珀/柴油=褐
-```
-
-### 动态适配
-
-`draw_energy_flow_diagram(energy_types, equipment, unit_name)` 完全由数据驱动：
-
-| 参数 | 影响 |
-|------|------|
-| energy_types | 决定源节点数量和种类 |
-| equipment 列表 | 终端设备名称从 equipment.name 生成 |
-| equipment 为空 | 内置默认终端兜底 |
-| unit_name | 标题变化 |
-
-### 安装
-
-- Windows: `winget install Graphviz.Graphviz`
-- macOS: `brew install graphviz`
-- 代码自动将 `C:\Program Files\Graphviz\bin` 加入 PATH
+> **2026-09-24 改版**：图5.1 由"graphviz 彩色三层推断图"改为
+> **横式层级黑白图**（引擎 `tools/energy_audit/energy_flow_chart_v3.py`），
+> 样式与参照包 `skills/productivity/energy-audit/scripts/make_flow_figs_v3.py`
+> + 其 `references/energy-flow-diagrams.md` 一致（用户 2026-09-24 拍板：**只保留 1 张综合图、
+> 只换风格**；旧 graphviz 实现保留为兜底，不删依赖）。
 
 ### 5.1 规范
 
 1. 一句话概述: "{unit_name}主要用能类型包括{能源列表}。"
 2. 图5.1 能源流向图
 3. 饼图/趋势图/结构表/对比表 → 已全部移除
+
+### 新版样式规范（`energy_flow_chart_v3.py`）
+
+| 项 | 定值 |
+|----|------|
+| 图幅方向 | **横式分层**：最左=能源品种，向右逐级流向；同一层一列，同层**等宽** |
+| 节点 | 白底、黑色直角细框（lw 0.9）、单行居中、无圆角；框高 0.34 in |
+| 连线 | 正交主线走线：父框右缘中点 → 列间正中竖主线 → 各子水平引入；箭头 `-|>` |
+| 字号 | L1 14pt / L2 12pt / L3 10pt（跨图一致） |
+| 字体 | **宋体 SimSun**（Windows 自带，公文同源） |
+| 配色 | **纯黑白灰**（无彩色） |
+| 输出 | dpi=300、`bbox_inches='tight'`、pad 0.10；**图内不画标题**（标题由 Word 图注承担） |
+| 画到第几层 | 默认 3 层（能源品种 → 用途分类 → 用能系统）；**设备明细留给第6章**，避免超宽被缩印 |
+
+### 数据来源（2026-09-24 起：库树优先）
+
+```
+PG ts_energy_flow（客户树清单，一棵树=一个能源品种）
+ + ts_energy_flow_level（节点：level/parent_id/sort）
+   → pg_query.get_energy_flow_trees(customer_id)   # 拼成嵌套树
+   → pg_collector 落 data.json 键 energy_flow_trees
+   → caliber_agent 传 config['energy_flow_trees']
+   → chapter5_agent._generate_flow_diagram() 调用 draw_energy_flow_forest(trees)
+   → charts/energy_flow.png（产物路径不变，装配链/图号断言不感知）
+```
+
+⚠️ **能源代码不统一**（汽油：某机关 `300301` / 某医院 `31`），一律按"该客户有几棵树"驱动，
+**不得按 energy_code 硬编码**。
+
+### 降级链（三级，逐级兜底）
+
+| 级别 | 触发条件 | 结果 |
+|------|----------|------|
+| 1 库树 | `energy_flow_trees` 非空 | 画平台登记的实际流向树（含各项目真实子系统） |
+| 2 两层简化 | 库无登记 | 能源品种 → 用能系统（同平台模板口径分类，**不编造设备名**） |
+| 3 旧 graphviz | 新引擎异常 / 无能源类型 | 旧实现 `energy_flow_chart.py`（保留）；连能源类型都没有才不画图 |
+
+### 旧版 graphviz 实现（保留为兜底）
+
+`draw_energy_flow_diagram(energy_types, equipment, unit_name)` —— 彩色三层推断图
+（能源输入圆角矩形 → 用能系统 → 终端设备）。**仅在新引擎失败时调用**。
+依赖：Graphviz 二进制（`winget install Graphviz.Graphviz` / `brew install graphviz`），
+代码自动将 `C:\Program Files\Graphviz\bin` 加入 PATH。
+
+历史缺陷（已不再是主路径，但兜底命中时仍存在）：
+终端设备名来自 `equipment.name`，而 2026-09-24 之前**整条链没人给 config 传 equipment**，
+于是恒退到内置默认设备名（烟台法院被写成"分体式空调"）；本次已在 caliber_agent 补传真实设备清单。
 
 ---
 

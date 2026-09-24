@@ -830,6 +830,21 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             _inv['images'] = _img_by_record.get(_inv['id'], [])
         result['found']['energy_invoices'] = invoices
 
+    # ---- 6.6b 能源流向树（图5.1）----
+    # 平台在客户维度登记"能源流向树"（ts_energy_flow 树清单 + ts_energy_flow_level 节点）。
+    # 2026-09-24 接入：此前图5.1 由能源类型+设备类别**推断**（终端设备还会退到硬编码默认值，
+    # 于是烟台法院图上写"分体式空调"而现场实为冷水机组+多联机+冷却塔+冷冻/冷却泵）。
+    # 现在把库树如实落进 data.json（energy_flow_trees），画图时优先用它；未登记才降级。
+    try:
+        flow_trees = pg.get_energy_flow_trees(customer_id=customer_id)
+    except Exception as exc:  # noqa: BLE001  —— 表缺失/权限问题不得阻塞整条采集链
+        flow_trees = []
+        result['missing'].append(f'能源流向树读取失败（{exc}）')
+    if flow_trees:
+        result['found']['energy_flow_trees'] = flow_trees
+    else:
+        result['missing'].append('能源流向树（ts_energy_flow 未登记 → 图5.1 走简化版）')
+
     # ---- 6.6 折标系数 ----
     standards = pg.get_energy_standards()
     if standards:
@@ -872,6 +887,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         ('equipment', '设备数据（ts_institution_device_*）'),
         ('metering', '计量信息'),
         ('energy_meter', '表具计量信息（ts_institution_energy_meter）'),
+        ('energy_flow_trees', '能源流向树（ts_energy_flow / ts_energy_flow_level）'),
         ('energy_saving', '节能管理信息（ts_institution_energy_saving）'),
     ]
     for key, label in req:
@@ -1179,6 +1195,8 @@ def build_and_save_project(
         management=ManagementInfo(),
         energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
         energy_meter=pg_result['found'].get('energy_meter', []) or [],
+        # 能源流向树（图5.1）：库登记树优先；空列表 → 画图侧降级为两层简化图
+        energy_flow_trees=pg_result['found'].get('energy_flow_trees', []) or [],
         # meter 表数据按 data_type 回填表数（4.2 表数来源；Excel 同名键可覆盖）
         metering=_merge_metering(_fill_meter_counts(pg_metering, pg_result['found'].get('energy_meter', [])),
                                  excel_data.get('metering', {})),

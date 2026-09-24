@@ -409,6 +409,14 @@ def run_caliber(
             'garage_area': sum(float(getattr(b, 'garage_area', 0) or 0)
                                for b in getattr(proj, 'buildings', []) or []),
             'heating_energy_kwh_map': heating_energy_kwh_map,
+            # 图5.1 数据源（2026-09-24 接入）：data.json 的能源流向树（平台为客户登记的
+            # ts_energy_flow/_level）→ chapter5 直接画库树；为空则画两层简化图。
+            # 同时补传设备清单（此前**整条链没人传 equipment**，graphviz 兜底图只能
+            # 用硬编码默认设备名，如烟台法院被写成"分体式空调"）。
+            'energy_flow_trees': list(getattr(proj, 'energy_flow_trees', []) or []),
+            'equipment': [dict(category=getattr(e, 'category', ''), name=getattr(e, 'name', ''),
+                               quantity=getattr(e, 'quantity', 0) or 0)
+                          for e in (getattr(proj, 'equipment', []) or [])],
             'manual': {
                 'energy_data': energy_data_dict,
                 'cost_data': cost_data,

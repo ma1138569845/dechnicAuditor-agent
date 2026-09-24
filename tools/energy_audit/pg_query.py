@@ -945,6 +945,83 @@ class PgDataQuery:
                    WHERE group_id = ANY(%s) AND (deleted IS NULL OR deleted = 0)"""
         return self._execute(query, (list(group_ids),))
 
+    # ========== 能源流向树（图5.1；ts_energy_flow + ts_energy_flow_level） ==========
+    #
+    # 平台在客户维度维护"能源流向树"：ts_energy_flow 是树清单（一棵树=一个能源品种），
+    # ts_energy_flow_level 是树的节点（level/parent_id/sort 描述层级与顺序）。
+    # 2026-09-24 接入：此前图5.1 由 graphviz 按能源类型+设备类别**推断**画，
+    # 与平台登记的流向树无关（终端设备还会退到硬编码默认值）；现改为库树优先。
+    # ⚠️ 能源代码在不同客户间不统一（汽油：法院 300301 / 中医医院 31），
+    #    因此**不能按 energy_code 硬编码**，一律按"该客户有几棵树"驱动。
+
+    def get_energy_flow(self, customer_id: int = None) -> List[Dict]:
+        """获取 ts_energy_flow：某客户名下的流向树清单（能源品种 / 模板名）。"""
+        query = """SELECT id, energy_code, energy_name, direction, customer_id, template_name
+                   FROM ts_energy_flow
+                   WHERE (deleted IS NULL OR deleted = 0)"""
+        params = []
+        if customer_id:
+            query += " AND customer_id = %s"
+            params.append(customer_id)
+        query += " ORDER BY id"
+        return self._execute(query, tuple(params))
+
+    def get_energy_flow_level(self, flow_ids: List[int] = None) -> List[Dict]:
+        """获取 ts_energy_flow_level：指定流向树的全部节点（含层级/父/排序）。"""
+        if not flow_ids:
+            return []
+        query = """SELECT flow_id, id, parent_id, level, type, sort, energy_name
+                   FROM ts_energy_flow_level
+                   WHERE flow_id = ANY(%s) AND (deleted IS NULL OR deleted = 0)
+                   ORDER BY flow_id, level, sort, id"""
+        return self._execute(query, (list(flow_ids),))
+
+    def get_energy_flow_trees(self, customer_id: int = None) -> List[Dict]:
+        """把 ts_energy_flow(_level) 拼成绘图引擎要的嵌套树。
+
+        返回 `[{'name': '电能', 'energy_code': '45', 'children': [{'name': ..., 'children': [...]}]}, ...]`
+        —— 形状与 `energy_flow_chart_v3.draw_energy_flow_forest(trees=...)` 对齐；
+        无客户/无登记时返回 `[]`（调用方据此降级，不会画错图）。
+        """
+        flows = self.get_energy_flow(customer_id=customer_id)
+        if not flows:
+            return []
+        rows = self.get_energy_flow_level([f["id"] for f in flows])
+
+        by_flow: Dict[int, List[Dict]] = {}
+        for r in rows:
+            by_flow.setdefault(r["flow_id"], []).append(r)
+
+        trees: List[Dict] = []
+        for flow in flows:
+            nodes = {}
+            for r in by_flow.get(flow["id"], []):
+                nodes[r["id"]] = {
+                    "id": r["id"],
+                    "name": (r.get("energy_name") or "").strip(),
+                    "children": [],
+                }
+            roots = []
+            for r in by_flow.get(flow["id"], []):
+                node = nodes[r["id"]]
+                parent = nodes.get(r.get("parent_id"))
+                if parent is not None and parent is not node:
+                    parent["children"].append(node)
+                else:
+                    roots.append(node)
+            if not roots:
+                continue
+            # 正常情况下每棵树只有一个根（该能源品种）；多个根时并列挂在品种下
+            children = roots[0]["children"] if len(roots) == 1 else roots
+            name = (flow.get("energy_name") or "").strip()
+            trees.append({
+                "name": name or (flow.get("template_name") or "").strip(),
+                "energy_code": flow.get("energy_code") or "",
+                "template_name": flow.get("template_name") or "",
+                "children": children,
+            })
+        return [t for t in trees if t["name"]]
+
     # ========== 兼容旧接口 ==========
 
     def get_energy_consumption(self, start_date: str = None, end_date: str = None,

@@ -127,7 +127,7 @@
 
 5.1  能源资源消费/消耗概况
   - 一句话概述: "{unit}主要用能类型包括电、天然气、水。" ← 不要多段LLM文本
-  - 图5.1 能源流向图（graphviz全动态）
+  - 图5.1 能源流向图（库登记流向树 → 横式黑白层级图）
 
 5.2  能源资源消耗/消费数据（主要能源动态H3 + 其他用能 + 费用）
   5.2.1~5.2.N 用X情况分析（主要能源=折标占比≥5%或水，固定顺序 电→水→气→热→油）
@@ -201,24 +201,23 @@
 
 ### 能源流向图
 
-#### 工具
-- **graphviz** (非 matplotlib)
-- 函数: `tools/energy_audit/energy_flow_chart.py::draw_energy_flow_diagram()`
-- 参数: `energy_types`, `equipment`, `unit_name`, `output_path`
+> 2026-09-24 改版：只有 1 张**综合**流向图，样式换成横式层级黑白图。
+> 权威细节见 `ea-calculation-support.md`（本处只留要点）。
 
-#### 系统依赖
-- Windows: `winget install Graphviz.Graphviz`
-- macOS: `brew install graphviz`
-- Linux: `apt install graphviz`
-- 安装后确保 `dot` 在 PATH 中
-- 代码自动探测 `C:\Program Files\Graphviz\bin` 并加入 PATH
+#### 工具与数据源
+- 引擎: `tools/energy_audit/energy_flow_chart_v3.py::draw_energy_flow_forest(trees)`（纯 matplotlib，无外部二进制）
+- 数据: **平台登记流向树优先**——`ts_energy_flow` + `ts_energy_flow_level`
+  → `pg_query.get_energy_flow_trees()` → data.json `energy_flow_trees`
+  → caliber 传 `config['energy_flow_trees']` → 画图
+- 降级: ① 库无登记 → "能源品种 → 用能系统"两层简化图（不编造设备名）；
+  ② 新引擎异常 → 旧 `energy_flow_chart.py`（graphviz，保留为兜底）
 
-#### 设计规则
-- 三层结构: 能源输入(圆角矩形) → 用能系统(直角矩形) → 终端设备(直角矩形)
-- 颜色编码: 电力=橙色(#E65100), 水=蓝色(#1565C0), 天然气=绿色(#2E7D32), 供暖=红色(#C62828), 油=灰色
-- 实线=主要能源流, 虚线=辅助能源流(如水→空调冷却塔)
-- **全动态**: 根据 energy_types 决定源节点, 根据 equipment 决定终端节点
-- 无设备清单时使用内置默认终端(风冷冷水机组/分体式空调/灯具照明等)
+#### 样式规则（跨项目、跨能源统一）
+- **横式分层**（左→右）：能源品种 → 用途分类 → 用能系统；同层一列、同层等宽
+- 节点: 白底、黑色直角细框、单行居中；连线: 正交主线走线 + 黑色箭头
+- 字号 L1 14 / L2 12 / L3 10 pt；字体**宋体 SimSun**；配色**纯黑白**（用户明确"不用彩色"）
+- **图内不画标题**（标题由 Word 图注"图5.1 能源资源流向图"承担，避免重复）
+- 只画到"用能系统"层；**设备明细留第6章**（防图过宽被缩印成小字）
 
 ### 关键 Pitfalls
 
@@ -226,7 +225,7 @@
    修复: `for i, et in enumerate(energy_types): rows[i][-1] = f"{type_tce[et]/sum_tce*100:.1f}%"`
 2. **表号冲突**: 表号固定（表5.1 费用/5.2 无表/5.3 从表5.2 起），图号 5.1 起动态连号；不可硬编码旧动态表号体系
 3. **5.1不要饼图**: 饼图和趋势柱状图已从5.1移除, 不要恢复
-4. **graphviz未安装**: 系统需安装 graphviz 二进制, pip graphviz 只是 Python wrapper
+4. **流向图数据源**: 图5.1 必须优先用库登记树(`energy_flow_trees`), 不要按能源类型+设备类别自行推断; 无登记才走两层简化图。旧 graphviz 兜底需装 graphviz 二进制(pip graphviz 只是 Python wrapper)
 5. **energy_data 缺失**: 直接 print 提示 + return, 不生成第5章
 
 ---
@@ -237,7 +236,7 @@
 
 ### 5.1 能源资源消费/消耗概况
 - 一句话概述："{单位}主要用能类型包括X、Y、Z。"
-- 图5.1 能源流向图（graphviz，按实际用能+设备动态生成）
+- 图5.1 能源流向图（库登记流向树；无登记时两层简化图）
 - ❌ 不需要饼图、表格、逐年对比表
 
 ### 5.2 能源资源消耗/消费数据（无表，按类型动态H3）
@@ -264,7 +263,7 @@
 ### 图表函数
 | 函数 | 用途 |
 |------|------|
-| draw_energy_flow_diagram() | Graphviz流向图（图5.1） |
+| draw_energy_flow_forest() | 流向图（图5.1；库树 → 横式黑白层级图；旧 draw_energy_flow_diagram() 仅兜底） |
 | _generate_total_bar_chart() | 三年总量柱状图（图5.N） |
 | _generate_monthly_grouped_bar() | 三年逐月分组柱状图（图5.N+1，有月度数据才画） |
 | _generate_cost_pie_*() | 各年能源费用占比饼图（每年一张连号） |
@@ -283,7 +282,7 @@
 
   5.1 能源资源消费/消耗概况
     - 一句话概述（"{单位}主要用能类型包括X、Y、Z。"）
-    - 能源流向图（graphviz生成，三层结构，动态适配用能类型+设备清单）
+    - 能源流向图（库登记流向树 → 横式黑白层级图：能源品种 → 用途分类 → 用能系统）
     - ❌ 不需要饼图、不需要表格
 
   5.2 能源资源消耗/消费数据（H3按实际用能类型动态生成，无表格）

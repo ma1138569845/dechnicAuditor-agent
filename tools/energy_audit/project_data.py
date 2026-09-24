@@ -437,6 +437,10 @@ class AuditProject:
     equipment: List[Equipment] = field(default_factory=list)
     metering: MeteringInfo = field(default_factory=MeteringInfo)
     energy_meter: List[dict] = field(default_factory=list)  # 表具计量信息（ts_institution_energy_meter 原始记录，按 data_type/statistical_year 版本归一后）
+    # 能源流向树（图5.1）：ts_energy_flow + ts_energy_flow_level 按客户拼成的嵌套树
+    # [{'name':'电能','energy_code':'45','children':[{'name':'空调用电','children':[...]}]}, ...]
+    # 2026-09-24 接入：图5.1 由"能源类型+设备类别推断"改为"库登记树优先"，缺失才降级。
+    energy_flow_trees: List[dict] = field(default_factory=list)
     shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）

@@ -16,7 +16,7 @@
 | Python | repo 自带 `.venv`（Python 3.11.14）；依赖：psycopg2 / python-docx / lxml / numpy / pandas / requests / graphviz / PyMuPDF(fitz) / Pillow / pywin32 | 自检 ② |
 | PostgreSQL | `10.10.1.165:5432 / dc_energy_audit2`；密码解析链：显式参数 → `EA_PG_*`（旧 `DB_*`）环境变量 → `{HERMES_HOME}/config.yaml` → 包内 config.yaml 默认（密码无内置默认值，缺失即报错） | 自检 ① |
 | Microsoft Word | **桌面版**（COM 自动化，收尾器导出 PDF 用）；渲染字体：宋体 / 黑体 / Cambria Math / Wingdings / Times New Roman | 自检 ⑤ |
-| Graphviz | 已安装于 `C:\Program Files\Graphviz\bin`；`energy_flow_chart.py` 会自动将常见路径注入 PATH（无需系统级配置） | `"C:/Program Files/Graphviz/bin/dot.exe" -V` |
+| Graphviz | 已安装于 `C:\Program Files\Graphviz\bin`；`energy_flow_chart.py` 会自动将常见路径注入 PATH（无需系统级配置）。**2026-09-24 起图5.1 主引擎改为纯 matplotlib 的 `energy_flow_chart_v3.py`，本项只在旧图兜底时用到** | `"C:/Program Files/Graphviz/bin/dot.exe" -V` |
 | Hermes 侧 | `HERMES_HOME`（profiles / config.yaml / rag）；技能已发布并校验对齐 | 自检 ③ |
 | 项目数据根 | `~/projects/energy-audit/<单位全称>/`（`HERMES_PROJECTS_ROOT` 可覆盖） | 目录存在 |
 

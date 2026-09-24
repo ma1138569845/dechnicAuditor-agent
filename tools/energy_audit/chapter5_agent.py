@@ -788,7 +788,31 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 # 图表（matplotlib + graphviz）
 # ============================================================
 
-# chapter5_agent 标准 key → 流向图 key（energy_flow_chart）
+# ============================================================
+# 图5.1 能源流向图
+# ============================================================
+# 引擎：energy_flow_chart_v3 —— 横式层级黑白图，样式与参照包
+#   （`energy-audit/scripts/make_flow_figs_v3.py` + references/energy-flow-diagrams.md）一致：
+#   白底黑框直角细线、正交主线走线、宋体、纯黑白、图内不画标题（标题交 Word 图注）。
+# 数据：**库登记树优先**（ts_energy_flow + ts_energy_flow_level → data.json
+#   `energy_flow_trees` → config 同名键）。2026-09-24 之前是"按能源类型+设备类别推断"，
+#   终端设备还会退到硬编码默认值（烟台法院图上写"分体式空调"，现场实为冷水机组+多联机+
+#   冷却塔+冷冻/冷却泵共 20 台套）——现在以平台登记为准，未登记才降级。
+# 降级：① 无库树 → "能源品种 → 用能系统"两层简化图（不编造设备名）；
+#       ② 全新引擎异常 → 旧 graphviz 实现（`energy_flow_chart.py`，保留不删）。
+# 契约：产物恒为 charts/energy_flow.png（装配链/图号断言不感知本次改造）。
+
+_FLOW_TAXONOMY = {
+    # 降级图口径：与平台"电力流向图（限定版）"等模板同源的两层分类（能源品种 → 用能系统）
+    'electricity': ['照明和插座用电', '空调用电', '动力用电', '特殊用电'],
+    'water': ['生活用水', '生态用水'],
+    'natural_gas': ['厨房用气'],
+    'heat': ['供暖用热'],
+    'gasoline': ['公务用车用油'],
+    'diesel': ['公务用车用油'],
+}
+
+# chapter5_agent 标准 key → 流向图 key（旧 graphviz 兜底用）
 _FLOW_KEY_MAP = {
     'electricity': 'electricity_kwh',
     'water': 'water_m3',
@@ -799,8 +823,52 @@ _FLOW_KEY_MAP = {
 }
 
 
+def _flow_trees_from_config(config: dict) -> list:
+    """库登记流向树（data.json → config.energy_flow_trees）；无 → []"""
+    trees = config.get('energy_flow_trees') or []
+    return [t for t in trees if isinstance(t, dict) and (t.get('name') or '').strip()]
+
+
+def _fallback_flow_trees(en: dict) -> list:
+    """无库树时的两层简化图：能源品种 → 用能系统（只用品类分类，不编造设备名）。"""
+    codes = set()
+    for y_data in (en or {}).values():
+        codes.update((y_data or {}).keys())
+    trees, seen = [], set()
+    for code in sorted(codes, key=lambda c: _MAJOR_ORDER.index(_normalize_energy_code(c))
+                       if _normalize_energy_code(c) in _MAJOR_ORDER else 99):
+        std = _normalize_energy_code(code)
+        systems = _FLOW_TAXONOMY.get(std)
+        if not systems or std in seen:
+            continue
+        seen.add(std)
+        trees.append({
+            'name': _coeff_info(code)['name'],
+            'children': [{'name': s, 'children': []} for s in systems],
+        })
+    return trees
+
+
 def _generate_flow_diagram(en: dict, config: dict, output_dir: str) -> str:
-    """5.1 能源资源流向图（graphviz 全动态）。失败返回 ''。"""
+    """5.1 能源资源流向图。库树优先 → 两层简化 → 旧 graphviz。全部失败返回 ''。"""
+    trees = _flow_trees_from_config(config) or _fallback_flow_trees(en)
+    if trees:
+        try:
+            from tools.energy_audit.energy_flow_chart_v3 import draw_energy_flow_forest
+            path = draw_energy_flow_forest(
+                trees,
+                unit_name=config.get('unit_name', ''),
+                out_path=os.path.join(output_dir, 'energy_flow.png'),
+            )
+            if path and os.path.exists(path):
+                return path
+        except Exception:
+            pass
+    return _generate_flow_diagram_graphviz(en, config, output_dir)
+
+
+def _generate_flow_diagram_graphviz(en: dict, config: dict, output_dir: str) -> str:
+    """兜底（保留不删）：旧 graphviz"能源类型+设备类别"三层推断图。失败返回 ''。"""
     try:
         from tools.energy_audit.energy_flow_chart import draw_energy_flow_diagram
     except Exception:

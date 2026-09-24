@@ -38,7 +38,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 |------|------|
 | `chapter5-spec.md` | ★第5章【结构与细节权威】：结构规范（原 5.2 final-spec）+ 写作逻辑与计算三铁律（原 writing-logic）+ 5.2 踩坑细节（原 writing-lessons）+ 结构化表格 |
 | `chapter5-templates.md` | ★第5章【模板与生成逻辑】：5.3 指标模板（5.3.1 权威）+ 第5章生成逻辑 + Agent 指南 + 图表函数 |
-| `ea-calculation-support.md` | 辅助说明：能源流向图规范（graphviz）+ KG 可视化与置信度反馈 + 报告参考库与 RAG 检索 |
+| `ea-calculation-support.md` | 辅助说明：能源流向图规范（v3 黑白层级图 + 库树优先 + 三级降级；旧 graphviz 仅兜底）+ KG 可视化与置信度反馈 + 报告参考库与 RAG 检索 |
 | ~~其余 8 个 5.x 文件~~ | 已于 2026-09-18 瘦身合并（第 1 组）：4+3+3 个文件合并为上述 3 个；`indicators-guide.md` 内容已被 `standards-values.md` 与本 SKILL 覆盖 → 全部归档至 `_archive/2026-09-18/ea-calculation/references/` |
 
 > 写作章节时以 `references/` 为权威细节源，SKILL.md 只给流程与公式骨架。
@@ -248,12 +248,12 @@ generate_charts(data, config, str(out_dir / 'charts'))
 
 章节结构（细节见 `references/chapter5-templates.md` 与 `references/chapter5-spec.md`）：
 
-- 5.1 能耗概况 + 能源流向图（**graphviz 动态**，`draw_energy_flow_diagram()`；非 matplotlib 饼图）
+- 5.1 能耗概况 + 能源流向图（**平台登记流向树 → 横式黑白层级图**，`energy_flow_chart_v3.draw_energy_flow_forest()`；非 matplotlib 饼图）
 - 5.2 逐类型逐月数据分析（按用能类型**动态分节**，无数据不生成）+ 逐年柱状图 + 逐月趋势图
 - 5.3 五项指标对标表（公式 + 动态表号 + DB37 对标；供暖能耗项按 DB37/T 2672 表2）
 - 5.4 能耗基准（calc_baseline）
 
-图表规范：能源流向图用 graphviz（系统需装 dot 二进制），其余 matplotlib SimHei 字体（中文无乱码），输出 PNG 到 `charts/`；目录不存在自动创建。
+图表规范：能源流向图为**宋体/纯黑白/横式分层**（引擎 `energy_flow_chart_v3.py`，纯 matplotlib，无外部二进制依赖；图内不画标题，标题交 Word 图注），其余 matplotlib SimHei 字体（中文无乱码），输出 PNG 到 `charts/`；目录不存在自动创建。旧 graphviz 实现保留为兜底（系统需装 dot 二进制）。
 
 ---
 
@@ -320,7 +320,8 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 - **用水定额字段语义** — 内置默认表用水三元组为（通用值, 先进值, 0)，与能耗（约束/基准/引导）口径不同，报告表述按通用值/先进值
 - **5.2 分节** — 按用能类型动态 H3，只有有数据的类型才生成；表号固定：表5.1 费用统计表 / 5.2 无表 / 5.3 从表5.2 起，图号 5.1 起动态连号
 - **5.1 极简** — 只有一句话概述 + 能源流向图，不要饼图/趋势柱状图/能源结构表（已移除）
-- **graphviz 依赖** — 系统需安装 graphviz 二进制（pip 包只是 wrapper），否则流向图失败
+- **流向图数据源** — 图5.1 画**平台为客户登记的流向树**（`ts_energy_flow` + `ts_energy_flow_level` → data.json `energy_flow_trees`）；库无登记时降级为"能源品种 → 用能系统"两层简化图（不编造设备名），最后才回落到旧 graphviz 实现
+- **流向图样式** — 横式分层、白底黑框直角细线、宋体、纯黑白、图内不画标题（标题由 Word 图注承担）；只画到"用能系统"层，设备明细留第6章（防超宽缩印）。样式权威见 `references/ea-calculation-support.md`
 - **占比计算** — `type_tce` key 是英文，用中文 `row[0]` 去 `.get()` 会返回 0 导致占比崩
 - **charts/ 目录** — 不存在时自动创建
 
@@ -363,5 +364,5 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 | 🧮 指标计算 | 5项核心指标 + 三级兜底系数/定额 | `indicators.py` |
 | 📊 定额对标 | DB37/T 2673-2019（医疗）/ DB37/T 2672-2019（机关） | `indicators.py` → `resolve_benchmark` |
 | 📝 第5章渲染 | 5.1~5.4 表格+图表引用 Markdown（叙述段由 author 写） | `chapter5_agent.py` |
-| 📈 图表生成 | 能源流向图（graphviz）+ 逐年/逐月趋势（matplotlib） | `energy_flow_chart.py` / `matplotlib` |
+| 📈 图表生成 | 能源流向图（库树 → 横式黑白层级图）+ 逐年/逐月趋势（matplotlib） | `energy_flow_chart_v3.py`（兜底 `energy_flow_chart.py`）/ `matplotlib` |
 | 📋 基准计算 | 5.4 节用量基准+费用基准 | `indicators.py` → `calc_baseline` |
