@@ -84,8 +84,14 @@ _DEFAULT_BENCHMARKS = {
         # 表5 数据中心 EUE：★修复 2026-09-20——原文为 2.3/1.8/1.4
         # （standards-values.md 曾误记 2.2/2.0/1.6，已同步更正）
         'eue': (2.3, 1.8, 1.4),
-        # 用水: DB37/T 4452-2021, 二级医院, 单位开放床日用水量 L/(床·d)
-        'water_per_bed_day': (540, 340, 0),     # 约束值(通用值), 基准值(先进值), 引导值(无)
+        # 用水: DB37/T 4452-2021 表2, 单位开放床日用水量 L/(床·d), 按医院等级分档
+        # （2026-09-24 补三级档：三级 804/440 / 二级 540/340 / 一级 435/296；
+        #   此前仅存二级单值，三级医院会被错套二级定额）
+        'water_per_bed_day': {
+            '三级': (804, 440, 0),     # 约束值(通用值), 基准值(先进值), 引导值(无)
+            '二级': (540, 340, 0),
+            '一级': (435, 296, 0),
+        },
         'standard_name': 'DB37/T 2673-2019《医疗机构能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -324,6 +330,7 @@ _SUBTYPE_DEFAULT = {
     ('medical', 'unit_area_elec'): '二级·A',
     ('medical', 'per_capita_energy'): '二级·A',
     ('medical', 'unit_area_heating'): '市政集中供暖（按热计量）',
+    ('medical', 'water_per_bed_day'): '二级',   # 兜底防崩档；实际档位由平台码解析（三级·B 等，同表1/3/4 逻辑）
     ('government', 'unit_area_non_heating'): '市级以下·A',
     ('government', 'unit_area_elec'): '市级以下·A',
     ('government', 'per_capita_energy'): '市级以下·A',
