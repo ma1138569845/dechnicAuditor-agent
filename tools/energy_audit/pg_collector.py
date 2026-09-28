@@ -745,6 +745,12 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'metering_standard': _int(scene.get('metering_standard')),
             'partition_payment': scene.get('partition_payment') == 1 if scene.get('partition_payment') is not None else False,
             'electric_pay_type': scene.get('electric_pay_type') or '',
+            # 空调控制方式（2026-09-28 接入）：ts_institution_scene.cold_control_type。
+            # 此前**整条链没读这一列**（pg_query 的 SELECT 取 71 列中的 38 列，不含它；
+            # 全仓 grep `cold_control_type` 零命中）。它正是第7章 7.1「C 类机会问题」中
+            # "空调与供暖控制方式落后（人工调节/无集中控制）"的唯一字段依据
+            # ——淄博一四八医院样板 7.1.2 就是这类问题，我们没有字段就写不了。
+            'cold_control_type': (scene.get('cold_control_type') or '').strip(),
             'service_staff': '' if str(scene.get('service_staff') or '') in ('', '0', 'None', '无') else str(scene.get('service_staff')),
             'scene_desc': '' if str(scene.get('scene_desc') or '') in ('', '未知', 'None') else str(scene.get('scene_desc')),
             'record_attach_id': _int(scene.get('record_attach_id')),

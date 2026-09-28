@@ -275,6 +275,9 @@ class MeteringInfo:
     metering_standard: int = 0               # 计量规范性 1非常规范/2一般规范/3不规范
     partition_payment: bool = False          # 分区缴费 — partition_payment (1是/2否)
     electric_pay_type: str = ""              # 电费收费方式
+    cold_control_type: str = ""              # 空调控制方式 — ts_institution_scene.cold_control_type
+    #   （2026-09-28 接入：支撑第7章 7.1 的 C 类机会问题「空调与供暖控制方式落后」；
+    #    此前该列**整条链没人读**，全仓 grep 零命中）
     service_staff: str = ""                  # 第三方服务人员
     scene_desc: str = ""                     # 现场描述
     ledger_files: str = ""                   # 计量器具台账附件文件 id（逗号分隔，电/水表记录拼接）
