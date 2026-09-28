@@ -106,6 +106,20 @@
 
 格式：`数字 + 空格 + 单位`，如 `1234 tce`、`5678 kWh`
 
+## 九之二、正文禁忌：不得出现英文字段名与反引号（2026-09-28 用户定）
+
+报告正文（第1~8章与附录的文字）**只写中文事实**，禁止出现：
+
+- **英文字段名**：如 `water_saving_fixture_replacement`、`cold_control_type`、`has_monitoring_system`
+  ——字段名是**审核追溯**用语（留在 `data.json` 的 `data_sources`、检索台账、审核记录里），
+  正文应写成中文事实，例如"平台节能管理信息中'其他节能改造措施'栏登记为'卫生器具更换'"。
+- **markdown 反引号**（`` ` ``）：装配器（脚本链与 officecli 路径）**不转换行内代码**，
+  反引号会原样印进 Word。
+
+> 缘由（两次实测）：① 第7章 C 类问题曾把 `ts_institution_scene.cold_control_type` 写进正文，
+> 渲染成可见符号；② 5.4 基准期可比性论证曾把 `water_saving_fixture_replacement=1` 写进正文。
+> 两次都是"把证据引用当正文"造成。自检可用：正文无 `[A-Za-z]{4,}_[A-Za-z]` 形态的字段名、无反引号。
+
 ## 十、文字水印
 
 - 内容：被审计单位全称（`unit_name` / `proj.base.unit_name`），不要用带「能源审计」后缀的项目名

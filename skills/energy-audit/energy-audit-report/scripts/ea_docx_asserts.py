@@ -198,6 +198,11 @@ def sections_detail(z):
 APX2_HEAD_COLS = ["月份", "水量(m³)", "水费(元)", "水单价(元/m³)",
                   "电量(kWh)", "电费(元)", "电单价(元/kWh)"]
 
+# 正文禁忌（2026-09-28）：不得出现 snake_case 形态的英文字段名与 markdown 反引号。
+# 只看小写+下划线（如 water_saving_fixture_replacement），避免误伤设备型号/编号
+# （YSEZEZS45CKE/22、GB/T 29149-2012）与附件名（report_2024）。
+_FIELDNAME_RE = re.compile(r"[a-z]{4,}_[a-z]{3,}")
+
 
 def _apx2_section(sect_detail):
     """返回附录2 所在节（判定口径：该节文本含「附录2：…」且不含其它「附录N：」标题）。"""
@@ -298,6 +303,7 @@ def run(docx: str, pdf: str = None):
         "ch5_narrative": ch5_n >= 15,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
+        "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
     }
     details = {}
     flat = [p for p in FLAT_FORMULAS if p in text]
@@ -322,6 +328,10 @@ def run(docx: str, pdf: str = None):
         else:
             details["apx2_table"] = "附录2 表头/合计行不符（需 7 列固定列序 + 合计行）；实测表头=%s" % (
                 [c.strip() for c in (apx2["tables"][0][0] if apx2["tables"] else [])],)
+    if not checks["no_field_names"]:
+        details["no_field_names"] = (
+            "正文出现英文字段名或反引号：%s（数据来源只留在审核记录/data_sources，"
+            "正文改写成中文事实）" % (_FIELDNAME_RE.findall(text)[:5],))
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
