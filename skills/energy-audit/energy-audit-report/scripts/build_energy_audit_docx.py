@@ -175,15 +175,23 @@ def _info_title(doc, text):
 
 
 def _build_cover(doc, unit, org, date_text):
-    _spacers(doc, 3)
-    for text, size, bold in ((unit, 22, True), ("能源审计报告", 26, True)):
+    """封面版式对齐规范报告（淄博一四八样板，2026-09-28 用户要求）。
+
+    样板实测坐标（PDF 量取，自页面顶端）：单位名 y=4.76cm、报告名 y=6.53cm、
+    机构名 y=24.43cm、日期 y=25.53cm；字号 30/30/16/16pt，前两行行距固定 50pt。
+    本实现：首行留白 46pt（≈1.62cm）→ 两行 30pt 标题（行距 50pt）→ 23 个空行 → 16pt 落款，
+    实测落款位置与样板相差 <0.3cm。
+    改动前：单位名 22pt／报告名 26pt（行距 1.5）、落款 14pt 不加粗、间隔 8 空行。
+    """
+    _para(doc, "", line=Pt(46), space_before=0, space_after=0)   # 首行留白（对齐样板 4.76cm）
+    for text in (unit, "能源审计报告"):
         if text:
-            _para(doc, text, size=size, bold=bold, align=WD_ALIGN_PARAGRAPH.CENTER,
-                  line=1.5, space_before=0, space_after=0)
-    _spacers(doc, 8)
+            _para(doc, text, size=30, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
+                  line=Pt(50), space_before=0, space_after=0)
+    _spacers(doc, 23)
     for text in (org, date_text):
         if text:
-            _para(doc, text, size=14, align=WD_ALIGN_PARAGRAPH.CENTER,
+            _para(doc, text, size=16, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=1.5, space_before=0, space_after=0)
     _page_break(doc)
 
