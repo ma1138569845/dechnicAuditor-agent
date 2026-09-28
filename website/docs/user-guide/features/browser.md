@@ -73,7 +73,7 @@ The `.env` keys above supply **credentials only**. The active cloud browser is c
 
 Browser Use mode uses the [Browser Use CLI 3.0](https://github.com/browser-use/browser-use) instead of the built-in browser tools. The agent writes and executes Python in the browser to click, type, drag, scrape, and interact with webpages.
 
-**This is the default browser mode**: when `browser.backend` is unset and the `browser-use` CLI is runnable (installed, or available through `uvx`), the agent gets the single `browser_exec` tool. If the CLI can't run, Hermes falls back to the built-in browser tools automatically.
+**This is the default browser mode**: when `browser.backend` is unset and the `browser-use` CLI is runnable (installed, or available through `uvx`), the agent gets the single `browser_exec` tool. The installers and `hermes update` install the pinned CLI into a Hermes-managed environment unless you passed `--skip-browser` / `-SkipBrowser` or chose `backend: "off"`; `hermes tools post-setup browser_use_cli` retries a failed download. If the CLI can't run, Hermes falls back to the built-in browser tools automatically.
 
 The mode is a **driver** that composes with your configured browser backend: it drives Hermes' own headless Chromium, a Nous-subscription cloud browser, Browserbase, Firecrawl, or Browser Use cloud browsers — whichever browser source is selected in `hermes tools` → Browser Automation. The one exception is Camofox, which has no CDP endpoint for the harness to attach to; Camofox setups automatically keep the built-in browser tools.
 
@@ -630,13 +630,19 @@ AGENT_BROWSER_ARGS=--no-sandbox
 
 ### Install agent-browser CLI
 
-You don't need to install anything — `agent-browser` resolves automatically via
-`npx agent-browser` on first browser-tool use. To avoid the one-time npx fetch,
-you can install it globally ahead of time (optional):
+The installers and `hermes update` install `agent-browser` and its pinned
+Chromium through Hermes's package manager by default. If you installed with
+`--skip-browser` / `-SkipBrowser`, or the download failed, install them with:
 
 ```bash
-npm install -g agent-browser
+hermes pm install agent-browser
 ```
+
+This also undoes an earlier `--skip-browser` choice, so updates keep the
+browser tools current. An `agent-browser` already on your `PATH` also works.
+On Linux, Chromium may also need system libraries
+(`npx playwright install-deps chromium`). On Android/Termux, run
+`npm install -g agent-browser && agent-browser install` instead.
 
 :::info
 The `browser` toolset must be included in your config's `toolsets` list or enabled via `hermes config set toolsets '["hermes-cli", "browser"]'`.

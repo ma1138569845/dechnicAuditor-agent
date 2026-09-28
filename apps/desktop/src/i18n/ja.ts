@@ -1,8 +1,77 @@
 import { defineFieldCopy } from '@/app/settings/field-copy'
 
 import { defineLocale } from './define-locale'
+import { introJa } from './intro-ja'
 
 export const ja = defineLocale({
+  externalOpenFailed: {
+    title: 'このリンクを開けませんでした',
+    message: 'このアドレスを開くブラウザが登録されていません。リンクをコピーして手動で開いてください。',
+    copyUrl: 'リンクをコピー',
+    close: '閉じる'
+  },
+  intro: introJa,
+  catalog: {
+    add: '追加',
+    added: '追加済み',
+    discover: '見つける',
+    featured: 'おすすめ',
+    explorePlugins: 'プラグインを探す',
+    exploreSkills: 'スキルを探す',
+    mostStarred: 'スターが多い順',
+    newest: '新着',
+    recentlyUpdated: '最近の更新',
+    alphabetical: '名前',
+    sortBy: '並べ替え',
+    seeAll: 'すべて表示',
+    related: '類似の項目',
+    tags: 'タグ',
+    screenshots: 'スクリーンショット',
+    listView: 'リスト表示',
+    cardView: 'カード表示',
+    installTitle: (name: string) => `「${name}」をインストールしますか？`,
+    installDescription:
+      'このスキルは新しいセッションで利用できます。信頼できる提供元からのみインストールしてください。',
+    installTo: 'インストール先',
+    thisComputer: 'このコンピューター',
+    installing: 'インストール中…',
+    installComplete: (name: string) => `「${name}」をインストールしました`,
+    destinationChanged:
+      'インストール先が変更されました。このダイアログを閉じ、インストールリンクを開き直してください。',
+    installed: 'インストール済み',
+    searchSkills: 'スキルを検索',
+    searchPlugins: 'プラグインを検索',
+    allSources: 'すべての提供元',
+    allCategories: 'すべてのカテゴリ',
+    about: '概要',
+    author: '作者',
+    source: '提供元',
+    category: 'カテゴリ',
+    version: 'バージョン',
+    platforms: '対応プラットフォーム',
+    requires: '必要なもの',
+    tools: 'ツール',
+    hooks: 'フック',
+    middleware: 'ミドルウェア',
+    commands: 'コマンド',
+    license: 'ライセンス',
+    addedDate: '追加日',
+    updatedDate: '更新日',
+    repository: 'リポジトリ',
+    documentation: 'ドキュメント',
+    noResults: '一致する項目がありません',
+    tryAnother: '別の検索を試すか、フィルターをクリアしてください。',
+    clearFilters: 'フィルターをクリア',
+    filters: 'フィルター',
+    loadFailed: 'カタログを読み込めませんでした',
+    retry: '再試行',
+    more: 'さらに表示',
+    pinned: 'レビュー済みコミット',
+    snapshotHint: 'Hermesカタログの情報です。閲覧時に提供元のリポジトリへ接続することはありません。',
+    installHint: 'インストール前にソースを確認してください。変更は新しいセッションに適用されます。',
+    results: (count: number) => `${count.toLocaleString('ja')}件の結果`,
+    back: '結果に戻る'
+  },
   sessionImport: {
     title: '別のアプリから続ける',
     subtitle: '会話をHermesに取り込み、続きを始めましょう。',
@@ -100,19 +169,19 @@ export const ja = defineLocale({
   },
 
   boot: {
-    ready: 'DechnicAuditor Desktop の準備ができました',
+    ready: 'Hermes Desktop の準備ができました',
     desktopBootFailedWithMessage: message => `デスクトップの起動に失敗しました: ${message}`,
     steps: {
       connectingGateway: 'ライブデスクトップゲートウェイに接続中',
-      loadingSettings: 'DechnicAuditor の設定を読み込み中',
+      loadingSettings: 'Hermes の設定を読み込み中',
       loadingSessions: '最近のセッションを読み込み中',
       retryingRemoteBackend: 'リモート Hermes バックエンドに再接続中…',
       startingDesktopConnection: 'デスクトップ接続を開始中',
-      startingHermesDesktop: 'DechnicAuditor Desktop を起動中…'
+      startingHermesDesktop: 'Hermes Desktop を起動中…'
     },
     errors: {
-      backgroundExited: 'DechnicAuditor バックグラウンドプロセスが終了しました。',
-      backgroundExitedDuringStartup: '起動中に DechnicAuditor バックグラウンドプロセスが終了しました。',
+      backgroundExited: 'Hermes バックグラウンドプロセスが終了しました。',
+      backgroundExitedDuringStartup: '起動中に Hermes バックグラウンドプロセスが終了しました。',
       backendStopped: 'バックエンドが停止しました',
       desktopBootFailed: 'デスクトップの起動に失敗しました',
       gatewayConnectionLost: 'ゲートウェイへの接続が切断されました',
@@ -122,7 +191,7 @@ export const ja = defineLocale({
       ipcBridgeUnavailable: 'デスクトップ IPC ブリッジが利用できません。'
     },
     failure: {
-      title: 'DechnicAuditor を起動できませんでした',
+      title: 'Hermes を起動できませんでした',
       description:
         'バックグラウンドゲートウェイが起動しませんでした。以下の回復手順をお試しください。チャットや設定は削除されません。',
       remoteTitle: 'リモートゲートウェイへのサインインが必要です',
@@ -161,6 +230,8 @@ export const ja = defineLocale({
   },
 
   notifications: {
+    sharedProfileWarning:
+      '別の Hermes インストールがこのプロファイルを使用しています。両方が設定とデータを共有しているため、変更が競合する可能性があります。このまま続けるか、変更する前にもう一方を終了してください。',
     region: '通知',
     hide: '非表示',
     show: '表示',
@@ -172,9 +243,13 @@ export const ja = defineLocale({
     copyDetailFailed: '通知の詳細をコピーできませんでした',
     backendOutOfDateTitle: 'バックエンドが古いです',
     backendOutOfDateMessage:
-      'DechnicAuditor バックエンドがこのデスクトップビルドより古く、正常に動作しない場合があります。更新して揃えてください。',
+      'Hermes バックエンドがこのデスクトップビルドより古く、正常に動作しない場合があります。更新して揃えてください。',
+    desktopOutOfDateTitle: 'アプリが古いです',
+    desktopOutOfDateMessage:
+      'この Hermes アプリは接続先のバックエンドより古く、正常に動作しない場合があります。アプリを更新して揃えてください。',
+    updateDesktopApp: 'アプリを更新',
     installMethodUnsupportedTitle: 'サポート対象外のインストール方法',
-    updateHermes: 'DechnicAuditor を更新',
+    updateHermes: 'Hermes を更新',
     updateReadyTitle: '更新の準備ができました',
     updateReadyMessage: count => `${count} 件の新しい変更が利用可能です。`,
     updateReadyMessageUnknown: '新しい更新が利用可能です。',
@@ -196,7 +271,7 @@ export const ja = defineLocale({
       diskFull: 'ディスク容量不足です — 空きを作ってからもう一度お試しください。',
       gatewayAuthFailed: 'ゲートウェイ認証に失敗しました — API_SERVER_KEY を確認してください。',
       methodNotAllowed:
-        'デスクトップバックエンドがそのリクエストを拒否しました (405 Method Not Allowed)。DechnicAuditor Desktop を再起動してください。',
+        'デスクトップバックエンドがそのリクエストを拒否しました (405 Method Not Allowed)。Hermes Desktop を再起動してください。',
       microphonePermission: 'マイクのアクセス許可が拒否されました。',
       openaiRejectedApiKey: 'OpenAI が API キーを拒否しました。',
       openaiTtsNeedsKey: 'OpenAI TTS には VOICE_TOOLS_OPENAI_KEY または OPENAI_API_KEY が必要です。',
@@ -230,8 +305,8 @@ export const ja = defineLocale({
       rejectAction: '拒否',
       inputTitle: '入力が必要です',
       inputTitleNamed: session => `入力が必要です — ${session}`,
-      inputBody: 'DechnicAuditor が応答を待っています。',
-      turnDoneTitle: 'DechnicAuditor が完了しました',
+      inputBody: 'Hermes が応答を待っています。',
+      turnDoneTitle: 'Hermes が完了しました',
       turnDoneBody: '',
       turnErrorTitle: 'ターンが失敗しました',
       backgroundDoneTitle: 'バックグラウンドタスクが完了しました',
@@ -305,6 +380,38 @@ export const ja = defineLocale({
   },
 
   settings: {
+    uninstallSection: {
+      dangerZone: '危険ゾーン',
+      checkingInstalled: 'インストール内容を確認中…',
+      uninstallHermes: 'Hermes をアンインストール',
+      chooseHowMuch:
+        '削除する範囲を選択してください。完了するためにアプリが閉じます。インストーラーを開き直せばいつでも戻れます。',
+      confirmUninstall: 'アンインストールの確認',
+      confirmBody: what => `${what} が削除されます。この操作は取り消せません。`,
+      appLabel: 'アプリ：',
+      couldNotStart: 'アンインストールを開始できませんでした。',
+      uninstalling: 'アンインストール中…',
+      yesUninstall: 'はい、アンインストール',
+      options: {
+        gui: {
+          title: 'Chat GUI のみアンインストール',
+          description: 'このデスクトップアプリを削除します。Hermes エージェント、設定、チャットはすべて残ります。',
+          consequence: 'デスクトップ Chat GUI（このアプリとそのデータ）'
+        },
+        lite: {
+          title: 'GUI とエージェントをアンインストール、データは保持',
+          description:
+            'アプリと Hermes エージェントを削除しますが、将来の再インストールに備えて設定・チャット・シークレットは保持します。',
+          consequence: 'Chat GUI と Hermes エージェント（設定・チャット・シークレットは保持）'
+        },
+        full: {
+          title: 'すべてアンインストール',
+          description:
+            'アプリ、エージェント、すべてのユーザーデータ（設定、チャット、定期ジョブ、シークレット、ログ）を削除します。',
+          consequence: 'すべて——Chat GUI、Hermes エージェント、およびすべての設定・チャット・シークレット・ログ'
+        }
+      }
+    },
     subpages: {
       appearanceTheme: 'テーマ',
       appearanceTypography: 'フォントと表示倍率',
@@ -359,6 +466,8 @@ export const ja = defineLocale({
     plugins: {
       openFolder: 'デスクトッププラグインフォルダーを開く',
       installModal: {
+        installUncertain:
+          'Hermes はインストール結果の待機を終了しましたが、プラグインのインストールはまだ進行中の可能性があります。この画面を閉じ、再インストールする前にプラグイン一覧を再スキャンしてください。',
         installFromGit: 'Git からインストール',
         reviewRepository: 'リポジトリを確認',
         repoPlaceholder: 'https://github.com/owner/repo',
@@ -374,7 +483,7 @@ export const ja = defineLocale({
     exportConfig: '設定を書き出す',
     importConfig: '設定を読み込む',
     resetToDefaults: 'デフォルトに戻す',
-    resetConfirm: 'すべての設定を DechnicAuditor のデフォルトに戻しますか？',
+    resetConfirm: 'すべての設定を Hermes のデフォルトに戻しますか？',
     exportFailed: '書き出しに失敗しました',
     resetFailed: 'リセットに失敗しました',
     nav: {
@@ -384,13 +493,13 @@ export const ja = defineLocale({
       providerCustomEndpoints: 'カスタムエンドポイント',
       providerLocalModels: 'ローカルモデル',
       gateway: 'ゲートウェイ',
-      onlyoffice: 'Office プレビュー',
       apiKeys: 'ツールとキー',
       keybinds: 'キーボードショートカット',
       keysTools: 'ツール',
       keysSettings: '設定',
       mcp: 'MCP',
       archivedChats: 'アーカイブ済みチャット',
+      sessions: 'セッション',
       about: '情報',
       billing: '請求',
       notifications: '通知',
@@ -477,7 +586,7 @@ export const ja = defineLocale({
       intro: 'アプリ内トーストとは別の、ネイティブのデスクトップ通知です。設定は端末ごとに保存されます。',
       enableAll: '通知を有効にする',
       enableAllDesc: 'オフで以下の通知をすべて無効にします。',
-      focusedHint: '完了通知は DechnicAuditor がバックグラウンドにあるときのみ表示されます。',
+      focusedHint: '完了通知は Hermes がバックグラウンドにあるときのみ表示されます。',
       kinds: {
         approval: {
           label: '承認が必要',
@@ -485,11 +594,11 @@ export const ja = defineLocale({
         },
         input: {
           label: '入力が必要',
-          description: 'DechnicAuditor が質問したか、パスワードやシークレットを必要としています。'
+          description: 'Hermes が質問したか、パスワードやシークレットを必要としています。'
         },
         turnDone: {
           label: '応答完了',
-          description: 'DechnicAuditor がバックグラウンドのときにターンが完了しました。'
+          description: 'Hermes がバックグラウンドのときにターンが完了しました。'
         },
         turnError: {
           label: 'ターン失敗',
@@ -505,11 +614,11 @@ export const ja = defineLocale({
         },
         plugin: {
           label: 'プラグイン通知',
-          description: 'DechnicAuditor がバックグラウンドの間に、デスクトッププラグインが通知を送信しました。'
+          description: 'Hermes がバックグラウンドの間に、デスクトッププラグインが通知を送信しました。'
         }
       },
       test: 'テスト通知を送信',
-      testTitle: 'DechnicAuditor',
+      testTitle: 'Hermes',
       testBody: '通知は正常に動作しています。',
       testSent:
         'テストを送信しました。表示されない場合は、OS の通知許可と集中モード／おやすみモードを確認してください。',
@@ -525,12 +634,11 @@ export const ja = defineLocale({
       workspace: 'ワークスペース',
       safety: '安全性',
       memory: 'メモリとコンテキスト',
-      knowledge: 'ナレッジ',
       voice: '音声',
       advanced: '詳細'
     },
     searchPlaceholder: {
-      about: 'DechnicAuditor Desktop について',
+      about: 'Hermes Desktop について',
       config: '設定を検索…',
       gateway: 'ゲートウェイ接続…',
       keys: 'API キーを検索…',
@@ -547,7 +655,7 @@ export const ja = defineLocale({
       intro:
         'デスクトップ専用の表示設定です。モードは明るさ、テーマはアクセントカラーとチャット面のスタイルを制御します。',
       colorMode: 'カラーモード',
-      colorModeDesc: '固定モードを選ぶか、DechnicAuditor をシステム設定に合わせます。',
+      colorModeDesc: '固定モードを選ぶか、Hermes をシステム設定に合わせます。',
       toolViewTitle: 'ツール呼び出しの表示',
       toolViewDesc: 'プロダクト表示は生のツールペイロードを隠し、テクニカル表示は入出力をすべて表示します。',
       hideCodeDiffsTitle: 'コードの差分を非表示',
@@ -611,21 +719,28 @@ export const ja = defineLocale({
       backdropDesc: '会話の背後に表示される淡い彫像の画像。',
       userBubbleTitle: 'メッセージの吹き出し',
       userBubbleDesc: '自分のメッセージの透け具合。0 で不透明、100 で枠線だけが残ります。',
+      textDirectionTitle: 'テキストの方向',
+      textDirectionDesc:
+        'チャットのメッセージと入力欄の文字方向を設定します。「自動」は各段落の最初の文字で判断します。混在したテキストの並びがおかしいときは方向を選んでください。コードは常に左から右に表示されます。',
+      textDirection: { auto: '自動', rtl: '右から左', ltr: '左から右' },
       introSplashTitle: 'イントロ表示',
       introSplashDesc: '空のチャットに表示されるワードマークとプロンプト。',
       reactionsTitle: 'メッセージリアクション',
       reactionsDesc:
-        'iMessage風の絵文字タップバック — メッセージにリアクションでき、DechnicAuditorもあなたのメッセージにリアクションします。',
+        'iMessage風の絵文字タップバック — メッセージにリアクションでき、Hermesもあなたのメッセージにリアクションします。',
       tipsTitle: 'アプリ内ヒント',
       tipsDesc:
-        // FORK: upstream's 30-day copy, branded.
-        'アプリや DechnicAuditor からのヒントをときどき表示します。各ヒントは一度だけ表示されます。利用開始から30日後に自動でオフになりますが、再びオンにできます。',
+        'アプリや Hermes からのヒントをときどき表示します。各ヒントは一度だけ表示されます。利用開始から30日後に自動でオフになりますが、再びオンにできます。',
       tipsReset: (count: number) => `${count}件のヒントをもう一度表示`,
       toursTitle: 'ガイドツアー',
       toursDesc:
-        '各ステップを強調しながら、DechnicAuditor がアプリを案内します。利用開始から30日後に自動でオフになりますが、再びオンにできます。',
+        '各ステップを強調しながら、Hermes がアプリを案内します。利用開始から30日後に自動でオフになりますが、再びオンにできます。',
       composerPopoutTitle: 'フローティング入力欄',
-      composerPopoutDesc: '入力欄をドックからドラッグして外せるようにします。オフにすると画面下部に固定されます。',
+      composerPopoutDesc:
+        '入力欄をドックからドラッグして外せるようにします。オフの間は画面下部にドッキングされたままです。',
+      fileBrowserTitle: 'ファイルブラウザ',
+      fileBrowserDesc:
+        'ワークスペースを開いているとき、チャットの横にファイルブラウザを表示します。タイトルバーのボタンでも切り替わります。',
       vibeHeartsTitle: 'バイブハート',
       vibeHeartsDesc:
         'ありがとう・愛してる・good bot・ハート絵文字のときに浮かぶハート。上のメッセージリアクションとは別です。',
@@ -660,15 +775,13 @@ export const ja = defineLocale({
       pet: {
         title: 'ペット',
         intro:
-          'アプリ上に浮かぶ petdex のアニメーションマスコットを採用しましょう。ツール実行中は走り、成功すると喜び、エラーでしょんぼりと、DechnicAuditor の状態に反応します。',
+          'アプリ上に浮かぶ petdex のアニメーションマスコットを採用しましょう。ツール実行中は走り、成功すると喜び、エラーでしょんぼりと、Hermes の状態に反応します。',
         restartHint:
-          'ペット機能には再起動が必要です。この機能が追加される前に起動したアプリが動作中です。DechnicAuditor を終了して再度開き、このページに戻ってください。',
+          'ペット機能には再起動が必要です。この機能が追加される前に起動したアプリが動作中です。Hermes を終了して再度開き、このページに戻ってください。',
         scaleTitle: 'サイズ',
         scaleDesc: '浮遊マスコットの大きさを変更します。すべての画面に即時反映されます。',
         roamTitle: '散歩',
         roamDesc: 'アイドル中にペットがウィンドウ内を自由に歩き回ります。',
-        on: 'オン',
-        off: 'オフ',
         chooseTitle: 'ペットを選ぶ',
         chooseDesc: '選ぶと（必要に応じて）インストールされ、アクティブになります。',
         searchPlaceholder: 'ペットを検索…',
@@ -759,7 +872,6 @@ export const ja = defineLocale({
         maxSnapshots: 'チェックポイント上限'
       },
       voice: {
-        recordKey: '音声ショートカット',
         maxRecordingSeconds: '最大録音時間',
         autoTts: '応答を読み上げる'
       },
@@ -880,10 +992,10 @@ export const ja = defineLocale({
         repoScanExcludePaths: 'リポジトリ検出時に除外するフォルダとその配下です。'
       },
       timezone:
-        'DechnicAuditor がローカル時刻のコンテキストを必要とするときに使用します。空欄ならシステムのタイムゾーンを使います。',
+        'Hermes がローカル時刻のコンテキストを必要とするときに使用します。空欄ならシステムのタイムゾーンを使います。',
       agent: {
         imageInputMode: '画像添付をモデルへ送る方法を制御します。',
-        maxTurns: 'DechnicAuditor が 1 回の実行を停止するまでのツール呼び出しターン上限です。'
+        maxTurns: 'Hermes が 1 回の実行を停止するまでのツール呼び出しターン上限です。'
       },
       terminal: {
         cwd: 'ツールとターミナル作業のデフォルトプロジェクトフォルダーです。',
@@ -893,9 +1005,9 @@ export const ja = defineLocale({
       codeExecution: {
         mode: 'コード実行を現在のプロジェクトにどれだけ厳密に制限するかを設定します。'
       },
-      fileReadMaxChars: 'DechnicAuditor が 1 回のファイル読み取りで取得できる最大文字数です。',
+      fileReadMaxChars: 'Hermes が 1 回のファイル読み取りで取得できる最大文字数です。',
       approvals: {
-        mode: '明示的な承認が必要なコマンドを DechnicAuditor がどう扱うかを設定します。',
+        mode: '明示的な承認が必要なコマンドを Hermes がどう扱うかを設定します。',
         timeout: '承認プロンプトがタイムアウトするまで待つ時間です。'
       },
       security: {
@@ -931,44 +1043,11 @@ export const ja = defineLocale({
       },
       updates: {
         nonInteractiveLocalChanges:
-          'アプリから DechnicAuditor 自身を更新するとき、ローカルのソース変更を保持するか破棄するかを選びます。ターミナル更新では常に確認されます。'
+          'アプリから Hermes 自身を更新するとき、ローカルのソース変更を保持するか破棄するかを選びます。ターミナル更新では常に確認されます。'
       }
     }),
     about: {
-      heading: 'DechnicAuditor Desktop',
-      version: value => `バージョン ${value}`,
-      versionUnavailable: 'バージョンを取得できません',
-      bundleOutOfSync: 'アプリのビルドが古くなっています',
-      bundleOutOfSyncDesc:
-        'Hermes ランタイムは更新されましたが、デスクトップアプリ自体は古いビルドのままです。アプリを更新するまで、新しいインターフェース機能(Bot Mode など)は表示されません。下の更新を実行してアプリを再ビルドしてください。それでもこの警告が消えない場合は、最新のデスクトップインストーラーから再インストールしてください。',
-      bundleOutOfSyncAction: 'インストーラーを入手',
-      bundleSwapPending: '再起動して更新を完了',
-      bundleSwapPendingDesc:
-        '更新されたアプリはすでにインストール済みです。Hermes を再起動するだけで新しいビルドが読み込まれます。チャットや設定はそのまま保持されます。',
-      bundleSwapPendingAction: 'Hermes を再起動',
-      updates: '更新',
-      checkNow: '今すぐ確認',
-      checking: '確認中…',
-      seeWhatsNew: '新機能を見る',
-      updateNow: '今すぐ更新',
-      releaseNotes: 'リリースノート',
-      onLatest: '最新バージョンです。',
-      installing: '更新をインストール中です。',
-      cantUpdate: 'このビルドはアプリ内から更新できません。',
-      cantReach: '更新サーバーに接続できませんでした。',
-      tapCheck: '更新を探すには「今すぐ確認」を押してください。',
-      updateReady: count => `新しい更新の準備ができました (${count} 件の変更を含みます)。`,
-      updateReadyUnknown: '新しい更新の準備ができました。',
-      lastChecked: age => `前回確認: ${age}`,
-      justNowSuffix: ' · たった今',
-      automaticUpdates: '自動更新',
-      automaticUpdatesDesc: 'DechnicAuditor はバックグラウンドで自動的に更新を確認し、利用可能になったら通知します。',
-      branchCommit: (branch, commit) => `ブランチ ${branch} · コミット ${commit}`,
-      never: '未確認',
-      justNow: 'たった今',
-      minAgo: count => `${count} 分前`,
-      hoursAgo: count => `${count} 時間前`,
-      daysAgo: count => `${count} 日前`
+      updates: '更新'
     },
     config: {
       minimizeToTrayTitle: 'トレイに最小化',
@@ -984,7 +1063,7 @@ export const ja = defineLocale({
       searchPlaceholder: '検索…',
       noResults: '結果が見つかりません',
       systemDefault: 'システムのデフォルト',
-      loading: 'DechnicAuditor の設定を読み込み中...',
+      loading: 'Hermes の設定を読み込み中...',
       emptyTitle: '設定項目がありません',
       emptyDesc: 'このセクションには調整できる設定がありません。',
       failedLoad: '設定の読み込みに失敗しました',
@@ -992,7 +1071,10 @@ export const ja = defineLocale({
       imported: '設定をインポートしました',
       invalidJson: '設定 JSON が無効です',
       keepAwakeTitle: 'コンピューターをスリープさせない',
-      keepAwakeDesc: '本体のスリープを防ぎ、長時間や夜通しの実行を継続します。画面は暗転できます。'
+      keepAwakeDesc: '本体のスリープを防ぎ、長時間や夜通しの実行を継続します。画面は暗転できます。',
+      voiceShortcutHintTitle: '音声録音ショートカット',
+      voiceShortcutHintDesc:
+        '「設定 → キーボードショートカット」で音声録音ショートカット（「Start / stop voice conversation」）を設定します。voice.record_key は CLI と TUI 専用です。'
     },
     hudModifier: {
       title: 'キーをタップして HUD を呼び出す',
@@ -1033,7 +1115,7 @@ export const ja = defineLocale({
     quickEntry: {
       enabledTitle: 'クイック入力',
       enabledDesc:
-        'グローバルショートカットで小さな入力欄をどこからでも呼び出し、DechnicAuditor を開かずにプロンプトを送信します。',
+        'グローバルショートカットで小さな入力欄をどこからでも呼び出し、Hermes を開かずにプロンプトを送信します。',
       shortcutTitle: 'クイック入力のショートカット',
       shortcutDesc: '修飾キーが 1 つ以上必要です（例: CommandOrControl+Shift+Space）。',
       active: 'ショートカットは有効です。',
@@ -1068,23 +1150,16 @@ export const ja = defineLocale({
       title: 'ゲートウェイ接続',
       envOverride: 'env オーバーライド',
       intro:
-        'DechnicAuditor Desktop はデフォルトで独自のローカルゲートウェイを起動します。別のマシンや信頼できるプロキシの背後で既に動作している DechnicAuditor バックエンドをこのアプリで制御する場合は、リモートゲートウェイを使用してください。以下でプロファイルを選択して、それぞれのリモートホストを設定します。',
-      appliesTo: '適用対象',
-      allProfiles: 'すべてのプロファイル',
-      defaultConnection: '独自のオーバーライドがないすべてのプロファイルのデフォルト接続。',
-      profileConnection: profile =>
-        `"${profile}" がアクティブプロファイルのときのみ使用される接続。「デフォルトゲートウェイを使用」を選ぶとオーバーライドが削除されます。`,
+        'Hermes Desktop はデフォルトで独自のローカルゲートウェイを起動します。別のマシンや信頼できるプロキシの背後で既に動作している Hermes バックエンドをこのアプリで制御する場合は、リモートゲートウェイを使用してください。ゲートウェイ接続はマシン単位の設定で、プロファイルは接続したゲートウェイから検出されます。',
       envOverrideTitle: '環境変数がこのデスクトップセッションを制御しています。',
       envOverrideDesc:
         '保存された設定を使用するには HERMES_DESKTOP_REMOTE_URL と HERMES_DESKTOP_REMOTE_TOKEN の設定を解除してください。',
       localTitle: 'ローカルゲートウェイ',
       localDesc:
-        'ローカルホストでプライベートな DechnicAuditor バックエンドを起動します。これがデフォルトで、オフラインでも動作します。',
-      inheritTitle: 'デフォルトゲートウェイを使用',
-      inheritDesc: 'このプロファイルのオーバーライドを削除し、デフォルト接続を使用します。',
+        'ローカルホストでプライベートな Hermes バックエンドを起動します。これがデフォルトで、オフラインでも動作します。',
       remoteTitle: 'リモートゲートウェイ',
       remoteDesc:
-        'このデスクトップシェルをリモートの DechnicAuditor バックエンドに接続します。ホスト型ゲートウェイは OAuth またはユーザー名とパスワードを使用します。自己ホスト型はセッショントークンを使用する場合があります。',
+        'このデスクトップシェルをリモートの Hermes バックエンドに接続します。ホスト型ゲートウェイは OAuth またはユーザー名とパスワードを使用します。自己ホスト型はセッショントークンを使用する場合があります。',
       remoteUrlTitle: 'リモート URL',
       remoteUrlDesc:
         'リモートダッシュボードバックエンドのベース URL。/hermes などのパスプレフィックスもサポートしています。',
@@ -1134,9 +1209,9 @@ export const ja = defineLocale({
       enterUrlFirst: '最初にリモート URL を入力してください。',
       restartingTitle: 'ゲートウェイ接続を再起動中',
       savedTitle: 'ゲートウェイ設定を保存しました',
-      restartingMessage: 'DechnicAuditor Desktop は保存された設定を使用して再接続します。',
+      restartingMessage: 'Hermes Desktop は保存された設定を使用して再接続します。',
       savedMessage: '次回起動時に保存されます。',
-      connectedTo: (baseUrl, version) => `${baseUrl}${version ? ` · DechnicAuditor ${version}` : ''} に接続しました`,
+      connectedTo: (baseUrl, version) => `${baseUrl}${version ? ` · Hermes ${version}` : ''} に接続しました`,
       reachableTitle: 'リモートゲートウェイに到達可能',
       signedOutTitle: 'サインアウトしました',
       signedOutMessage: 'リモートゲートウェイセッションをクリアしました。',
@@ -1148,7 +1223,7 @@ export const ja = defineLocale({
       saveFailed: 'ゲートウェイ設定を保存できませんでした',
       sshTitle: 'SSH で接続',
       sshDesc:
-        'DechnicAuditor は SSH 経由でリモート上に起動され、このアプリにトンネルされます。リモート側で何かを起動・公開する必要はありません。ホストへの鍵ベースの SSH アクセスが前提です。',
+        'Hermes は SSH 経由でリモート上に起動され、このアプリにトンネルされます。リモート側で何かを起動・公開する必要はありません。ホストへの鍵ベースの SSH アクセスが前提です。',
       sshTrustHint: '初回に提示されたホスト鍵を信頼して固定し、以後の変更は拒否します。',
       sshHostTitle: 'ホスト',
       sshHostDesc: 'user@host、または ~/.ssh/config の Host エイリアス。',
@@ -1163,25 +1238,25 @@ export const ja = defineLocale({
       sshPortDesc: '空欄 = 22 または ~/.ssh/config のポート。',
       sshKeyTitle: '鍵ファイル',
       sshKeyDesc: '秘密鍵のパス。空欄 = ssh-agent または ~/.ssh/config。',
-      sshHermesPathTitle: 'DechnicAuditor パス（任意）',
+      sshHermesPathTitle: 'Hermes パス（任意）',
       sshHermesPathDesc: 'リモートの hermes バイナリへのフルパス。空欄 = 自動検出。',
       sshHermesPathPlaceholder: '自動検出',
       sshTestConnection: 'SSH をテスト',
       sshConnect: '接続',
       sshButtonsHint: '「保存」は次回起動時に適用され、「接続」は今すぐ再接続します。',
-      sshReachable: (host, platform) => `接続可能: ${host}（${platform}）— DechnicAuditor を検出`,
+      sshReachable: (host, platform) => `接続可能: ${host}（${platform}）— Hermes を検出`,
       sshIncompleteHost: '接続する前に SSH ホストを入力してください。',
       sshErrUnreachable: 'SSH でそのホストに到達できませんでした。ホスト、ポート、ネットワークを確認してください。',
       sshErrAuth:
-        'SSH 認証に失敗しました。鍵を ssh-agent に読み込む（ssh-add）か、~/.ssh/config に IdentityFile を設定してください。DechnicAuditor は非対話的に ssh を実行します。',
+        'SSH 認証に失敗しました。鍵を ssh-agent に読み込む（ssh-add）か、~/.ssh/config に IdentityFile を設定してください。Hermes は非対話的に ssh を実行します。',
       sshErrHostKey:
         '前回の接続以降、ホスト鍵が変更されています。想定どおりか確認し、ssh-keygen -R <host> を実行してから再接続してください。',
       sshErrNotInstalled:
-        'リモートホストに DechnicAuditor がインストールされていません。リモートでインストールする（curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh）か、DechnicAuditor パスを設定してください。',
+        'リモートホストに Hermes がインストールされていません。リモートでインストールする（curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh）か、Hermes パスを設定してください。',
       sshErrPlatform:
-        'サポートされていないリモートプラットフォームです。DechnicAuditor Desktop の SSH モードは Linux、macOS、Windows のリモートホストに対応しています。',
+        'サポートされていないリモートプラットフォームです。Hermes Desktop の SSH モードは Linux、macOS、Windows のリモートホストに対応しています。',
       sshErrTimeout: 'SSH 接続がタイムアウトしました。ホストが到達不能、またはスリープ中の可能性があります。',
-      sshErrUpdateRequired: 'Desktop SSH で接続する前に、リモートホストの DechnicAuditor を更新してください。',
+      sshErrUpdateRequired: 'Desktop SSH で接続する前に、リモートホストの Hermes を更新してください。',
       sshErrUnknown: 'SSH 接続に失敗しました。'
     },
     keys: {
@@ -1240,6 +1315,29 @@ export const ja = defineLocale({
       deepLinkErrorTooLarge: '設定ペイロードが 32KB の上限を超えています。'
     },
     model: {
+      moaTitle: 'エージェント混合（Mixture of Agents）',
+      moaPreset: 'プリセット',
+      moaDescription:
+        '「Mixture of Agents」プロバイダーのモデルとして表示される名前付きプリセットを設定します。集約モデルが実行を担当し、ツールループのすべての処理を行うため、実行費用のほぼ全額がそのプロバイダーに請求されます。参照モデルは既定でユーザーの各ターンに一度だけ助言します。',
+      moaAggregator: '集約モデル',
+      moaAggregatorBilled: '実行モデル · 実行費用の請求先',
+      moaReferenceHint: '既定では各ターンに一度だけ助言',
+      setupProviderFallback: 'プロバイダー',
+      setUpProvider: name => `${name} を設定`,
+      staleAuxBefore: (count, names) => `${count} 件の補助タスク（${names}）は引き続き `,
+      staleAuxAfter: ' で実行され、メインモデルは使用されません。',
+      staleAuxOtherProviders: '別のプロバイダー',
+      moaEnabled: '有効',
+      moaSetDefault: 'デフォルトに設定',
+      moaNewPresetPlaceholder: '新しいプリセット',
+      moaAddPreset: 'プリセットを追加',
+      customModel: 'カスタムモデル…',
+      customModelPlaceholder: 'モデル ID',
+      chooseFromList: 'リストから選択',
+      moaDefault: 'デフォルト:',
+      moaReferenceToggle: (enabled, index) => `参照 ${index} を${enabled ? '無効化' : '有効化'}`,
+      moaReferenceTitle: index => `参照 ${index}`,
+      moaAddReference: '参照モデルを追加',
       loading: 'モデル設定を読み込み中...',
       appliesDesc:
         '新しいセッションに適用されます。コンポーザーのモデルピッカーを使ってアクティブなチャットをホットスワップできます。',
@@ -1276,6 +1374,7 @@ export const ja = defineLocale({
       }
     },
     localModels: {
+      connectionChanged: 'ローカルモデルの接続が変更されました',
       title: 'ローカルモデル',
       runtimeTitle: 'ローカルランタイム',
       runtimeReady: backend => `準備完了 · ${backend}`,
@@ -1311,7 +1410,13 @@ export const ja = defineLocale({
       quickstartConfigure: '自分で選ぶ',
       downloaded: 'ダウンロード済み',
       downloadAction: size => `ダウンロード · ${size}`,
-      downloadProgress: (done, total) => `ダウンロード中 ${done} / ${total}`,
+      downloadProgress: (done, total) => `${done} / ${total}`,
+      downloadStatusRunning: 'ダウンロード中',
+      downloadSpeed: rate => `${rate}`,
+      downloadEta: time => `残り約${time}`,
+      downloadPausedLabel: '一時停止中',
+      downloadPauseAction: '一時停止',
+      downloadResumeAction: '再開',
       downloadDoneToast: model => `${model} の準備ができました。`,
       installDoneToast: 'ローカルランタイムのインストールが完了しました。',
       useAction: '使用する',
@@ -1322,7 +1427,7 @@ export const ja = defineLocale({
       updateAction: 'エンジンを更新',
       updating: 'エンジンを更新中…',
       upToDateTitle: 'エンジンは最新です',
-      upToDateDetail: (tag, backend) => `llama.cpp ${tag}（${backend}）で動作中——設定されたビルドです。`,
+      upToDateDetail: (tag, backend) => `llama.cpp ${tag}（${backend}）で動作中。`,
       activeDetail: '新しいチャットはこのモデルを使用——最初のメッセージ送信時に読み込みます',
       activeNotLoaded: '最初のメッセージで読み込みます',
       loadedPill: '読み込み済み',
@@ -1385,7 +1490,7 @@ export const ja = defineLocale({
       connectAccount: 'アカウントを接続',
       haveApiKey: 'API キーをお持ちですか？',
       intro:
-        'サブスクリプションでサインインします。API キーのコピーは不要です。DechnicAuditor がアプリ内でブラウザーサインインを代行します。',
+        'サブスクリプションでサインインします。API キーのコピーは不要です。Hermes がアプリ内でブラウザーサインインを代行します。',
       connected: '接続済み',
       collapse: '折りたたむ',
       connectAnother: '別のプロバイダーを接続',
@@ -1408,7 +1513,7 @@ export const ja = defineLocale({
       loading: 'アーカイブ済みセッションを読み込み中…',
       archivedTitle: 'アーカイブ済みセッション',
       archivedIntro:
-        'アーカイブ済みチャットはサイドバーでは非表示になりますが、すべてのメッセージは保持されます。サイドバーのチャットを Ctrl/⌘ クリックするとアーカイブできます。',
+        'アーカイブ済みチャットはサイドバーでは非表示になりますが、すべてのメッセージは保持されます。サイドバーのチャットを Alt/⌥+Shift クリックするとアーカイブできます。',
       emptyArchivedTitle: 'アーカイブがありません',
       emptyArchivedDesc: 'チャットをアーカイブするとここに表示されます。',
       unarchive: 'アーカイブを解除',
@@ -1537,6 +1642,20 @@ export const ja = defineLocale({
   },
 
   skills: {
+    plugins: {
+      pageBlurb:
+        'プラグインはこのアプリ、エージェント、または両方を拡張できます。それぞれに独立したスイッチがあります。'
+    },
+    hub: {
+      search: '検索',
+      searching: '検索中…',
+      noResults: '一致するスキルがハブにありません。',
+      installed: 'インストール済み',
+      installStarted: name => `「${name}」をインストール中…`,
+      pickerBrowse: 'ハブ全体を見る',
+      pickerHide: 'ハブのブラウザーを隠す',
+      pickerHint: 'スキルの「+ Add to this Agent」を押すと、インストールされて上の一覧に表示されます。'
+    },
     tabSkills: 'スキル',
     tabToolsets: 'ツールセット',
     all: 'すべて',
@@ -1607,7 +1726,7 @@ export const ja = defineLocale({
     loadFailed: 'メモリグラフを読み込めませんでした',
     loading: '読み込み中…',
     emptyTitle: 'まだ学習はありません',
-    emptyDesc: 'DechnicAuditor がスキルやメモリを蓄積すると、ここに表示されます。'
+    emptyDesc: 'Hermes がスキルやメモリを蓄積すると、ここに表示されます。'
   },
   agents: {
     extendedTranscript: '詳細な実行ログ',
@@ -1671,7 +1790,7 @@ export const ja = defineLocale({
       placeholder: 'ペットを検索…',
       loading: 'petdex ギャラリーを読み込み中…',
       error: 'petdex ギャラリーに接続できません。',
-      staleBackend: 'ペット機能を使うには DechnicAuditor を再起動してください。',
+      staleBackend: 'ペット機能を使うには Hermes を再起動してください。',
       empty: '一致するペットがありません。',
       turnOff: 'オフ',
       turnOn: 'オン',
@@ -1698,8 +1817,8 @@ export const ja = defineLocale({
       hatchComposing: 'まとめています…',
       hatchSaving: 'もうすぐです…',
       namePlaceholder: 'ペットに名前を付ける',
-      staleBackend: 'ペットを生成するには DechnicAuditor を更新してください。',
-      backgroundHint: 'このウィンドウは閉じても大丈夫です。完了したら DechnicAuditor が通知します。',
+      staleBackend: 'ペットを生成するには Hermes を更新してください。',
+      backgroundHint: 'このウィンドウは閉じても大丈夫です。完了したら Hermes が通知します。',
       slowProviderHint: '数分かかることがあります',
       remix: 'リミックス',
       remixConfirmTitle: 'この見た目でリミックスしますか？',
@@ -1733,9 +1852,7 @@ export const ja = defineLocale({
     },
     nav: {
       newChat: { title: '新しいセッション', detail: '新しいセッションを開始' },
-      settings: { title: '設定', detail: 'DechnicAuditor デスクトップを設定' },
-      skills: { title: 'スキルとツール', detail: 'スキル、ツールセット、プロバイダーを有効化' },
-      knowledge: { title: '知識ベース', detail: '知識ベースの閲覧と管理' },
+      settings: { title: '設定', detail: 'Hermes デスクトップを設定' },
       capabilities: { title: 'スキルとツール', detail: 'スキル、ツールセット、プロバイダーを有効化' },
       messaging: { title: 'メッセージング', detail: 'Telegram、Slack、Discord などを設定' },
       artifacts: { title: 'アーティファクト', detail: '生成された出力を閲覧' }
@@ -1757,16 +1874,15 @@ export const ja = defineLocale({
     noSessions: 'セッションはまだありません。',
     gatewayRunning: 'メッセージングゲートウェイが実行中',
     gatewayStopped: 'メッセージングゲートウェイが停止中',
-    hermesActiveSessions: (version, count) => `DechnicAuditor ${version} · アクティブセッション ${count}`,
+    hermesActiveSessions: (version, count) => `Hermes ${version} · アクティブセッション ${count}`,
     restartGateway: 'ゲートウェイを再起動',
     openBrowser: 'ブラウザを開く',
     gatewayRestartFailed: 'ゲートウェイの再起動に失敗しました。',
-    // FORK merge: upstream's shared-gateway keys + branded updateHermes.
     sharedGatewayRestartTitle: '共有ゲートウェイを再起動しますか？',
     sharedGatewayRestartDescription: bots => `このデバイス上のすべてのボットが再接続します: ${bots}`,
     sharedGatewayRestartConfirm: 'すべて再起動',
     sharedGatewayRestarted: count => `共有ゲートウェイを再起動しました（${count} ボット）`,
-    updateHermes: 'DechnicAuditor を更新',
+    updateHermes: 'Hermes を更新',
     reloadWindow: 'ウィンドウを再読み込み',
     actionRunning: '実行中',
     actionDone: '完了',
@@ -1992,6 +2108,18 @@ export const ja = defineLocale({
     switchToConnection: name => `${name} に切り替え`,
     switchConnectionFailed: name => `${name} に接続できませんでした`,
     manageProfiles: 'プロファイルを管理…',
+    fleet: {
+      localDevice:
+        'このデバイス（ローカルバックエンド — Hermes が無ければインストールし、あれば新しいセッションを開きます）',
+      switchDeviceTitle: 'このデバイスに切り替えますか？',
+      switchDeviceDesc: 'このコンピュータで新しいセッションを開きます。今の会話は別のゲートウェイに残ります。',
+      switchDeviceConfirm: '切り替える',
+      installDeviceTitle: 'このデバイスに切り替えますか？',
+      installDeviceDesc:
+        'Hermes をローカルにインストールしてから、このコンピュータで新しいセッションを開きます。確認するまでインストールは始まりません。',
+      installDeviceConfirm: 'ローカルにインストール',
+      connectExistingInstead: '代わりに既存環境へ接続'
+    },
     remoteOverride: {
       menuItem: 'リモートホストに接続…',
       badge: (host: string) => `${host} で実行中`,
@@ -2054,6 +2182,8 @@ export const ja = defineLocale({
     skillsLabel: 'スキル',
     notSet: '未設定',
     soulDesc: 'このプロファイルに組み込まれたシステムプロンプトとペルソナの指示。',
+    soulMissing:
+      'このプロファイルにはまだ SOUL.md がありません。下に指示を入力して保存すると作成できます。config.yaml のペルソナ設定は別途管理されます。',
     soulOptional: '省略可能',
     soulPlaceholder: mode =>
       `このプロファイルのシステムプロンプト / ペルソナ。\n空欄のままにすると ${mode} のデフォルトを使用します。`,
@@ -2069,7 +2199,7 @@ export const ja = defineLocale({
     deleteDescMid: ' が削除され、その ',
     deleteDescSuffix: ' ディレクトリが削除されます。この操作は元に戻せません。',
     deleting: '削除中...',
-    createDesc: 'プロファイルは独立した DechnicAuditor 環境です：設定、スキル、SOUL.md が別々になります。',
+    createDesc: 'プロファイルは独立した Hermes 環境です：設定、スキル、SOUL.md が別々になります。',
     nameLabel: '名前',
     cloneFrom: '複製元',
     cloneFromNone: 'なし（空）',
@@ -2166,7 +2296,7 @@ export const ja = defineLocale({
     everyHourAt: minute => `毎時 :${minute} に`,
     newCron: '新しい Cron',
     emptyDescNew:
-      'Cron 式でプロンプトを実行するスケジュールを設定します。DechnicAuditor が実行して、選択した宛先に結果を送信します。',
+      'Cron 式でプロンプトを実行するスケジュールを設定します。Hermes が実行して、選択した宛先に結果を送信します。',
     emptyDescSearch: '検索キーワードを広げてください。',
     emptyTitleNew: 'スケジュールされたジョブがまだありません',
     emptyTitleSearch: '一致なし',
@@ -2208,6 +2338,8 @@ export const ja = defineLocale({
     nameLabel: '名前',
     namePlaceholder: '例: 日次サマリー',
     promptLabel: 'プロンプト',
+    scriptLabel: 'スクリプト',
+    scriptBadge: 'スクリプト',
     promptPlaceholder: '実行ごとにエージェントが行う内容は？',
     frequencyLabel: '頻度',
     deliverLabel: '配信先',
@@ -2279,273 +2411,6 @@ export const ja = defineLocale({
     copyPath: 'パスをコピー'
   },
 
-  knowledge: {
-    title: '知識ベース',
-    create: '知識ベースを作成',
-    createTitle: '知識ベースを作成',
-    createDesc: '名前を付けてからドキュメントをアップロードし、検索と引用に使います。',
-    nameLabel: '名前',
-    namePlaceholder: 'エネルギー監査レポート',
-    descLabel: '説明',
-    descPlaceholder: '任意の説明',
-    systemBases: 'システム知識ベース',
-    userBases: 'マイ知識ベース',
-    system: 'システム',
-    noDescription: '説明なし',
-    emptyTitle: '知識ベースはまだありません',
-    emptyDesc: '知識ベースを作成してドキュメントをアップロードすると検索できます。',
-    searchPlaceholder: '知識ベースを検索…',
-    deleteConfirm: name => `「${name}」を削除しますか？含まれるドキュメントも削除されます。`,
-    deleteDocConfirm: name => `「${name}」を削除しますか？`,
-    deleteFolderConfirm: name => `フォルダー「${name}」とそのドキュメントを削除しますか？`,
-    created: '知識ベースを作成しました',
-    deleted: '削除しました',
-    failedLoad: '知識ベースを読み込めませんでした',
-    failedCreate: '作成できませんでした',
-    failedDelete: '削除できませんでした',
-    failedUpload: 'アップロードに失敗しました',
-    uploadSuccess: 'アップロードを開始しました',
-    upload: 'アップロード',
-    uploading: 'アップロード中…',
-    folders: 'フォルダー',
-    newFolder: '新しいフォルダー',
-    folderHint: 'フォルダーで知識ベース内のドキュメントを整理します。',
-    folderNamePlaceholder: 'フォルダー名',
-    allDocuments: 'すべてのドキュメント',
-    fileName: 'ファイル',
-    fileType: '種類',
-    fileSize: 'サイズ',
-    status: '状態',
-    chunks: 'チャンク',
-    createdAt: '追加日',
-    preview: 'プレビュー',
-    actions: '操作',
-    noDocumentsTitle: 'ドキュメントがありません',
-    noDocumentsDesc: 'このフォルダーにファイルをアップロードしてインデックスします。',
-    noChunks: 'チャンクはまだありません。解析中の可能性があります。',
-    tabDocuments: 'ドキュメント',
-    tabSearch: '検索',
-    tabWiki: 'Wiki',
-    tabGraph: 'グラフ',
-    tabJobs: 'ジョブ',
-    tabStats: '統計',
-    filterDocuments: 'ドキュメントを絞り込み…',
-    searchHint: 'この知識ベースを検索…',
-    searchEmpty: 'クエリを入力すると一致するチャンクを取得します。',
-    searchNoResults: '一致するチャンクがありません',
-    searchAction: '検索',
-    searching: '検索中…',
-    score: 'スコア',
-    untitled: '無題',
-    noWikiTitle: 'Wiki ページがありません',
-    noWikiDesc: 'インデックス後に Wiki ページが表示されます。',
-    statsTotal: 'ドキュメント',
-    statsCompleted: '完了',
-    statsProcessing: '処理中',
-    statsFailed: '失敗',
-    statsOrphaned: '孤立',
-    statsSize: '合計サイズ',
-    statusPending: '保留',
-    statusProcessing: '処理中',
-    statusCompleted: '完了',
-    statusFailed: '失敗',
-    docsCount: count => `${count} 件`,
-    backToList: 'すべての知識ベース',
-    notFound: '知識ベースが見つかりません',
-    nextPage: '次へ',
-    rangeOf: (start, end, total) => `${start}–${end} / ${total}`,
-    generate: '生成',
-    rebuild: '再構築',
-    rebuildConfirm: 'この知識ベースの全ドキュメントを再ベクトル化しますか？実行中のジョブは継続し、新しいジョブはキューに入ります。',
-    rebuildQueued: '再構築をキューに入れました',
-    folderWiki: 'フォルダー Wiki',
-    bulkWiki: '一括 Wiki',
-    hierarchicalWiki: '階層 Wiki',
-    curateApproved: '承認済みページをキュレーション',
-    llmConfirmTitle: 'LLM を使用します',
-    llmConfirmBody: 'このステップは言語モデルを呼び出し、時間がかかる場合があります。続行しますか？',
-    actionStarted: '開始しました',
-    actionFailed: '開始できませんでした',
-    wikiSkipped: 'Wiki は既に存在するためスキップしました',
-    qualityUpdated: '品質スコアを更新しました',
-    vectorize: 'ベクトル化',
-    revectorize: '再ベクトル化',
-    summary: '要約',
-    graph: 'グラフ',
-    wiki: 'Wiki',
-    generateWiki: 'Wiki を生成',
-    generateSummary: '要約を生成',
-    buildGraph: 'グラフを構築',
-    moreActions: 'その他',
-    wikiConfirmTitle: 'Wiki を生成',
-    wikiConfirmBody: 'この文書から Wiki ページを作成します。完了後は上部の Wiki タブで確認できます。',
-    wikiCurateAfter: '生成後に精査する',
-    wikiCurateAfterHint: '初稿を概念ページに整理します。時間がかかり、モデルをもう一度呼び出します。',
-    textExcerpt: 'テキスト抜粋',
-    noSummary: '要約はまだありません',
-    noSummaryDesc: '索引が完了したら、右上の ⋯ から要約を生成できます。',
-    chunkOff: '検索対象外',
-    previewTooLarge: 'ファイルが大きすぎて、パネル内でプレビューできません。',
-    openPipeline: '開く',
-    noPreview: 'ファイルプレビューはありません。',
-    searchModeVector: 'ベクトル',
-    searchModeWiki: 'Wiki',
-    searchModeGraph: 'グラフ',
-    searchModeUnified: '統合',
-    reviewAll: 'すべてのレビュー',
-    reviewPending: '保留',
-    reviewApproved: '承認済み',
-    reviewRejected: '却下',
-    approve: '承認',
-    reject: '却下',
-    evaluateQuality: '品質を評価',
-    quality: '品質',
-    entities: 'エンティティ',
-    relationships: '関係',
-    noGraphTitle: 'グラフはまだありません',
-    noGraphDesc: '完了したドキュメントからグラフを構築してエンティティと関係を抽出します。',
-    graphSearch: 'エンティティを検索…',
-    graphFit: '全体表示',
-    graphHint: 'スクロールで拡大 · ドラッグで移動 · ノードをドラッグして固定',
-    graphNeighbors: '接続',
-    graphNoSelection: 'ノードを選ぶと接続が表示されます。',
-    graphOrphan: 'この表示には接続がありません。',
-    graphCanvas: 'ナレッジグラフ',
-    graphResize: '詳細パネルの幅を変更',
-    noJobsTitle: 'ジョブはありません',
-    noJobsDesc: 'ベクトル化とキュレーションのジョブがここに表示されます。',
-    jobTypeVectorize: 'ベクトル化',
-    jobTypeCurate: 'キュレーション',
-    selectedCount: n => `${n} 件選択`,
-    bulkDeleteConfirm: '選択したドキュメントを削除しますか？',
-    deleteChunkConfirm: 'このチャンクを削除しますか？',
-    editChunk: '編集'
-  },
-
-  keybinds: {
-    actions: {
-      'nav.knowledge': '知識ベースを開く'
-    }
-  },
-
-  office: {
-    title: 'オフィス',
-    refresh: '更新',
-    stats: {
-      online: '待機',
-      busy: '対応中',
-      openTasks: '未完了タスク',
-      doneToday: '今日完了'
-    },
-    status: {
-      idle: '待機',
-      online: 'オンライン',
-      busy: '対応中',
-      offline: 'オフライン',
-      working: '作業中',
-      thinking: '思考中',
-      gatewayOff: 'GW停止',
-      hintIdle: '進行中の Kanban / cron タスクはありません',
-      hintBusy: 'Kanban または cron タスク処理中',
-      hintOffline: 'このプロファイルの messaging ゲートウェイは停止中',
-      hintGatewayOff: 'Messaging ゲートウェイ停止中（デスクトップチャットは可能）'
-    },
-    ledger: {
-      title: 'タスク履歴',
-      filterAll: 'すべて',
-      filterOpen: '進行中',
-      filterDone: '完了',
-      empty: 'タスクはありません'
-    },
-    toolbar: {
-      pauseAll: 'すべて一時停止',
-      resumeAll: 'すべて再開',
-      newTask: '新規タスク',
-      exportReport: 'レポートをエクスポート',
-      paused: '一時停止しました',
-      resumed: '再開しました'
-    },
-    rightPanel: {
-      taskFlow: 'タスク履歴',
-      quickTools: 'クイックツール',
-      files: 'ファイル',
-      browser: 'ブラウザ',
-      activity: 'アクティビティ',
-      activityEmpty: '最近のアクティビティはありません'
-    },
-    activity: {
-      visit: (visitor, host) => `${visitor} が ${host} を訪問`,
-      tour: (visitor, count) => `${visitor} が ${count} 席を巡回`,
-      setState: (profile, state) => `${profile} → ${state}`,
-      celebrate: target => `${target} がタスクを完了`,
-      broadcast: message => `放送: ${message}`,
-      emote: profile => `${profile} がエモートしました`,
-      refreshed: 'オフィス状態を更新しました',
-      unknown: 'シーンイベント'
-    },
-    agentModal: {
-      config: '設定',
-      skills: 'スキル',
-      memory: 'メモリ',
-      tasks: 'タスク',
-      archive: 'アーカイブ',
-      chat: 'チャット',
-      soul: 'ソウル',
-      notes: 'ノート',
-      userProfile: 'ユーザープロフィール',
-      memoryEmpty: 'メモリノートはありません（デスクトップ未接続 MEMORY.md）',
-      userEmpty: 'ユーザープロフィールはありません（デスクトップ未接続 USER.md）',
-      soulEmpty: 'SOUL はまだありません',
-      soulLoadFailed: 'SOUL.md を読み込めませんでした',
-      skillsEmpty: 'スキルはありません',
-      tasksEmpty: 'タスクはありません',
-      archiveEmpty: 'アーカイブされたタスクはありません',
-      chatHint: 'このエージェントをチャットで開く',
-      openChat: 'チャットを開く',
-      workingOn: '作業中'
-    },
-    actions: {
-      interact: 'インタラクト',
-      interactHint: 'このエージェントを他のオンラインエージェントに派遣する',
-      interactWith: name => `${name} とインタラクト`,
-      noOnlineTargets: '他にオンラインのエージェントがいません',
-      state: '状態',
-      stateHint: 'このエージェントの現在の状態を切り替えます（シーン内で一時的）',
-      working: '作業中',
-      workingTask: 'タスク処理中…',
-      thinking: '思考中',
-      thinkingTask: '思考中…',
-      online: 'オンライン',
-      offline: 'オフライン',
-      viewProfile: 'プロフィールを見る',
-      setState: '状態を設定',
-      emote: 'エモート',
-      emoteHint: '短いキャラクターアニメを再生',
-      emoteWave: '手を振る',
-      emoteDetermined: 'やる気',
-      emoteThinking: '考える',
-      emoteExcited: 'わくわく'
-    },
-    visitFallback: 'ちょっと同期したいことがあります。',
-    newTaskPrefix: '新しいタスク',
-    ambient1: 'ちょっと挨拶に寄りました。',
-    ambient2: '進捗を共有しませんか。',
-    ambient3: 'コーヒーでもどうです？',
-    ambient4: '思いついたことがあって、共有します。',
-    newTask: {
-      title: '新規タスク',
-      name: '名前',
-      namePlaceholder: 'タスク名',
-      schedule: 'スケジュール',
-      schedulePlaceholder: '例: 0 9 * * 1-5',
-      confirm: '作成',
-      cancel: 'キャンセル'
-    },
-    sceneFallback: {
-      title: '3D シーンを利用できません',
-      description: 'Pixi シーンの起動に失敗しました。デスクグリッド表示に切り替えます。'
-    }
-  },
   artifactCard: {
     kind: { code: 'コード', html: 'インタラクティブページ', svg: 'グラフィック' },
     generating: lines => `生成中… ${lines} 行`,
@@ -2567,6 +2432,39 @@ export const ja = defineLocale({
   },
 
   sidebar: {
+    profileRail: 'プロファイルバー',
+    markAllRead: 'すべて既読にする',
+    filter: {
+      grouping: 'グループ化',
+      ordering: '並び替え',
+      show: '表示',
+      filters: 'フィルター',
+      status: 'ステータス',
+      pullRequest: 'プルリクエスト',
+      profile: 'プロファイル',
+      project: 'プロジェクト',
+      archived: 'アーカイブ',
+      resetToDefaults: 'デフォルトに戻す',
+      expandAll: 'すべて展開',
+      collapseAll: 'すべて折りたたむ',
+      inboxStyle: '受信トレイスタイル',
+      updated: '更新',
+      created: '作成',
+      tokens: 'トークン',
+      cost: 'コスト',
+      manual: '手動',
+      preview: 'プレビュー',
+      pr: 'PR',
+      needsInput: '入力待ち',
+      working: '実行中',
+      unread: '未読',
+      draft: '下書き',
+      idle: 'アイドル',
+      open: 'オープン',
+      merged: 'マージ済み',
+      closed: 'クローズ済み',
+      noPR: 'PRなし'
+    },
     gatewayGroups: {
       grouping: 'ゲートウェイとプロファイル',
       rename: 'グループ名を変更',
@@ -2580,13 +2478,10 @@ export const ja = defineLocale({
     },
     nav: {
       'new-session': '新しいセッション',
-      skills: 'スキルとツール',
-      knowledge: '知識ベース',
       capabilities: 'スキルとツール',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
-      cron: 'スケジュール済みジョブ',
-      office: 'オフィス'
+      cron: 'スケジュール済みジョブ'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',
@@ -2648,9 +2543,9 @@ export const ja = defineLocale({
       removeFromSidebar: 'サイドバーから削除',
       createFailed: 'プロジェクトを作成できませんでした',
       staleBackend:
-        'プロジェクトを作成するには DechnicAuditor バックエンドを更新してください。バックエンドがこのデスクトップアプリより古いです（設定 → 更新 → バックエンド）。',
+        'プロジェクトを作成するには Hermes バックエンドを更新してください。バックエンドがこのデスクトップアプリより古いです（設定 → 更新 → バックエンド）。',
       deleteConfirm:
-        'DechnicAuditor から保存済みプロジェクトを削除します。ファイル・git リポジトリ・ワークツリーはそのまま残ります。',
+        'Hermes から保存済みプロジェクトを削除します。ファイル・git リポジトリ・ワークツリーはそのまま残ります。',
       startWork: '新しいワークツリー',
       newWorktreeTitle: '新しいワークツリー',
       newWorktreeDesc: 'このワークツリーのブランチ名を入力してください。',
@@ -2702,6 +2597,7 @@ export const ja = defineLocale({
       branchFrom: '分岐',
       rename: '名前を変更…',
       archive: 'アーカイブ',
+      unarchive: 'アーカイブを解除',
       newWindow: '新しいウィンドウ',
       openInTerminal: 'ターミナルで開く',
       copyIdFailed: 'セッション ID をコピーできませんでした',
@@ -2746,12 +2642,12 @@ export const ja = defineLocale({
   composer: {
     message: 'メッセージ',
     wakingProfile: profile => `${profile} を起動中…`,
-    placeholderStarting: 'DechnicAuditor を起動中...',
-    placeholderReconnecting: 'DechnicAuditor に再接続中…',
+    placeholderStarting: 'Hermes を起動中...',
+    placeholderReconnecting: 'Hermes に再接続中…',
     placeholderFollowUp: 'フォローアップを送信',
     newSessionPlaceholders: [
       '何を作りますか？',
-      'DechnicAuditor にタスクを与える',
+      'Hermes にタスクを与える',
       '何か考えていることはありますか？',
       '必要なことを説明してください',
       '何に取り組みますか？',
@@ -2801,12 +2697,77 @@ export const ja = defineLocale({
     hotkeys: 'ホットキー',
     helpFooter: 'フルパネルを開く · Backspace で閉じる',
     commandDescs: {
-      '/help': 'コマンドとホットキーの全リスト',
+      '/help': 'デスクトップのスラッシュコマンドを表示',
       '/clear': '新しいセッションを開始',
       '/resume': '以前のセッションを再開',
       '/details': 'トランスクリプトの詳細レベルを制御',
       '/copy': '選択または最後のアシスタントメッセージをコピー',
-      '/quit': 'hermes を終了'
+      '/quit': 'hermes を終了',
+      '/start': '返信せずにプラットフォームの開始要求を確認',
+      '/new': '新しいデスクトップチャットを開始',
+      '/topic': 'Telegram の個人チャットのトピックを有効化または確認',
+      '/save': '現在の会話を JSON に保存',
+      '/retry': '最後のユーザーメッセージを再試行',
+      '/prompt': '$EDITOR で次のプロンプトを Markdown で作成して送信',
+      '/undo': 'ユーザーのターンを指定回数戻して再入力（既定は 1）',
+      '/title': '現在のセッション名を変更',
+      '/handoff': 'このセッションをメッセージプラットフォームへ引き継ぐ',
+      '/branch': '最新メッセージから新しいチャットを分岐',
+      '/worktree': '分離した Git ワークツリーを表示、一覧、作成、整理',
+      '/compress': '会話コンテキストを圧縮',
+      '/rollback': 'チェックポイントを一覧または復元',
+      '/export': 'プロファイルの設定、スキル、テーマを共有用アーカイブに書き出す',
+      '/import': '共有アーカイブを新しいプロファイルとして読み込む',
+      '/stop': '進行中のターンとバックグラウンドプロセスを停止',
+      '/pause': '新しい処理を全体で一時停止（緊急停止）；/pause off で再開',
+      '/bg': '別のバックグラウンドセッションでプロンプトを実行',
+      '/btw': '進行中の会話を中断せずに関連する質問をする',
+      '/agents': 'アクティブなセッションとタスクを表示',
+      '/journey': 'メモリグラフを開く',
+      '/queue': '次のターンのプロンプトを追加、一覧、編集、削除、移動、全消去',
+      '/steer': '現在の実行を誘導',
+      '/goal': 'このセッションの継続目標を管理',
+      '/heartbeat': 'アイドル時にこのセッションで繰り返すプロンプトを設定',
+      '/refine': 'この会話を見直し、学びをメモリやスキルに保存',
+      '/review': '独立したサブエージェントに作業のレビューを依頼',
+      '/loop': 'このセッションで一定間隔でプロンプトを繰り返す',
+      '/plan': '実行せずに .hermes/plans/ に Markdown の実装計画を作成',
+      '/moa': 'Mixture of Agents のプリセットで実行し、元のモデルに戻す',
+      '/subgoal': '進行中の目標の追加条件を管理',
+      '/status': '現在のセッション状態を表示',
+      '/egress': 'Docker の送信プロキシの状態を表示',
+      '/context': 'コンテキスト使用量、内訳、圧縮統計、処理速度を表示',
+      '/whoami': 'スラッシュコマンドのアクセス権を表示',
+      '/profile': 'アクティブな Hermes プロファイルを切り替え',
+      '/codex-runtime': 'OpenAI/Codex モデルの Codex app-server ランタイムを切り替え',
+      '/personality': 'このセッションの人格を切り替え',
+      '/battery': 'ステータスバーのバッテリー表示を切り替え',
+      '/timestamps': 'メッセージと /history の時刻表示を切り替え',
+      '/diff': '作業ディレクトリの Git 変更を表示',
+      '/focus': 'プロンプトと最終回答のみを表示するフォーカス表示を切り替え',
+      '/yolo': 'YOLO を切り替え — 危険なコマンドを自動承認',
+      '/approvals': '危険なコマンドの承認モードを表示または設定',
+      '/reasoning': '推論の強度と表示を管理',
+      '/skin': 'デスクトップテーマを切り替え',
+      '/wake': 'デスクトップのウェイクワード検出を制御 [on|off|status]',
+      '/tools': 'エージェントが使えるツールを切り替え',
+      '/memory': '保留中のメモリ書き込みを確認し、承認を切り替え',
+      '/bundles': 'スキルバンドルを一覧表示',
+      '/pet': 'petdex マスコットを切り替え',
+      '/hatch': '新しいペットを生成',
+      '/learn': 'ディレクトリ、URL、会話、メモから再利用可能なスキルを学ぶ',
+      '/init': 'リポジトリを調べて AGENTS.md の指示を作成または更新',
+      '/suggestions': '提案された自動化を確認し、採用または却下',
+      '/blueprint': 'ブループリントから自動化を設定',
+      '/browser': 'ローカルブラウザー接続を管理',
+      '/palette': 'コマンドパレットを開く',
+      '/usage': 'このセッションのトークン使用量を表示',
+      '/subscription': 'Nous のプランを確認し、ブラウザーで変更',
+      '/topup': 'Nous の残高を表示し、請求を管理',
+      '/platform': '問題のあるゲートウェイプラットフォームを一時停止、再開、一覧表示',
+      '/version': 'Hermes Agent のバージョンを表示',
+      '/debug': 'デバッグレポートを作成',
+      '/model': 'このセッションのモデルを切り替え'
     },
     hotkeyDescs: {
       'composer.mention': 'ファイル、フォルダー、URL、Git を参照',
@@ -2819,7 +2780,7 @@ export const ja = defineLocale({
       'composer.history': 'ポップオーバー / 履歴を切り替え'
     },
     attachUrlTitle: 'URL を添付',
-    attachUrlDesc: 'DechnicAuditor がページを取得し、このターンのコンテキストとして含めます。',
+    attachUrlDesc: 'Hermes がページを取得し、このターンのコンテキストとして含めます。',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: '完全な URL を入力してください。例: ',
     attach: '添付',
@@ -2842,6 +2803,9 @@ export const ja = defineLocale({
     queueStuckTitle: 'キュー内のメッセージを送信できません',
     queueStuckBody:
       'キューに入れたターンの送信が繰り返し失敗しました。まだキューに残っています。もう一度送信してください。',
+    queueDroppedTitle: 'キューのエントリを破棄しました',
+    queueDroppedBody:
+      'このバックグラウンドのエントリは、セッションを繰り返し再開できなかったため破棄されました。キューの他のエントリには影響しません。',
     previewUnavailable: 'プレビューは利用できません',
     previewLabel: label => `${label} のプレビュー`,
     couldNotPreview: label => `${label} をプレビューできませんでした`,
@@ -2867,34 +2831,6 @@ export const ja = defineLocale({
     snippetsDesc: 'スターターのプロンプトをコンポーザーに挿入します。',
     dropFiles: 'ファイルをドロップして添付',
     dropSession: 'ドロップしてこのチャットをリンク',
-    templateSuggestions: 'テンプレート',
-    energyAuditDialog: {
-      title: 'エネルギー監査報告書の生成',
-      desc: 'データベースからプロジェクト名でデータを取得し、仕様に準拠した Word 報告書を生成してプレビューします。',
-      unitName: '単位/プロジェクト名',
-      unitPlaceholder: '単位名を入力（例：省立医院東院）',
-      projectSuggestions: '一致するプロジェクト',
-      searching: '検索中…',
-      unitRequired: '単位/プロジェクト名を入力してください',
-      auditType: '監査タイプ',
-      generateMode: '生成方法',
-      generateModeTemplate: '標準テンプレート',
-      generateModeImitate: '同類報告書の模倣',
-      generateModeImitateHint: '区県→地市→省の順で Hermes の rag/report から同類報告書を選び、データベースの数値で Word を作成します。',
-      executionMethod: '実行方法',
-      executionMethodScript: 'スクリプト',
-      executionMethodAgent: 'エージェントタスク',
-      executionMethodAgentHint: 'ダイアログを閉じ、現在のチャットでエネルギー監査模倣スキルを読み込みます。',
-      generate: '報告書を生成',
-      generating: '生成中…',
-      generatingImitate: '模倣生成中（数分かかることがあります）…',
-      startAgentTask: 'タスクを開始',
-      submittingAgentTask: '送信中…',
-      generateFailed: '報告書の生成に失敗しました',
-      generateTimeout:
-        '生成がタイムアウトしました。模倣は章ごとにモデルを呼びます。バックエンドを確認するか、標準テンプレートを試してください。',
-      agentSubmitFailed: '模倣タスクを現在のチャットに送れませんでした。'
-    },
     snippets: {
       codeReview: {
         label: 'コードレビュー',
@@ -2926,6 +2862,7 @@ export const ja = defineLocale({
     goalWaiting: '目標待機中',
     subagents: count => `サブエージェント ${count} 件`,
     todos: (done, total) => `タスク ${done}/${total}`,
+    previousTodos: (done, total) => `以前のタスク ${done}/${total}`,
     running: '実行中',
     stop: '停止',
     dismiss: '閉じる',
@@ -3014,7 +2951,8 @@ export const ja = defineLocale({
       copyFailure: '基準のコピーに失敗しました',
       continuationFailed: 'ゴールの継続送信に失敗しました',
       continuationQueued: 'ゴールを再開しました — 継続は現在のターン終了後に送信されます',
-      continuationBusy: 'ゴールを再開しました — セッションが実行中です。続行するには /interrupt してください',
+      continuationBusy:
+        'ゴールを再開しました — セッションが実行中です。続行するには、まず現在の応答を停止してください（Stop ボタンまたは Esc）',
       controlUnavailable: msg => `セッション制御を利用できません: ${msg}`,
       dismissError: 'エラーを閉じる',
       add: '追加'
@@ -3055,7 +2993,7 @@ export const ja = defineLocale({
       createPr: 'PR を作成',
       openPr: 'PR を開く',
       ghMissing: 'PR を開くには GitHub CLI (gh) をインストールしてサインインしてください',
-      agentShip: 'DechnicAuditor にコミットと PR を任せる',
+      agentShip: 'Hermes にコミットと PR を任せる',
       agentShipUnavailable: 'この変更を持つチャットが画面にありません。',
       agentShipPrompt:
         '現在の変更を確認し、分かりやすい Conventional Commits 形式でコミットし、ブランチをプッシュして、プルリクエストを作成してください。',
@@ -3068,15 +3006,23 @@ export const ja = defineLocale({
   },
 
   updates: {
+    discontinuedTitle: 'このHermesビルドはサポートされていません',
+    discontinuedBody:
+      'このHermesビルドはサポートが終了し、動作しなくなる可能性があります。アンインストールしてください。データはディスクに残ります。',
+    channels: { stable: '安定版', canary: '先行版' },
+    bundleSwapPending: '再起動して更新を完了',
+    bundleSwapPendingDesc:
+      '更新されたアプリはすでにインストール済みです。Hermes を再起動するだけで新しいビルドが読み込まれます。チャットや設定はそのまま保持されます。',
+    bundleSwapPendingAction: 'Hermes を再起動',
     stages: {
       idle: '準備中…',
       prepare: '準備中…',
       fetch: 'ダウンロード中…',
       pull: 'もうすぐ完了…',
       pydeps: '仕上げ中…',
-      update: 'DechnicAuditor を更新中…',
+      update: 'Hermes を更新中…',
       rebuild: 'デスクトップアプリを再ビルド中…',
-      restart: 'DechnicAuditor を再起動中…',
+      restart: 'Hermes を再起動中…',
       done: '更新が完了しました',
       manual: 'ターミナルから更新',
       guiSkew: 'デスクトップアプリを更新してください',
@@ -3086,35 +3032,40 @@ export const ja = defineLocale({
     checkFailedTitle: '更新を確認できませんでした',
     tryAgain: '再試行',
     notAvailableTitle: '更新は利用できません',
-    unsupportedMessage: 'このバージョンの DechnicAuditor はアプリ内から自分を更新できません。',
+    unsupportedMessage: 'このバージョンの Hermes はアプリ内から自分を更新できません。',
     connectionRetry: '接続を確認してもう一度試してください。',
     gitUnusable: 'このコンピューターで Git を実行できなかったため、更新を確認できませんでした。',
     latestBody: '最新バージョンを実行しています。',
+    versionDetailsDistributionStore: 'Microsoft Store',
     latestBodyBackend: 'バックエンドは最新バージョンを実行しています。',
     allSetTitle: '準備完了',
     availableTitle: '新しい更新が利用可能',
-    availableBody: '新しいバージョンの DechnicAuditor をインストールする準備ができています。',
+    availableBody: '新しいバージョンの Hermes をインストールする準備ができています。',
     availableTitleBackend: 'バックエンドの更新があります',
-    availableBodyBackend: '接続中の DechnicAuditor バックエンドの新しいバージョンをインストールできます。',
+    availableBodyBackend: '接続中の Hermes バックエンドの新しいバージョンをインストールできます。',
     availableBodyNoChangelog:
       '新しいバージョンを利用できます。このインストール形式ではリリースノートは表示できません。',
     updateNow: '今すぐ更新',
     maybeLater: '後で',
     moreChanges: count => `さらに ${count} 件の変更が含まれています。`,
     manualTitle: 'ターミナルから更新',
+    manualUnavailableTitle: 'ここからは更新できません',
     manualBody:
-      'DechnicAuditor をコマンドラインからインストールしたため、更新もそこで実行されます。これをターミナルに貼り付けてください:',
-    manualPickedUp: 'DechnicAuditor は次回起動時に新しいバージョンを読み込みます。',
+      'Hermes をコマンドラインからインストールしたため、更新もそこで実行されます。これをターミナルに貼り付けてください:',
+    manualBodyBackend:
+      'Hermes バックエンドはこのアプリの外部で管理されています。ホストするサーバーで次のコマンドを実行してください:',
+    manualPickedUp: 'Hermes は次回起動時に新しいバージョンを読み込みます。',
+    manualPickedUpBackend: 'バックエンドは更新完了後に新しいバージョンを読み込みます。',
     guiSkewTitle: 'デスクトップアプリを更新してください',
     guiSkewBody:
-      'バックエンドは更新されましたが、このデスクトップアプリのパッケージは変更されていません。一致させるために DechnicAuditor デスクトップアプリ（AppImage / .deb / .rpm）を更新または再インストールしてください。',
+      'バックエンドは更新されましたが、このデスクトップアプリのパッケージは変更されていません。一致させるために Hermes デスクトップアプリ（AppImage / .deb / .rpm）を更新または再インストールしてください。',
     copy: 'コピー',
     copied: 'コピーしました',
     done: '完了',
     applyingBody:
-      'DechnicAuditor アップデーターが独自のウィンドウで引き継ぎ、完了後に自動的に DechnicAuditor を再度開きます。更新中はご自分で DechnicAuditor を開き直さないでください。',
-    applyingBodyBackend: 'リモートバックエンドが更新を適用して再起動します。復帰すると DechnicAuditor が自動的に再接続します。',
-    applyingClose: 'このウィンドウは更新中に閉じ、その後 DechnicAuditor が自動的に再度開きます。',
+      'Hermes アップデーターが独自のウィンドウで引き継ぎ、完了後に自動的に Hermes を再度開きます。更新中はご自分で Hermes を開き直さないでください。',
+    applyingBodyBackend: 'リモートバックエンドが更新を適用して再起動します。復帰すると Hermes が自動的に再接続します。',
+    applyingClose: 'このウィンドウは更新中に閉じ、その後 Hermes が自動的に再度開きます。',
     errorTitle: '更新が完了しませんでした',
     errorBody: 'ご安心ください。何も失われていません。今すぐ再試行できます。',
     blockerTitle: 'Hermes を更新するためにローカルプレビューを閉じますか？',
@@ -3140,6 +3091,13 @@ export const ja = defineLocale({
     everythingSkipped: 'スキップ',
     everythingRowFailed: '更新に失敗しました',
     everythingFanoutFailedTitle: '他のインスタンスを更新できませんでした',
+    changeLogNew: '新機能',
+    changeLogFixed: '修正',
+    changeLogFaster: '高速化',
+    changeLogImproved: '改善',
+    changeLogOther: 'その他の改善',
+    changeLogFallbackLabel: '今回の更新',
+    changeLogFallbackItem: '改善と修正',
     applyStatus: {
       preparing: 'バックエンドを更新しています…',
       pulling: 'バックエンドを更新中…',
@@ -3148,7 +3106,31 @@ export const ja = defineLocale({
       failed: 'バックエンドの更新に失敗しました。',
       noReturn:
         'バックエンドがオンラインに戻りませんでした。更新が完了していない可能性があります。バックエンドホストを確認してください。'
-    }
+    },
+    // Restored About-card strings (moved from `settings.about.*` to `updates.*`).
+    version: value => `バージョン ${value}`,
+    versionUnavailable: 'バージョンを取得できません',
+    checkNow: '今すぐ確認',
+    seeWhatsNew: '新機能を見る',
+    releaseNotes: 'リリースノート',
+    onLatest: '最新バージョンです。',
+    installing: '更新をインストール中です。',
+    cantReach: '更新サーバーに接続できませんでした。',
+    tapCheck: '更新を探すには「今すぐ確認」を押してください。',
+    updateReady: count => `新しい更新の準備ができました (${count} 件の変更を含みます)。`,
+    updateReadyUnknown: '新しい更新の準備ができました。',
+    lastChecked: age => `前回確認: ${age}`,
+    never: '未確認',
+    justNow: 'たった今',
+    minAgo: count => `${count} 分前`,
+    hoursAgo: count => `${count} 時間前`,
+    daysAgo: count => `${count} 日前`,
+    justNowSuffix: ' · たった今',
+    bundleOutOfSync: 'アプリのビルドが古くなっています',
+    bundleOutOfSyncDesc:
+      'Hermes ランタイムは更新されましたが、デスクトップアプリ自体は古いビルドのままです。アプリを更新するまで、新しいインターフェース機能(Bot Mode など)は表示されません。下の更新を実行してアプリを再ビルドしてください。それでもこの警告が消えない場合は、最新のデスクトップインストーラーから再インストールしてください。',
+    bundleOutOfSyncAction: 'インストーラーを入手',
+    checkingShort: '確認中…'
   },
 
   guidedGreeting: {
@@ -3163,7 +3145,7 @@ export const ja = defineLocale({
       skipped: 'スキップ',
       failed: '失敗'
     },
-    oneTimeTitle: 'DechnicAuditor には一度限りのインストールが必要です',
+    oneTimeTitle: 'Hermes には一度限りのインストールが必要です',
     unsupportedDesc: platform =>
       `${platform} では自動の初回インストールはまだ利用できません。ターミナルを開いて以下のコマンドを実行し、このアプリを再起動してください。以降の起動ではこの手順はスキップされます。`,
     installCommand: 'インストールコマンド',
@@ -3171,25 +3153,25 @@ export const ja = defineLocale({
     viewDocs: 'インストールドキュメントを見る',
     installTo: 'インストール先',
     retryAfterRun: '実行しました — 再試行',
-    setupChoiceTitle: 'DechnicAuditor Desktop をセットアップ',
+    setupChoiceTitle: 'Hermes Desktop をセットアップ',
     setupChoiceDesc:
-      'すでに実行している DechnicAuditor ゲートウェイに接続するか、このコンピューターに DechnicAuditor をローカルインストールします。',
-    connectExistingTitle: '既存の DechnicAuditor に接続',
+      'すでに実行している Hermes ゲートウェイに接続するか、このコンピューターに Hermes をローカルインストールします。',
+    connectExistingTitle: '既存の Hermes に接続',
     connectExistingShort: '既存環境に接続',
     connectExistingDesc:
       'セッショントークンまたはブラウザーサインインでリモートバックエンドを使用します。ローカルインストールは開始されません。',
-    installLocalTitle: 'DechnicAuditor をローカルにインストール',
-    installLocalDesc: 'DechnicAuditor をダウンロードし、Python 環境を作成して、このコンピューターでバックエンドを実行します。',
+    installLocalTitle: 'Hermes をローカルにインストール',
+    installLocalDesc: 'Hermes をダウンロードし、Python 環境を作成して、このコンピューターでバックエンドを実行します。',
     localStartUnavailable:
-      'ローカルインストールを開始できません。DechnicAuditor Desktop を再起動して、もう一度お試しください。',
-    remoteSetupTitle: '既存の DechnicAuditor に接続',
+      'ローカルインストールを開始できません。Hermes Desktop を再起動して、もう一度お試しください。',
+    remoteSetupTitle: '既存の Hermes に接続',
     remoteSetupDesc:
-      'ゲートウェイ URL を入力してください。DechnicAuditor Desktop がトークンとブラウザーサインインのどちらが必要かを検出します。',
+      'ゲートウェイ URL を入力してください。Hermes Desktop がトークンとブラウザーサインインのどちらが必要かを検出します。',
     remoteUrlTitle: 'ゲートウェイ URL',
-    remoteUrlDesc: 'DechnicAuditor ゲートウェイのベース URL を使用します。リモートの場合は https:// を含めてください。',
+    remoteUrlDesc: 'Hermes ゲートウェイのベース URL を使用します。リモートの場合は https:// を含めてください。',
     remoteUrlPlaceholder: 'https://gateway.example.com/hermes',
     probing: 'ゲートウェイ認証方式を検出中...',
-    probeError: 'その DechnicAuditor ゲートウェイに到達できませんでした。',
+    probeError: 'その Hermes ゲートウェイに到達できませんでした。',
     identityProvider: 'ID プロバイダー',
     authTitle: '認証',
     authNeedsOauth: provider => `このゲートウェイをテストする前に ${provider} でサインインしてください。`,
@@ -3209,12 +3191,12 @@ export const ja = defineLocale({
     applyRemote: '適用して再接続',
     backToSetup: '戻る',
     failedTitle: 'インストールに失敗しました',
-    settingUpTitle: 'DechnicAuditor Agent を設定中',
+    settingUpTitle: 'Hermes Agent を設定中',
     finishingTitle: '仕上げ中',
     failedDesc:
-      'インストール手順のいずれかが失敗しました。Windows では、別の DechnicAuditor CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の DechnicAuditor インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
+      'インストール手順のいずれかが失敗しました。Windows では、別の Hermes CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の Hermes インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
     activeDesc:
-      'これは一回限りのセットアップです。DechnicAuditor インストーラーが依存関係をダウンロードしてマシンを設定しています。以降の起動ではこの手順はスキップされます。',
+      'これは一回限りのセットアップです。Hermes インストーラーが依存関係をダウンロードしてマシンを設定しています。以降の起動ではこの手順はスキップされます。',
     progress: (completed, total) => `${total} ステップ中 ${completed} 完了`,
     currentStage: stage => ` — 現在: ${stage}`,
     fetchingManifest: 'インストーラーマニフェストを取得中...',
@@ -3232,10 +3214,10 @@ export const ja = defineLocale({
   },
 
   onboarding: {
-    headerTitle: 'DechnicAuditor Agent のセットアップをしましょう',
+    headerTitle: 'Hermes Agent のセットアップをしましょう',
     headerDesc: 'チャットを始めるにはモデルプロバイダーを接続してください。ほとんどのオプションはワンクリックです。',
-    preparingInstall: 'DechnicAuditor はインストールを完了中です。初回実行では通常 1 分以内に完了します。',
-    starting: 'DechnicAuditor を起動中…',
+    preparingInstall: 'Hermes はインストールを完了中です。初回実行では通常 1 分以内に完了します。',
+    starting: 'Hermes を起動中…',
     lookingUpProviders: 'プロバイダーを検索中...',
     collapse: '折りたたむ',
     otherProviders: 'その他のプロバイダー',
@@ -3243,7 +3225,7 @@ export const ja = defineLocale({
     chooseLater: '後でプロバイダーを選択します',
     recommended: '推奨',
     connected: '接続済み',
-    featuredPitch: '1 つのサブスクリプションで 300 以上の最先端モデル — DechnicAuditor を実行するための推奨方法',
+    featuredPitch: '1 つのサブスクリプションで 300 以上の最先端モデル — Hermes を実行するための推奨方法',
     fireworksPitch: '直接モデル API — Fireworks がホストする最先端モデル',
     localModelsTitle: 'モデルをローカルで実行',
     localModelsPitch: 'アカウント不要——モデルをダウンロードしてこのマシンで実行',
@@ -3263,7 +3245,7 @@ export const ja = defineLocale({
       local: {
         short: 'セルフホスト',
         description:
-          'ローカルまたはセルフホストの OpenAI 互換エンドポイント（vLLM、llama.cpp、Ollama など）に DechnicAuditor を接続。'
+          'ローカルまたはセルフホストの OpenAI 互換エンドポイント（vLLM、llama.cpp、Ollama など）に Hermes を接続。'
       }
     },
     backToSignIn: 'サインインに戻る',
@@ -3275,7 +3257,7 @@ export const ja = defineLocale({
     update: '更新',
     flowSubtitles: {
       pkce: 'ブラウザーを開いてサインインし、ここに戻ります',
-      device_code: 'ブラウザーで確認ページを開きます — DechnicAuditor が自動接続します',
+      device_code: 'ブラウザーで確認ページを開きます — Hermes が自動接続します',
       external: 'ターミナルで一度サインインして、チャットに戻ります'
     },
     startingSignIn: provider => `${provider} のサインインを開始中...`,
@@ -3288,12 +3270,12 @@ export const ja = defineLocale({
     pickDifferentProvider: '別のプロバイダーを選択',
     signInWith: provider => `${provider} でサインイン`,
     openedBrowser: provider => `${provider} をブラウザーで開きました。`,
-    authorizeThere: 'そこで DechnicAuditor を承認してください。',
+    authorizeThere: 'そこで Hermes を承認してください。',
     copyAuthCode: '認証コードをコピーして以下に貼り付けてください。',
     pasteAuthCode: '認証コードを貼り付け',
     reopenAuthPage: '認証ページを再度開く',
     autoBrowser: provider =>
-      `${provider} をブラウザーで開きました。DechnicAuditor をそこで承認すれば自動接続されます。コピーや貼り付けは不要です。`,
+      `${provider} をブラウザーで開きました。Hermes をそこで承認すれば自動接続されます。コピーや貼り付けは不要です。`,
     reopenSignInPage: 'サインインページを再度開く',
     waitingAuthorize: '承認を待っています...',
     externalPending: provider =>
@@ -3328,14 +3310,19 @@ export const ja = defineLocale({
     free: '無料',
     freeTier: '無料プラン',
     priceTitle: '100 万トークンあたりの入力/出力価格',
-    wasPrice: '旧価格'
+    wasPrice: '旧価格',
+    customModel: 'カスタムモデル',
+    addCustomModelAction: 'カスタムモデルを追加…',
+    customModelPlaceholder: 'モデル ID を入力（例: openai/gpt-5）'
   },
 
   modelVisibility: {
     title: 'モデル',
     search: 'モデルを検索',
     noAuthenticatedProviders: '認証済みプロバイダーがありません。',
-    addProvider: 'プロバイダーを追加…'
+    addProvider: 'プロバイダーを追加…',
+    addCustomModel: 'カスタムモデルを追加',
+    removeCustomModel: 'カスタムモデルを削除'
   },
 
   shell: {
@@ -3346,6 +3333,7 @@ export const ja = defineLocale({
       search: 'モデルを検索',
       noModels: 'モデルが見つかりません',
       editModels: 'モデルを編集…',
+      followDefault: '設定のデフォルトを使用',
       refreshModels: 'モデルを更新',
       fast: '高速'
     },
@@ -3398,13 +3386,13 @@ export const ja = defineLocale({
       update: '更新',
       updateInProgress: '更新中',
       commitsBehind: (count, branch) => `${branch} より ${count} コミット遅れています`,
-      desktopVersion: version => `DechnicAuditor Desktop v${version}`,
+      desktopVersion: version => `Hermes Desktop v${version}`,
       backendVersion: version => `バックエンド v${version}`,
       clientLabel: version => `クライアント v${version}`,
       connectionSsh: host => `SSH: ${host}`,
       connectionRemote: host => `リモート: ${host}`,
       connectionCloud: host => `クラウド: ${host}`,
-      connectionCloudTooltip: host => `DechnicAuditor Cloud · ${host}`,
+      connectionCloudTooltip: host => `Hermes Cloud · ${host}`,
       connectionSshTooltip: host => `SSH · ${host}`,
       connectionRemoteTooltip: host => `Remote · ${host}`,
       backendLabel: version => `バックエンド v${version}`,
@@ -3461,7 +3449,8 @@ export const ja = defineLocale({
         title: 'コンテキスト使用状況',
         tokenSummary: (used, max) => `${used} / ${max} Tokens`
       },
-      session: 'セッション',
+      focusedSince: 'フォーカスしてから',
+      focusedSinceTitle: 'このチャットをフォーカスしてからの時間。ターンの実行時間ではありません',
       yoloOn: 'YOLO オン — 危険なコマンドを自動承認中。Shift+クリックで全体に切り替え。',
       yoloOff: 'YOLO オフ。Shift+クリックで全体に切り替え。',
       modelNone: 'なし',
@@ -3484,6 +3473,11 @@ export const ja = defineLocale({
     remotePickerTitle: 'リモートフォルダーを選択',
     remotePickerDescription: '接続中のバックエンド上のフォルダーを参照します。',
     remotePickerSelect: 'フォルダーを選択',
+    remotePickerNewFolder: '新しいフォルダー',
+    remotePickerFolderName: 'フォルダー名',
+    remotePickerCreateFolder: 'フォルダーを作成',
+    remotePickerInvalidFolderName: 'スラッシュを含まない 1 つのフォルダー名を入力してください。',
+    remotePickerCreateFolderFailed: error => `フォルダーを作成できませんでした (${error})。`,
     folderTip: cwd => cwd,
     openFolder: 'フォルダーを開く',
     refreshTree: 'ツリーを更新',
@@ -3534,7 +3528,7 @@ export const ja = defineLocale({
     binaryTitle: 'これはバイナリファイルのようです',
     binaryBody: label => `${label} をプレビューすると読み取り不能なテキストが表示される場合があります。`,
     largeTitle: 'このファイルは大きいです',
-    largeBody: (label, size) => `${label} は ${size} です。DechnicAuditor は最初の 512 KB のみを表示します。`,
+    largeBody: (label, size) => `${label} は ${size} です。Hermes は最初の 512 KB のみを表示します。`,
     previewAnyway: 'とにかくプレビュー',
     truncated: '最初の 512 KB を表示しています。',
     noInlineTitle: 'インラインプレビューなし',
@@ -3568,11 +3562,6 @@ export const ja = defineLocale({
       sentTitle: 'チャットに送信しました',
       sentMessage: count => `${count} 件のログエントリーがコンポーザーに追加されました`
     },
-    office: {
-      externalChanged: 'このファイルはディスク上で変更されました。最新の内容を表示するには再読み込みしてください（エディターの未保存の編集は破棄されます）。',
-      reloadDiscard: '再読み込み（破棄）',
-      keepCurrent: '現状を維持'
-    },
     web: {
       appFailedToBoot: 'プレビューアプリの起動に失敗しました',
       serverNotFound: 'サーバーが見つかりません',
@@ -3580,11 +3569,11 @@ export const ja = defineLocale({
         'このアドレスはエージェントを実行しているマシンを指しており、このマシンではありません。ブラウザペインはページをローカルで読み込むため、リモートの開発サーバーにはポート転送か到達可能なホスト名が必要です。',
       failedToLoad: 'プレビューの読み込みに失敗しました',
       tryAgain: '再試行',
-      restarting: 'DechnicAuditor を再起動中...',
-      askRestart: 'DechnicAuditor にサーバーの再起動を依頼',
-      lookingRestart: taskId => `DechnicAuditor は再起動するプレビューサーバーを検索中です (${taskId})`,
+      restarting: 'Hermes を再起動中...',
+      askRestart: 'Hermes にサーバーの再起動を依頼',
+      lookingRestart: taskId => `Hermes は再起動するプレビューサーバーを検索中です (${taskId})`,
       restartingTitle: 'プレビューサーバーを再起動中',
-      restartingMessage: 'DechnicAuditor はバックグラウンドで作業中です。進捗はプレビューコンソールで確認してください。',
+      restartingMessage: 'Hermes はバックグラウンドで作業中です。進捗はプレビューコンソールで確認してください。',
       startRestartFailed: message => `サーバー再起動を開始できませんでした: ${message}`,
       restartFailed: 'サーバーの再起動に失敗しました',
       hideConsole: 'プレビューコンソールを非表示',
@@ -3598,15 +3587,15 @@ export const ja = defineLocale({
       addressPlaceholder: 'アドレスを入力',
       blankPageBody: '上のアドレス欄に入力するか、Hermes にページを開くよう頼んでください。',
       finishedRestarting: message =>
-        `DechnicAuditor がプレビューサーバーの再起動を完了しました${message ? `: ${message}` : ''}`,
+        `Hermes がプレビューサーバーの再起動を完了しました${message ? `: ${message}` : ''}`,
       failedRestarting: message => `サーバーの再起動に失敗しました: ${message}`,
       unknownError: '不明なエラー',
       restartedTitle: 'プレビューサーバーが再起動しました',
       reloadingNow: 'プレビューを再読み込み中です。',
       restartFailedTitle: 'プレビューの再起動に失敗しました',
-      restartFailedMessage: 'DechnicAuditor がサーバーを再起動できませんでした。',
+      restartFailedMessage: 'Hermes がサーバーを再起動できませんでした。',
       stillWorking:
-        'DechnicAuditor はまだ作業中ですが、再起動の結果がまだ届いていません。サーバーコマンドがフォアグラウンドで実行されている可能性があります。',
+        'Hermes はまだ作業中ですが、再起動の結果がまだ届いていません。サーバーコマンドがフォアグラウンドで実行されている可能性があります。',
       workspaceReloading: 'ワークスペースが変更され、プレビューを再読み込み中',
       fileChanged: url => `ファイルが変更され、プレビューを再読み込み中: ${url}`,
       filesChanged: (count, url) => `${count} 件のファイルが変更され、プレビューを再読み込み中: ${url}`,
@@ -3733,7 +3722,7 @@ export const ja = defineLocale({
     thread: {
       loadingSession: 'セッションを読み込み中',
       showEarlier: '以前のメッセージを表示',
-      loadingResponse: 'DechnicAuditor が応答を読み込み中',
+      loadingResponse: 'Hermes が応答を読み込み中',
       resumeWhenBackgroundDone: count =>
         count === 1
           ? 'バックグラウンドタスクの完了後に再開します'
@@ -3751,6 +3740,68 @@ export const ja = defineLocale({
       branchNewChat: '新しいチャットでブランチ',
       react: 'リアクション',
       dismissError: 'エラーを閉じる',
+      errorGenericProvider: 'AI サービス',
+      errorLayerBodies: {
+        generic:
+          'Hermes の返信中に問題が発生しました。再試行してください。問題が続く場合はエラー詳細をコピーしてください。',
+        provider:
+          'AI サービスがリクエストを完了できませんでした。少し待って再試行するか、プロバイダーを切り替えてください。',
+        endpoint:
+          'カスタムモデルサーバーに接続できません。サーバーが起動しているか確認し、メッセージを再送してください。',
+        streaming: '返信が完了する前に接続が切れました。再試行してもう一度送信してください。'
+      },
+      errorCodes: {
+        provider_policy_blocked: {
+          title: 'アカウント設定によりこのモデルはブロックされています',
+          body: provider =>
+            `${provider} はアカウントのデータまたはプライバシー設定により、このリクエストを処理できません。別のモデルまたはプロバイダーを選んでください。`
+        },
+        content_policy_blocked: {
+          title: 'AI サービスが回答を拒否しました',
+          body: provider => `${provider} はこのメッセージへの回答を拒否しました。編集して再送してください。`
+        },
+        format_error: {
+          title: 'AI サービスがリクエストの形式を拒否しました',
+          body: provider =>
+            `${provider} はこのリクエストの形式を受け付けませんでした。プロバイダーを切り替えるか、調査のため診断情報を送信してください。`
+        },
+        invalid_response: {
+          title: 'AI サービスが読み取れない応答を返しました',
+          body: provider => `${provider} は Hermes が読み取れない内容を返しました。しばらくしてから再試行してください。`
+        },
+        empty_response: {
+          title: 'AI サービスが空の応答を返しました',
+          body: provider => `${provider} はこのメッセージに内容を返しませんでした。しばらくしてから再試行してください。`
+        },
+        rate_limit: {
+          title: 'AI サービスが混み合っています',
+          body: provider => `${provider} は現在リクエスト数を制限しています。少し待ってから再試行してください。`
+        },
+        upstream_rate_limit: {
+          title: 'AI サービスが混み合っています',
+          body: provider => `${provider} は現在リクエスト数を制限しています。少し待ってから再試行してください。`
+        },
+        overloaded: {
+          title: 'AI サービスの負荷が高すぎます',
+          body: provider =>
+            `${provider} で現在問題が発生しています。しばらくしてから再試行するか、プロバイダーを切り替えてください。`
+        },
+        server_error: {
+          title: 'AI サービスでエラーが発生しました',
+          body: provider =>
+            `${provider} がサーバーエラーを返しました。しばらくしてから再試行するか、プロバイダーを切り替えてください。`
+        },
+        timeout: {
+          title: 'AI サービスに接続できません',
+          body: provider =>
+            `${provider} に接続できないか、時間内に応答がありませんでした。インターネット接続を確認してから再試行してください。`
+        },
+        ssl_cert_verification: {
+          title: '安全な接続に失敗しました',
+          body: provider =>
+            `Hermes は ${provider} との安全な接続を検証できませんでした。ネットワークやプロキシの設定を確認するか、プロバイダーを切り替えて再送してください。`
+        }
+      },
       errorLayers: {
         auth: '認証エラー',
         billing: 'クレジット不足',
@@ -3779,14 +3830,12 @@ export const ja = defineLocale({
       errorSendDiagnostics: '診断情報を送信',
       filesChanged: count => `${count} 件のファイルを変更`,
       reviewChanges: 'レビュー',
-      viewAllArtifacts: count => `すべての成果物を表示 (${count})`,
-      openFilePreview: name => `${name} を開く`,
-      openFileFailed: 'ファイルを開けませんでした',
-      revealFileFailed: 'フォルダで表示できませんでした',
       readAloudFailed: '読み上げに失敗しました',
       preparingAudio: '音声を準備中...',
       stopReading: '読み上げを停止',
       readAloud: '読み上げ',
+      copyFullResponse: '回答全体をコピー',
+      readAloudFullResponseHint: 'Shiftを押しながらクリック: 回答全体を読み上げ',
       editMessage: 'メッセージを編集',
       stop: '停止',
       restorePrevious: '前のチェックポイントに戻す',
@@ -3801,7 +3850,7 @@ export const ja = defineLocale({
       attachingFile: '添付中…'
     },
     approval: {
-      gatewayDisconnected: 'DechnicAuditor ゲートウェイが接続されていません',
+      gatewayDisconnected: 'Hermes ゲートウェイが接続されていません',
       sendFailed: '承認応答を送信できませんでした',
       run: '実行',
       command: 'コマンド',
@@ -3812,12 +3861,12 @@ export const ja = defineLocale({
       reject: '拒否',
       alwaysTitle: 'このコマンドを常に許可しますか？',
       alwaysDescription: pattern =>
-        `これにより "${pattern}" パターンが永続的な許可リスト (~/.hermes/config.yaml) に追加されます。DechnicAuditor はこのセッションや将来のセッションで、このようなコマンドについて再度尋ねません。`,
+        `これにより "${pattern}" パターンが永続的な許可リスト (~/.hermes/config.yaml) に追加されます。Hermes はこのセッションや将来のセッションで、このようなコマンドについて再度尋ねません。`,
       alwaysAllow: '常に許可'
     },
     clarify: {
       notReady: '明確化リクエストはまだ準備できていません',
-      gatewayDisconnected: 'DechnicAuditor ゲートウェイが接続されていません',
+      gatewayDisconnected: 'Hermes ゲートウェイが接続されていません',
       sendFailed: '明確化応答を送信できませんでした',
       loadingQuestion: '質問を読み込み中…',
       other: 'その他（回答を入力）',
@@ -3830,7 +3879,10 @@ export const ja = defineLocale({
       questionProgress: (answered, total) => `${total}問中${answered}問回答済み`,
       lateAnswer: (question, choice) => `「${question}」について — 私の回答: ${choice}`,
       lateAnswerTip: 'この回答をフォローアップメッセージとして下書きします',
-      lateAnswerHint: 'この質問はもう回答を待っていません。選択肢を選ぶとフォローアップメッセージとして下書きされます。'
+      lateAnswerHint:
+        'この質問はもう回答を待っていません。選択肢を選ぶとフォローアップメッセージとして下書きされます。',
+      notDelivered:
+        'この質問はアプリに届かなかったため、ここでは回答できません。停止を押してターンを終了し、チャットで返信してください。'
     },
     tool: {
       copyCode: 'コードをコピー',
@@ -3956,18 +4008,19 @@ export const ja = defineLocale({
   },
 
   prompts: {
-    gatewayDisconnected: 'DechnicAuditor ゲートウェイが接続されていません',
+    gatewayDisconnected: 'Hermes ゲートウェイが接続されていません',
     sudoSendFailed: 'sudo パスワードを送信できませんでした',
     secretSendFailed: 'シークレットを送信できませんでした',
     sudoTitle: '管理者パスワード',
     sudoDesc:
-      // FORK: upstream's richer copy, branded.
       'sudo パスワードを入力する前にコマンドを確認してください。パスワードは実行するエージェントに送信され、このセッション中キャッシュされます。',
     sudoCommandUnavailable:
       'エージェントからコマンドが提供されていません。会話で確認できない場合はキャンセルしてください。',
+    sudoInstallDesc:
+      'Bot Screen のパッケージ（TigerVNC + Xfce）をゲートウェイホストにインストールするため、sudo パスワードが必要です。そのホストにのみ送信されます。',
     sudoPlaceholder: 'sudo パスワード',
     secretTitle: 'シークレットが必要です',
-    secretDesc: 'DechnicAuditor は続行するための認証情報が必要です。',
+    secretDesc: 'Hermes は続行するための認証情報が必要です。',
     secretPlaceholder: 'シークレット値',
     vaultUnlockSendFailed: 'マスターパスワードを送信できませんでした',
     vaultUnlockTitle: name => `${name} のロックを解除`,
@@ -4002,6 +4055,9 @@ export const ja = defineLocale({
     sessionUnavailable: 'セッションが利用できません',
     createSessionFailed: '新しいセッションを作成できませんでした',
     promptFailed: 'プロンプトに失敗しました',
+    staleSessionTitle: 'チャットが最新ではありません',
+    staleSessionBody:
+      'このウィンドウは同じチャットの別ビューより遅れています。最新のメッセージを読み込みました。送信する場合はもう一度送ってください。',
     providerCredentialRequired: '最初のメッセージを送信する前にプロバイダー認証情報を追加してください。',
     emptySlashCommand: '空のスラッシュコマンド',
     desktopCommands: 'デスクトップコマンド',
@@ -4045,6 +4101,8 @@ export const ja = defineLocale({
     deleteFailed: '削除に失敗しました',
     archived: 'アーカイブしました',
     archiveFailed: 'アーカイブに失敗しました',
+    restored: '復元しました',
+    unarchiveFailed: 'アーカイブ解除に失敗しました',
     cwdChangeFailed: '作業ディレクトリの変更に失敗しました',
     cwdStagedTitle: '作業ディレクトリがステージングされました',
     cwdStagedMessage:
@@ -4061,8 +4119,8 @@ export const ja = defineLocale({
     sessionExportFailed: 'セッションをエクスポートできませんでした',
     imageSaved: '画像を保存しました',
     downloadStarted: 'ダウンロードを開始しました',
-    restartToUseSaveImage: '画像を保存するには DechnicAuditor Desktop を再起動してください。',
-    restartToSaveImages: '画像を保存するには DechnicAuditor Desktop を再起動してください',
+    restartToUseSaveImage: '画像を保存するには Hermes Desktop を再起動してください。',
+    restartToSaveImages: '画像を保存するには Hermes Desktop を再起動してください',
     imageDownloadFailed: '画像のダウンロードに失敗しました',
     openImage: '画像を開く',
     downloadImage: '画像をダウンロード',

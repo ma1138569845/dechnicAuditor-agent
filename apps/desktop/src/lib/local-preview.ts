@@ -2,6 +2,7 @@ import DOMPurify from 'dompurify'
 
 import { isDesktopFsRemoteMode, readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
 import { isFileMediaPath } from '@/lib/media'
+import { isWindowsAbsolutePath } from '@/lib/path-compare'
 import { sanitizeFsPath } from '@/lib/sanitize-fs-path'
 import type { PreviewTarget } from '@/store/preview'
 
@@ -66,12 +67,32 @@ function extension(value: string) {
   return idx >= 0 ? clean.slice(idx).toLowerCase() : ''
 }
 
+// Collapses `.`/`..` so a note's `../other.md` lands on the sibling, not on a
+// path the fs bridge rejects. Never climbs above the root of `base`.
 function joinPath(base: string, rel: string) {
   if (!base) {
     return rel
   }
 
-  return `${base.replace(/\/+$/, '')}/${rel.replace(/^\.?\//, '')}`
+  const normalizedBase = base.replace(/\\/g, '/')
+  const root = normalizedBase.match(/^(?:\/\/|(?:[A-Za-z]:)?\/)/)?.[0] ?? ''
+  const parts = normalizedBase.slice(root.length).split('/').filter(Boolean)
+
+  for (const part of rel.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') {
+      continue
+    }
+
+    if (part === '..') {
+      parts.pop()
+
+      continue
+    }
+
+    parts.push(part)
+  }
+
+  return `${root}${parts.join('/')}`
 }
 
 function pathToFileUrl(path: string) {
@@ -103,7 +124,12 @@ export function isLoopbackPreviewUrl(value: string): boolean {
       return false
     }
 
-    return LOOPBACK_HOST_RE.test(url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, ''))
+    return LOOPBACK_HOST_RE.test(
+      url.hostname
+        .toLowerCase()
+        .replace(/^\[|\]$/g, '')
+        .replace(/\.$/, '')
+    )
   } catch {
     return false
   }
@@ -226,7 +252,7 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
     } catch {
       path = raw.replace(/^file:\/\//i, '')
     }
-  } else if (!isFileMediaPath(raw) && cwd) {
+  } else if (!isFileMediaPath(raw) && !isWindowsAbsolutePath(raw) && cwd) {
     path = joinPath(cwd, raw)
   }
 

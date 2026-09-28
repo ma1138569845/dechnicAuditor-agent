@@ -3,6 +3,77 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  externalOpenFailed: {
+    title: 'Couldn’t open this link',
+    message: 'No browser is registered to open this address. Copy the link and open it manually.',
+    copyUrl: 'Copy link',
+    close: 'Close',
+    missing: {
+      title: 'File not found',
+      message: 'This file does not exist — it may have been deleted or moved, or it lives on another machine.'
+    }
+  },
+  // English editorial copy stays in the shipped JSONL; other locales override it.
+  intro: { stock: {}, custom: () => [] },
+  catalog: {
+    add: 'Add',
+    added: 'Added',
+    discover: 'Discover',
+    featured: 'Featured',
+    explorePlugins: 'Explore plugins',
+    exploreSkills: 'Explore skills',
+    mostStarred: 'Most starred',
+    newest: 'Newest',
+    recentlyUpdated: 'Recently updated',
+    alphabetical: 'Name',
+    sortBy: 'Sort by',
+    seeAll: 'See all',
+    related: 'More like this',
+    tags: 'Tags',
+    screenshots: 'Screenshots',
+    listView: 'List view',
+    cardView: 'Card view',
+    installTitle: (name: string) => `Install “${name}”?`,
+    installDescription: 'This skill will be available in new sessions. Only install sources you trust.',
+    installTo: 'Install to',
+    thisComputer: 'This computer',
+    installing: 'Installing…',
+    installComplete: (name: string) => `“${name}” installed`,
+    destinationChanged: 'The destination changed. Close this dialog and open the install link again.',
+    installed: 'Installed',
+    searchSkills: 'Search skills',
+    searchPlugins: 'Search plugins',
+    allSources: 'All sources',
+    allCategories: 'All categories',
+    about: 'About',
+    author: 'Author',
+    source: 'Source',
+    category: 'Category',
+    version: 'Version',
+    platforms: 'Platforms',
+    requires: 'Requires',
+    tools: 'Tools',
+    hooks: 'Hooks',
+    middleware: 'Middleware',
+    commands: 'Commands',
+    license: 'License',
+    addedDate: 'Added',
+    updatedDate: 'Updated',
+    repository: 'Repository',
+    documentation: 'Documentation',
+    noResults: 'No matches',
+    tryAnother: 'Try another search or clear your filters.',
+    clearFilters: 'Clear filters',
+    filters: 'Filters',
+    loadFailed: 'Could not load the catalog',
+    retry: 'Try again',
+    more: 'Show more',
+    pinned: 'Reviewed commit',
+    snapshotHint: 'From the Hermes catalog. Browsing never contacts source repositories.',
+    installHint: 'Review the source before installing. Changes apply to new sessions.',
+    results: (count: number) => `${count.toLocaleString()} result${count === 1 ? '' : 's'}`,
+    back: 'Back to results'
+  },
   connectors: {
     title: 'Connect your apps',
     connect: 'Connect',
@@ -378,27 +449,25 @@ export const en: Translations = {
   },
 
   boot: {
-    ready: 'DechnicAuditor Desktop is ready',
+    ready: 'Hermes Desktop is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {
       connectingGateway: 'Connecting live desktop gateway',
-      loadingSettings: 'Loading DechnicAuditor settings',
+      loadingSettings: 'Loading Hermes settings',
       loadingSessions: 'Loading recent sessions',
       retryingRemoteBackend: 'Reconnecting to the remote Hermes backend…',
       startingDesktopConnection: 'Starting desktop connection',
-      startingHermesDesktop: 'Starting DechnicAuditor Desktop…'
+      startingHermesDesktop: 'Starting Hermes Desktop…'
     },
     errors: {
-      // FORK merge: upstream's friendlier copy + our brand name; keep upstream's
-      // new restartHermes/openLogs keys.
       backgroundExited:
         'The service that runs your chats closed unexpectedly. Restart it to keep going — your chats and settings are safe.',
-      backgroundExitedDuringStartup: 'DechnicAuditor stopped right after it started.',
-      backendStopped: 'DechnicAuditor stopped working in the background',
-      restartHermes: 'Restart DechnicAuditor',
+      backgroundExitedDuringStartup: 'Hermes stopped right after it started.',
+      backendStopped: 'Hermes stopped working in the background',
+      restartHermes: 'Restart Hermes',
       openLogs: 'Open logs',
-      desktopBootFailed: "DechnicAuditor couldn't start",
-      gatewayConnectionLost: 'Lost connection to the gateway',
+      desktopBootFailed: "Hermes couldn't start",
+      gatewayConnectionLost: 'Hermes lost its connection',
       gatewayConnectionLostDetail:
         'Still trying to reconnect. You can keep reading and drafting. If this keeps up, reconnect now or check your connection settings.',
       reconnectNow: 'Reconnect now',
@@ -419,7 +488,7 @@ export const en: Translations = {
       installMissing: "Part of Hermes' installation is missing. Choose Repair install to put it back."
     },
     failure: {
-      title: "DechnicAuditor couldn't start",
+      title: "Hermes couldn't start",
       description:
         "Hermes' background service didn't come up. Try one of the recovery steps below. Nothing here deletes your chats or settings.",
       details: 'Details',
@@ -433,6 +502,9 @@ export const en: Translations = {
       back: 'Back',
       openLogs: 'Open logs',
       repairHint: 'Repair re-runs the installer and can take a few minutes on a fresh machine.',
+      bundledReinstallHint:
+        'This bundled install can’t repair itself from inside the app — reinstall the app to restore its backend.',
+      reinstallApp: 'Reinstall the app',
       remoteSignInHint: signInLabel =>
         `Signs out of the saved remote browser session, then opens ${signInLabel}. Use local gateway to switch to the bundled backend instead.`,
       signOutAndSignIn: 'Sign out & sign in',
@@ -458,6 +530,8 @@ export const en: Translations = {
   },
 
   notifications: {
+    sharedProfileWarning:
+      'Another Hermes installation is using this profile. Both installations share its settings and data, so changes can conflict. You can continue, or close the other installation before making changes.',
     region: 'Notifications',
     hide: 'Hide',
     show: 'Show',
@@ -467,14 +541,20 @@ export const en: Translations = {
     details: 'Details',
     copyDetail: 'Copy detail',
     copyDetailFailed: 'Could not copy notification detail',
+    compressDeferredDone: 'Context compression finished',
     backendOutOfDateTitle: 'Backend out of date',
     backendOutOfDateMessage:
-      'Your DechnicAuditor backend is older than this desktop build and may not work correctly. Update to align them.',
+      'Your Hermes backend is older than this desktop build and may not work correctly. Update to align them.',
+    desktopOutOfDateTitle: 'Hermes app out of date',
+    desktopOutOfDateMessage:
+      'This Hermes app is older than the backend it is connected to and may not work correctly. Update the app to align them.',
+    updateDesktopApp: 'Update app',
     installMethodUnsupportedTitle: 'Unsupported install method',
-    updateHermes: 'Update DechnicAuditor',
+    updateHermes: 'Update Hermes',
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     updateReadyMessageUnknown: 'A new update is available.',
+    updateReadyMessageAppInstaller: 'A new version of Hermes is ready. Update now and Windows will finish it for you.',
     seeWhatsNew: "See what's new",
     mcp: {
       needsAuthTitle: 'MCP server needs re-authentication',
@@ -491,12 +571,11 @@ export const en: Translations = {
       elevenLabsNeedsKey: 'Voice input needs an ElevenLabs key. Add one in Settings → Keys.',
       elevenLabsRejectedKey: "ElevenLabs didn't accept your API key. Update it in Settings → Keys, then try again.",
       diskFull: 'Disk full — free some space, then try again.',
-      // FORK merge: upstream's new storageFailure key + our API_SERVER_KEY hint
-      // (self-hosted deployment) + branded methodNotAllowed.
-      storageFailure: "DechnicAuditor couldn't save to its data folder. Open Maintenance to check and repair it.",
-      gatewayAuthFailed: 'Gateway authentication failed — check your API_SERVER_KEY.',
+      storageFailure: "Hermes couldn't save to its data folder. Open Maintenance to check and repair it.",
+      gatewayAuthFailed:
+        'This Hermes no longer accepts your saved sign-in. Open Gateways and sign in again (or paste a new access token), then retry.',
       methodNotAllowed:
-        "DechnicAuditor's background service is out of step with the app, probably after an update. Restart it to fix this.",
+        "Hermes' background service is out of step with the app, probably after an update. Restart it to fix this.",
       microphonePermission: 'Microphone permission was denied.',
       openaiRejectedApiKey: "OpenAI didn't accept your API key. Update it in Settings → Keys, then try again.",
       openaiTtsNeedsKey: 'Voice needs an OpenAI key. Add one in Settings → Keys.',
@@ -544,8 +623,8 @@ export const en: Translations = {
       rejectAction: 'Reject',
       inputTitle: 'Input needed',
       inputTitleNamed: session => `Input needed — ${session}`,
-      inputBody: 'DechnicAuditor is waiting for your response.',
-      turnDoneTitle: 'DechnicAuditor finished',
+      inputBody: 'Hermes is waiting for your response.',
+      turnDoneTitle: 'Hermes finished',
       turnDoneBody: '',
       turnErrorTitle: 'Turn failed',
       backgroundDoneTitle: 'Background task finished',
@@ -619,6 +698,7 @@ export const en: Translations = {
     rebind: 'Rebind',
     reset: 'Reset to default',
     resetAll: 'Reset all',
+    clear: 'Clear',
     pressKey: 'Press a key…',
     set: 'set',
     conflictWith: label => `Also bound to “${label}”`,
@@ -635,13 +715,10 @@ export const en: Translations = {
       'nav.commandCenter': 'Open command center',
       'nav.settings': 'Open settings',
       'nav.profiles': 'Open profiles',
-      'nav.skills': 'Open skills',
-      'nav.knowledge': 'Open knowledge base',
       'nav.capabilities': 'Open skills',
       'nav.messaging': 'Open messaging',
       'nav.artifacts': 'Open artifacts',
       'nav.cron': 'Open scheduled jobs',
-      'nav.office': 'Open office',
       'nav.agents': 'Open agents',
       'session.new': 'New session',
       'session.newTab': 'New session tab',
@@ -660,11 +737,16 @@ export const en: Translations = {
       'session.focusSearch': 'Search sessions',
       'session.togglePin': 'Pin / unpin current session',
       'session.archive': 'Archive current session',
+      'conversation.scrollPageUp': 'Scroll conversation up one page',
+      'conversation.scrollPageDown': 'Scroll conversation down one page',
       'workspace.newWorktree': 'New worktree',
       'workspace.openFolder': 'Open folder as project',
       'composer.focus': 'Focus composer',
       'composer.modelPicker': 'Open model picker',
       'composer.voice': 'Start / stop voice conversation',
+      'composer.dictate': 'Start / stop dictation',
+      'composer.reasoningUp': 'Reasoning level up',
+      'composer.reasoningDown': 'Reasoning level down',
       'view.toggleSidebar': 'Toggle sessions sidebar',
       'view.cycleSidebarGrouping': 'Cycle session grouping',
       'view.toggleRightSidebar': 'Toggle file browser',
@@ -691,6 +773,15 @@ export const en: Translations = {
       'view.findInPage': 'Find in page',
       'view.findNext': 'Find next match',
       'view.findPrevious': 'Find previous match',
+      'view.tabSlot.1': 'Switch to tab 1',
+      'view.tabSlot.2': 'Switch to tab 2',
+      'view.tabSlot.3': 'Switch to tab 3',
+      'view.tabSlot.4': 'Switch to tab 4',
+      'view.tabSlot.5': 'Switch to tab 5',
+      'view.tabSlot.6': 'Switch to tab 6',
+      'view.tabSlot.7': 'Switch to tab 7',
+      'view.tabSlot.8': 'Switch to tab 8',
+      'view.tabSlot.9': 'Switch to tab 9',
       'appearance.toggleMode': 'Toggle light / dark',
       'profile.default': 'Switch to default profile',
       'profile.switch.1': 'Switch to profile 1',
@@ -799,7 +890,7 @@ export const en: Translations = {
     exportConfig: 'Export config',
     importConfig: 'Import config',
     resetToDefaults: 'Reset to defaults',
-    resetConfirm: 'Reset all settings to DechnicAuditor defaults?',
+    resetConfirm: 'Reset all settings to Hermes defaults?',
     exportFailed: 'Export failed',
     resetFailed: 'Reset failed',
     nav: {
@@ -817,6 +908,7 @@ export const en: Translations = {
       keysSettings: 'Settings',
       mcp: 'MCP',
       archivedChats: 'Archived Chats',
+      sessions: 'Sessions',
       about: 'About',
       billing: 'Billing',
       notifications: 'Notifications',
@@ -835,25 +927,9 @@ export const en: Translations = {
       failed: 'failed',
       empty: 'No desktop plugins installed yet.',
       kinds: { bundled: 'bundled', disk: 'on disk', runtime: 'runtime' },
-      // FORK merge: upstream's agentHalfMissing keys + our agent sub-object
-      // (plugins admin surface, still referenced by settings types).
       agentHalfMissing: 'agent half missing here',
       agentHalfMissingTip:
         'This is the desktop half of a bundled plugin, but its agent half is not installed on the currently connected backend/profile. Install it from Capabilities → Plugins.',
-      agent: {
-        title: 'Agent plugins',
-        blurb:
-          'Run in the DechnicAuditor backend — tools, skills, MCP servers, hooks, and slash commands. Portable ones are Agent Plugins packages (skills + MCP bundles that work in other agents too). Toggles apply to new sessions.',
-        appliesTo: 'Applies to:',
-        empty: 'No agent plugins installed yet.',
-        loadFailed: 'Could not load agent plugins',
-        portable: 'portable',
-        search: 'Search plugins…',
-        noMatches: 'No plugins match your search.',
-        toggleFailed: (name: string) => `Could not toggle ${name}`,
-        updateBackendToManage: 'Update the DechnicAuditor backend to manage this plugin from Desktop.',
-        sources: { bundled: 'bundled', user: 'user', git: 'git', project: 'project', entrypoint: 'pip' }
-      },
       installModal: {
         installFromGit: 'Install from Git',
         reviewRepository: 'Review repository',
@@ -905,6 +981,8 @@ export const en: Translations = {
         agentSuccess: name => `Agent plugin ${name} installed`,
         desktopSuccess: name => `Desktop plugin ${name} installed`,
         agentFailed: 'Agent plugin install failed',
+        installUncertain:
+          'Hermes stopped waiting for the install result, but the plugin may still be installing. Close this dialog and use Rescan in Plugins before trying Install again.',
         desktopFailed: 'Desktop plugin install failed',
         missingEnv: (name, vars) =>
           `${name} is installed but needs a key before it can work: ${vars}. Add it now, or the plugin's tools will fail.`
@@ -990,7 +1068,7 @@ export const en: Translations = {
       intro: 'OS notifications (not in-app toasts). Per device.',
       enableAll: 'Enable notifications',
       enableAllDesc: 'Off silences every notification below.',
-      focusedHint: 'Completion alerts only fire while DechnicAuditor is in the background.',
+      focusedHint: 'Completion alerts only fire while Hermes is in the background.',
       kinds: {
         approval: {
           label: 'Approval needed',
@@ -998,11 +1076,11 @@ export const en: Translations = {
         },
         input: {
           label: 'Input needed',
-          description: 'DechnicAuditor asked a question or needs a password or secret.'
+          description: 'Hermes asked a question or needs a password or secret.'
         },
         turnDone: {
           label: 'Response ready',
-          description: 'A turn finished while DechnicAuditor was in the background.'
+          description: 'A turn finished while Hermes was in the background.'
         },
         turnError: {
           label: 'Turn failed',
@@ -1018,11 +1096,11 @@ export const en: Translations = {
         },
         plugin: {
           label: 'Plugin notifications',
-          description: 'A desktop plugin sent a notification while DechnicAuditor was in the background.'
+          description: 'A desktop plugin sent a notification while Hermes was in the background.'
         }
       },
       test: 'Send test notification',
-      testTitle: 'DechnicAuditor',
+      testTitle: 'Hermes',
       testBody: 'Notifications are working.',
       testSent: 'Test sent. If nothing appears, check your OS notification permissions and Focus/Do Not Disturb.',
       testUnsupported: 'This system does not support native notifications.',
@@ -1037,12 +1115,11 @@ export const en: Translations = {
       workspace: 'Workspace',
       safety: 'Safety',
       memory: 'Memory & Context',
-      knowledge: 'Knowledge',
       voice: 'Voice',
       advanced: 'Advanced'
     },
     searchPlaceholder: {
-      about: 'About DechnicAuditor Desktop',
+      about: 'About Hermes Desktop',
       config: 'Search settings...',
       gateway: 'Gateway connection...',
       keys: 'Search API keys...',
@@ -1058,7 +1135,7 @@ export const en: Translations = {
       title: 'Appearance',
       intro: 'Desktop-only. Mode is brightness; theme is palette and chat chrome.',
       colorMode: 'Color Mode',
-      colorModeDesc: 'Pick a fixed mode or let DechnicAuditor follow your system setting.',
+      colorModeDesc: 'Pick a fixed mode or let Hermes follow your system setting.',
       toolViewTitle: 'Tool Call Display',
       toolViewDesc: 'Product hides raw tool payloads; Technical shows full input/output.',
       hideCodeDiffsTitle: 'Hide code diffs',
@@ -1122,20 +1199,26 @@ export const en: Translations = {
       backdropDesc: 'The faint statue image behind the conversation.',
       userBubbleTitle: 'Message Bubble',
       userBubbleDesc: 'How see-through your own messages are. Solid at 0; only the outline remains at 100.',
+      textDirectionTitle: 'Text direction',
+      textDirectionDesc:
+        'How chat messages and the composer choose their direction. Auto follows the first letter of each paragraph; pick a direction when mixed text lines up the wrong way. Code always stays left-to-right.',
+      textDirection: { auto: 'Auto', rtl: 'Right-to-left', ltr: 'Left-to-right' },
       introSplashTitle: 'Intro Splash',
       introSplashDesc: 'The wordmark and prompt shown on an empty chat.',
       reactionsTitle: 'Message Reactions',
-      reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and DechnicAuditor can react to yours.',
+      reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Hermes can react to yours.',
       tipsTitle: 'In-App Tips',
       tipsDesc:
-        // FORK: upstream's new 30-day copy with our brand name.
-        'Occasional hints from the app and DechnicAuditor. Each tip appears once. Turns off automatically after your first 30 days; you can turn it back on.',
+        'Occasional hints from the app and Hermes. Each tip appears once. Turns off automatically after your first 30 days; you can turn it back on.',
       tipsReset: (count: number) => `Show ${count} ${count === 1 ? 'tip' : 'tips'} again`,
       toursTitle: 'Guided Tours',
       toursDesc:
-        'Let DechnicAuditor spotlight each step as it guides you through the app. Turns off automatically after your first 30 days; you can turn it back on.',
+        'Let Hermes spotlight each step as it guides you through the app. Turns off automatically after your first 30 days; you can turn it back on.',
       composerPopoutTitle: 'Floating Composer',
-      composerPopoutDesc: 'Allow dragging the composer out of its dock. Turn this off to keep it locked at the bottom.',
+      composerPopoutDesc: 'Allow dragging the composer out of its dock. When off, it stays docked at the bottom.',
+      fileBrowserTitle: 'File Browser',
+      fileBrowserDesc:
+        'Show the file browser beside the chat when a workspace is open. The titlebar toggle changes this too.',
       vibeHeartsTitle: 'Vibe Hearts',
       vibeHeartsDesc:
         'Floating hearts when you say thanks, ily, good bot, or send a heart. Separate from Message Reactions above.',
@@ -1170,11 +1253,9 @@ export const en: Translations = {
       pet: {
         title: 'Pet',
         intro:
-          'Adopt an animated petdex mascot that floats over the app and reacts to what DechnicAuditor is doing — running while tools execute, celebrating on success, sulking on errors.',
+          'Adopt an animated petdex mascot that floats over the app and reacts to what Hermes is doing — running while tools execute, celebrating on success, sulking on errors.',
         restartHint:
-          'Pets need a quick restart — the running app started before this feature was added. Quit and reopen DechnicAuditor, then come back here.',
-        on: 'On',
-        off: 'Off',
+          'Pets need a quick restart — the running app started before this feature was added. Quit and reopen Hermes, then come back here.',
         scaleTitle: 'Size',
         scaleDesc: 'Resize the floating mascot. Applies everywhere instantly.',
         roamTitle: 'Roam',
@@ -1211,8 +1292,34 @@ export const en: Translations = {
     fieldDescriptions: FIELD_DESCRIPTIONS,
     uninstallSection: {
       dangerZone: 'Danger zone',
+      checkingInstalled: 'Checking what’s installed…',
+      uninstallHermes: 'Uninstall Hermes',
+      chooseHowMuch:
+        'Choose how much to remove. The app closes to finish the job; reopen the installer any time to come back.',
       confirmUninstall: 'Confirm uninstall',
-      uninstallHermes: 'Uninstall Hermes'
+      confirmBody: what => `This removes ${what}. This can’t be undone.`,
+      appLabel: 'App:',
+      couldNotStart: 'Uninstall could not start.',
+      uninstalling: 'Uninstalling…',
+      yesUninstall: 'Yes, uninstall',
+      options: {
+        gui: {
+          title: 'Uninstall Chat GUI only',
+          description: 'Remove this desktop app. The Hermes agent, your config, and chats all stay.',
+          consequence: 'the desktop Chat GUI (this app and its data)'
+        },
+        lite: {
+          title: 'Uninstall GUI + agent, keep my data',
+          description:
+            'Remove the app and the Hermes agent, but keep config, chats, and secrets for a future reinstall.',
+          consequence: 'the Chat GUI and the Hermes agent (config, chats, and secrets are kept)'
+        },
+        full: {
+          title: 'Uninstall everything',
+          description: 'Remove the app, the agent, and all user data — config, chats, scheduled jobs, secrets, logs.',
+          consequence: 'EVERYTHING — the Chat GUI, the Hermes agent, and all of your config, chats, secrets, and logs'
+        }
+      }
     },
     poolLimits: {
       warmBotBackendsAria: 'Warm bot backends',
@@ -1221,6 +1328,39 @@ export const en: Translations = {
       backendIdleTimeoutTitle: 'Backend Idle Timeout'
     },
     customEndpoints: {
+      active: 'Active',
+      apiKeySet: 'API key set',
+      use: 'Use',
+      editTitle: 'Edit Endpoint',
+      addTitle: 'Add Endpoint',
+      fields: {
+        name: 'Name',
+        providerId: 'Provider ID',
+        endpointUrl: 'Endpoint URL',
+        defaultModel: 'Default Model',
+        context: 'Context',
+        apiKey: 'API Key',
+        apiKeyNewPlaceholder: 'Leave blank to keep current key',
+        apiKeyPlaceholder: 'Optional',
+        useNewChats: 'Use for new chats',
+        discoverModels: 'Discover models'
+      },
+      test: 'Test',
+      save: 'Save',
+      newEndpoint: 'New endpoint',
+      apiMode: 'API Mode',
+      autoDetect: 'Auto-detect',
+      couldNotLoad: 'Could not load custom endpoints',
+      endpointSaved: 'Custom endpoint saved.',
+      saveFailed: 'Save failed',
+      endpointReachable: 'Endpoint is reachable.',
+      endpointReachableTransport: transport => `Endpoint is reachable (${transport} route served).`,
+      endpointReachableModels: (reachable, count) => `${reachable} Found ${count} models.`,
+      endpointValidationFailed: 'Endpoint validation failed.',
+      validationFailed: 'Validation failed',
+      activationFailed: 'Activation failed',
+      deleteConfirm: name => `Delete ${name}?`,
+      deleteFailed: 'Delete failed',
       title: 'Custom Endpoints',
       deleteEndpoint: 'Delete endpoint',
       emptyDescription: 'Add an OpenAI-compatible endpoint below.',
@@ -1234,41 +1374,7 @@ export const en: Translations = {
       driverHealth: 'Driver health'
     },
     about: {
-      heading: 'DechnicAuditor Desktop',
-      version: value => `Version ${value}`,
-      versionUnavailable: 'Version unavailable',
-      bundleOutOfSync: 'App build out of date',
-      bundleOutOfSyncDesc:
-        'The Hermes runtime was updated, but the desktop app itself is still an older build — new interface features (like Bot Mode) will be missing until it updates. Run the update below to rebuild the app. If that doesn\u2019t clear this warning, reinstall from the latest desktop installer.',
-      bundleOutOfSyncAction: 'Get the installer',
-      bundleSwapPending: 'Restart to finish the update',
-      bundleSwapPendingDesc:
-        'The updated app is already installed — Hermes only needs to restart to load it. Chats and settings are untouched.',
-      bundleSwapPendingAction: 'Restart Hermes',
-      updates: 'Updates',
-      checkNow: 'Check now',
-      checking: 'Checking…',
-      seeWhatsNew: "See what's new",
-      updateNow: 'Update now',
-      releaseNotes: 'Release notes',
-      onLatest: "You're on the latest version.",
-      installing: 'An update is currently installing.',
-      cantUpdate: "This build can't update itself from inside the app.",
-      cantReach: "We couldn't reach the update server.",
-      tapCheck: 'Tap "Check now" to look for updates.',
-      updateReady: count => `A new update is ready (${count} change${count === 1 ? '' : 's'} included).`,
-      updateReadyUnknown: 'A new update is ready.',
-      lastChecked: age => `Last checked ${age}`,
-      justNowSuffix: ' · just now',
-      automaticUpdates: 'Automatic updates',
-      automaticUpdatesDesc:
-        'DechnicAuditor checks for updates automatically in the background and lets you know when one is ready.',
-      branchCommit: (branch, commit) => `Branch ${branch} · Commit ${commit}`,
-      never: 'never',
-      justNow: 'just now',
-      minAgo: count => `${count} min ago`,
-      hoursAgo: count => `${count} hours ago`,
-      daysAgo: count => `${count} days ago`
+      updates: 'Updates'
     },
     config: {
       minimizeToTrayTitle: 'Minimize to tray',
@@ -1284,7 +1390,7 @@ export const en: Translations = {
       searchPlaceholder: 'Search…',
       noResults: 'No results found',
       systemDefault: 'System default',
-      loading: 'Loading DechnicAuditor configuration...',
+      loading: 'Loading Hermes configuration...',
       emptyTitle: 'Nothing to configure',
       emptyDesc: 'This section has no adjustable settings.',
       failedLoad: 'Settings failed to load',
@@ -1297,11 +1403,17 @@ export const en: Translations = {
       keepAwakeDesc: 'Stop this machine from sleeping so long or overnight runs keep going. The display can still dim.',
       disableF12Title: 'Disable F12 DevTools',
       disableF12Desc: 'Block F12 from opening Developer Tools. Ctrl+Shift+I (or Cmd+Opt+I on Mac) still works.',
+      alwaysExternalLinksTitle: 'Always open links in external browser',
+      alwaysExternalLinksDesc:
+        'Open every link you click in your system browser instead of the in-app browser. "Open in in-app browser" in the right-click menu still works.',
       attachmentSizeTitle: 'Max preview / image load size',
       attachmentSizeDesc:
         'How big a local file Desktop will load for previews and image attach, in MB. Default is 16. Remote non-image attach uses a separate 256 MB cap. Setting this very high loads the whole file into memory and can freeze or crash the app.',
       attachmentSizeUnit: 'MB',
       attachmentSizeLabel: 'Max preview / image load size in megabytes',
+      voiceShortcutHintTitle: 'Voice recording shortcut',
+      voiceShortcutHintDesc:
+        'Set the voice recording shortcut in Settings → Keyboard Shortcuts ("Start / stop voice conversation"). The voice.record_key config value only applies to the CLI and TUI.',
       showOptions: 'Show options'
     },
     hudModifier: {
@@ -1343,7 +1455,7 @@ export const en: Translations = {
     quickEntry: {
       enabledTitle: 'Quick Entry',
       enabledDesc:
-        'Summon a small composer from anywhere with a global shortcut and fire a prompt without opening DechnicAuditor.',
+        'Summon a small composer from anywhere with a global shortcut and fire a prompt without opening Hermes.',
       shortcutTitle: 'Quick Entry shortcut',
       shortcutDesc: 'Needs at least one modifier, e.g. CommandOrControl+Shift+Space.',
       active: 'Shortcut is active.',
@@ -1459,31 +1571,29 @@ export const en: Translations = {
       title: 'Gateway Connection',
       envOverride: 'env override',
       intro:
-        // FORK: keep our per-profile scope UI keys (gateway-settings ScopeChip
-        // feature is ours, not upstream) with branded intro.
-        'Local by default. Use remote when this app should drive a DechnicAuditor backend elsewhere. Per-profile overrides below.',
+        'Local by default. Use remote when this app should drive a Hermes backend elsewhere. Gateway connections are machine-level; profiles are discovered from the gateways you connect.',
       appliesTo: 'Applies to',
       allProfiles: 'All profiles',
       defaultConnection: 'Default connection for every profile that has no override of its own.',
       profileConnection: profile =>
         `Connection used only when “${profile}” is the active profile. Choose Use default gateway to remove its override.`,
-      envOverrideTitle: 'Environment variables are controlling this desktop session.',
+      envOverrideTitle: 'This connection was fixed by the way Hermes was launched.',
       envOverrideDesc:
         'A startup setting outside the app chose this connection, so the options below are read-only. Restart Hermes without that setting — or ask whoever set it up — to change it here.',
       modeTitle: 'Connection mode',
       localTitle: 'Local gateway',
-      localDesc: 'Start a private DechnicAuditor backend on localhost. This is the default and works offline.',
+      localDesc: 'Start a private Hermes backend on localhost. This is the default and works offline.',
       inheritTitle: 'Use default gateway',
       inheritDesc: "Remove this profile's override and use the default connection.",
       remoteTitle: 'Remote gateway',
-      remoteDesc: 'Connect this desktop shell to a remote DechnicAuditor backend.',
+      remoteDesc: 'Connect this desktop shell to a remote Hermes backend.',
       remoteAuthHint: 'Hosted gateways use OAuth or a username and password; self-hosted ones may use a session token.',
-      cloudTitle: 'DechnicAuditor Cloud',
-      cloudDesc: 'Sign in once to DechnicAuditor Cloud and pick from the agents on your account — no URL to paste.',
-      cloudSignInTitle: 'DechnicAuditor Cloud',
-      cloudSignIn: 'Sign in to DechnicAuditor Cloud',
-      cloudSignedIn: 'Signed in to DechnicAuditor Cloud',
-      cloudNeedsSignIn: 'Sign in to DechnicAuditor Cloud to discover the agents on your account.',
+      cloudTitle: 'Hermes Cloud',
+      cloudDesc: 'Sign in once to Hermes Cloud and pick from the agents on your account — no URL to paste.',
+      cloudSignInTitle: 'Hermes Cloud',
+      cloudSignIn: 'Sign in to Hermes Cloud',
+      cloudSignedIn: 'Signed in to Hermes Cloud',
+      cloudNeedsSignIn: 'Sign in to Hermes Cloud to discover the agents on your account.',
       cloudSignedInDesc: 'You are signed in. Pick an agent below; the session refreshes automatically.',
       cloudAgentsTitle: 'Your agents',
       cloudOrgPickerTitle: 'Choose an organization',
@@ -1504,11 +1614,11 @@ export const en: Translations = {
       cloudUseSaved: 'Use gateway',
       cloudActive: 'Active in this window',
       cloudConnecting: 'Connecting…',
-      cloudDiscoverFailed: 'Could not load your DechnicAuditor Cloud agents',
+      cloudDiscoverFailed: 'Could not load your Hermes Cloud agents',
       cloudConnectFailed: 'Could not connect to that agent',
-      cloudSignInFailed: 'DechnicAuditor Cloud sign-in failed',
-      cloudSignedOutTitle: 'Signed out of DechnicAuditor Cloud',
-      cloudSignedOutMessage: 'Cleared the DechnicAuditor Cloud session.',
+      cloudSignInFailed: 'Hermes Cloud sign-in failed',
+      cloudSignedOutTitle: 'Signed out of Hermes Cloud',
+      cloudSignedOutMessage: 'Cleared the Hermes Cloud session.',
       cloudConnectedTitle: 'Connected',
       cloudConnectedPill: 'Connected',
       cloudConnectedTo: name => `Connected to ${name}.`,
@@ -1559,9 +1669,9 @@ export const en: Translations = {
       enterUrlFirst: 'Enter a remote URL first.',
       restartingTitle: 'Gateway connection restarting',
       savedTitle: 'Gateway settings saved',
-      restartingMessage: 'DechnicAuditor Desktop will reconnect using the saved settings — the shell stays open.',
+      restartingMessage: 'Hermes Desktop will reconnect using the saved settings — the shell stays open.',
       savedMessage: 'Saved for the next restart.',
-      connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · DechnicAuditor ${version}` : ''}`,
+      connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · Hermes ${version}` : ''}`,
       reachableTitle: 'Remote gateway reachable',
       signedOutTitle: 'Signed out',
       signedOutMessage: 'Cleared the remote gateway session.',
@@ -1573,7 +1683,7 @@ export const en: Translations = {
       saveFailed: 'Could not save gateway settings',
       sshTitle: 'Connect via SSH',
       sshDesc:
-        'DechnicAuditor is launched on the remote over SSH and tunneled to this app — nothing to start or expose yourself. Requires working key-based SSH access to the host.',
+        'Hermes is launched on the remote over SSH and tunneled to this app — nothing to start or expose yourself. Requires working key-based SSH access to the host.',
       sshTrustHint: 'The first presented host key is trusted and pinned; later changes fail closed.',
       sshHostTitle: 'Host',
       sshHostDesc: 'user@host, or a Host alias from ~/.ssh/config.',
@@ -1588,7 +1698,7 @@ export const en: Translations = {
       sshPortDesc: 'Blank = 22 or the ~/.ssh/config port.',
       sshKeyTitle: 'Identity file',
       sshKeyDesc: 'Private key path. Blank = ssh-agent or ~/.ssh/config.',
-      sshHermesPathTitle: 'DechnicAuditor path (optional)',
+      sshHermesPathTitle: 'Hermes path (optional)',
       sshHermesPathDesc: 'Full path to the remote hermes binary. Blank = auto-detect.',
       sshHermesPathPlaceholder: 'auto-detect',
       sshRemoteProfileTitle: 'Remote profile (optional)',
@@ -1596,19 +1706,19 @@ export const en: Translations = {
       sshTestConnection: 'Test SSH',
       sshConnect: 'Connect',
       sshButtonsHint: 'Save applies on the next launch. Connect reconnects now.',
-      sshReachable: (host, platform) => `Reachable: ${host} (${platform}) — DechnicAuditor found`,
+      sshReachable: (host, platform) => `Reachable: ${host} (${platform}) — Hermes found`,
       sshIncompleteHost: 'Enter an SSH host before connecting.',
       sshErrUnreachable: 'Could not reach that host over SSH. Check the host, port, and your network.',
       sshErrAuth:
-        'SSH authentication failed. Load your key into the ssh-agent (ssh-add) or set an IdentityFile in ~/.ssh/config — DechnicAuditor runs ssh non-interactively.',
+        'SSH authentication failed. Load your key into the ssh-agent (ssh-add) or set an IdentityFile in ~/.ssh/config — Hermes runs ssh non-interactively.',
       sshErrHostKey:
         'The host key has CHANGED since you last connected. Verify this is expected, then run ssh-keygen -R <host> and reconnect.',
       sshErrNotInstalled:
-        'DechnicAuditor is not installed on the remote host. Install it there (curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh) or set the DechnicAuditor path.',
+        'Hermes is not installed on the remote host. Install it there (curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh) or set the Hermes path.',
       sshErrPlatform:
-        'Unsupported remote platform. DechnicAuditor Desktop SSH mode supports Linux, macOS, and Windows remote hosts.',
+        'Unsupported remote platform. Hermes Desktop SSH mode supports Linux, macOS, and Windows remote hosts.',
       sshErrTimeout: 'SSH connection timed out. The host may be unreachable or asleep.',
-      sshErrUpdateRequired: 'Update DechnicAuditor on the remote host before connecting with Desktop SSH.',
+      sshErrUpdateRequired: 'Update Hermes on the remote host before connecting with Desktop SSH.',
       sshErrUnknown: 'SSH connection failed.'
     },
     onlyoffice: {
@@ -1710,11 +1820,29 @@ export const en: Translations = {
       deepLinkErrorTooLarge: 'The config payload exceeds the 32KB limit.'
     },
     model: {
+      setupProviderFallback: 'provider',
+      setUpProvider: name => `Set up ${name}`,
+      staleAuxBefore: (count, names) => `${count} auxiliary task${count === 1 ? '' : 's'} (${names}) still run on `,
+      staleAuxAfter: ', not your main model.',
+      staleAuxOtherProviders: 'other providers',
+      moaEnabled: 'Enabled',
+      moaSetDefault: 'Set default',
+      moaNewPresetPlaceholder: 'new preset',
+      moaAddPreset: 'Add preset',
+      customModel: 'Custom model…',
+      customModelPlaceholder: 'Model id',
+      chooseFromList: 'Choose from list',
+      moaDefault: 'Default:',
+      moaReferenceToggle: (enabled, index) => `${enabled ? 'Disable' : 'Enable'} reference ${index}`,
+      moaReferenceTitle: index => `Reference ${index}`,
+      moaAddReference: 'Add reference model',
       loading: 'Loading model configuration...',
       appliesDesc: 'Applies to new sessions. Use the model picker in the composer to hot-swap the active chat.',
       provider: 'Provider',
       model: 'Model',
       applying: 'Applying...',
+      mainAppliedTitle: 'Main model updated',
+      mainAppliedMessage: model => `New sessions will use ${model}.`,
       defaultsLabel: 'Defaults',
       reasoning: 'Reasoning',
       reasoningOff: 'Off',
@@ -1757,6 +1885,7 @@ export const en: Translations = {
       }
     },
     localModels: {
+      connectionChanged: 'Local models connection changed',
       title: 'Local Models',
       runtimeTitle: 'Local runtime',
       runtimeReady: backend => `Ready · ${backend}`,
@@ -1794,7 +1923,16 @@ export const en: Translations = {
       noRecommendationAction: 'Browse models',
       downloaded: 'Downloaded',
       downloadAction: size => `Download · ${size}`,
-      downloadProgress: (done, total) => `Downloading ${done} of ${total}`,
+      downloadProgress: (done, total) => `${done} of ${total}`,
+      downloadStatusRunning: 'Downloading',
+      downloadSpeed: rate => `${rate}`,
+      downloadEta: time => `~${time} left`,
+      downloadEtaSeconds: count => `${count} sec`,
+      downloadEtaMinutes: count => `${count} min`,
+      downloadEtaHours: (hours, minutes) => (minutes ? `${hours} h ${minutes} min` : `${hours} h`),
+      downloadPausedLabel: 'Paused',
+      downloadPauseAction: 'Pause',
+      downloadResumeAction: 'Resume',
       downloadDoneToast: model => `${model} is ready.`,
       installDoneToast: 'Local runtime installed and ready.',
       quickstartTitle: 'Run a model on this machine',
@@ -1817,7 +1955,7 @@ export const en: Translations = {
       updateAction: 'Update engine',
       updating: 'Updating engine…',
       upToDateTitle: 'Engine up to date',
-      upToDateDetail: (tag, backend) => `Running llama.cpp ${tag} (${backend}) — the configured build.`,
+      upToDateDetail: (tag, backend) => `Running llama.cpp ${tag} (${backend}).`,
       activeDetail: 'New chats use this model — it loads when you send your first message',
       activeNotLoaded: 'Loads on your first message',
       loadedPill: 'In memory',
@@ -1842,6 +1980,8 @@ export const en: Translations = {
       activateFailed: model => `Could not switch to ${model}`,
       activateDoneToast: model => `New chats use ${model}.`,
       downloadFailed: model => `Download of ${model} failed`,
+      downloadPauseFailed: model => `Couldn’t pause the download of ${model}`,
+      downloadResumeFailed: model => `Couldn’t resume the download of ${model}`,
       pillFitsGpu: 'Fits your GPU',
       pillUsesRam: 'Uses system RAM',
       pillTooBig: 'Too big for this machine',
@@ -1876,11 +2016,286 @@ export const en: Translations = {
       deleted: model => `${model} deleted.`,
       deleteFailed: 'Delete failed'
     },
+    billing: {
+      perMonth: amount => `${amount}/mo`,
+      creditsPerMonth: amount => `${amount} credits/mo`,
+      usageLabel: label => `${label} usage`,
+      freeTier: {
+        signIn: 'Sign in',
+        title: "You're on the Nous free tier",
+        message: 'Sign in with a Nous account to unlock more models and tools.',
+        caption:
+          'Runs on nous/welcome with connectors included. Signing in keeps your connectors and adds the tools that need an account and every other model.',
+        name: 'Nous · free tier',
+        footnote:
+          'The free tier has no balance and nothing to pay. Payment and usage appear when you sign in with a Nous account.',
+        plan: 'Free tier',
+        model: 'Model',
+        connectors: 'Connectors',
+        included: 'Included'
+      },
+      amountValidation: {
+        reloadTo: 'Reload-to',
+        greaterThanThreshold: 'Reload-to amount must be greater than the threshold.',
+        decimal: label => `${label}: enter a dollar amount with at most 2 decimal places.`,
+        positive: label => `${label}: amount must be greater than $0.`,
+        minimum: (label, amount) => `${label}: minimum is ${amount}.`,
+        maximum: (label, amount) => `${label}: maximum is ${amount}.`
+      },
+      stepUp: {
+        openVerification: 'Open verification page',
+        dismiss: 'Dismiss',
+        waiting: 'Waiting for verification link…',
+        verify: 'Verify to continue',
+        deniedTitle: 'Verification was not approved',
+        deniedBody: 'Verification finished without allowing Remote Spending for this terminal.',
+        successTitle: 'Verification complete',
+        successBody: 'Remote Spending is allowed for this terminal.'
+      },
+      charge: {
+        added: amount => (amount ? `$${amount} added.` : 'Credits added.'),
+        failedTitle: 'Charge failed',
+        unconfirmedTitle: 'Charge outcome unconfirmed',
+        unconfirmedBody: message =>
+          `${message} Your last charge's outcome is unconfirmed - check your balance/history before retrying.`,
+        checkTitle: 'Could not check charge',
+        checkBody: 'Could not check the charge.',
+        untrackedTitle: 'Charge could not be tracked',
+        untrackedBody: 'The billing service accepted the request but did not return a charge id.',
+        timeoutTitle: 'Still processing after 5 minutes',
+        timeoutBody: 'Charge may still settle. Check the portal before retrying.',
+        authenticationRequired:
+          'Your bank requires verification (3DS). Complete it on the portal to finish this purchase.',
+        expired: 'Your card has expired. Update it on the portal.',
+        declined: 'Your card was declined. Try another card on the portal.',
+        failedBody: reason => `The charge didn't go through (${reason}).`
+      },
+      title: 'Billing',
+      preview: 'preview',
+      summary: {
+        balance: 'Balance',
+        plan: 'Plan',
+        autoRefill: 'Auto-refill'
+      },
+      sections: {
+        invoices: 'Invoices',
+
+        plan: 'Plan',
+        paymentAndCredits: 'Payment & credits',
+        usage: 'Usage'
+      },
+      usage: {
+        title: 'Usage'
+      },
+      buyCredits: {
+        customAmount: 'Custom credit amount',
+        title: 'Buy credits now',
+        buyButton: 'Buy',
+        processing: 'Processing… checking settlement',
+        added: amount => `${amount} added. Balance is refreshing.`,
+        retry: 'Retry',
+        openPortal: 'Open portal'
+      },
+      plan: {
+        title: 'Plans',
+        changePlan: 'Change plan',
+        viewPlans: 'View plans',
+        backAria: 'Back to billing',
+        current: 'Current plan',
+        scheduled: 'Scheduled',
+        empty: 'No plans are available to change to right now.',
+        undo: 'Undo',
+        undoing: 'Undoing…',
+        downgrade: 'Downgrade',
+        confirmDowngrade: 'Confirm downgrade',
+        tryAgain: 'Try again',
+        checkingChange: 'Checking this change…',
+        cannotChange: 'That change cannot be made here.',
+        alreadyOn: name => `You are already on ${name} — nothing to change.`,
+        notScheduleable: 'This change cannot be scheduled here.',
+        scheduling: 'Scheduling…',
+        cancel: 'Cancel',
+        effectScheduled: (targetName, effectiveAt, creditsDelta) =>
+          `Change to ${targetName} — takes effect ${effectiveAt}. No charge now; you keep your current plan until then.${creditsDelta ? ` Monthly credits change: ${creditsDelta}.` : ''}`
+      },
+      autoReload: {
+        threshold: 'Threshold',
+        thresholdAria: 'Auto-refill threshold',
+        reloadTo: 'Reload to',
+        reloadToAria: 'Auto-refill reload-to amount',
+        turnOffConfirm: 'Turn off auto-refill?',
+        turnOff: 'Turn off',
+        disable: 'Disable',
+        updated: 'Auto-refill updated.',
+        turnedOff: 'Auto-refill turned off.',
+        manage: 'Manage',
+        save: 'Save',
+        saving: 'Saving…',
+        cancel: 'Cancel'
+      },
+      state: {
+        notice: {
+          loggedOut: {
+            title: 'Connect your Nous account',
+            message: 'Sign in with your Nous account to see your balance, plan and usage here.',
+            action: 'Sign in'
+          },
+          openPortal: 'Open portal ↗',
+          noCard: {
+            title: 'No payment method on file',
+            message:
+              'Buying top-up credits and auto-refill stay disabled until a card is on file. Add one on the portal.',
+            action: 'Add card ↗'
+          }
+        },
+        paymentMethod: {
+          title: 'Payment method',
+          description: 'Manage the card used for top-ups and subscription renewals.',
+          addAction: 'Add payment method',
+          updateAction: 'Update',
+          provenance: {
+            autoRefill: 'auto-refill card',
+            customerDefault: 'customer default',
+            subPin: 'subscription card',
+            suffix: label => ` - ${label}`
+          }
+        },
+        buyCredits: {
+          description: 'A single charge on your card, added to your balance today.'
+        },
+        autoRefill: {
+          title: 'Refill when low',
+          genericDescription: 'Keep your balance topped up when it drops below your threshold.',
+          offPill: 'Off',
+          enabledPill: 'Enabled',
+          notAvailablePill: '—',
+          manageCaption: 'Manage auto-refill from the portal.',
+          turnOnCaption: 'Turn on auto-refill from the portal',
+          chargesDescription: (reloadTo, threshold) =>
+            `Charges ${reloadTo} automatically when your balance falls below ${threshold}.`,
+          distinctCardCaption: cardLabel => `Auto-refill charges ${cardLabel} — reconcile on the portal`,
+          distinctCardFallback: 'a different card',
+          reconcileAction: 'Reconcile ↗'
+        },
+        usage: {
+          subscriptionCredits: {
+            title: 'Subscription credits',
+            barLabel: 'Subscription credits remaining',
+            captionResets: date => `Resets ${date}`,
+            valueOf: (remaining, monthly) => `${remaining} of ${monthly} left`,
+            valueOver: (remaining, monthly, over) => `${remaining} of ${monthly} left · ${over} over`
+          },
+          topupCredits: {
+            title: 'Top-up credits',
+            caption: 'Does not expire'
+          },
+          monthlyCap: {
+            title: 'Monthly spend cap',
+            barLabel: 'Monthly spend cap used',
+            captionDefault: 'Default ceiling',
+            captionSpending: 'Monthly remote spending',
+            valueUsed: (spent, limit) => `${spent} of ${limit} used`
+          }
+        },
+        planCard: {
+          freeTier: 'Free',
+          chooseAction: 'Choose ↗',
+          adjustPlanAction: 'Adjust plan ↗',
+          unavailableCaption: 'Subscription details are unavailable; opening the portal is still available.',
+          downgradeCaption: (tierName, when) => `Changes to ${tierName} on ${when}.`,
+          cancellationCaption: when => `Cancels on ${when}.`,
+          renewsCaption: date => `Renews ${date}`,
+          noSubscriptionCaption: 'No active subscription — paid models draw down top-up credits.'
+        }
+      },
+      errors: {
+        consentRequired: {
+          title: 'Card confirmation needed',
+          message: 'Confirm this card for terminal charges in the portal'
+        },
+        insufficientScope: {
+          title: 'Remote Spending needs approval',
+          message: 'This needs Remote Spending allowed. Start a top-up to allow it, then retry.'
+        },
+        remoteSpendingRevoked: {
+          title: 'Remote spending was stopped',
+          messageByAdmin: 'An admin stopped remote spending for this terminal.',
+          messageBySelf: 'You stopped remote spending for this terminal.'
+        },
+        remoteSpendingReconnect: who => `${who} Reconnect from Settings -> Gateway to re-authorize this device.`,
+        sessionRevoked: {
+          title: 'Session logged out',
+          message: 'Your session was logged out. Sign in again from Settings → Gateway.'
+        },
+        cliBillingDisabled: {
+          title: 'Remote spending is off',
+          message:
+            "Remote spending is off for this account — a billing admin can turn it on from the portal's Hermes Agent page."
+        },
+        roleRequired: {
+          title: 'Admin role required',
+          message: 'Adding funds needs an org admin/owner. Ask an admin, or manage on the portal.'
+        },
+        idempotencyConflict: {
+          title: 'Start a fresh top-up',
+          message: '🔴 That charge key was already used for a different amount. Start a fresh top-up.'
+        },
+        noPaymentMethod: {
+          title: 'No saved card',
+          message:
+            '💳 No saved card for terminal charges yet. Set one up on the portal ' +
+            "(one-time credit buys don't save a reusable card)."
+        },
+        orgAccessDenied: {
+          title: 'Org access denied',
+          message: "This token isn't bound to an org you can manage"
+        },
+        monthlyCapExceeded: {
+          title: 'Monthly spend cap reached',
+          messageReached: '🔴 Monthly spend cap reached.',
+          messageHeadroom: remaining => `🔴 Monthly spend cap reached — $${remaining} headroom left.`
+        },
+        rateLimited: {
+          title: 'Too many charges right now',
+          message: mins =>
+            mins > 0
+              ? `🟡 Too many charges right now (try again in ~${mins} min). This isn't a payment failure.`
+              : "🟡 Too many charges right now. This isn't a payment failure."
+        },
+        stripeUnavailable: {
+          title: 'Stripe is having trouble',
+          message: mins =>
+            mins > 0
+              ? `Stripe is having trouble — try again in ~${mins} min`
+              : 'Stripe is having trouble — try again shortly'
+        },
+        upgradeCapExceeded: {
+          title: 'Daily plan-change limit reached',
+          message: 'Daily plan-change limit reached — try again tomorrow'
+        },
+        endpointUnavailable: {
+          title: 'Billing endpoint unavailable',
+          message: 'Billing endpoint returned a non-JSON response (it may not be available on this deployment).'
+        },
+        timeout: {
+          title: 'Billing request timed out',
+          message: 'Billing request timed out.'
+        },
+        transport: {
+          title: 'Billing connection failed',
+          message: 'Billing request failed before reaching the gateway.'
+        },
+        default: {
+          title: 'Billing request failed',
+          message: 'Billing request failed.'
+        }
+      }
+    },
     providers: {
       connectAccount: 'Connect an account',
       haveApiKey: 'Have an API key instead?',
       intro:
-        'Sign in with a subscription — no API key to copy. DechnicAuditor runs the browser sign-in for you, right here in the app.',
+        'Sign in with a subscription — no API key to copy. Hermes runs the browser sign-in for you, right here in the app.',
       connected: 'Connected',
       collapse: 'Collapse',
       connectAnother: 'Connect another provider',
@@ -1901,7 +2316,7 @@ export const en: Translations = {
       noKeysMatch: 'No providers match your search.',
       localEndpoint: {
         title: 'Local / custom endpoint',
-        description: 'Point DechnicAuditor at any OpenAI-compatible endpoint (Zyphra, vLLM, llama.cpp, Ollama, etc).'
+        description: 'Point Hermes at any OpenAI-compatible endpoint (Zyphra, vLLM, llama.cpp, Ollama, etc).'
       },
       loading: 'Loading providers...'
     },
@@ -1909,7 +2324,7 @@ export const en: Translations = {
       loading: 'Loading archived sessions…',
       archivedTitle: 'Archived sessions',
       archivedIntro:
-        'Archived chats are hidden from the sidebar but keep all their messages. Ctrl/⌘-click a chat in the sidebar to archive it.',
+        'Archived chats are hidden from the sidebar but keep all their messages. Alt/⌥+Shift-click a chat in the sidebar to archive it.',
       emptyArchivedTitle: 'Nothing archived',
       emptyArchivedDesc: 'Archive a chat to hide it here.',
       unarchive: 'Unarchive',
@@ -2116,7 +2531,7 @@ export const en: Translations = {
       agentTitle: 'Agent plugins',
       agentBlurb:
         'Extend the agent for the selected profile — tools, hooks, providers. Take effect after a gateway restart.',
-      pageBlurb: 'One row per plugin. A plugin can extend this app, the agent, or both — each half has its own switch.',
+      pageBlurb: 'A plugin can extend this app, the agent, or both — each half has its own switch.',
       halfDesktop: 'Desktop',
       halfDesktopHint: 'this app, same for every profile',
       halfAgent: 'Agent',
@@ -2141,11 +2556,16 @@ export const en: Translations = {
       emptyHint: 'Browse the catalog below and install a reviewed plugin with one click.',
       loadFailed: 'Could not load agent plugins',
       toggleFailed: (name: string) => `Could not toggle ${name}`,
+      toolsetOn: (name: string, profile: string) => `${name} agent tools enabled for ${profile}`,
+      toolsetOff: (name: string, profile: string) => `${name} agent tools disabled for ${profile}`,
+      toolsetToggleFailed: (name: string) =>
+        `Could not toggle the ${name} agent tools; the Desktop panel was left unchanged`,
       legacyBackend: 'This backend predates key-addressed plugin toggles — update Hermes to manage it here.',
       portableBadge: 'portable',
       serverStates: {
         connected: 'connected',
         app_not_running: 'app not running',
+        hermes_not_connected: 'MCP connection missing',
         endpoint_unavailable: 'endpoint unavailable',
         no_interactive_session: 'no interactive session',
         version_too_old: 'version too old',
@@ -2274,7 +2694,7 @@ export const en: Translations = {
     loadFailed: 'Could not load memory graph',
     loading: 'Loading…',
     emptyTitle: 'Nothing learned yet',
-    emptyDesc: 'As DechnicAuditor builds skills and memories for your work, they appear here.',
+    emptyDesc: 'As Hermes builds skills and memories for your work, they appear here.',
     share: 'Share map',
     shareHint:
       'Copy the code to share this map, or paste one to load. It only includes the layout, not your memory or skill text.',
@@ -2356,7 +2776,7 @@ export const en: Translations = {
       placeholder: 'Search pets…',
       loading: 'Loading petdex gallery…',
       error: 'Could not reach the petdex gallery.',
-      staleBackend: 'Restart DechnicAuditor to use pets — the backend predates this feature.',
+      staleBackend: 'Restart Hermes to use pets — the backend predates this feature.',
       empty: 'No matching pets.',
       turnOff: 'Turn off',
       turnOn: 'Turn on',
@@ -2383,8 +2803,8 @@ export const en: Translations = {
       hatchComposing: 'Piecing it together…',
       hatchSaving: 'Almost there…',
       namePlaceholder: 'Name your pet',
-      staleBackend: 'Update DechnicAuditor to generate pets.',
-      backgroundHint: 'You can close this — DechnicAuditor will notify you when it’s done.',
+      staleBackend: 'Update Hermes to generate pets.',
+      backgroundHint: 'You can close this — Hermes will notify you when it’s done.',
       slowProviderHint: 'This can take several minutes',
       remix: 'Remix',
       remixConfirmTitle: 'Remix this look?',
@@ -2420,8 +2840,7 @@ export const en: Translations = {
     },
     nav: {
       newChat: { title: 'New session', detail: 'Start a fresh session' },
-      // FORK: keep our Knowledge entry alongside upstream's plugin mention.
-      settings: { title: 'Settings', detail: 'Configure DechnicAuditor desktop' },
+      settings: { title: 'Settings', detail: 'Configure Hermes desktop' },
       skills: { title: 'Capabilities', detail: 'Skills, tools, MCP servers, and plugins' },
       knowledge: { title: 'Knowledge', detail: 'Browse and manage knowledge bases' },
       capabilities: { title: 'Capabilities', detail: 'Skills, tools, MCP servers, and plugins' },
@@ -2445,16 +2864,15 @@ export const en: Translations = {
     noSessions: 'No sessions yet.',
     gatewayRunning: 'Messaging gateway running',
     gatewayStopped: 'Messaging gateway stopped',
-    hermesActiveSessions: (version, count) => `DechnicAuditor ${version} · Active sessions ${count}`,
+    hermesActiveSessions: (version, count) => `Hermes ${version} · Active sessions ${count}`,
     restartGateway: 'Restart gateway',
     openBrowser: 'Open browser',
     gatewayRestartFailed: 'Gateway restart failed.',
-    // FORK merge: upstream's shared-gateway keys + branded updateHermes.
     sharedGatewayRestartTitle: 'Restart the shared gateway?',
     sharedGatewayRestartDescription: bots => `All bots on this device reconnect: ${bots}`,
     sharedGatewayRestartConfirm: 'Restart all',
     sharedGatewayRestarted: count => `Shared gateway restarted (${count} ${count === 1 ? 'bot' : 'bots'})`,
-    updateHermes: 'Update DechnicAuditor',
+    updateHermes: 'Update Hermes',
     reloadWindow: 'Reload window',
     actionRunning: 'running',
     actionDone: 'done',
@@ -2813,7 +3231,23 @@ export const en: Translations = {
       gatewayUnreachable: gateway => `${gateway} · unreachable`,
       onGateway: (name, gateway) => `${name} · ${gateway}`,
       switchTo: (name, gateway) => `Switch to ${name} on ${gateway}`,
-      deleteOn: gateway => ` on ${gateway}`
+      deleteOn: gateway => ` on ${gateway}`,
+      localDevice: 'This device (local backend — installs Hermes if missing, otherwise opens a fresh session)',
+      switchDeviceTitle: 'Switch to This device?',
+      switchDeviceDesc:
+        'This opens a fresh session on this computer. The conversation you are in stays on the other gateway.',
+      switchDeviceConfirm: 'Switch',
+      installDeviceTitle: 'Switch to This device?',
+      installDeviceDesc:
+        'This will install Hermes locally, then open a fresh session on this computer. Nothing is installed until you confirm.',
+      installDeviceConfirm: 'Install locally',
+      connectExistingInstead: 'Connect to existing instead'
+    },
+    status: {
+      unread: (count: number) => (count === 1 ? '1 unread session' : `${count} unread sessions`),
+      needsInput: (count: number) =>
+        count === 1 ? '1 session needs your answer' : `${count} sessions need your answer`,
+      working: (count: number) => (count === 1 ? '1 session running' : `${count} sessions running`)
     },
     remoteOverride: {
       menuItem: 'Connect to a remote host…',
@@ -2876,6 +3310,8 @@ export const en: Translations = {
     skillsLabel: 'Skills',
     notSet: 'Not set',
     soulDesc: 'The system prompt and persona instructions baked into this profile.',
+    soulMissing:
+      'No SOUL.md file exists for this profile yet. Add instructions below and save to create one. Personality presets in config.yaml are managed separately.',
     soulOptional: 'optional',
     soulPlaceholder: mode => `The system prompt / persona for this profile.\nLeave blank to keep the ${mode} default.`,
     soulPlaceholderCloned: 'cloned',
@@ -2890,7 +3326,7 @@ export const en: Translations = {
     deleteDescMid: ' and remove its ',
     deleteDescSuffix: ' directory. This cannot be undone.',
     deleting: 'Deleting...',
-    createDesc: 'Profiles are independent DechnicAuditor environments: separate config, skills, and SOUL.md.',
+    createDesc: 'Profiles are independent Hermes environments: separate config, skills, and SOUL.md.',
     nameLabel: 'Name',
     cloneFrom: 'Clone from',
     cloneFromNone: 'None (blank)',
@@ -2993,7 +3429,7 @@ export const en: Translations = {
     everyHourAt: minute => `Every hour at :${minute}`,
     newCron: 'New cron',
     emptyDescNew:
-      'Schedule a prompt to run on a cron expression. DechnicAuditor will run it and deliver results to the destination you pick.',
+      'Schedule a prompt to run on a cron expression. Hermes will run it and deliver results to the destination you pick.',
     emptyDescSearch: 'Try a broader search query.',
     emptyTitleNew: 'No scheduled jobs yet',
     emptyTitleSearch: 'No matches',
@@ -3035,6 +3471,8 @@ export const en: Translations = {
     nameLabel: 'Name',
     namePlaceholder: 'Morning briefing',
     promptLabel: 'Prompt',
+    scriptLabel: 'Script',
+    scriptBadge: 'script',
     promptPlaceholder: 'Summarize my unread Slack threads and email me the top 5...',
     frequencyLabel: 'Frequency',
     deliverLabel: 'Deliver to',
@@ -3367,6 +3805,7 @@ export const en: Translations = {
       description: 'The Pixi scene could not start; showing the desk grid instead.'
     }
   },
+
   artifactCard: {
     kind: { code: 'Code', html: 'Interactive page', svg: 'Graphic' },
     generating: lines => `Generating… ${lines} lines`,
@@ -3388,6 +3827,37 @@ export const en: Translations = {
   },
 
   sidebar: {
+    filter: {
+      grouping: 'Grouping',
+      ordering: 'Ordering',
+      show: 'Show',
+      filters: 'Filters',
+      status: 'Status',
+      pullRequest: 'Pull request',
+      profile: 'Profile',
+      project: 'Project',
+      archived: 'Archived',
+      resetToDefaults: 'Reset to defaults',
+      expandAll: 'Expand all',
+      collapseAll: 'Collapse all',
+      inboxStyle: 'Inbox style',
+      updated: 'Updated',
+      created: 'Created',
+      tokens: 'Tokens',
+      cost: 'Cost',
+      manual: 'Manual',
+      preview: 'Preview',
+      pr: 'PR',
+      needsInput: 'Needs input',
+      working: 'Working',
+      unread: 'Unread',
+      draft: 'Draft',
+      idle: 'Idle',
+      open: 'Open',
+      merged: 'Merged',
+      closed: 'Closed',
+      noPR: 'No PR'
+    },
     gatewayGroups: {
       grouping: 'Gateway & profile',
       rename: 'Rename group',
@@ -3402,13 +3872,10 @@ export const en: Translations = {
     profileRail: 'Profile rail',
     nav: {
       'new-session': 'New session',
-      skills: 'Capabilities',
-      knowledge: 'Knowledge',
       capabilities: 'Capabilities',
       messaging: 'Messaging',
       artifacts: 'Artifacts',
-      cron: 'Scheduled jobs',
-      office: 'Office'
+      cron: 'Scheduled jobs'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',
@@ -3434,6 +3901,13 @@ export const en: Translations = {
     projectEmpty: 'No sessions yet',
     projectLoadFailed: 'Could not load sessions',
     noSessions: 'No sessions yet',
+    storageCorrupt: {
+      title: 'Session database is damaged',
+      body: (profiles: string) =>
+        `Hermes can't read all of the session history for ${profiles}. Chats missing from this list were not deleted; the file they are stored in is damaged.`,
+      action: 'Quit Hermes on this profile, then inspect the file without changing it, or restore a snapshot:',
+      guide: 'Recovery guide'
+    },
     noFilterMatches: 'No sessions match these filters',
     projects: {
       showAllSessions: 'Show all sessions',
@@ -3474,8 +3948,8 @@ export const en: Translations = {
       removeFromSidebar: 'Hide from sidebar',
       createFailed: 'Could not create project',
       staleBackend:
-        'Update the DechnicAuditor backend to create projects — your backend is older than this desktop app (Settings → Updates → Backend).',
-      deleteConfirm: 'This removes the saved project from DechnicAuditor. Files, git repos, and worktrees stay untouched.',
+        'Update the Hermes backend to create projects — your backend is older than this desktop app (Settings → Updates → Backend).',
+      deleteConfirm: 'This removes the saved project from Hermes. Files, git repos, and worktrees stay untouched.',
       startWork: 'New worktree',
       newWorktreeTitle: 'New worktree',
       newWorktreeDesc: 'Name the branch for this worktree.',
@@ -3531,6 +4005,7 @@ export const en: Translations = {
       branchFrom: 'Branch',
       rename: 'Rename…',
       archive: 'Archive',
+      unarchive: 'Unarchive',
       newWindow: 'New window',
       openInTerminal: 'Open in terminal',
       hideTabBar: 'Hide tab bar',
@@ -3545,6 +4020,7 @@ export const en: Translations = {
       backgroundRunning: 'Background task running',
       draftSession: 'Draft — nothing sent yet',
       handoffOrigin: platform => `Handed off from ${platform}`,
+      continuationOrigin: 'Automatic continuation — this conversation was compressed and continued',
       ownedByProfile: profile => `Profile: ${profile}`,
       renamed: 'Renamed',
       renameFailed: 'Rename failed',
@@ -3580,12 +4056,12 @@ export const en: Translations = {
   composer: {
     message: 'Message',
     wakingProfile: profile => `Waking up ${profile}…`,
-    placeholderStarting: 'Starting DechnicAuditor...',
-    placeholderReconnecting: 'Reconnecting to DechnicAuditor…',
+    placeholderStarting: 'Starting Hermes...',
+    placeholderReconnecting: 'Reconnecting to Hermes…',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
       'What are we building?',
-      'Give DechnicAuditor a task',
+      'Give Hermes a task',
       "What's on your mind?",
       'Describe what you need',
       'What should we tackle?',
@@ -3643,12 +4119,78 @@ export const en: Translations = {
     hotkeys: 'Hotkeys',
     helpFooter: 'opens the full panel · backspace dismisses',
     commandDescs: {
-      '/help': 'full list of commands + hotkeys',
+      '/help': 'Show desktop slash commands',
       '/clear': 'start a new session',
-      '/resume': 'resume a prior session',
+      '/resume': 'Resume a saved session',
       '/details': 'control transcript detail level',
       '/copy': 'copy selection or last assistant message',
-      '/quit': 'exit hermes'
+      '/quit': 'exit hermes',
+      '/start': 'Acknowledge platform start pings without a reply',
+      '/new': 'Start a new desktop chat',
+      '/topic': 'Enable or inspect Telegram DM topic sessions',
+      '/save': 'Save the current transcript to JSON',
+      '/retry': 'Retry the last message (resend to agent)',
+      '/prompt': 'Compose your next prompt in $EDITOR (markdown), then send it',
+      '/undo': 'Back up N user turns and re-prompt (default 1)',
+      '/title': 'Rename the current session',
+      '/handoff': 'Hand off this session to a messaging platform',
+      '/branch': 'Branch the latest message into a new chat',
+      '/worktree': 'Show, list, create, or prune isolated git worktrees',
+      '/compress': 'Compress this conversation context',
+      '/rollback': 'List or restore filesystem checkpoints (restores keep your hand-edits; --all overrides)',
+      '/export': 'Export a profile (config, skills, theme) to a shareable archive',
+      '/import': 'Import a shared profile archive as a new profile',
+      '/stop': 'Stop the active turn and background processes',
+      '/pause': "Pause new work globally (emergency stop); '/pause off' resumes",
+      '/bg': 'Run a prompt in a separate background session',
+      '/btw': 'Ask a side question about this conversation without interrupting it',
+      '/agents': 'Show active agents and running tasks',
+      '/journey': 'Open the memory graph — skills + memories over time',
+      '/queue': 'Queue a prompt for the next turn, or list/edit/rm/move/clear queued prompts',
+      '/steer': 'Inject a message after the next tool call without interrupting',
+      '/goal': 'Set a standing goal Hermes works on across turns until achieved',
+      '/heartbeat': 'Set a recurring prompt that re-enters this session when idle',
+      '/refine': 'Review this conversation now and save lessons to memory/skills',
+      '/review': 'Spawn an independent subagent to review the work just discussed (PR, code, docs)',
+      '/loop': 'Re-run a prompt on a recurring interval in this session',
+      '/plan': 'Write a markdown implementation plan to .hermes/plans/ without executing anything',
+      '/moa': 'Run one prompt through the default Mixture of Agents preset, then restore your model',
+      '/subgoal': 'Add or manage extra criteria on the active goal',
+      '/status': 'Show current session status',
+      '/egress': 'Show Docker egress proxy status',
+      '/context':
+        'Show detailed context window view with usage gauge, category breakdown, compression stats, and throughput',
+      '/whoami': 'Show your slash command access (admin / user)',
+      '/profile': 'Switch the active Hermes profile',
+      '/codex-runtime': 'Toggle codex app-server runtime for OpenAI/Codex models',
+      '/personality': 'Set a predefined personality',
+      '/battery': 'Toggle a color-coded battery indicator in the status bar',
+      '/timestamps': 'Toggle [HH:MM] timestamps on messages and /history',
+      '/diff': 'Show git changes in the working directory',
+      '/focus': 'Toggle focus view — show only your prompt and the final response',
+      '/yolo': 'Toggle YOLO — auto-approve dangerous commands',
+      '/approvals': 'Show or set the persistent dangerous-command approval mode',
+      '/reasoning': 'Reasoning effort or display [<level> [--global]|show|hide|full|clamp]',
+      '/skin': 'Switch desktop theme or cycle to the next one',
+      '/wake': 'Control the desktop wake-word listener [on|off|status]',
+      '/tools': 'Manage tools: /tools [list|disable|enable] [name...]',
+      '/memory': 'Review pending memory writes / toggle the approval gate',
+      '/bundles': 'List skill bundles (aliases /<name> for multiple skills)',
+      '/pet': 'Toggle or adopt a petdex mascot (/pet, /pet list, /pet boba)',
+      '/hatch': 'Generate a new pet (opens the pet generator)',
+      '/learn': 'Learn a reusable skill from anything you describe (dirs, URLs, this chat, notes)',
+      '/init': 'Generate or update AGENTS.md project instructions from a repo scan',
+      '/suggestions': 'Review suggested automations (accept/dismiss)',
+      '/blueprint': 'Set up an automation from a blueprint template',
+      '/browser': 'Manage browser CDP connection [connect|disconnect|status] (local gateway only)',
+      '/palette': 'Open the fuzzy command palette (also Ctrl+P)',
+      '/usage': 'Show token usage and rate limits; `reset` redeems a banked Codex limit reset',
+      '/subscription': 'View your Nous plan and change it in the browser',
+      '/topup': 'Show your Nous balance and manage billing on the portal',
+      '/platform': 'Pause, resume, or list a failing gateway platform',
+      '/version': 'Show Hermes Agent version',
+      '/debug': 'Upload debug report (system info + logs) and get shareable links',
+      '/model': 'Switch the model for this session'
     },
     hotkeyDescs: {
       'composer.mention': 'reference files, folders, urls, git',
@@ -3661,7 +4203,7 @@ export const en: Translations = {
       'composer.history': 'cycle popover / history'
     },
     attachUrlTitle: 'Attach a URL',
-    attachUrlDesc: 'DechnicAuditor will fetch the page and include it as context for this turn.',
+    attachUrlDesc: 'Hermes will fetch the page and include it as context for this turn.',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: 'Include the full URL, e.g. ',
     attach: 'Attach',
@@ -3684,6 +4226,9 @@ export const en: Translations = {
     queueResumeTip: 'Paused by Stop — resume sending the queued turns',
     queueStuckTitle: 'Queued message not sent',
     queueStuckBody: 'A queued turn kept failing to send. It is still in the queue — try sending it again.',
+    queueDroppedTitle: 'Queued prompt dropped',
+    queueDroppedBody:
+      'This background queue entry was dropped because its session could not be resumed after repeated attempts. Nothing else in the queue was affected.',
     previewUnavailable: 'Preview unavailable',
     previewLabel: label => `Preview ${label}`,
     couldNotPreview: label => `Could not preview ${label}`,
@@ -3722,7 +4267,8 @@ export const en: Translations = {
       generateMode: 'Generation mode',
       generateModeTemplate: 'Standard template',
       generateModeImitate: 'Imitate similar reports',
-      generateModeImitateHint: 'Find reports by district, then city, then province in the Hermes rag/report folder, then write the Word report from project data.',
+      generateModeImitateHint:
+        'Find reports by district, then city, then province in the Hermes rag/report folder, then write the Word report from project data.',
       executionMethod: 'How to run',
       executionMethodScript: 'Script',
       executionMethodAgent: 'Agent task',
@@ -3805,6 +4351,7 @@ export const en: Translations = {
     goalWaiting: 'Goal waiting',
     subagents: count => `${count} Subagent${count === 1 ? '' : 's'}`,
     todos: (done, total) => `Tasks ${done}/${total}`,
+    previousTodos: (done, total) => `Previous tasks ${done}/${total}`,
     running: 'Running',
     stop: 'Stop',
     dismiss: 'Dismiss',
@@ -3893,7 +4440,7 @@ export const en: Translations = {
       copyFailure: 'Failed to copy criterion to clipboard',
       continuationFailed: 'Failed to submit goal continuation',
       continuationQueued: 'Goal resumed — continuation queued until the current turn finishes',
-      continuationBusy: 'Goal resumed — session busy, /interrupt the current turn to continue',
+      continuationBusy: 'Goal resumed — session busy, stop the current reply first (Stop button or Esc) to continue',
       controlUnavailable: msg => `Session controls unavailable: ${msg}`,
       dismissError: 'Dismiss error',
       add: 'Add'
@@ -3934,7 +4481,7 @@ export const en: Translations = {
       createPr: 'Create PR',
       openPr: 'Open PR',
       ghMissing: 'Install the GitHub CLI (gh) and sign in to open PRs',
-      agentShip: 'Ask DechnicAuditor to open PR',
+      agentShip: 'Ask Hermes to open PR',
       agentShipUnavailable: "The chat that owns these changes isn't on screen.",
       agentShipPrompt:
         'Review the current changes, commit them with a clear conventional-commit message, push the branch, and open a pull request.',
@@ -3947,15 +4494,23 @@ export const en: Translations = {
   },
 
   updates: {
+    discontinuedTitle: 'This build of Hermes is no longer supported',
+    discontinuedBody:
+      'This build of Hermes is no longer supported and may break — uninstall it. Your data stays on disk.',
+    channels: { stable: 'Stable', canary: 'Canary' },
+    bundleSwapPending: 'Restart to finish the update',
+    bundleSwapPendingDesc:
+      'The updated app is already installed — Hermes only needs to restart to load it. Chats and settings are untouched.',
+    bundleSwapPendingAction: 'Restart Hermes',
     stages: {
       idle: 'Getting ready…',
       prepare: 'Getting ready…',
       fetch: 'Downloading…',
       pull: 'Almost there…',
       pydeps: 'Finishing up…',
-      update: 'Updating DechnicAuditor…',
+      update: 'Updating Hermes…',
       rebuild: 'Rebuilding the desktop app…',
-      restart: 'Restarting DechnicAuditor…',
+      restart: 'Restarting Hermes…',
       done: 'Update complete',
       manual: 'Update from your terminal',
       guiSkew: 'Update the desktop app',
@@ -3965,37 +4520,48 @@ export const en: Translations = {
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',
     notAvailableTitle: 'Update not available',
-    unsupportedMessage: 'This version of DechnicAuditor can’t update itself from inside the app.',
+    unsupportedMessage: 'This version of Hermes can’t update itself from inside the app.',
     connectionRetry:
-      "DechnicAuditor couldn't reach the update server. Check your internet connection and try again. If you use a remote backend, make sure it is online.",
-    gitUnusable: 'DechnicAuditor could not run Git on this computer, so it could not check for updates.',
+      "Hermes couldn't reach the update server. Check your internet connection and try again. If you use a remote Hermes, make sure it is online.",
+    gitUnusable: 'Hermes could not run Git on this computer, so it could not check for updates.',
     connectionSettings: 'Connection settings',
     openDownloadPage: 'Open download page',
     latestBody: 'You’re running the latest version.',
     latestBodyBackend: 'The backend is running the latest version.',
     allSetTitle: 'You’re all set',
     availableTitle: 'New update available',
-    availableBody: 'A new version of DechnicAuditor is ready to install.',
+    availableBody: 'A new version of Hermes is ready to install.',
     availableTitleBackend: 'Backend update available',
-    availableBodyBackend: 'A newer version of the connected DechnicAuditor backend is ready to install.',
+    availableBodyBackend: 'A newer version of the connected Hermes backend is ready to install.',
     availableBodyNoChangelog: 'A newer version is ready. Release notes aren’t available for this install type.',
+    availableBodyAppInstaller:
+      'A new version of Hermes is ready. Hermes will close, Windows will finish the update, and Hermes will reopen on its own.',
     updateNow: 'Update now',
     maybeLater: 'Maybe later',
     moreChanges: count => `+ ${count} more change${count === 1 ? '' : 's'} included.`,
     manualTitle: 'Update from your terminal',
-    manualBody: 'You installed DechnicAuditor from the command line, so updates run there too. Paste this into your terminal:',
-    manualPickedUp: 'DechnicAuditor will pick up the new version next time you launch it.',
+    manualUnavailableTitle: "Can't update from here",
+    manualBody: 'You installed Hermes from the command line, so updates run there too. Paste this into your terminal:',
+    manualBodyBackend: 'The Hermes backend is managed outside this app. Run this on the server that hosts it:',
+    manualPickedUp: 'Hermes will pick up the new version next time you launch it.',
+    manualPickedUpBackend: 'The backend picks up the new version after the update completes.',
     guiSkewTitle: 'Update the desktop app',
     guiSkewBody:
-      'The backend was updated, but this desktop app package wasn’t changed. Update or reinstall the DechnicAuditor desktop app (your AppImage / .deb / .rpm) to match.',
+      'The backend was updated, but this desktop app package wasn’t changed. Update or reinstall the Hermes desktop app (your AppImage / .deb / .rpm) to match.',
     copy: 'Copy',
     copied: 'Copied',
     done: 'Done',
     applyingBody:
-      'The DechnicAuditor updater takes over in its own window and reopens DechnicAuditor automatically when it’s done. Please don’t reopen DechnicAuditor yourself while it’s updating.',
+      'The Hermes updater takes over in its own window and reopens Hermes automatically when it’s done. Please don’t reopen Hermes yourself while it’s updating.',
     applyingBodyBackend:
-      'The remote backend is applying the update and will restart. DechnicAuditor reconnects automatically when it’s back.',
-    applyingClose: 'This window will close while the update runs, then DechnicAuditor reopens on its own.',
+      'The remote backend is applying the update and will restart. Hermes reconnects automatically when it’s back.',
+    applyingClose: 'This window will close while the update runs, then Hermes reopens on its own.',
+    applyingBodyAppInstaller:
+      'Hermes will close and Windows will finish the update. Hermes will reopen when it’s done — you don’t need to do anything.',
+    applyingCloseAppInstaller: 'This window will close, Windows finishes the update, and Hermes reopens on its own.',
+    checkUnknownTitleAppInstaller: 'Couldn’t check for updates',
+    checkUnknownBodyAppInstaller:
+      'Windows couldn’t check for updates right now. Updates also install automatically when you restart Hermes.',
     errorTitle: 'Update didn’t finish',
     errorBody: 'No worries — nothing was lost. You can try again now.',
     blockerTitle: 'Close local previews to update Hermes?',
@@ -4021,6 +4587,13 @@ export const en: Translations = {
     everythingSkipped: 'Skipped',
     everythingRowFailed: 'Update failed',
     everythingFanoutFailedTitle: 'Couldn’t update other instances',
+    changeLogNew: "What's new",
+    changeLogFixed: 'Fixed',
+    changeLogFaster: 'Faster',
+    changeLogImproved: 'Improved',
+    changeLogOther: 'Other improvements',
+    changeLogFallbackLabel: 'In this update',
+    changeLogFallbackItem: 'Improvements and fixes',
     applyStatus: {
       preparing: 'Updating backend…',
       pulling: 'Backend updating…',
@@ -4028,7 +4601,53 @@ export const en: Translations = {
       notAvailable: 'Update not available for this backend.',
       failed: 'Backend update failed.',
       noReturn: 'Backend didn’t come back online. The update may not have completed — check the backend host.'
-    }
+    },
+    // Update-status overlay + version-details (mechanism-aware update UI).
+    appName: 'Hermes',
+    version: (value: string) => `Version ${value}`,
+    versionUnavailable: 'Version unavailable',
+    checkNow: 'Check now',
+    seeWhatsNew: "See what's new",
+    releaseNotes: 'Release notes',
+    onLatest: "You're on the latest version.",
+    installing: 'An update is currently installing.',
+    cantReach: "We couldn't reach the update server.",
+    tapCheck: 'Tap "Check now" to look for updates.',
+    updateReady: count => `A new update is ready (${count} change${count === 1 ? '' : 's'} included).`,
+    updateReadyUnknown: 'A new update is ready.',
+    availableBodyRelease: tag => `Version ${tag} is ready to install.`,
+    lastChecked: age => `Last checked ${age}`,
+    never: 'never',
+    justNow: 'just now',
+    minAgo: count => `${count} min ago`,
+    hoursAgo: count => `${count}h ago`,
+    daysAgo: count => `${count}d ago`,
+    justNowSuffix: ' · just now',
+    bundleOutOfSync: 'App build out of date',
+    bundleOutOfSyncDesc:
+      'The Hermes runtime was updated, but the desktop app itself is still an older build. Update it to pick up the latest fixes.',
+    bundleOutOfSyncAction: 'Get the installer',
+    checkingShort: 'Checking…',
+    releaseAvailable: tag => `Version ${tag} is available.`,
+    versionDetailsTitle: 'Version details',
+    versionDetailsBody: 'This install is managed outside the app. Update it the same way you installed it.',
+    versionDetailsVersion: 'Version',
+    versionDetailsCommit: 'Commit',
+    versionDetailsBuildOrigin: 'Build Origin',
+    versionDetailsDistribution: 'Distribution',
+    versionDetailsDistributionDesktop: 'Desktop app',
+    versionDetailsDistributionDesktopMsix: 'Desktop app (MSIX)',
+    versionDetailsDistributionDesktopInstaller: 'Desktop app (installer)',
+    versionDetailsDistributionSourceInstaller: 'Source (install script)',
+    versionDetailsDistributionSourceInstallerDesktop: 'Source (install script) + hermes desktop',
+    versionDetailsDistributionSource: 'Source',
+    versionDetailsDistributionSourceDesktop: 'Source + hermes desktop',
+    versionDetailsDistributionStore: 'Microsoft Store',
+    versionDetailsRuntime: 'Runtime',
+    versionDetailsRuntimeEmbedded: 'Embedded runtime',
+    versionDetailsRuntimeExternal: 'External (uses the machine runtime)',
+    versionDetailsInstallId: 'Install ID',
+    versionDetailsUncommittedChanges: 'uncommitted changes'
   },
 
   handoffTour: {
@@ -4053,7 +4672,7 @@ export const en: Translations = {
       skipped: 'Skipped',
       failed: 'Failed'
     },
-    oneTimeTitle: 'DechnicAuditor needs a one-time install',
+    oneTimeTitle: 'Hermes needs a one-time install',
     unsupportedDesc: platform =>
       `Automated first-launch install isn’t available on ${platform} yet. Open Terminal and run the command below, then relaunch this app. Subsequent launches will skip this step.`,
     installCommand: 'Install command',
@@ -4061,23 +4680,27 @@ export const en: Translations = {
     viewDocs: 'View install docs',
     installTo: 'Will install to',
     retryAfterRun: 'I’ve run it -- retry',
-    setupChoiceTitle: 'Set up DechnicAuditor Desktop',
+    setupChoiceTitle: 'Set up Hermes Desktop',
     setupChoiceDesc:
-      'Connect this app to a DechnicAuditor gateway you already run, or install DechnicAuditor locally on this computer.',
-    connectExistingTitle: 'Connect to existing DechnicAuditor',
+      'Connect this app to a Hermes gateway you already run, or install Hermes locally on this computer.',
+    setupChoiceDescLocal: 'Install Hermes on this computer, or connect to a Hermes gateway you already run.',
+    connectExistingTitle: 'Connect to existing Hermes',
     connectExistingShort: 'Connect existing',
     connectExistingDesc: 'Use a remote backend with a session token or browser sign-in. No local install will start.',
-    installLocalTitle: 'Install DechnicAuditor locally',
-    installLocalDesc: 'Download DechnicAuditor, create its Python environment, and run the backend on this computer.',
-    localStartUnavailable: 'Local installation could not start. Restart DechnicAuditor Desktop and try again.',
-    remoteSetupTitle: 'Connect to existing DechnicAuditor',
-    remoteSetupDesc: 'Enter your gateway URL. DechnicAuditor Desktop will detect whether it needs a token or browser sign-in.',
+    installLocalTitle: 'Install Hermes locally',
+    installLocalDesc: 'Download Hermes, create its Python environment, and run the backend on this computer.',
+    useLocalTitle: 'Use Hermes on this computer',
+    useLocalDesc: 'A Hermes runtime is already installed here — start it with one click. Nothing downloads.',
+    bundledLocalDesc: 'Use the Hermes runtime included with this app — the bundled backend is the local install.',
+    localStartUnavailable: 'Local installation could not start. Restart Hermes Desktop and try again.',
+    remoteSetupTitle: 'Connect to existing Hermes',
+    remoteSetupDesc: 'Enter your gateway URL. Hermes Desktop will detect whether it needs a token or browser sign-in.',
     remoteUrlTitle: 'Gateway URL',
-    remoteUrlDesc: 'Use the base URL of the DechnicAuditor gateway, including https:// when remote.',
+    remoteUrlDesc: 'Use the base URL of the Hermes gateway, including https:// when remote.',
     remoteUrlPlaceholder: 'https://gateway.example.com/hermes',
     probing: 'Detecting gateway authentication...',
     probeError:
-      "DechnicAuditor can't reach that address. Check the URL and that the other computer is running DechnicAuditor — sign-in options appear once it answers.",
+      "Hermes can't reach that address. Check the URL and that the other computer is running Hermes — sign-in options appear once it answers.",
     probeErrorDetails: 'Details',
     identityProvider: 'your identity provider',
     authTitle: 'Authentication',
@@ -4098,14 +4721,12 @@ export const en: Translations = {
     applyRemote: 'Apply and reconnect',
     backToSetup: 'Back',
     failedTitle: 'Installation failed',
-    settingUpTitle: 'Setting up DechnicAuditor Agent',
+    settingUpTitle: 'Setting up Hermes Agent',
     finishingTitle: 'Finishing up',
     failedDesc:
-      // FORK: our Windows-specific guidance (av锁/running-instance) is more
-      // actionable for this deployment; keep it branded.
-      'One of the install steps failed. On Windows, this can happen if another DechnicAuditor CLI or desktop instance is running. Stop any running DechnicAuditor instances, then retry. Check the details below or the desktop log for the full transcript.',
+      'One of the setup steps did not finish. This can happen when another copy of Hermes is running, the internet connection dropped, or antivirus blocked the installer. Close other Hermes windows, then choose Reload and retry. If it fails again, open the logs and send them to support.',
     activeDesc:
-      'This is a one-time setup. The DechnicAuditor installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
+      'This is a one-time setup. The Hermes installer is downloading dependencies and configuring your machine. Subsequent launches will skip this step.',
     progress: (completed, total) => `${completed} of ${total} steps complete`,
     currentStage: stage => ` -- now: ${stage}`,
     fetchingManifest: 'Fetching installer manifest...',
@@ -4124,10 +4745,10 @@ export const en: Translations = {
   },
 
   onboarding: {
-    headerTitle: "Let's get you setup with DechnicAuditor Agent",
+    headerTitle: "Let's get you setup with Hermes Agent",
     headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
-    preparingInstall: 'DechnicAuditor is finishing install. This usually takes under a minute on first run.',
-    starting: 'Starting DechnicAuditor…',
+    preparingInstall: 'Hermes is finishing install. This usually takes under a minute on first run.',
+    starting: 'Starting Hermes…',
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     otherProviders: 'Other providers',
@@ -4135,7 +4756,7 @@ export const en: Translations = {
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
-    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run DechnicAuditor',
+    featuredPitch: 'One subscription, 300+ frontier models — the recommended way to run Hermes',
     fireworksPitch: 'Direct model API — Fireworks-hosted frontier models',
     localModelsTitle: 'Run models locally',
     localModelsPitch: 'No account needed — download a model and run it on this machine',
@@ -4154,7 +4775,7 @@ export const en: Translations = {
       xai: { short: 'Grok models', description: 'Direct access to xAI Grok models.' },
       local: {
         short: 'self-hosted',
-        description: 'Point DechnicAuditor at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
+        description: 'Point Hermes at a local or self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp, Ollama, etc).'
       }
     },
     backToSignIn: 'Back to sign in',
@@ -4162,12 +4783,13 @@ export const en: Translations = {
     replaceCurrent: 'Replace current value',
     pasteApiKey: 'Paste API key',
     localApiKeyPlaceholder: 'API key (optional — only if your endpoint requires one)',
+    localModelNamePlaceholder: 'Model name (e.g. command-a-plus-05-2026)',
     couldNotSave: 'Could not save credential.',
     connecting: 'Connecting',
     update: 'Update',
     flowSubtitles: {
       pkce: 'Opens your browser to sign in, then continues here',
-      device_code: 'Opens a verification page in your browser — DechnicAuditor connects automatically',
+      device_code: 'Opens a verification page in your browser — Hermes connects automatically',
       external: 'Sign in once in your terminal, then come back to chat'
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
@@ -4185,12 +4807,12 @@ export const en: Translations = {
     pickDifferentProvider: 'Pick a different provider',
     signInWith: provider => `Sign in with ${provider}`,
     openedBrowser: provider => `We opened ${provider} in your browser.`,
-    authorizeThere: 'Authorize DechnicAuditor there.',
+    authorizeThere: 'Authorize Hermes there.',
     copyAuthCode: 'Copy the authorization code and paste it below.',
     pasteAuthCode: 'Paste authorization code',
     reopenAuthPage: 'Re-open authorization page',
     autoBrowser: provider =>
-      `We opened ${provider} in your browser. Authorize DechnicAuditor there and you'll be connected automatically — nothing to copy or paste.`,
+      `We opened ${provider} in your browser. Authorize Hermes there and you'll be connected automatically — nothing to copy or paste.`,
     reopenSignInPage: 'Re-open sign-in page',
     waitingAuthorize: 'Waiting for you to authorize...',
     externalPending: provider =>
@@ -4294,14 +4916,19 @@ export const en: Translations = {
     free: 'Free',
     freeTier: 'Free tier',
     priceTitle: 'Input / Output price per million tokens',
-    wasPrice: 'was'
+    wasPrice: 'was',
+    customModel: 'Custom model',
+    addCustomModelAction: 'Add custom model…',
+    customModelPlaceholder: 'Type a model id, e.g. openai/gpt-5'
   },
 
   modelVisibility: {
     title: 'Models',
     search: 'Search models',
     noAuthenticatedProviders: 'No authenticated providers.',
-    addProvider: 'Add provider…'
+    addProvider: 'Add provider…',
+    addCustomModel: 'Add custom model',
+    removeCustomModel: 'Remove custom model'
   },
 
   shell: {
@@ -4312,6 +4939,7 @@ export const en: Translations = {
       search: 'Search models',
       noModels: 'No models found',
       editModels: 'Edit models…',
+      followDefault: 'Use Settings default',
       refreshModels: 'Refresh models',
       fast: 'Fast'
     },
@@ -4364,13 +4992,14 @@ export const en: Translations = {
       update: 'update',
       updateInProgress: 'Update in progress',
       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
-      desktopVersion: version => `DechnicAuditor Desktop v${version}`,
+      releaseAvailable: (tag: string) => `Version ${tag} is available.`,
+      desktopVersion: version => `Hermes Desktop v${version}`,
       backendVersion: version => `Backend v${version}`,
       clientLabel: version => `client v${version}`,
       connectionSsh: host => `SSH: ${host}`,
       connectionRemote: host => `Remote: ${host}`,
       connectionCloud: host => `Cloud: ${host}`,
-      connectionCloudTooltip: host => `DechnicAuditor Cloud · ${host}`,
+      connectionCloudTooltip: host => `Hermes Cloud · ${host}`,
       connectionSshTooltip: host => `SSH · ${host}`,
       connectionRemoteTooltip: host => `Remote · ${host}`,
       backendLabel: version => `backend v${version}`,
@@ -4446,7 +5075,8 @@ export const en: Translations = {
         title: 'Context Usage',
         tokenSummary: (used, max) => `${used} / ${max} Tokens`
       },
-      session: 'Session',
+      focusedSince: 'Focused since',
+      focusedSinceTitle: 'Time since this chat was focused — not how long a turn has been running',
       yoloOn: 'YOLO on — auto-approving dangerous commands. Shift+click toggles globally.',
       yoloOff: 'YOLO off. Shift+click toggles globally.',
       modelNone: 'none',
@@ -4469,6 +5099,11 @@ export const en: Translations = {
     remotePickerTitle: 'Choose remote folder',
     remotePickerDescription: 'Browse folders on the connected backend.',
     remotePickerSelect: 'Select folder',
+    remotePickerNewFolder: 'New folder',
+    remotePickerFolderName: 'Folder name',
+    remotePickerCreateFolder: 'Create folder',
+    remotePickerInvalidFolderName: 'Enter a single folder name, without slashes.',
+    remotePickerCreateFolderFailed: error => `Could not create the folder (${error}).`,
     folderTip: cwd => cwd,
     openFolder: 'Open folder',
     refreshTree: 'Refresh tree',
@@ -4519,7 +5154,7 @@ export const en: Translations = {
     binaryTitle: 'This looks like a binary file',
     binaryBody: label => `Previewing ${label} may show unreadable text.`,
     largeTitle: 'This file is large',
-    largeBody: (label, size) => `${label} is ${size}. DechnicAuditor will only show the first 512 KB.`,
+    largeBody: (label, size) => `${label} is ${size}. Hermes will only show the first 512 KB.`,
     previewAnyway: 'Preview anyway',
     truncated: 'Showing first 512 KB.',
     noInlineTitle: 'No inline preview',
@@ -4566,12 +5201,14 @@ export const en: Translations = {
       editWithEditorSdk: 'Edit with OnlyOffice',
       switchToHtml: 'Switch to HTML preview',
       openWithLocalApp: 'Open with local app',
-      installNotFound: 'No Office preview engine found (editor_sdk or officecli). Install either one to enable preview/edit.',
+      installNotFound:
+        'No Office preview engine found (editor_sdk or officecli). Install either one to enable preview/edit.',
       installTimeout: 'editor_sdk startup timed out. Please retry.',
       installStartFailed: 'editor_sdk failed to start. Check that it can open this file.',
       installPathOutsideSandbox: 'File path is outside the allowed range.',
       installUnavailable: 'editor_sdk unavailable — switched to HTML preview.',
-      externalChanged: 'This file was changed on disk. Reload to show the latest content (discards unsaved editor changes).',
+      externalChanged:
+        'This file was changed on disk. Reload to show the latest content (discards unsaved editor changes).',
       reloadDiscard: 'Reload & discard',
       keepCurrent: 'Keep current'
     },
@@ -4582,11 +5219,11 @@ export const en: Translations = {
         'This address points at the machine running your agent, not this one. The browser pane loads pages locally, so a remote dev server needs a port forward or a reachable hostname.',
       failedToLoad: 'Preview failed to load',
       tryAgain: 'Try again',
-      restarting: 'DechnicAuditor is restarting...',
-      askRestart: 'Ask DechnicAuditor to restart the server',
-      lookingRestart: taskId => `DechnicAuditor is looking for a preview server to restart (${taskId})`,
+      restarting: 'Hermes is restarting...',
+      askRestart: 'Ask Hermes to restart the server',
+      lookingRestart: taskId => `Hermes is looking for a preview server to restart (${taskId})`,
       restartingTitle: 'Restarting preview server',
-      restartingMessage: 'DechnicAuditor is working in the background. Watch the preview console for progress.',
+      restartingMessage: 'Hermes is working in the background. Watch the preview console for progress.',
       startRestartFailed: message => `Could not start server restart: ${message}`,
       restartFailed: 'Server restart failed',
       hideConsole: 'Hide preview console',
@@ -4599,15 +5236,15 @@ export const en: Translations = {
       address: 'Address',
       addressPlaceholder: 'Enter address',
       blankPageBody: 'Type an address above to browse, or ask Hermes to open a page.',
-      finishedRestarting: message => `DechnicAuditor finished restarting the preview server${message ? `: ${message}` : ''}`,
+      finishedRestarting: message => `Hermes finished restarting the preview server${message ? `: ${message}` : ''}`,
       failedRestarting: message => `Server restart failed: ${message}`,
       unknownError: 'unknown error',
       restartedTitle: 'Preview server restarted',
       reloadingNow: 'Reloading the preview now.',
       restartFailedTitle: 'Preview restart failed',
-      restartFailedMessage: 'DechnicAuditor could not restart the server.',
+      restartFailedMessage: 'Hermes could not restart the server.',
       stillWorking:
-        'DechnicAuditor is still working, but no restart result has arrived yet. The server command may be running in the foreground.',
+        'Hermes is still working, but no restart result has arrived yet. The server command may be running in the foreground.',
       workspaceReloading: 'Workspace changed, reloading preview',
       fileChanged: url => `File changed, reloading preview: ${url}`,
       filesChanged: (count, url) => `${count} file changes, reloading preview: ${url}`,
@@ -4722,7 +5359,7 @@ export const en: Translations = {
     thread: {
       loadingSession: 'Loading session',
       showEarlier: 'Show earlier messages',
-      loadingResponse: 'DechnicAuditor is loading a response',
+      loadingResponse: 'Hermes is loading a response',
       loadingLocalModel: model => `Loading ${model} into memory`,
       processingPrompt: 'Processing prompt',
       resumeWhenBackgroundDone: count =>
@@ -4799,8 +5436,9 @@ export const en: Translations = {
           body: provider => `${provider} returned a server error. Retry in a moment or switch provider.`
         },
         timeout: {
-          title: 'The reply timed out',
-          body: provider => `${provider} did not answer in time. Retry to send it again.`
+          title: 'Could not reach the AI service',
+          body: provider =>
+            `${provider} could not be reached or did not answer in time. Check your internet connection, then retry.`
         },
         stream_drop: {
           title: 'The reply was cut off',
@@ -4942,6 +5580,8 @@ export const en: Translations = {
       preparingAudio: 'Preparing audio...',
       stopReading: 'Stop reading',
       readAloud: 'Read aloud',
+      copyFullResponse: 'Copy full response',
+      readAloudFullResponseHint: 'Shift-click: read the full response',
       editMessage: 'Edit message',
       expandMessage: 'Expand message',
       scrollToBottom: 'Scroll to bottom',
@@ -4959,16 +5599,16 @@ export const en: Translations = {
       attachingFile: 'Attaching…'
     },
     approval: {
-      // FORK merge: upstream's richer approval copy + our reconnect keys, branded.
       gatewayDisconnected:
-        'DechnicAuditor is offline right now. The command is still waiting for your answer (until the approval timeout). Reconnect, then send it again.',
+        'Hermes is offline right now. The command is still waiting for your answer (until the approval timeout). Reconnect, then send it again.',
       sendFailed: 'Could not send your answer',
       reconnect: 'Reconnect',
       timedOutSystemLine:
-        'Approval timed out — the command was not run. Ask DechnicAuditor to try again, or raise the limit in Settings → Safety → Approval timeout.',
+        'Approval timed out — the command was not run. Ask Hermes to try again, or raise the limit in Settings → Safety → Approval timeout.',
       openSafetySettings: 'Open Safety settings',
       run: 'Run',
       command: 'Command',
+      commandDetails: 'Command details',
       moreOptions: 'More approval options',
       allowSession: 'Allow this session',
       alwaysAllowMenu: 'Always allow…',
@@ -4976,12 +5616,12 @@ export const en: Translations = {
       reject: 'Reject',
       alwaysTitle: 'Always allow this command?',
       alwaysDescription: pattern =>
-        `This adds the “${pattern}” pattern to your permanent allowlist (~/.hermes/config.yaml). DechnicAuditor won’t ask again for commands like this — in this session or any future one.`,
+        `This adds the “${pattern}” pattern to your permanent allowlist (~/.hermes/config.yaml). Hermes won’t ask again for commands like this — in this session or any future one.`,
       alwaysAllow: 'Always allow'
     },
     clarify: {
       notReady: 'Clarify request is not ready yet',
-      gatewayDisconnected: 'DechnicAuditor is offline right now. Reconnect, then send it again.',
+      gatewayDisconnected: 'Hermes is offline right now. Reconnect, then send it again.',
       sendFailed: 'Could not send clarify response',
       loadingQuestion: 'Loading question…',
       other: 'Other (type your answer)',
@@ -4994,7 +5634,9 @@ export const en: Translations = {
       questionProgress: (answered, total) => `${answered} of ${total} answered`,
       lateAnswer: (question, choice) => `Re: "${question}" — my answer: ${choice}`,
       lateAnswerTip: 'Draft this answer as a follow-up message',
-      lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
+      lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.',
+      notDelivered:
+        "This question didn't reach the app, so it can't be answered here. Press Stop to end the turn, then reply in chat."
     },
     catalogInstall: {
       preparing: 'Preparing the install…',
@@ -5140,8 +5782,7 @@ export const en: Translations = {
   },
 
   prompts: {
-    // FORK merge: upstream's vault keys + richer copy, branded.
-    gatewayDisconnected: 'DechnicAuditor is offline right now. Reconnect, then send it again.',
+    gatewayDisconnected: 'Hermes is offline right now. Reconnect, then send it again.',
     reconnect: 'Reconnect',
     sudoSendFailed: 'Could not send sudo password',
     secretSendFailed: 'Could not send secret',
@@ -5150,9 +5791,11 @@ export const en: Translations = {
       'Review the command before entering your sudo password. Your password is sent to the agent running it and cached for this session.',
     sudoCommandUnavailable:
       'This agent did not provide the command. Cancel if you cannot verify it in the conversation.',
+    sudoInstallDesc:
+      'Hermes needs your sudo password to install the Bot Screen packages (TigerVNC + Xfce) on the gateway host. It is sent only to that host.',
     sudoPlaceholder: 'sudo password',
     secretTitle: 'Secret required',
-    secretDesc: 'DechnicAuditor needs a credential to continue.',
+    secretDesc: 'Hermes needs a credential to continue.',
     secretPlaceholder: 'secret value',
     vaultUnlockSendFailed: 'Could not send master password',
     vaultUnlockTitle: name => `Unlock ${name}`,
@@ -5187,6 +5830,9 @@ export const en: Translations = {
     sessionUnavailable: 'Session unavailable',
     createSessionFailed: 'Could not create a new session',
     promptFailed: 'Prompt failed',
+    staleSessionTitle: 'Chat out of date',
+    staleSessionBody:
+      'This window was behind another view of the same chat. Latest messages were loaded. Send again if you still want to.',
     providerCredentialRequired: 'Add a provider credential before sending your first message.',
     emptySlashCommand: 'empty slash command',
     desktopCommands: 'Desktop commands',
@@ -5230,6 +5876,8 @@ export const en: Translations = {
     deleteFailed: 'Delete failed',
     archived: 'Archived',
     archiveFailed: 'Archive failed',
+    restored: 'Restored',
+    unarchiveFailed: 'Unarchive failed',
     cwdChangeFailed: 'Working directory change failed',
     cwdStagedTitle: 'Working directory staged',
     cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
@@ -5245,8 +5893,8 @@ export const en: Translations = {
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',
     downloadStarted: 'Download started',
-    restartToUseSaveImage: 'Restart DechnicAuditor Desktop to use Save Image.',
-    restartToSaveImages: 'Restart DechnicAuditor Desktop to save images',
+    restartToUseSaveImage: 'Restart Hermes Desktop to use Save Image.',
+    restartToSaveImages: 'Restart Hermes Desktop to save images',
     imageDownloadFailed: 'Image download failed',
     openImage: 'Open image',
     downloadImage: 'Download image',

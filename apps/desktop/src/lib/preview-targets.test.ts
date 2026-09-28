@@ -7,6 +7,19 @@ import {
   stripPreviewTargets
 } from './preview-targets'
 
+describe('previewName', () => {
+  // #85132: `new URL('C:\\...')` parses the drive letter as a scheme, which
+  // labelled the tag with the whole backslash path.
+  it.each([
+    'C:\\Users\\me\\report.html',
+    'C:/Users/me/report.html',
+    '\\\\server\\share\\report.html',
+    '/Users/me/report.html'
+  ])('labels %s by its file name', target => {
+    expect(previewName(target)).toBe('report.html')
+  })
+})
+
 describe('preview target detection', () => {
   it('does not infer preview targets from raw paths or URLs', () => {
     expect(extractPreviewTargets('Preview: http://localhost:5173/')).toEqual([])

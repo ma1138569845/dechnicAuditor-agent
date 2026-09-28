@@ -90,18 +90,20 @@ const _MEDIA_EXT_ALTERNATION = [...MEDIA_DELIVERY_EXTS].sort((a, b) => b.length 
  */
 const _MEDIA_PATH_ANCHORED = `(?:~/|/|[A-Za-z]:[/\\\\])\\S+?(?:[^\\S\\n]+\\S+?)*?\\.(?:${_MEDIA_EXT_ALTERNATION})(?=[\\s\`"'*_,;:)\\]}]|MEDIA:|$)`
 
+// Bare-word fallback for paths the anchored branch misses (relative paths,
+// unknown extensions). Stop before backtick, quotes, and markdown emphasis so
+// a trailing `**` never lands in the path.
+const _MEDIA_PATH_BARE = '[^\\s`"\'*]+'
+
 // The `[`"'*_]{0,3}` wrappers around `MEDIA:` swallow markdown emphasis the
-// model leaks into the tag (`**MEDIA: /tmp/report.docx**`). The unquoted branch
-// excludes `*`/`_`/quotes so a trailing `**` never lands in the path — without
-// both halves the artifact card renders a link wrapped in literal asterisks and
-// the Office/PDF preview misses its file.
+// model leaks into the tag (`**MEDIA: /tmp/report.docx**`).
 const MEDIA_LINE_RE = new RegExp(
-  `(^|\\n)[\\t ]*[\`"'*_]{0,3}MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|[^\\s\`"'*]+)[\`"'*]{0,3}[\\t ]*(\\n|$)`,
+  `(^|\\n)[\\t ]*[\`"'*_]{0,3}MEDIA:\\s*(?<line>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_BARE})[\`"'*]{0,3}[\\t ]*(\\n|$)`,
   'g'
 )
 
 const MEDIA_TAG_RE = new RegExp(
-  `[\`"'*_]{0,3}MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|[^\\s\`"'*]+)[\`"'*]{0,3}`,
+  `[\`"'*_]{0,3}MEDIA:\\s*(?<inline>\`[^\`\\n]+\`|"[^"\\n]+"|'[^'\\n]+'|${_MEDIA_PATH_ANCHORED}|${_MEDIA_PATH_BARE})[\`"'*]{0,3}`,
   'g'
 )
 
@@ -269,8 +271,10 @@ export function dedupeRepeatedTextInParts(parts: ChatMessagePart[]): ChatMessage
 /**
  * Merge the final assistant text into a message's parts.
  *
- * - Removes all existing `text` parts (they were streamed deltas, now superseded
- *   by the authoritative final response).
+ * - Preserves earlier tool-delimited responses: a missed interim frame must
+ *   not make their public text disposable.
+ * - Replaces provisional text only in the latest response with its authoritative
+ *   final text, retaining confirmed text/reasoning boundaries.
  * - Keeps `reasoning` parts, but drops one that the final text fully covers
  *   (reasoning ⊆ final) — the final restates it. A short final ("Done.") must
  *   NOT swallow a longer reasoning block that merely starts with it (#61447).
@@ -303,14 +307,41 @@ export function mergeFinalAssistantText(
     return parts
   }
 
+  // A tool call is an explicit model-response boundary even when no
+  // message.interim frame sealed the earlier text into a separate bubble.
+  // Only the suffix after the last call belongs to this authoritative final.
+  const lastToolIndex = parts.findLastIndex(part => part.type === 'tool-call')
+
+  if (lastToolIndex >= 0) {
+    const earlier = parts.slice(0, lastToolIndex + 1)
+
+    const earlierText = earlier
+      .filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text')
+      .map(part => part.text)
+      .join('')
+
+    // Some terminal frames carry cumulative text. Strip only an exact prefix;
+    // fuzzy similarity is not proof that two assistant messages are the same.
+    const responseText =
+      earlierText && finalText.startsWith(earlierText) ? finalText.slice(earlierText.length) : finalText
+
+    const suffix = parts.slice(lastToolIndex + 1)
+
+    // A cumulative final can stop exactly at the pre-tool update. The suffix
+    // draft is still provisional; the ordinary empty-final path keeps drafts.
+    if (earlierText && finalText === earlierText) {
+      return [...earlier, ...suffix.filter(part => part.type !== 'text')]
+    }
+
+    return [...earlier, ...mergeFinalAssistantText(suffix, responseText, fallbackTimestamp)]
+  }
+
   const previousText = parts.findLast(part => part.type === 'text')
 
   const kept = parts.filter(part => {
     if (part.type === 'text') {
-      // Sealed text parts were already finalized into their own bubbles —
-      // this filter only runs on the LAST streaming bubble, so there are no
-      // sealed parts here. All text parts are streamed deltas that get
-      // replaced by the authoritative final text.
+      // The tool-delimited prefix was retained above. This suffix is
+      // provisional text from the response being finalized.
       return false
     }
 

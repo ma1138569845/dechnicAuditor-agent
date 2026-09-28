@@ -353,3 +353,12 @@ $tmp
 # 2026-09-18 回灌备份（本地回退用，不入库）
 _backup_ea_rollout_*/
 _sandbox_hermes*/
+
+# Bundle/build scratch roots (scripts/bundles/, scripts/build/frontend-common.mjs)
+.build/
+.cache/
+
+# PM lockfile advisory lock; kept in place so waiting writers share its inode
+/pm/.lock.json.lock
+
+apps/desktop/.dist-build*/
