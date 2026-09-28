@@ -210,6 +210,13 @@ class EnergyYearly:
     monthly_electricity_kwh: Optional[List[float]] = None
     monthly_water_m3: Optional[List[float]] = None
     monthly_natural_gas_m3: Optional[List[float]] = None
+    # 逐月费用（元，dt=2 费用类记录的 period 明细；2026-09-28 接入，供附录2「7 列表」）
+    # 此前只取费用年度值（*_cost_wan），附录2 因此写不出"逐月水费/电费/单价"，
+    # 三个项目退化出三种不同格式；单价由 费用÷用量 现算，不单独建字段。
+    monthly_electricity_cost: Optional[List[float]] = None
+    monthly_water_cost: Optional[List[float]] = None
+    monthly_natural_gas_cost: Optional[List[float]] = None
+    monthly_heating_cost: Optional[List[float]] = None
     # 整栋建筑合署办公总量（合署场景下追溯用，非合署时为 0）
     building_electricity_kwh: float = 0
     building_water_m3: float = 0

@@ -46,10 +46,11 @@ import json
 import os
 import re
 import sys
+import time
 import zipfile
 
 from docx import Document
-from docx.enum.section import WD_SECTION
+from docx.enum.section import WD_SECTION, WD_ORIENT
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
@@ -137,7 +138,7 @@ def _add_toc_field(paragraph):
     set_font(run, 12)
 
 
-def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None):
+def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_cm=1.01):
     """通用表格：12pt 居中、垂直居中、行高 1.01cm，首行加粗（对齐 45 页终稿）。
 
     bold_first_row=False：无表头行的表（建筑基本信息表：全表不加粗，2026-09-20）；
@@ -153,7 +154,7 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None):
             t.columns[ci].width = Cm(equal_width_cm)
     for ri, data in enumerate(rows):
         row = t.rows[ri]
-        row.height = Cm(1.01)
+        row.height = Cm(row_height_cm)
         for ci in range(n_cols):
             cell = row.cells[ci]
             if equal_width_cm:
@@ -211,6 +212,30 @@ def _setup_page(doc):
         s.left_margin = s.right_margin = Cm(3.17)
         s.header_distance = Cm(1.5)
         s.footer_distance = Cm(1.75)
+
+
+# 附录2（建筑能耗数据信息表）为 7 列宽表，单独用横向页；其余章节与附录一律纵向。
+# 用户口径（2026-09-28）：**只有附录2 相关表格所在页面横向，其他不要动**。
+APX2_LANDSCAPE_HEADING = "附录2："
+
+
+def _start_landscape_section(doc):
+    """在当前位置插入分节符并切到横向（只作用于其后的内容）。"""
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    s = doc.sections[-1]
+    s.orientation = WD_ORIENT.LANDSCAPE
+    s.page_width, s.page_height = Cm(29.7), Cm(21.0)
+    # 页边距沿用纵向口径（2.54/3.17）→ 可用正文宽 23.36cm，7 列放得下
+    return s
+
+
+def _end_landscape_section(doc):
+    """切回纵向（附录2 之后的附录继续纵向排版）。"""
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    s = doc.sections[-1]
+    s.orientation = WD_ORIENT.PORTRAIT
+    s.page_width, s.page_height = Cm(21.0), Cm(29.7)
+    return s
 
 
 def _setup_styles(doc):
@@ -276,8 +301,12 @@ def _set_update_fields(doc):
 
 
 def _set_pg_num_start(doc, start=1):
-    """正文节（最后一节）页码从 start 重起：插入 <w:pgNumType w:start="1"/>（按 CT_SectPr 顺序）。"""
-    sectPr = doc.sections[-1]._sectPr
+    """正文节（分节后第 2 节）页码从 start 重起。
+
+    2026-09-28：附录2 会再切横向/纵向节，正文节不再是「最后一节」，
+    因此锁定 sections[1]；页码从正文节起连续，横向附录2 页沿用同一序列。
+    """
+    sectPr = doc.sections[1]._sectPr if len(doc.sections) > 1 else doc.sections[-1]._sectPr
     for el in sectPr.findall(qn("w:pgNumType")):
         sectPr.remove(el)
     pg = OxmlElement("w:pgNumType")
@@ -292,14 +321,16 @@ def _ensure_hf_parts(doc):
     """分节创建页眉/页脚部件（内容由 _inject_header_footer 按节映射 zip 级注入）。
 
     前置节：仅页眉部件（将注入「仅水印」模板）；不建页脚引用（前置页无页脚）。
-    正文节：页眉 + 页脚。调用时机必须在 add_section 之后（否则创建会被节克隆串件）。
+    正文节及其后的所有节（含附录2 横向节、附录2 之后的纵向节）：页眉 + 页脚。
+    调用时机必须在 add_section 之后（否则创建会被节克隆串件）。
     """
-    if len(doc.sections) != 2:
-        print("WARN: 期望 2 节（前置/正文），实际 %d 节" % len(doc.sections))
-    pre, body = doc.sections[0], doc.sections[-1]
+    if len(doc.sections) < 2:
+        print("WARN: 期望 ≥2 节（前置/正文），实际 %d 节" % len(doc.sections))
+    pre = doc.sections[0]
     pre.header.is_linked_to_previous = False
-    body.header.is_linked_to_previous = False
-    body.footer.is_linked_to_previous = False
+    for body in doc.sections[1:]:          # 正文节 + 附录2 横向节 + 之后的节
+        body.header.is_linked_to_previous = False
+        body.footer.is_linked_to_previous = False
 
 
 def _hf_target_map(z):
@@ -336,8 +367,9 @@ def _inject_header_footer(out_path, unit):
     """按节映射注入页眉/页脚（2026-09-22 分节版）。
 
     - 前置节（封面/信息表/目录）：页眉 = 仅水印（header_template_prebody.xml）；无页脚。
-    - 正文节（第1~8章+附录）：页眉 = 单位名+报告名+水印（header_template.xml）；
-      页脚 = 居中 PAGE 纯数字（footer_template.xml）。
+    - 正文节及之后的全部节（第1~8章+附录，含附录2 横向节）：页眉 = 单位名+报告名+水印
+      （header_template.xml）；页脚 = 居中 PAGE 纯数字（footer_template.xml）。
+      2026-09-28：附录2 另切横向/纵向节后，按「第 1 节=前置，其余节=正文侧」统一注入。
     """
     hdr_path = os.path.join(_ASSETS_DIR, "header_template.xml")
     hdr_pre_path = os.path.join(_ASSETS_DIR, "header_template_prebody.xml")
@@ -356,18 +388,19 @@ def _inject_header_footer(out_path, unit):
     tmp = out_path + ".tmp"
     with zipfile.ZipFile(out_path) as src:
         sec_maps = _hf_target_map(src)
-        if len(sec_maps) != 2:
-            print("WARN: 文档节数=%d（期望 2），按首节/末节处理" % len(sec_maps))
-        pre_map, body_map = sec_maps[0], sec_maps[-1]
+        if len(sec_maps) < 2:
+            print("WARN: 文档节数=%d（期望 ≥2），按首节处理" % len(sec_maps))
+        pre_map, body_map = sec_maps[0], sec_maps[1]
         if pre_map["footer"]:
             print("WARN: 前置节存在页脚引用 %s（应为空）" % pre_map["footer"])
         override = {}
         for name in pre_map["header"]:
             override[name] = hdr_pre
-        for name in body_map["header"]:
-            override[name] = hdr
-        for name in body_map["footer"]:
-            override[name] = ftr
+        for m in sec_maps[1:]:                      # 正文侧全部节（含附录2 横向节）
+            for name in m["header"]:
+                override[name] = hdr
+            for name in m["footer"]:
+                override[name] = ftr
         if len(pre_map["header"]) != 1 or len(body_map["header"]) != 1 \
                 or len(body_map["footer"]) != 1 or pre_map["footer"]:
             print("WARN: 节引用异常（前置 header=%d footer=%d；正文 header=%d footer=%d）"
@@ -380,7 +413,24 @@ def _inject_header_footer(out_path, unit):
                     dst.writestr(item, override[fn].encode("utf-8"))
                 else:
                     dst.writestr(item, src.read(fn))
-    os.replace(tmp, out_path)
+    _replace_with_retry(tmp, out_path)
+
+
+def _replace_with_retry(src: str, dst: str, attempts: int = 5) -> None:
+    """替换输出文件，遇到 Windows 偶发占用（杀软/索引/预览）重试。
+
+    2026-09-28：实测同一命令连跑三个项目，前两个成功、第三个在 os.replace 报
+    `WinError 5 拒绝访问`——刚写出的 6MB docx 被实时扫描短时占用。重试可消除这类假失败；
+    真被 Word 打开的文件仍会失败（最后一次抛错，信息同前）。
+    """
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.6)
 
 
 # ---------------------------------------------------------------- T2 章节渲染
@@ -533,6 +583,8 @@ def _render_md(doc, md_path, ctx, appendix=False):
     images = ctx.get("images") or {}
     project_dir = ctx["project_dir"]
     listing = False  # 附录总目录清单区（'附录：' 之后、首个 '## ' 之前）
+    in_apx2 = False  # 附录2 横向节区段（2026-09-28）
+    apx2_tables = 0  # 附录2 内已渲染的附表数（首张不另起页，避免出现空页）
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -543,7 +595,16 @@ def _render_md(doc, md_path, ctx, appendix=False):
             _heading(doc, line[4:].strip(), 3)
         elif line.startswith("## "):
             listing = False
-            _heading(doc, line[3:].strip(), 2)
+            head = line[3:].strip()
+            if appendix:
+                if in_apx2 and not head.startswith(APX2_LANDSCAPE_HEADING):
+                    _end_landscape_section(doc)   # 附录2 结束 → 切回纵向
+                    in_apx2 = False
+                elif (not in_apx2) and head.startswith(APX2_LANDSCAPE_HEADING):
+                    _start_landscape_section(doc)  # 附录2 开始 → 切横向
+                    in_apx2 = True
+                    apx2_tables = 0
+            _heading(doc, head, 2)
         elif line.startswith("# "):
             text = line[2:].strip()
             if appendix:
@@ -570,8 +631,11 @@ def _render_md(doc, md_path, ctx, appendix=False):
             if rows:
                 # 建筑基本信息表（4 列键值对、无表头行）：首行不加粗、列等宽（2026-09-20）
                 is_bldg = bool(rows[0]) and rows[0][0].strip() == "建筑物名称"
+                # 附录2 的逐月表（表头首列=月份）：行高收到 0.8cm，14 行 + 表题恰好一页（2026-09-28）
                 _add_table(doc, rows, bold_first_row=not is_bldg,
-                           equal_width_cm=3.66 if is_bldg else None)
+                           equal_width_cm=3.66 if is_bldg else None,
+                           row_height_cm=0.8 if (in_apx2 and bool(rows[0])
+                                                 and rows[0][0].strip() == "月份") else 1.01)
         elif "[FORMULA" in line:
             _render_formula_line(doc, line, omml)
         elif line.startswith("**表") and line.endswith("**"):
@@ -581,6 +645,13 @@ def _render_md(doc, md_path, ctx, appendix=False):
             # 裸表题（无 ** 包裹）：2026-09-20 新增，避免表题被当正文（两端对齐）导致 V3 P2
             _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         elif appendix and re.match(r"^附表\d", line):
+            # 附录2 内每张附表另起一页（2026-09-28）：横向页可用高 15.9cm，
+            # 配合 0.8cm 行高，14 行 + 表题可整表放一页，避免"12月/合计行"被拆到次页。
+            # 首张不另起页——横向分节符本身已经换页，再加页会多出一张空白页。
+            if in_apx2 and apx2_tables > 0:
+                _page_break(doc)
+            if in_apx2:
+                apx2_tables += 1
             _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         elif line.startswith("**") and line.endswith("**") and len(line) > 4:
             _para(doc, line[2:-2].strip(), size=12, bold=True,

@@ -174,6 +174,11 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 **附录编写（office_editor 路径；主链走脚本渲染 appendix.md，2026-09-17）**：附录 7 个固定清单——附录1 建筑基本信息及设备统计表（附表1-1/1-2；字段清单见 `references/chapter-guides-1-4.md` §7 v4.0）/附录2 建筑能耗数据信息表（附表2-1）/附录3 能源计量器具配备情况表（附表3-1）/附录4 室内环境测量与室内空气质量评价说明（无实测则写说明文字，有实测则附表）/附录5 空气质量判定方法（附表5-1 A/B/C/D）/附录6 室内空气质量指标及要求（附表6-1）/附录7 各种能源折标准煤参考系数（附表7-1）。**有发票照片时**在附录3 前插入"电费水费油费燃气费充值发票"附录，后续序号顺延。用 `office_cli_command` 追加——`add ... --type paragraph --prop style=HeadingN/--type table` + `set ... --prop text/width`，格式 Table Grid、12pt 宋体居中、行高 1.01cm。**标题格式对齐正式报告**：第8章后先加"附录："总目录页（H1 样式但宋体12pt 不加粗 + Normal 清单逐条列"附录N：名称"），各附录标题用 **H2 宋体14pt 加粗、中文冒号**（`附录1：建筑基本信息及设备统计表`，不是空格）。**本路径禁用 python-docx**（脚本装配链不受限）。清单与数据来源详见 `energy-audit-report/references/script-assembly-chain.md`。附录4 如有室内环境测量表的附件图片则展示。
 
+> **附录2 专项（2026-09-28 用户定）**：附录2 是 7 列表——`月份｜水量(m³)｜水费(元)｜水单价(元/m³)｜电量(kWh)｜电费(元)｜电单价(元/kWh)`，12 月 + 合计行（单价列写"—"）；该年有逐月天然气时可追加 1 列。
+> **整节用 A4 横向页，且只有这一处横向**（其余章节与附录保持纵向；装配器在 `## 附录2：` 前插横向分节符、在下一个 `## 附录N：` 前切回纵向，**写作侧不用管纸张**）。
+> 表题固定 `附表2-N XXXX年逐月能源资源消耗及费用统计表`；数据 = 用量 `energy_yearly[].monthly_*` + 费用 `energy_yearly[].monthly_*_cost`（元），单价现算（保留 2 位）；
+> **合计必须与第5章费用表及年度用量一致**。列序与横向规则见 `energy-audit-report/references/script-assembly-chain.md`；自检项 `apx2_landscape` / `apx2_table`。
+
 **引擎与回退**：
 - 首选 **editor_sdk**（本地二进制，MCP 协议）：`office_edit` 的 199 个 MCP 编辑操作全可用。
 - **editor_sdk 缺失**（`office_status` 报不可用）→ officecli 回退：MCP 操作**不会自动翻译**，须改用 `office_cli_command` 工具按 officecli 原生语法（`add <file> /body --type paragraph --prop text="..."` 等）编辑，能力受限。

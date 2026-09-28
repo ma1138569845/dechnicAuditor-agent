@@ -154,6 +154,99 @@ def section_hf_map(z):
     return out
 
 
+def sections_detail(z):
+    """按 document 顺序切节，返回 [{orient, text, tables}]。
+
+    tables = [[[cell, ...], ...], ...]（每个表一个行列表）。
+    用于核对「附录2 唯一横向节」与「7 列 + 合计行」（2026-09-28 新增）。
+    """
+    root = etree.fromstring(z.read("word/document.xml"))
+    body = root.find(W_NS + "body")
+    out = []
+    cur = {"text": [], "tables": []}
+
+    def _close(sect_pr):
+        orient = "portrait"
+        if sect_pr is not None:
+            pg = sect_pr.find(W_NS + "pgSz")
+            if pg is not None:
+                w = int(pg.get(W_NS + "w") or 0)
+                h = int(pg.get(W_NS + "h") or 0)
+                if pg.get(W_NS + "orient") == "landscape" or (w and h and w > h):
+                    orient = "landscape"
+        cur["orient"] = orient
+        out.append(dict(cur))
+
+    for child in body:
+        tag = child.tag
+        if tag == W_NS + "p":
+            cur["text"].append("".join(t.text or "" for t in child.iter(W_NS + "t")))
+            pr = child.find(W_NS + "pPr")
+            if pr is not None and pr.find(W_NS + "sectPr") is not None:
+                _close(pr.find(W_NS + "sectPr"))
+                cur = {"text": [], "tables": []}
+        elif tag == W_NS + "tbl":
+            rows = []
+            for tr in child.findall(W_NS + "tr"):
+                rows.append(["".join(t.text or "" for t in tc.iter(W_NS + "t"))
+                             for tc in tr.findall(W_NS + "tc")])
+            cur["tables"].append(rows)
+    _close(body.find(W_NS + "sectPr"))
+    return out
+
+
+APX2_HEAD_COLS = ["月份", "水量(m³)", "水费(元)", "水单价(元/m³)",
+                  "电量(kWh)", "电费(元)", "电单价(元/kWh)"]
+
+
+def _apx2_section(sect_detail):
+    """返回附录2 所在节（判定口径：该节文本含「附录2：…」且不含其它「附录N：」标题）。"""
+    for sec in sect_detail:
+        text = "\n".join(sec["text"])
+        if "附录2：" in text and not any(
+                f"附录{n}：" in text for n in ("1", "3", "4", "5", "6", "7")):
+            return sec
+    return None
+
+
+def _apx2_landscape_ok(sect_detail) -> bool:
+    """唯一横向节 = 附录2 节（其它节必须纵向）。"""
+    land = [s for s in sect_detail if s.get("orient") == "landscape"]
+    if len(land) != 1:
+        return False
+    apx2 = _apx2_section(sect_detail)
+    return apx2 is not None and apx2.get("orient") == "landscape"
+
+
+def _apx2_table_ok(sect_detail) -> bool:
+    """附录2 节内每张**逐月表**（表头首列=月份）：7 列固定列序（允许追加 1 列天然气）+ 合计行。
+
+    附录2 内还可能有"三年能源资源消耗及费用汇总表"（表头首列=项目、列为年份），
+    该表不受 7 列约束，只要列数 ≥3 即可。
+    """
+    apx2 = _apx2_section(sect_detail)
+    if apx2 is None or not apx2["tables"]:
+        return False
+    monthly = 0
+    for rows in apx2["tables"]:
+        head = [c.strip() for c in (rows[0] if rows else [])]
+        if not head:
+            return False
+        if head[0] != "月份":                 # 汇总表等：不套 7 列口径
+            if len(head) < 3:
+                return False
+            continue
+        monthly += 1
+        if len(head) not in (7, 8):
+            return False
+        for want, got in zip(APX2_HEAD_COLS, head):
+            if want != got:
+                return False
+        if not any(r and r[0].strip() == "合计" for r in rows):
+            return False
+    return monthly > 0
+
+
 def run(docx: str, pdf: str = None):
     z = zipfile.ZipFile(docx)
     znames = z.namelist()
@@ -163,6 +256,7 @@ def run(docx: str, pdf: str = None):
     footers = {n: z.read(n).decode("utf-8", "ignore") for n in znames if re.fullmatch(r"word/footer\d+\.xml", n)}
     media = [n for n in znames if n.startswith("word/media/") and n.lower().endswith(IMG_EXT)]
     sec_maps = section_hf_map(z)
+    sect_detail = sections_detail(z)
 
     instrs = re.findall(r"<w:instrText[^>]*>([^<]*)</w:instrText>", doc)
     text = visible_text(doc)
@@ -180,7 +274,8 @@ def run(docx: str, pdf: str = None):
             self_ref = True
     toc_state = "placeholder" if "（打开文档" in tn else "cached"
     pre_map = sec_maps[0] if sec_maps else {"header": [], "footer": [], "xml": ""}
-    body_map = sec_maps[-1] if sec_maps else {"header": [], "footer": [], "xml": ""}
+    # 2026-09-28：附录2 另有横向/纵向节，正文节固定为第 2 节，不再是「最后一节」
+    body_map = sec_maps[1] if len(sec_maps) > 1 else {"header": [], "footer": [], "xml": ""}
     pre_hdr = "".join(headers.get(n, "") for n in pre_map["header"])
     body_hdr = "".join(headers.get(n, "") for n in body_map["header"])
     body_ftr = "".join(footers.get(n, "") for n in body_map["footer"])
@@ -194,13 +289,15 @@ def run(docx: str, pdf: str = None):
         "footer_page": "PAGE" in body_ftr,
         "footer_plain": ("PAGE" in body_ftr) and ("—" not in body_ftr),
         "header_no_vml": not any("v:textpath" in h for h in headers.values()),
-        "section_split": len(sec_maps) == 2,
+        "section_split": len(sec_maps) >= 2,
         "prebody_clean": (not pre_map["footer"]) and ("能源审计报告" not in pre_hdr) and ("pBdr" not in pre_hdr),
         "body_numbering": ("w:pgNumType" in body_map["xml"]) and ("w:start=\"1\"" in body_map["xml"]),
         "toc_no_self_ref": not self_ref,
         "no_flat_formula": not [p for p in FLAT_FORMULAS if p in text],
         "no_writer_markers": not [m for m in MARKERS if m in text],
         "ch5_narrative": ch5_n >= 15,
+        "apx2_landscape": _apx2_landscape_ok(sect_detail),
+        "apx2_table": _apx2_table_ok(sect_detail),
     }
     details = {}
     flat = [p for p in FLAT_FORMULAS if p in text]
@@ -212,7 +309,19 @@ def run(docx: str, pdf: str = None):
     if ch5_n < 15:
         details["ch5_narrative"] = "第5章叙述段仅 %d 段（需 ≥ 15）" % ch5_n
     if not checks["section_split"]:
-        details["section_split"] = "sectPr 数=%d（期望 2：前置/正文）" % len(sec_maps)
+        details["section_split"] = "sectPr 数=%d（期望 ≥2：前置/正文）" % len(sec_maps)
+    if not checks["apx2_landscape"]:
+        land = [i + 1 for i, s in enumerate(sect_detail) if s.get("orient") == "landscape"]
+        details["apx2_landscape"] = (
+            "横向节=%s（期望恰好 1 个且为附录2）；附录2 节定位=%s"
+            % (land or "无", "命中" if _apx2_section(sect_detail) else "未命中"))
+    if not checks["apx2_table"]:
+        apx2 = _apx2_section(sect_detail)
+        if apx2 is None:
+            details["apx2_table"] = "未定位到附录2 节"
+        else:
+            details["apx2_table"] = "附录2 表头/合计行不符（需 7 列固定列序 + 合计行）；实测表头=%s" % (
+                [c.strip() for c in (apx2["tables"][0][0] if apx2["tables"] else [])],)
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

@@ -682,6 +682,19 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
                     # 费用取 real_value（单位实际费用值，unit_total_value）；版本归一带最新正式版本
                     yearly_map[year][cost_field] = round(
                         float(rec.get('unit_total_value') or 0) / 10000, 4)
+                    # 逐月费用（2026-09-28 新增）：dt=2 的水/电记录**自带 12 条 period 明细**
+                    # （实测逐月合计与年度登记值分毫不差），此前只取年度值、逐月被丢，
+                    # 导致附录2 的"逐月水费/电费/单价"三个项目各写各的（有的只给实物量、
+                    # 有的只给年度汇总）。这里按品种落 monthly_*_cost（单位=元，不折万元）。
+                    monthly_cost_field = {
+                        'electricity_cost_wan': 'monthly_electricity_cost',
+                        'water_cost_wan': 'monthly_water_cost',
+                        'natural_gas_cost_wan': 'monthly_natural_gas_cost',
+                        'heating_cost_wan': 'monthly_heating_cost',
+                    }.get(cost_field)
+                    if monthly_cost_field and any(float(v or 0) > 0 for v in monthly):
+                        yearly_map[year][monthly_cost_field] = [
+                            round(float(v or 0), 2) for v in monthly]
             elif dt == 7 and field == 'heating_energy_heat_gj':
                 # 供热费用（dt=7 单独记录）：取 real_value
                 yearly_map[year]['heating_cost_wan'] = round(
