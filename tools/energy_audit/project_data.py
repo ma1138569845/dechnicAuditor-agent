@@ -249,6 +249,11 @@ class Equipment:
     independent_metering_desc: str = ""  # 独立计量情况 — metering_desc
     independent_metering_ratio: str = ""  # 独立计量比例 — metering_ratio
     independent_metering_time: str = ""   # 独立计量时间 — metering_time
+    frequency_control: str = ""        # 变频情况 — change_frequency（变频/定频/空）
+    #   来源：ts_institution_device_td（输配水泵）/ power（电梯、水泵、风机）/ terminal（空调末端）。
+    #   2026-09-28 接入：**0=明确登记定频（机会成立）、空=未登记（不得断言）**，两者必须分开。
+    control_mode: str = ""             # 调节方式 — adjust_type（如"人工调节"）或 is_adjust 折算
+    #   来源同上；支撑第7章 7.1 C 类「控制方式落后」。
 
 
 @dataclass
@@ -444,6 +449,12 @@ class AuditProject:
     # [{'name':'电能','energy_code':'45','children':[{'name':'空调用电','children':[...]}]}, ...]
     # 2026-09-24 接入：图5.1 由"能源类型+设备类别推断"改为"库登记树优先"，缺失才降级。
     energy_flow_trees: List[dict] = field(default_factory=list)
+    # 光伏/太阳能利用（第7章 7.1 C 类「可再生能源利用率低」的唯一依据）：
+    # ts_institution_solar 按客户版本归一后的一行；字段含 has_solar_utilization /
+    # pv_capacity / annual_generation / accept_pv_install / can_install_pv_carport /
+    # roof_utilization_form。**表内有测试数据**，落盘前过 pg_collector 的测试数据闸，
+    # 测试行不落（改记 missing），避免把"测试"写进报告结论。
+    solar: Dict[str, Any] = field(default_factory=dict)
     shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）

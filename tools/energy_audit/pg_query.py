@@ -583,6 +583,22 @@ class PgDataQuery:
         if record.get('other_desc'):
             spec_parts.append(str(record['other_desc']))
 
+        # 变频 / 调节方式（2026-09-28 接入，支撑第7章 7.1 的 C 类机会问题）：
+        # `change_frequency` 存在于 ts_institution_device_td（输配：冷冻/冷却水泵）、
+        # power（动力：电梯/水泵/风机）、terminal（空调末端）三张表，语义均为
+        # 1=变频 / 0=定频（**0 与 NULL 必须分开**：0 是"明确登记未变频"= 机会成立，
+        # NULL 是"未登记"= 不得断言）。`adjust_type` 为人工/自动调节描述（td 表）。
+        freq = ''
+        if 'change_frequency' in record:
+            freq = PgDataQuery._flag_cn(record.get('change_frequency'),
+                                        yes='变频', no='定频')
+        control = ''
+        if record.get('adjust_type'):
+            control = str(record['adjust_type']).strip()
+        elif 'is_adjust' in record:
+            control = PgDataQuery._flag_cn(record.get('is_adjust'),
+                                           yes='人工调节', no='自动调节')
+
         metering = ''
         if 'is_metering' in record:
             metering = PgDataQuery._flag_cn(record.get('is_metering'))
@@ -605,6 +621,8 @@ class PgDataQuery:
             'category': category,
             'spec': ' | '.join(filter(None, spec_parts)),
             'quantity': quantity,
+            'frequency_control': freq,
+            'control_mode': control,
             'img_ids': img_ids,
             'independent_metering': metering,
             'independent_metering_desc': str(record['metering_desc']).strip()
@@ -945,6 +963,45 @@ class PgDataQuery:
                    FROM ts_attachment
                    WHERE group_id = ANY(%s) AND (deleted IS NULL OR deleted = 0)"""
         return self._execute(query, (list(group_ids),))
+
+    # ========== 光伏/太阳能利用（ts_institution_solar，第7章 C 类） ==========
+    #
+    # 平台用一张 24 列专表登记"太阳能利用"：是否有太阳能利用、已建装机与年发电量、
+    # 屋面利用形式、是否具备/接受安装条件、能否装车棚光伏。
+    # 2026-09-28 接入：此前全仓 grep `ts_institution_solar`／`pv_capacity` **零命中**——
+    # 表在库里、数据也填了（实测莘县中医医院：未利用太阳能 + 具备安装条件 + 屋面条件良好），
+    # 但报告侧写不出"可再生能源利用率低"这类机会问题（样板 7.1.3 正是此类）。
+    # ⚠️ 表内有**测试数据**：实测山东省立医院东院区 4 行中 3 行 roof_utilization_form='测试测试'，
+    # 版本归一后仍可能取到测试行；**落盘前的测试数据闸在 pg_collector 侧**
+    # （本层只负责取数与版本归一，不判业务）。
+
+    def get_institution_solar(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_solar — 光伏/太阳能利用登记，按客户版本归一取最新一行。
+
+        返回单元素列表（该客户最新登记）或空列表。草稿优先、无草稿时 version_code 大者优先，
+        与设备/场景/建筑同类口径。
+        """
+        base = "FROM ts_institution_solar s WHERE (s.deleted IS NULL OR s.deleted = 0)"
+        params = []
+        if customer_id:
+            base += " AND s.customer_id = %s"
+            params.append(customer_id)
+        ver_sql, ver_params = self._version_where("s")
+        base += ver_sql
+        params.extend(ver_params)
+        query = (
+            "SELECT DISTINCT ON (s.customer_id) "
+            "s.id, s.customer_id, s.roof_utilization_form, s.has_solar_utilization, "
+            "s.solar_utilization_detail, s.other_solar_utilization_detail, s.system_type, "
+            "s.system_equipment_params, s.pv_install_time, s.pv_capacity, "
+            "s.annual_generation, s.cooperation_mode, s.accept_pv_install, "
+            "s.can_install_pv_carport, s.device_img, s.other_desc, "
+            "s.version_code, s.is_draft "
+            + base
+            + " ORDER BY s.customer_id, COALESCE(s.is_draft, 0) DESC,"
+              " s.version_code DESC NULLS LAST, s.id DESC"
+        )
+        return self._execute(query, tuple(params))
 
     # ========== 能源流向树（图5.1；ts_energy_flow + ts_energy_flow_level） ==========
     #

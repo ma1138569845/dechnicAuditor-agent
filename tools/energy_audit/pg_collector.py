@@ -89,6 +89,21 @@ def collect_from_pg(project_name: str, version_code: str | None = None) -> Dict[
         pg.disconnect()
 
 
+def _looks_like_test(*values) -> bool:
+    """测试数据闸：任一文本字段含"测试/test"即判为测试数据。
+
+    背景（2026-09-28）：`ts_institution_solar` 实测存在测试行——山东省立医院东院区
+    4 行里 3 行 roof_utilization_form='测试测试'，另有 1 行 roof_utilization_form='测试'
+    且 has_solar_utilization=1。版本归一（草稿优先）后取到的正是那行测试数据，
+    若不过闸就会把"已建光伏"写进报告——**测试行不得落盘、不得进报告结论**。
+    """
+    for v in values:
+        s = str(v or '')
+        if '测试' in s or 'test' in s.lower():
+            return True
+    return False
+
+
 def _yn(v, yes='有', no='无'):
     if v is None:
         return ''
@@ -851,6 +866,39 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     else:
         result['missing'].append('能源流向树（ts_energy_flow 未登记 → 图5.1 走简化版）')
 
+    # ---- 6.6c 光伏/太阳能利用（第7章 7.1 C 类「可再生能源利用率低」的唯一依据）----
+    # 2026-09-28 接入：平台有专表 ts_institution_solar（是否有太阳能利用 / 已建装机与年发电量 /
+    # 屋面利用形式 / 是否具备-接受安装条件 / 能否装车棚光伏），此前全仓零命中——
+    # 与 cold_control_type 同批修复（表在库里、数据也填了，只是没人读）。
+    # ⚠️ 落盘前过测试数据闸：测试行不落 found，改记 missing（见 _looks_like_test）。
+    try:
+        solar_rows = pg.get_institution_solar(customer_id=customer_id)
+    except Exception as exc:  # noqa: BLE001 —— 表缺失/权限问题不得阻塞整条采集链
+        solar_rows = []
+        result['missing'].append(f'光伏利用登记读取失败（{exc}）')
+    solar = solar_rows[0] if solar_rows else None
+    if solar and _looks_like_test(
+            solar.get('roof_utilization_form'), solar.get('other_desc'),
+            solar.get('cooperation_mode'), solar.get('system_equipment_params'),
+            solar.get('solar_utilization_detail')):
+        solar = None
+        result['missing'].append('光伏利用登记为测试数据（含"测试"字样），需在平台重新填报')
+    if solar:
+        result['found']['solar'] = {
+            'has_solar_utilization': _int(solar.get('has_solar_utilization'), 0),
+            'pv_capacity': _num(solar.get('pv_capacity'), None),
+            'annual_generation': _num(solar.get('annual_generation'), None),
+            'pv_install_time': (solar.get('pv_install_time') or '').strip(),
+            'accept_pv_install': _int(solar.get('accept_pv_install'), 0),
+            'can_install_pv_carport': _int(solar.get('can_install_pv_carport'), 0),
+            'cooperation_mode': (solar.get('cooperation_mode') or '').strip(),
+            'roof_utilization_form': (solar.get('roof_utilization_form') or '').strip(),
+            'system_type': (solar.get('system_type') or '').strip(),
+            'other_desc': (solar.get('other_desc') or '').strip(),
+        }
+    else:
+        result['missing'].append('光伏/太阳能利用登记（ts_institution_solar 无有效记录）')
+
     # ---- 6.6 折标系数 ----
     standards = pg.get_energy_standards()
     if standards:
@@ -894,6 +942,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         ('metering', '计量信息'),
         ('energy_meter', '表具计量信息（ts_institution_energy_meter）'),
         ('energy_flow_trees', '能源流向树（ts_energy_flow / ts_energy_flow_level）'),
+        ('solar', '光伏/太阳能利用登记（ts_institution_solar）'),
         ('energy_saving', '节能管理信息（ts_institution_energy_saving）'),
     ]
     for key, label in req:
@@ -1203,6 +1252,8 @@ def build_and_save_project(
         energy_meter=pg_result['found'].get('energy_meter', []) or [],
         # 能源流向树（图5.1）：库登记树优先；空列表 → 画图侧降级为两层简化图
         energy_flow_trees=pg_result['found'].get('energy_flow_trees', []) or [],
+        # 光伏/太阳能利用（第7章 7.1 C 类）：测试数据闸已在采集侧过掉，落到这里是有效登记
+        solar=pg_result['found'].get('solar', {}) or {},
         # meter 表数据按 data_type 回填表数（4.2 表数来源；Excel 同名键可覆盖）
         metering=_merge_metering(_fill_meter_counts(pg_metering, pg_result['found'].get('energy_meter', [])),
                                  excel_data.get('metering', {})),
