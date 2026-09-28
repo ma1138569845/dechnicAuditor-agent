@@ -198,19 +198,19 @@ export const zh = defineLocale({
   },
 
   boot: {
-    ready: 'Hermes 桌面版已就绪',
+    ready: 'DechnicAuditor 桌面版已就绪',
     desktopBootFailedWithMessage: message => `桌面启动失败：${message}`,
     steps: {
       connectingGateway: '正在连接桌面网关',
-      loadingSettings: '正在加载 Hermes 设置',
+      loadingSettings: '正在加载 DechnicAuditor 设置',
       loadingSessions: '正在加载最近会话',
       retryingRemoteBackend: '正在重新连接远程 Hermes 后端…',
       startingDesktopConnection: '正在启动桌面连接',
-      startingHermesDesktop: '正在启动 Hermes 桌面版…'
+      startingHermesDesktop: '正在启动 DechnicAuditor 桌面版…'
     },
     errors: {
-      backgroundExited: 'Hermes 后台进程已退出。',
-      backgroundExitedDuringStartup: 'Hermes 后台进程在启动期间退出。',
+      backgroundExited: 'DechnicAuditor 后台进程已退出。',
+      backgroundExitedDuringStartup: 'DechnicAuditor 后台进程在启动期间退出。',
       backendStopped: '后端已停止',
       desktopBootFailed: '桌面启动失败',
       gatewayConnectionLost: '与网关的连接已断开',
@@ -220,7 +220,7 @@ export const zh = defineLocale({
       ipcBridgeUnavailable: '桌面 IPC 桥不可用。'
     },
     failure: {
-      title: 'Hermes 无法启动',
+      title: 'DechnicAuditor 无法启动',
       description: '后台网关没有启动。请尝试下面的恢复步骤；这里不会删除你的对话或设置。',
       remoteTitle: '需要重新登录远程网关',
       remoteDescription: '你的远程网关会话已过期。请重新登录以恢复连接。这些操作不会删除你的对话或设置。',
@@ -269,12 +269,12 @@ export const zh = defineLocale({
     copyDetail: '复制详情',
     copyDetailFailed: '无法复制通知详情',
     backendOutOfDateTitle: '后端版本过旧',
-    backendOutOfDateMessage: '你的 Hermes 后端早于当前桌面构建，可能无法正常工作。请更新以保持一致。',
+    backendOutOfDateMessage: '你的 DechnicAuditor 后端早于当前桌面构建，可能无法正常工作。请更新以保持一致。',
     desktopOutOfDateTitle: '应用版本过旧',
     desktopOutOfDateMessage: '此 Hermes 应用早于所连接的后端，可能无法正常工作。请更新应用以保持一致。',
     updateDesktopApp: '更新应用',
     installMethodUnsupportedTitle: '不受支持的安装方式',
-    updateHermes: '更新 Hermes',
+    updateHermes: '更新 DechnicAuditor',
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 项新更改可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
@@ -296,7 +296,7 @@ export const zh = defineLocale({
       elevenLabsRejectedKey: 'ElevenLabs 拒绝了该 API key (401)。',
       diskFull: '磁盘已满 — 请腾出一些空间后再试。',
       gatewayAuthFailed: '网关认证失败 — 请检查你的 API_SERVER_KEY。',
-      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 Hermes Desktop。',
+      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 DechnicAuditor Desktop。',
       microphonePermission: '麦克风权限已被拒绝。',
       openaiRejectedApiKey: 'OpenAI 拒绝了该 API key。',
       openaiTtsNeedsKey: 'OpenAI TTS 需要 VOICE_TOOLS_OPENAI_KEY 或 OPENAI_API_KEY。',
@@ -335,8 +335,8 @@ export const zh = defineLocale({
       rejectAction: '拒绝',
       inputTitle: '需要输入',
       inputTitleNamed: session => `需要输入 — ${session}`,
-      inputBody: 'Hermes 正在等待你的回应。',
-      turnDoneTitle: 'Hermes 已完成',
+      inputBody: 'DechnicAuditor 正在等待你的回应。',
+      turnDoneTitle: 'DechnicAuditor 已完成',
       turnDoneBody: '',
       turnErrorTitle: '本轮失败',
       backgroundDoneTitle: '后台任务已完成',
@@ -425,6 +425,8 @@ export const zh = defineLocale({
       'nav.settings': '打开设置',
       'nav.profiles': '打开配置',
       'nav.capabilities': '打开技能',
+      'nav.knowledge': '打开知识库',
+      'nav.office': '打开办公',
       'nav.messaging': '打开消息',
       'nav.artifacts': '打开制品',
       'nav.cron': '打开定时任务',
@@ -583,7 +585,7 @@ export const zh = defineLocale({
     exportConfig: '导出配置',
     importConfig: '导入配置',
     resetToDefaults: '恢复默认',
-    resetConfirm: '将所有设置恢复为 Hermes 默认值？',
+    resetConfirm: '将所有设置恢复为 DechnicAuditor 默认值？',
     exportFailed: '导出失败',
     resetFailed: '重置失败',
     nav: {
@@ -682,7 +684,7 @@ export const zh = defineLocale({
     plugins: {
       title: '桌面插件',
       blurb:
-        '加载到此应用中的界面扩展——随构建捆绑，或放入 desktop-plugins 文件夹（包括 Hermes 编写的插件）。禁用会即时卸载插件并在重启后保持。',
+        '加载到此应用中的界面扩展——随构建捆绑，或放入 desktop-plugins 文件夹（包括 DechnicAuditor 编写的插件）。禁用会即时卸载插件并在重启后保持。',
       count: n => `已安装 ${n} 个`,
       openFolder: '打开桌面插件文件夹',
       rescan: '重新扫描',
@@ -754,7 +756,7 @@ export const zh = defineLocale({
       intro: '原生桌面通知，区别于应用内提示。设置按设备保存，每台电脑各自独立。',
       enableAll: '启用通知',
       enableAllDesc: '关闭后静音下方所有通知。',
-      focusedHint: '完成提醒仅在 Hermes 处于后台时触发。',
+      focusedHint: '完成提醒仅在 DechnicAuditor 处于后台时触发。',
       kinds: {
         approval: {
           label: '需要批准',
@@ -762,11 +764,11 @@ export const zh = defineLocale({
         },
         input: {
           label: '需要输入',
-          description: 'Hermes 提出了问题，或需要密码或密钥。'
+          description: 'DechnicAuditor 提出了问题，或需要密码或密钥。'
         },
         turnDone: {
           label: '回复就绪',
-          description: 'Hermes 在后台时完成了一轮对话。'
+          description: 'DechnicAuditor 在后台时完成了一轮对话。'
         },
         turnError: {
           label: '本轮失败',
@@ -782,11 +784,11 @@ export const zh = defineLocale({
         },
         plugin: {
           label: '插件通知',
-          description: 'Hermes 在后台时，桌面插件发送了通知。'
+          description: 'DechnicAuditor 在后台时，桌面插件发送了通知。'
         }
       },
       test: '发送测试通知',
-      testTitle: 'Hermes',
+      testTitle: 'DechnicAuditor',
       testBody: '通知工作正常。',
       testSent: '测试已发送。如果没有出现，请检查系统通知权限和专注模式／勿扰模式。',
       testUnsupported: '此系统不支持原生通知。',
@@ -805,7 +807,7 @@ export const zh = defineLocale({
       advanced: '高级'
     },
     searchPlaceholder: {
-      about: '关于 Hermes Desktop',
+      about: '关于 DechnicAuditor Desktop',
       config: '搜索设置…',
       gateway: '网关连接…',
       keys: '搜索 API 密钥…',
@@ -821,7 +823,7 @@ export const zh = defineLocale({
       title: '外观',
       intro: '这些是仅桌面端的显示偏好。模式控制明暗；主题控制强调色与对话界面样式。',
       colorMode: '颜色模式',
-      colorModeDesc: '选择固定模式，或让 Hermes 跟随系统设置。',
+      colorModeDesc: '选择固定模式，或让 DechnicAuditor 跟随系统设置。',
       toolViewTitle: '工具调用显示',
       toolViewDesc: '产品模式隐藏原始工具数据；技术模式显示完整输入/输出。',
       hideCodeDiffsTitle: '隐藏代码差异',
@@ -889,12 +891,12 @@ export const zh = defineLocale({
       introSplashTitle: '开场标识',
       introSplashDesc: '空白对话中显示的字标和提示语。',
       reactionsTitle: '消息回应',
-      reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回应，Hermes 也能回应你的消息。',
+      reactionsDesc: 'iMessage 风格的表情回应 — 你可以给消息添加回应，DechnicAuditor 也能回应你的消息。',
       tipsTitle: '应用内提示',
-      tipsDesc: '偶尔显示来自应用和 Hermes 的提示，每条提示只出现一次。开始使用满30天后自动关闭，你可以重新开启。',
+      tipsDesc: '偶尔显示来自应用和 DechnicAuditor 的提示，每条提示只出现一次。开始使用满30天后自动关闭，你可以重新开启。',
       tipsReset: (count: number) => `再次显示 ${count} 条提示`,
       toursTitle: '引导导览',
-      toursDesc: '让 Hermes 逐步高亮每个位置，带你熟悉应用。开始使用满30天后自动关闭，你可以重新开启。',
+      toursDesc: '让 DechnicAuditor 逐步高亮每个位置，带你熟悉应用。开始使用满30天后自动关闭，你可以重新开启。',
       composerPopoutTitle: '悬浮输入框',
       composerPopoutDesc: '允许将输入框拖出底部停靠区。关闭时，输入框停靠在底部。',
       fileBrowserTitle: '文件浏览器',
@@ -930,8 +932,8 @@ export const zh = defineLocale({
       pet: {
         title: '宠物',
         intro:
-          '领养一只悬浮在应用上的 petdex 动画宠物，它会根据 Hermes 的状态做出反应——工具执行时奔跑、成功时欢呼、出错时沮丧。',
-        restartHint: '宠物功能需要重启——当前运行的应用在此功能加入前启动。请退出并重新打开 Hermes，然后回到此处。',
+          '领养一只悬浮在应用上的 petdex 动画宠物，它会根据 DechnicAuditor 的状态做出反应——工具执行时奔跑、成功时欢呼、出错时沮丧。',
+        restartHint: '宠物功能需要重启——当前运行的应用在此功能加入前启动。请退出并重新打开 DechnicAuditor，然后回到此处。',
         scaleTitle: '大小',
         scaleDesc: '调整悬浮宠物的大小，所有界面即时生效。',
         roamTitle: '漫游',
@@ -1156,10 +1158,10 @@ export const zh = defineLocale({
         repoScanRoots: '要扫描的文件夹。留空时扫描主目录。',
         repoScanExcludePaths: '发现代码仓库时跳过这些文件夹及其子目录。'
       },
-      timezone: '当 Hermes 需要本地时间上下文时使用。留空则使用系统时区。',
+      timezone: '当 DechnicAuditor 需要本地时间上下文时使用。留空则使用系统时区。',
       agent: {
         imageInputMode: '控制图片附件如何发送给模型。',
-        maxTurns: 'Hermes 停止一次运行前工具调用轮次的上限。'
+        maxTurns: 'DechnicAuditor 停止一次运行前工具调用轮次的上限。'
       },
       terminal: {
         cwd: '工具与终端操作的默认项目目录。',
@@ -1173,9 +1175,9 @@ export const zh = defineLocale({
       codeExecution: {
         mode: '代码执行被限定到当前项目的严格程度。'
       },
-      fileReadMaxChars: 'Hermes 单次文件读取可读取的最大字符数。',
+      fileReadMaxChars: 'DechnicAuditor 单次文件读取可读取的最大字符数。',
       approvals: {
-        mode: 'Hermes 如何处理需要显式审批的命令。',
+        mode: 'DechnicAuditor 如何处理需要显式审批的命令。',
         timeout: '审批提示在超时前等待的时长。'
       },
       security: {
@@ -1236,13 +1238,13 @@ export const zh = defineLocale({
       },
       updates: {
         nonInteractiveLocalChanges:
-          'Hermes 从应用内更新时（无终端提示），保留本地源码修改（暂存）或丢弃（放弃）。通过终端更新时始终会询问。'
+          'DechnicAuditor 从应用内更新时（无终端提示），保留本地源码修改（暂存）或丢弃（放弃）。通过终端更新时始终会询问。'
       }
     }),
     uninstallSection: {
       dangerZone: '危险操作',
       checkingInstalled: '正在检查已安装内容…',
-      uninstallHermes: '卸载 Hermes',
+      uninstallHermes: '卸载智能审',
       chooseHowMuch: '选择要删除的内容。应用会关闭以完成卸载；随时重新打开安装程序即可恢复。',
       confirmUninstall: '确认卸载',
       confirmBody: what => `这将删除${what}。此操作无法撤销。`,
@@ -1253,18 +1255,18 @@ export const zh = defineLocale({
       options: {
         gui: {
           title: '仅卸载聊天图形界面',
-          description: '仅移除此桌面应用。Hermes 智能体、你的配置和聊天记录都会保留。',
+          description: '仅移除此桌面应用。智能审的智能体、你的配置和聊天记录都会保留。',
           consequence: '桌面聊天图形界面（此应用及其数据）'
         },
         lite: {
           title: '卸载图形界面和智能体，保留数据',
-          description: '移除应用和 Hermes 智能体，但保留配置、聊天记录和密钥，以便将来重新安装。',
-          consequence: '聊天图形界面和 Hermes 智能体（配置、聊天记录和密钥会保留）'
+          description: '移除应用和智能审的智能体，但保留配置、聊天记录和密钥，以便将来重新安装。',
+          consequence: '聊天图形界面和智能审的智能体（配置、聊天记录和密钥会保留）'
         },
         full: {
           title: '全部卸载',
           description: '移除应用、智能体和所有用户数据——配置、聊天记录、定时任务、密钥和日志。',
-          consequence: '全部内容——聊天图形界面、Hermes 智能体以及你的所有配置、聊天记录、密钥和日志'
+          consequence: '全部内容——聊天图形界面、智能审的智能体以及你的所有配置、聊天记录、密钥和日志'
         }
       }
     },
@@ -1336,7 +1338,7 @@ export const zh = defineLocale({
       searchPlaceholder: '搜索…',
       noResults: '未找到结果',
       systemDefault: '系统默认',
-      loading: '正在加载 Hermes 配置...',
+      loading: '正在加载 DechnicAuditor 配置...',
       emptyTitle: '无可配置项',
       emptyDesc: '此分区没有可调整的设置。',
       failedLoad: '设置加载失败',
@@ -1396,7 +1398,7 @@ export const zh = defineLocale({
     },
     quickEntry: {
       enabledTitle: '快速输入',
-      enabledDesc: '用全局快捷键在任何地方唤出一个小输入框，无需打开 Hermes 即可发送提示。',
+      enabledDesc: '用全局快捷键在任何地方唤出一个小输入框，无需打开 DechnicAuditor 即可发送提示。',
       shortcutTitle: '快速输入快捷键',
       shortcutDesc: '至少需要一个修饰键，例如 CommandOrControl+Shift+Space。',
       active: '快捷键已生效。',
@@ -1426,7 +1428,7 @@ export const zh = defineLocale({
     // v2 多连接注册表：设置 → 网关。
     connections: {
       title: '已注册网关',
-      intro: '管理本机以及通过远程、SSH 或 Hermes Cloud 连接可访问的每个 Hermes 网关。',
+      intro: '管理本机以及通过远程、SSH 或 DechnicAuditor Cloud 连接可访问的每个 DechnicAuditor 网关。',
       stagedNote:
         '可在“会话”侧边栏切换网关。配置档案、聊天、消息和定时任务归属于各自网关；其他网关上的工作会继续运行。',
       launchModeTitle: '启动时返回上次使用网关的会话视图',
@@ -1457,9 +1459,9 @@ export const zh = defineLocale({
       kindRemote: '远程网关',
       kindCloud: 'Hermes Cloud',
       kindSsh: 'SSH',
-      kindLocalDesc: '由本应用管理的 Hermes 运行时。',
+      kindLocalDesc: '由本应用管理的 DechnicAuditor 运行时。',
       kindRemoteDesc: '可通过 HTTP(S) 访问的 Hermes 网关——局域网、Tailscale 或互联网。',
-      kindCloudDesc: '通过你的 Hermes Cloud 账户发现的托管实例。',
+      kindCloudDesc: '通过你的 DechnicAuditor Cloud 账户发现的托管实例。',
       kindSshDesc: '通过 SSH 访问的 Hermes 安装。',
       labelTitle: '名称',
       labelDesc: '必填。此实例出现的所有位置都会显示该名称；必须唯一（例如“家庭服务器”、“工作笔记本”）。',
@@ -1478,7 +1480,7 @@ export const zh = defineLocale({
       duplicateSsh: (label: string) => `已存在指向此 SSH 主机的连接（“${label}”）。`,
       sameBackendHint: (label: string) => `与“${label}”是同一后端`,
       localAddHint: '“本地”不可用：应用管理的本地连接已存在（永远只有一个）。',
-      cloudAddHint: '提示：在上方登录 Hermes Cloud 可自动发现你的智能体——此表单仅用于手动注册已知的实例 URL。',
+      cloudAddHint: '提示：在上方登录 DechnicAuditor Cloud 可自动发现你的智能体——此表单仅用于手动注册已知的实例 URL。',
       save: '保存连接',
       saving: '保存中…',
       cancel: '取消',
@@ -1509,7 +1511,7 @@ export const zh = defineLocale({
       title: '网关连接',
       envOverride: '环境变量覆盖',
       intro:
-        'Hermes Desktop 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 Hermes 后端时，可以使用远程网关。网关连接属于本机级设置；profile 是从所连接的网关中发现的。',
+        'DechnicAuditor Desktop 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 DechnicAuditor 后端时，可以使用远程网关。网关连接属于本机级设置；profile 是从所连接的网关中发现的。',
       appliesTo: '应用于',
       allProfiles: '所有 profile',
       defaultConnection: '默认连接会用于所有没有自定义覆盖的 profile。',
@@ -1519,18 +1521,18 @@ export const zh = defineLocale({
       envOverrideDesc: '取消设置 HERMES_DESKTOP_REMOTE_URL 和 HERMES_DESKTOP_REMOTE_TOKEN 后才会使用下面保存的设置。',
       modeTitle: '连接模式',
       localTitle: '本地网关',
-      localDesc: '在 localhost 启动私有 Hermes 后端。这是默认方式，并且可离线工作。',
+      localDesc: '在 localhost 启动私有 DechnicAuditor 后端。这是默认方式，并且可离线工作。',
       inheritTitle: '使用默认网关',
       inheritDesc: '移除此 profile 的自定义覆盖并使用默认连接。',
       remoteTitle: '远程网关',
-      remoteDesc: '将此桌面外壳连接到远程 Hermes 后端。',
+      remoteDesc: '将此桌面外壳连接到远程 DechnicAuditor 后端。',
       remoteAuthHint: '托管网关使用 OAuth 或用户名密码；自托管网关也可能使用会话 token。',
-      cloudTitle: 'Hermes Cloud',
-      cloudDesc: '只需登录 Hermes Cloud 一次，即可从你账户下的智能体中选择——无需粘贴 URL。',
-      cloudSignInTitle: 'Hermes Cloud',
-      cloudSignIn: '登录 Hermes Cloud',
-      cloudSignedIn: '已登录 Hermes Cloud',
-      cloudNeedsSignIn: '登录 Hermes Cloud 以发现你账户下的智能体。',
+      cloudTitle: 'DechnicAuditor Cloud',
+      cloudDesc: '只需登录 DechnicAuditor Cloud 一次，即可从你账户下的智能体中选择——无需粘贴 URL。',
+      cloudSignInTitle: 'DechnicAuditor Cloud',
+      cloudSignIn: '登录 DechnicAuditor Cloud',
+      cloudSignedIn: '已登录 DechnicAuditor Cloud',
+      cloudNeedsSignIn: '登录 DechnicAuditor Cloud 以发现你账户下的智能体。',
       cloudSignedInDesc: '你已登录。在下方选择一个智能体；会话会自动刷新。',
       cloudAgentsTitle: '你的智能体',
       cloudOrgPickerTitle: '选择一个组织',
@@ -1550,11 +1552,11 @@ export const zh = defineLocale({
       cloudUseSaved: '使用网关',
       cloudActive: '当前窗口正在使用',
       cloudConnecting: '正在连接…',
-      cloudDiscoverFailed: '无法加载你的 Hermes Cloud 智能体',
+      cloudDiscoverFailed: '无法加载你的 DechnicAuditor Cloud 智能体',
       cloudConnectFailed: '无法连接到该智能体',
-      cloudSignInFailed: 'Hermes Cloud 登录失败',
-      cloudSignedOutTitle: '已退出 Hermes Cloud',
-      cloudSignedOutMessage: '已清除 Hermes Cloud 会话。',
+      cloudSignInFailed: 'DechnicAuditor Cloud 登录失败',
+      cloudSignedOutTitle: '已退出 DechnicAuditor Cloud',
+      cloudSignedOutMessage: '已清除 DechnicAuditor Cloud 会话。',
       cloudConnectedTitle: '已连接',
       cloudConnectedPill: '已连接',
       cloudConnectedTo: name => `已连接到 ${name}。`,
@@ -1603,9 +1605,9 @@ export const zh = defineLocale({
       enterUrlFirst: '请先输入远程 URL。',
       restartingTitle: '网关连接正在重启',
       savedTitle: '网关设置已保存',
-      restartingMessage: 'Hermes Desktop 将使用已保存设置重新连接（界面保持打开）。',
+      restartingMessage: 'DechnicAuditor Desktop 将使用已保存设置重新连接（界面保持打开）。',
       savedMessage: '已保存，下一次重启生效。',
-      connectedTo: (baseUrl, version) => `已连接到 ${baseUrl}${version ? ` · Hermes ${version}` : ''}`,
+      connectedTo: (baseUrl, version) => `已连接到 ${baseUrl}${version ? ` · DechnicAuditor ${version}` : ''}`,
       reachableTitle: '远程网关可访问',
       signedOutTitle: '已退出登录',
       signedOutMessage: '已清除远程网关会话。',
@@ -1617,7 +1619,7 @@ export const zh = defineLocale({
       saveFailed: '无法保存网关设置',
       sshTitle: '通过 SSH 连接',
       sshDesc:
-        'Hermes 会通过 SSH 在远程启动并以隧道连接到本应用——无需自行启动或暴露任何服务。前提：已具备到该主机的密钥 SSH 访问。',
+        'DechnicAuditor 会通过 SSH 在远程启动并以隧道连接到本应用——无需自行启动或暴露任何服务。前提：已具备到该主机的密钥 SSH 访问。',
       sshTrustHint: '首次提供的主机密钥会被信任并固定；后续变更将被拒绝。',
       sshHostTitle: '主机',
       sshHostDesc: 'user@host，或 ~/.ssh/config 中的 Host 别名。',
@@ -1632,7 +1634,7 @@ export const zh = defineLocale({
       sshPortDesc: '留空 = 22 或 ~/.ssh/config 中的端口。',
       sshKeyTitle: '密钥文件',
       sshKeyDesc: '私钥路径。留空 = ssh-agent 或 ~/.ssh/config。',
-      sshHermesPathTitle: 'Hermes 路径（可选）',
+      sshHermesPathTitle: 'DechnicAuditor 路径（可选）',
       sshHermesPathDesc: '远程 hermes 可执行文件的完整路径。留空 = 自动检测。',
       sshHermesPathPlaceholder: '自动检测',
       sshRemoteProfileTitle: '远程配置文件（可选）',
@@ -1640,17 +1642,17 @@ export const zh = defineLocale({
       sshTestConnection: '测试 SSH',
       sshConnect: '连接',
       sshButtonsHint: '“保存”将在下次启动时生效，“连接”则立即重新连接。',
-      sshReachable: (host, platform) => `可连接：${host}（${platform}）——已找到 Hermes`,
+      sshReachable: (host, platform) => `可连接：${host}（${platform}）——已找到 DechnicAuditor`,
       sshIncompleteHost: '连接前请输入 SSH 主机。',
       sshErrUnreachable: '无法通过 SSH 连接到该主机。请检查主机、端口和网络。',
       sshErrAuth:
-        'SSH 认证失败。请将密钥加载到 ssh-agent（ssh-add），或在 ~/.ssh/config 中设置 IdentityFile——Hermes 以非交互方式运行 ssh。',
+        'SSH 认证失败。请将密钥加载到 ssh-agent（ssh-add），或在 ~/.ssh/config 中设置 IdentityFile——DechnicAuditor 以非交互方式运行 ssh。',
       sshErrHostKey: '自上次连接以来主机密钥已更改。请确认这是预期的，然后运行 ssh-keygen -R <host> 并重新连接。',
       sshErrNotInstalled:
-        '远程主机上未安装 Hermes。请在远程安装（curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh）或设置 Hermes 路径。',
-      sshErrPlatform: '不支持的远程平台。Hermes Desktop 的 SSH 模式支持 Linux、macOS 和 Windows 远程主机。',
+        '远程主机上未安装 DechnicAuditor。请在远程安装（curl -fsSL https://hermes-agent.nousresearch.com/install.sh | sh）或设置 DechnicAuditor 路径。',
+      sshErrPlatform: '不支持的远程平台。DechnicAuditor Desktop 的 SSH 模式支持 Linux、macOS 和 Windows 远程主机。',
       sshErrTimeout: 'SSH 连接超时。主机可能无法访问或处于休眠状态。',
-      sshErrUpdateRequired: '使用 Desktop SSH 连接前，请更新远程主机上的 Hermes。',
+      sshErrUpdateRequired: '使用 Desktop SSH 连接前，请更新远程主机上的 DechnicAuditor。',
       sshErrUnknown: 'SSH 连接失败。'
     },
     onlyoffice: {
@@ -2155,7 +2157,7 @@ export const zh = defineLocale({
     providers: {
       connectAccount: '连接账号',
       haveApiKey: '改用 API 密钥？',
-      intro: '使用订阅登录，无需复制 API 密钥。Hermes 会在应用中为你完成浏览器登录。',
+      intro: '使用订阅登录，无需复制 API 密钥。DechnicAuditor 会在应用中为你完成浏览器登录。',
       connected: '已连接',
       collapse: '收起',
       connectAnother: '连接其他提供方',
@@ -2175,7 +2177,7 @@ export const zh = defineLocale({
       noKeysMatch: '没有匹配的提供方。',
       localEndpoint: {
         title: '本地 / 自定义端点',
-        description: '将 Hermes 指向任意 OpenAI 兼容端点（Zyphra、vLLM、llama.cpp、Ollama 等）。'
+        description: '将 DechnicAuditor 指向任意 OpenAI 兼容端点（Zyphra、vLLM、llama.cpp、Ollama 等）。'
       },
       loading: '正在加载提供方...'
     },
@@ -2497,7 +2499,7 @@ export const zh = defineLocale({
     loadFailed: '无法加载记忆图谱',
     loading: '加载中…',
     emptyTitle: '尚无学习内容',
-    emptyDesc: '当 Hermes 为你的工作构建技能和记忆时，会显示在这里。',
+    emptyDesc: '当 DechnicAuditor 为你的工作构建技能和记忆时，会显示在这里。',
     share: '分享图谱',
     shareHint: '复制代码以分享此图谱，或粘贴代码以载入。仅包含布局，不含你的记忆或技能内容。',
     shareTitle: '导入 / 导出图谱',
@@ -2578,7 +2580,7 @@ export const zh = defineLocale({
       placeholder: '搜索宠物…',
       loading: '正在加载 petdex 画廊…',
       error: '无法连接到 petdex 画廊。',
-      staleBackend: '请重启 Hermes 以使用宠物功能——当前后端版本过旧。',
+      staleBackend: '请重启 DechnicAuditor 以使用宠物功能——当前后端版本过旧。',
       empty: '没有匹配的宠物。',
       turnOff: '关闭',
       turnOn: '开启',
@@ -2605,8 +2607,8 @@ export const zh = defineLocale({
       hatchComposing: '正在拼合……',
       hatchSaving: '马上就好……',
       namePlaceholder: '给宠物起个名字',
-      staleBackend: '请更新 Hermes 以生成宠物。',
-      backgroundHint: '你可以关闭此窗口——完成后 Hermes 会通知你。',
+      staleBackend: '请更新 DechnicAuditor 以生成宠物。',
+      backgroundHint: '你可以关闭此窗口——完成后 DechnicAuditor 会通知你。',
       slowProviderHint: '这可能需要几分钟',
       remix: '混合生成',
       remixConfirmTitle: '以此造型混合生成？',
@@ -2665,7 +2667,7 @@ export const zh = defineLocale({
     noSessions: '暂无会话。',
     gatewayRunning: '消息网关运行中',
     gatewayStopped: '消息网关已停止',
-    hermesActiveSessions: (version, count) => `Hermes ${version} · 活跃会话 ${count}`,
+    hermesActiveSessions: (version, count) => `DechnicAuditor ${version} · 活跃会话 ${count}`,
     restartGateway: '重启网关',
     openBrowser: '打开浏览器',
     gatewayRestartFailed: '网关重启失败。',
@@ -2673,7 +2675,7 @@ export const zh = defineLocale({
     sharedGatewayRestartDescription: bots => `此设备上的所有机器人都会重新连接：${bots}`,
     sharedGatewayRestartConfirm: '全部重启',
     sharedGatewayRestarted: count => `共享网关已重启（${count} 个机器人）`,
-    updateHermes: '更新 Hermes',
+    updateHermes: '更新 DechnicAuditor',
     reloadWindow: '重新载入窗口',
     actionRunning: '运行中',
     actionDone: '完成',
@@ -2912,10 +2914,10 @@ export const zh = defineLocale({
       slack: '创建 Slack 应用，启用 Socket Mode，安装到你的工作区，然后复制 bot 令牌和 app 级令牌。',
       mattermost: '在你的 Mattermost 服务器上，创建机器人账户或个人访问令牌，然后在此粘贴服务器 URL 和令牌。',
       matrix: '用机器人账户登录你的 homeserver，然后复制访问令牌、用户 ID 和 homeserver URL。',
-      signal: '在可访问的位置运行 signal-cli REST 桥接，然后把 Hermes 指向该 URL 和已注册的电话号码。',
-      whatsapp: '启动 Hermes 自带的 WhatsApp 桥接，首次运行时扫描二维码，然后启用该平台。',
+      signal: '在可访问的位置运行 signal-cli REST 桥接，然后把 DechnicAuditor 指向该 URL 和已注册的电话号码。',
+      whatsapp: '启动 DechnicAuditor 自带的 WhatsApp 桥接，首次运行时扫描二维码，然后启用该平台。',
       bluebubbles:
-        '在装有 iMessage 的 Mac 上运行 BlueBubbles Server，暴露其 API，然后用服务器密码把 Hermes 指向该 URL。',
+        '在装有 iMessage 的 Mac 上运行 BlueBubbles Server，暴露其 API，然后用服务器密码把 DechnicAuditor 指向该 URL。',
       homeassistant: '在 Home Assistant 中打开你的个人资料并创建长期访问令牌。把它连同你的 HA URL 一起粘贴到这里。',
       email: '使用专用邮箱。对于 Gmail/Workspace,创建应用专用密码并使用 imap.gmail.com / smtp.gmail.com。',
       sms: '从 Twilio 控制台获取你的 Account SID 和 Auth Token，以及一个可发送短信的电话号码。',
@@ -2924,10 +2926,10 @@ export const zh = defineLocale({
       wecom: '在企业微信中添加群机器人，复制其 webhook key 作为 WECOM_BOT_ID。仅可发送——双向请用企业微信 (应用) 选项。',
       wecom_callback: '设置一个企业微信自建应用，暴露其回调 URL，并提供 corp ID、secret、agent ID 和 AES key。',
       weixin:
-        '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。Hermes 会通过腾讯 iLink Bot API 连接并保存凭据。',
+        '运行 `hermes gateway setup`，选择 Weixin，然后使用个人微信账号扫描并确认二维码。DechnicAuditor 会通过腾讯 iLink Bot API 连接并保存凭据。',
       qqbot: '在 QQ 开放平台 (q.qq.com) 注册一个应用，复制 App ID 和 Client Secret。',
       api_server:
-        '把 Hermes 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
+        '把 DechnicAuditor 暴露为兼容 OpenAI 的 API。设置一个鉴权密钥，然后把 Open WebUI / LobeChat 等指向 host:port。',
       webhook: '运行一个 HTTP 服务器，供其他工具 (GitHub、GitLab、自定义应用)POST。用 secret 验证签名。'
     }
   },
@@ -3109,7 +3111,7 @@ export const zh = defineLocale({
     deleteDescMid: ' 并移除其 ',
     deleteDescSuffix: ' 目录。此操作无法撤销。',
     deleting: '删除中…',
-    createDesc: '配置档案是相互独立的 Hermes 环境：各自拥有独立的配置、技能和 SOUL.md。',
+    createDesc: '配置档案是相互独立的 DechnicAuditor 环境：各自拥有独立的配置、技能和 SOUL.md。',
     nameLabel: '名称',
     cloneFrom: '克隆来源',
     cloneFromNone: '无（空白）',
@@ -3208,7 +3210,7 @@ export const zh = defineLocale({
     topOfHour: '每个整点',
     everyHourAt: minute => `每小时的 :${minute}`,
     newCron: '新建定时任务',
-    emptyDescNew: '按 cron 表达式排程一个提示词。Hermes 会运行它，并把结果发送到你选择的目的地。',
+    emptyDescNew: '按 cron 表达式排程一个提示词。DechnicAuditor 会运行它，并把结果发送到你选择的目的地。',
     emptyDescSearch: '尝试更宽泛的搜索词。',
     emptyTitleNew: '暂无排程任务',
     emptyTitleSearch: '无匹配项',
@@ -3651,9 +3653,11 @@ export const zh = defineLocale({
     nav: {
       'new-session': '新建会话',
       capabilities: '技能与工具',
+      knowledge: '知识库',
       messaging: '消息平台',
       artifacts: '产物',
-      cron: '定时任务'
+      cron: '定时任务',
+      office: '办公室'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',
@@ -3718,8 +3722,8 @@ export const zh = defineLocale({
       copyPath: '复制路径',
       removeFromSidebar: '从侧边栏移除',
       createFailed: '无法创建项目',
-      staleBackend: '请更新 Hermes 后端以创建项目——当前后端比桌面应用旧（设置 → 更新 → 后端）。',
-      deleteConfirm: '这会从 Hermes 中移除已保存的项目。文件、git 仓库和工作树保持不变。',
+      staleBackend: '请更新 DechnicAuditor 后端以创建项目——当前后端比桌面应用旧（设置 → 更新 → 后端）。',
+      deleteConfirm: '这会从 DechnicAuditor 中移除已保存的项目。文件、git 仓库和工作树保持不变。',
       startWork: '新建工作树',
       newWorktreeTitle: '新建工作树',
       newWorktreeDesc: '为这个工作树命名分支。',
@@ -3825,12 +3829,12 @@ export const zh = defineLocale({
   composer: {
     message: '消息',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
-    placeholderStarting: '正在启动 Hermes…',
-    placeholderReconnecting: '正在重新连接 Hermes…',
+    placeholderStarting: '正在启动 DechnicAuditor…',
+    placeholderReconnecting: '正在重新连接 DechnicAuditor…',
     placeholderFollowUp: '发送后续消息',
     newSessionPlaceholders: [
       '我们要构建什么？',
-      '给 Hermes 一个任务',
+      '给 DechnicAuditor 一个任务',
       '你在想什么？',
       '描述你需要什么',
       '我们该处理什么？',
@@ -3971,7 +3975,7 @@ export const zh = defineLocale({
       'composer.history': '循环弹窗 / 历史'
     },
     attachUrlTitle: '附加 URL',
-    attachUrlDesc: 'Hermes 将抓取该页面并作为本回合的上下文。',
+    attachUrlDesc: 'DechnicAuditor 将抓取该页面并作为本回合的上下文。',
     urlPlaceholder: 'https://example.com/post',
     urlHintPre: '请包含完整 URL，例如 ',
     attach: '附加',
@@ -4246,7 +4250,7 @@ export const zh = defineLocale({
       createPr: '创建 PR',
       openPr: '打开 PR',
       ghMissing: '安装 GitHub CLI (gh) 并登录后可打开 PR',
-      agentShip: '让 Hermes 提交并开 PR',
+      agentShip: '让 DechnicAuditor 提交并开 PR',
       agentShipUnavailable: '拥有这些更改的会话当前不在屏幕上。',
       agentShipPrompt: '检查当前更改，使用清晰的约定式提交信息提交，推送分支，并开启一个拉取请求。',
       newBranch: '新建分支',
@@ -4270,9 +4274,9 @@ export const zh = defineLocale({
       fetch: '下载中…',
       pull: '马上完成…',
       pydeps: '收尾中…',
-      update: '正在更新 Hermes…',
+      update: '正在更新 DechnicAuditor…',
       rebuild: '正在重新构建桌面应用…',
-      restart: '正在重启 Hermes…',
+      restart: '正在重启 DechnicAuditor…',
       done: '更新完成',
       manual: '从终端更新',
       guiSkew: '请更新桌面应用',
@@ -4282,16 +4286,16 @@ export const zh = defineLocale({
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',
     notAvailableTitle: '更新不可用',
-    unsupportedMessage: '此版本的 Hermes 无法在应用内自行更新。',
+    unsupportedMessage: '此版本的 DechnicAuditor 无法在应用内自行更新。',
     connectionRetry: '请检查网络连接后重试。',
     gitUnusable: 'Hermes 无法在这台电脑上运行 Git，因此无法检查更新。',
     latestBody: '你正在运行最新版本。',
     latestBodyBackend: '后端正在运行最新版本。',
     allSetTitle: '已是最新',
     availableTitle: '有可用更新',
-    availableBody: '新版 Hermes 已可安装。',
+    availableBody: '新版 DechnicAuditor 已可安装。',
     availableTitleBackend: '后端有可用更新',
-    availableBodyBackend: '已连接的 Hermes 后端有新版本可安装。',
+    availableBodyBackend: '已连接的 DechnicAuditor 后端有新版本可安装。',
     availableBodyNoChangelog: '已有新版本可用。此安装方式无法显示更新日志。',
     availableBodyAppInstaller: 'Hermes 新版本已就绪。Hermes 会关闭，Windows 完成更新后自动重新打开。',
     updateNow: '立即更新',
@@ -4299,20 +4303,20 @@ export const zh = defineLocale({
     moreChanges: count => `另有 ${count} 项更改。`,
     manualTitle: '从终端更新',
     manualUnavailableTitle: '无法从这里更新',
-    manualBody: '你是从命令行安装的 Hermes，因此更新也需要在那里运行。请将此命令粘贴到终端：',
+    manualBody: '你是从命令行安装的 DechnicAuditor，因此更新也需要在那里运行。请将此命令粘贴到终端：',
     manualBodyBackend: 'Hermes 后端由本应用之外管理。请在托管它的服务器上运行此命令：',
-    manualPickedUp: '下次启动 Hermes 时会使用新版本。',
+    manualPickedUp: '下次启动 DechnicAuditor 时会使用新版本。',
     manualPickedUpBackend: '后端将在更新完成后加载新版本。',
     guiSkewTitle: '请更新桌面应用',
     guiSkewBody:
-      '后端已更新，但此桌面应用包未更改。请更新或重新安装 Hermes 桌面应用（你的 AppImage / .deb / .rpm）以保持一致。',
+      '后端已更新，但此桌面应用包未更改。请更新或重新安装 DechnicAuditor 桌面应用（你的 AppImage / .deb / .rpm）以保持一致。',
     copy: '复制',
     copied: '已复制',
     done: '完成',
     applyingBody:
-      'Hermes 更新器会在自己的窗口中接管，并在完成后自动重新打开 Hermes。更新期间请不要自行重新打开 Hermes。',
-    applyingBodyBackend: '远程后端正在应用更新并将重启。恢复后 Hermes 会自动重新连接。',
-    applyingClose: '此窗口会在更新期间关闭，随后 Hermes 会自动重新打开。',
+      'DechnicAuditor 更新器会在自己的窗口中接管，并在完成后自动重新打开 DechnicAuditor。更新期间请不要自行重新打开 DechnicAuditor。',
+    applyingBodyBackend: '远程后端正在应用更新并将重启。恢复后 DechnicAuditor 会自动重新连接。',
+    applyingClose: '此窗口会在更新期间关闭，随后 DechnicAuditor 会自动重新打开。',
     applyingBodyAppInstaller: 'Hermes 会关闭，Windows 会完成更新，然后 Hermes 自动重新打开——无需任何操作。',
     applyingCloseAppInstaller: '此窗口会关闭，Windows 完成更新后 Hermes 自动重新打开。',
     checkUnknownTitleAppInstaller: '无法检查更新',
@@ -4354,7 +4358,7 @@ export const zh = defineLocale({
       noReturn: '后端未恢复在线。更新可能未完成——请检查后端主机。'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
-    appName: 'Hermes',
+    appName: '智能审',
     version: value => `版本 ${value}`,
     versionUnavailable: '版本不可用',
     checkNow: '立即检查',
@@ -4375,7 +4379,7 @@ export const zh = defineLocale({
     daysAgo: count => `${count} 天前`,
     justNowSuffix: ' · 刚刚',
     bundleOutOfSync: '应用版本过旧',
-    bundleOutOfSyncDesc: 'Hermes 运行时已更新，但桌面应用仍是较旧的构建。请更新以获取最新修复。',
+    bundleOutOfSyncDesc: 'DechnicAuditor 运行时已更新，但桌面应用仍是较旧的构建。请更新以获取最新修复。',
     bundleOutOfSyncAction: '获取安装程序',
     checkingShort: '检查中…',
     releaseAvailable: tag => `版本 ${tag} 可用。`,
@@ -4412,7 +4416,7 @@ export const zh = defineLocale({
       skipped: '已跳过',
       failed: '失败'
     },
-    oneTimeTitle: 'Hermes 需要一次性安装',
+    oneTimeTitle: '智能审需要一次性安装',
     unsupportedDesc: platform =>
       `${platform} 暂不支持自动首次启动安装。请打开终端并运行下面的命令，然后重新启动此应用。之后启动会跳过此步骤。`,
     installCommand: '安装命令',
@@ -4420,26 +4424,26 @@ export const zh = defineLocale({
     viewDocs: '查看安装文档',
     installTo: '将安装到',
     retryAfterRun: '我已运行 -- 重试',
-    setupChoiceTitle: '设置 Hermes Desktop',
-    setupChoiceDesc: '将此应用连接到你已运行的 Hermes 网关，或在这台电脑上本地安装 Hermes。',
-    connectExistingTitle: '连接到现有 Hermes',
+    setupChoiceTitle: '设置 智能审 Desktop',
+    setupChoiceDesc: '将此应用连接到你已运行的智能审网关，或在这台电脑上本地安装智能审。',
+    connectExistingTitle: '连接到现有智能审',
     connectExistingShort: '连接现有环境',
     connectExistingDesc: '使用会话令牌或浏览器登录连接远程后端。不会启动本地安装。',
     setupChoiceDescLocal: '在这台电脑上安装 Hermes，或连接到已在运行的 Hermes 网关。',
 
-    installLocalTitle: '本地安装 Hermes',
-    installLocalDesc: '下载 Hermes，创建 Python 环境，并在这台电脑上运行后端。',
+    installLocalTitle: '本地安装智能审',
+    installLocalDesc: '下载智能审，创建 Python 环境，并在这台电脑上运行后端。',
     useLocalTitle: '使用这台电脑上的 Hermes',
     useLocalDesc: '此电脑已安装 Hermes 运行时——一键启动，无需下载。',
     bundledLocalDesc: '此应用自带 Hermes 运行时——捆绑后端即本地安装。',
-    localStartUnavailable: '无法启动本地安装。请重启 Hermes Desktop 后重试。',
-    remoteSetupTitle: '连接到现有 Hermes',
-    remoteSetupDesc: '输入网关 URL。Hermes Desktop 会检测需要令牌还是浏览器登录。',
+    localStartUnavailable: '无法启动本地安装。请重启 智能审 Desktop 后重试。',
+    remoteSetupTitle: '连接到现有智能审',
+    remoteSetupDesc: '输入网关 URL。智能审 Desktop 会检测需要令牌还是浏览器登录。',
     remoteUrlTitle: '网关 URL',
-    remoteUrlDesc: '使用 Hermes 网关的基础 URL；远程地址请包含 https://。',
+    remoteUrlDesc: '使用智能审网关的基础 URL；远程地址请包含 https://。',
     remoteUrlPlaceholder: 'https://gateway.example.com/hermes',
     probing: '正在检测网关认证方式...',
-    probeError: '无法连接到该 Hermes 网关。',
+    probeError: '无法连接到该智能审网关。',
     identityProvider: '你的身份提供方',
     authTitle: '认证',
     authNeedsOauth: provider => `测试此网关前请先使用 ${provider} 登录。`,
@@ -4459,11 +4463,11 @@ export const zh = defineLocale({
     applyRemote: '应用并重新连接',
     backToSetup: '返回',
     failedTitle: '安装失败',
-    settingUpTitle: '正在设置 Hermes Agent',
+    settingUpTitle: '正在设置智能审 Agent',
     finishingTitle: '正在收尾',
     failedDesc:
-      '某个安装步骤失败。在 Windows 上，如果另一个 Hermes CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 Hermes 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
-    activeDesc: '这是一次性设置。Hermes 安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
+      '某个安装步骤失败。在 Windows 上，如果另一个智能审 CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的智能审实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
+    activeDesc: '这是一次性设置。智能审安装器正在下载依赖并配置你的机器。之后启动会跳过此步骤。',
     progress: (completed, total) => `${completed}/${total} 个步骤已完成`,
     currentStage: stage => ` -- 当前：${stage}`,
     fetchingManifest: '正在获取安装器 manifest...',
@@ -4481,10 +4485,10 @@ export const zh = defineLocale({
   },
 
   onboarding: {
-    headerTitle: '开始设置 Hermes Agent',
+    headerTitle: '开始设置智能审 Agent',
     headerDesc: '连接模型提供方即可开始对话。大多数选项只需一次点击。',
-    preparingInstall: 'Hermes 正在完成安装。首次运行通常不到一分钟。',
-    starting: '正在启动 Hermes…',
+    preparingInstall: '智能审正在完成安装。首次运行通常不到一分钟。',
+    starting: '正在启动智能审…',
     lookingUpProviders: '正在查找提供方...',
     collapse: '收起',
     otherProviders: '其他提供方',
@@ -4492,7 +4496,7 @@ export const zh = defineLocale({
     chooseLater: '稍后再选择提供方',
     recommended: '推荐',
     connected: '已连接',
-    featuredPitch: '一个订阅，300+ 前沿模型 — 运行 Hermes 的推荐方式',
+    featuredPitch: '一个订阅，300+ 前沿模型 — 运行智能审的推荐方式',
     fireworksPitch: '直接模型 API — Fireworks 托管的前沿模型',
     localModelsTitle: '本地运行模型',
     localModelsPitch: '无需账号——下载模型，在本机运行',
@@ -4505,7 +4509,7 @@ export const zh = defineLocale({
       xai: { short: 'Grok 模型', description: '直接访问 xAI Grok 模型。' },
       local: {
         short: '自托管',
-        description: '将 Hermes 指向本地或自托管的 OpenAI 兼容端点 (vLLM、llama.cpp、Ollama 等)。'
+        description: '将 DechnicAuditor 指向本地或自托管的 OpenAI 兼容端点 (vLLM、llama.cpp、Ollama 等)。'
       }
     },
     backToSignIn: '返回登录',
@@ -4519,7 +4523,7 @@ export const zh = defineLocale({
     update: '更新',
     flowSubtitles: {
       pkce: '打开浏览器登录，然后回到这里继续',
-      device_code: '在浏览器中打开验证页面 — Hermes 会自动连接',
+      device_code: '在浏览器中打开验证页面 — DechnicAuditor 会自动连接',
       external: '先在终端登录一次，然后回来继续对话'
     },
     startingSignIn: provider => `正在为 ${provider} 启动登录...`,
@@ -4532,11 +4536,11 @@ export const zh = defineLocale({
     pickDifferentProvider: '选择其他提供方',
     signInWith: provider => `使用 ${provider} 登录`,
     openedBrowser: provider => `已在浏览器中打开 ${provider}。`,
-    authorizeThere: '请在那里授权 Hermes。',
+    authorizeThere: '请在那里授权 DechnicAuditor。',
     copyAuthCode: '复制授权码并粘贴到下面。',
     pasteAuthCode: '粘贴授权码',
     reopenAuthPage: '重新打开授权页面',
-    autoBrowser: provider => `已在浏览器中打开 ${provider}。请在那里授权 Hermes，连接会自动完成，无需复制或粘贴。`,
+    autoBrowser: provider => `已在浏览器中打开 ${provider}。请在那里授权 DechnicAuditor，连接会自动完成，无需复制或粘贴。`,
     reopenSignInPage: '重新打开登录页面',
     waitingAuthorize: '等待你授权...',
     externalPending: provider => `${provider} 通过自己的 CLI 登录。请在终端运行此命令，然后回来选择“我已登录”：`,
@@ -4692,14 +4696,14 @@ export const zh = defineLocale({
       update: '更新',
       updateInProgress: '正在更新',
       commitsBehind: (count, branch) => `落后 ${branch} ${count} 个提交`,
-      desktopVersion: version => `Hermes Desktop v${version}`,
+      desktopVersion: version => `DechnicAuditor Desktop v${version}`,
       releaseAvailable: tag => `版本 ${tag} 可用。`,
       backendVersion: version => `后端 v${version}`,
       clientLabel: version => `客户端 v${version}`,
       connectionSsh: host => `SSH: ${host}`,
       connectionRemote: host => `远程: ${host}`,
       connectionCloud: host => `云端: ${host}`,
-      connectionCloudTooltip: host => `Hermes Cloud · ${host}`,
+      connectionCloudTooltip: host => `DechnicAuditor Cloud · ${host}`,
       connectionSshTooltip: host => `SSH · ${host}`,
       connectionRemoteTooltip: host => `Remote · ${host}`,
       backendLabel: version => `后端 v${version}`,
@@ -4854,7 +4858,7 @@ export const zh = defineLocale({
     binaryTitle: '这看起来像二进制文件',
     binaryBody: label => `预览 ${label} 可能会显示不可读文本。`,
     largeTitle: '此文件较大',
-    largeBody: (label, size) => `${label} 大小为 ${size}。Hermes 只会显示前 512 KB。`,
+    largeBody: (label, size) => `${label} 大小为 ${size}。DechnicAuditor 只会显示前 512 KB。`,
     previewAnyway: '仍然预览',
     truncated: '显示前 512 KB。',
     noInlineTitle: '没有内联预览',
@@ -4916,11 +4920,11 @@ export const zh = defineLocale({
         '该地址指向运行代理的那台机器，而不是本机。浏览器面板在本地加载页面，因此远程开发服务器需要端口转发或可访问的主机名。',
       failedToLoad: '预览加载失败',
       tryAgain: '重试',
-      restarting: 'Hermes 正在重启...',
-      askRestart: '让 Hermes 重启服务器',
-      lookingRestart: taskId => `Hermes 正在查找要重启的预览服务器 (${taskId})`,
+      restarting: 'DechnicAuditor 正在重启...',
+      askRestart: '让 DechnicAuditor 重启服务器',
+      lookingRestart: taskId => `DechnicAuditor 正在查找要重启的预览服务器 (${taskId})`,
       restartingTitle: '正在重启预览服务器',
-      restartingMessage: 'Hermes 正在后台工作。可在预览控制台查看进度。',
+      restartingMessage: 'DechnicAuditor 正在后台工作。可在预览控制台查看进度。',
       startRestartFailed: message => `无法启动服务器重启：${message}`,
       restartFailed: '服务器重启失败',
       hideConsole: '隐藏预览控制台',
@@ -4933,14 +4937,14 @@ export const zh = defineLocale({
       address: '地址',
       addressPlaceholder: '输入地址',
       blankPageBody: '在上方输入地址开始浏览，或让 Hermes 打开一个页面。',
-      finishedRestarting: message => `Hermes 已完成预览服务器重启${message ? `: ${message}` : ''}`,
+      finishedRestarting: message => `DechnicAuditor 已完成预览服务器重启${message ? `: ${message}` : ''}`,
       failedRestarting: message => `服务器重启失败：${message}`,
       unknownError: '未知错误',
       restartedTitle: '预览服务器已重启',
       reloadingNow: '正在重新加载预览。',
       restartFailedTitle: '预览重启失败',
-      restartFailedMessage: 'Hermes 无法重启服务器。',
-      stillWorking: 'Hermes 仍在工作，但还没有收到重启结果。服务器命令可能正在前台运行。',
+      restartFailedMessage: 'DechnicAuditor 无法重启服务器。',
+      stillWorking: 'DechnicAuditor 仍在工作，但还没有收到重启结果。服务器命令可能正在前台运行。',
       workspaceReloading: '工作区已变更，正在重新加载预览',
       fileChanged: url => `文件已变更，正在重新加载预览：${url}`,
       filesChanged: (count, url) => `${count} 个文件变更，正在重新加载预览：${url}`,
@@ -5054,7 +5058,7 @@ export const zh = defineLocale({
     thread: {
       loadingSession: '正在加载会话',
       showEarlier: '显示更早的消息',
-      loadingResponse: 'Hermes 正在加载回复',
+      loadingResponse: 'DechnicAuditor 正在加载回复',
       loadingLocalModel: model => `正在将 ${model} 载入内存`,
       processingPrompt: '正在处理提示词',
       resumeWhenBackgroundDone: count =>
@@ -5178,7 +5182,7 @@ export const zh = defineLocale({
       attachingFile: '正在附加…'
     },
     approval: {
-      gatewayDisconnected: 'Hermes 网关未连接',
+      gatewayDisconnected: 'DechnicAuditor 网关未连接',
       sendFailed: '无法发送审批响应',
       run: '运行',
       command: '命令',
@@ -5189,12 +5193,12 @@ export const zh = defineLocale({
       reject: '拒绝',
       alwaysTitle: '始终允许此命令？',
       alwaysDescription: pattern =>
-        `这会将“${pattern}”模式加入永久允许列表 (~/.hermes/config.yaml)。Hermes 对类似命令将不再询问，包括当前会话和未来会话。`,
+        `这会将“${pattern}”模式加入永久允许列表 (~/.hermes/config.yaml)。DechnicAuditor 对类似命令将不再询问，包括当前会话和未来会话。`,
       alwaysAllow: '始终允许'
     },
     clarify: {
       notReady: '澄清请求尚未就绪',
-      gatewayDisconnected: 'Hermes 网关未连接',
+      gatewayDisconnected: 'DechnicAuditor 网关未连接',
       sendFailed: '无法发送澄清响应',
       loadingQuestion: '正在加载问题…',
       other: '其他 (输入你的答案)',
@@ -5342,7 +5346,7 @@ export const zh = defineLocale({
   },
 
   prompts: {
-    gatewayDisconnected: 'Hermes 网关未连接',
+    gatewayDisconnected: 'DechnicAuditor 网关未连接',
     sudoSendFailed: '无法发送 sudo 密码',
     secretSendFailed: '无法发送密钥',
     sudoTitle: '管理员密码',
@@ -5352,7 +5356,7 @@ export const zh = defineLocale({
       'Hermes 需要你的 sudo 密码，以在网关主机上安装 Bot Screen 软件包（TigerVNC + Xfce）。它只会发送到该主机。',
     sudoPlaceholder: 'sudo 密码',
     secretTitle: '需要密钥',
-    secretDesc: 'Hermes 需要一个凭据才能继续。',
+    secretDesc: 'DechnicAuditor 需要一个凭据才能继续。',
     secretPlaceholder: '密钥值',
     vaultUnlockSendFailed: '无法发送主密码',
     vaultUnlockTitle: name => `解锁 ${name}`,
@@ -5446,8 +5450,8 @@ export const zh = defineLocale({
     sessionExportFailed: '无法导出会话',
     imageSaved: '图片已保存',
     downloadStarted: '下载已开始',
-    restartToUseSaveImage: '重启 Hermes 桌面版后可使用保存图片。',
-    restartToSaveImages: '重启 Hermes 桌面版以保存图片',
+    restartToUseSaveImage: '重启 DechnicAuditor 桌面版后可使用保存图片。',
+    restartToSaveImages: '重启 DechnicAuditor 桌面版以保存图片',
     imageDownloadFailed: '图片下载失败',
     openImage: '打开图片',
     downloadImage: '下载图片',

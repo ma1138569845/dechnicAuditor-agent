@@ -2,6 +2,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { en } from '@/i18n/en'
 
 import { GuideLoading } from './guide-loading'
 
@@ -33,7 +34,7 @@ it.each([false, true])('keeps startup visible without chat controls (reduced mot
 
   const status = screen.getByRole('status')
   expect(status.getAttribute('aria-busy')).toBe('true')
-  expect(status.textContent).toMatch(/Starting Hermes Desktop/)
+  expect(status.textContent).toContain(en.boot.steps.startingHermesDesktop)
   expect(container.querySelector('input, textarea, [contenteditable], button')).toBeNull()
 
   if (reducedMotion) {

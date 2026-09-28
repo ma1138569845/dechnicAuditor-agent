@@ -1,9 +1,31 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
+
+// Recursively copy a directory.
+export function copyDirSync(srcDir, destDir) {
+  mkdirSync(destDir, { recursive: true })
+  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+    const src = join(srcDir, entry.name)
+    const dest = join(destDir, entry.name)
+    if (entry.isDirectory()) {
+      copyDirSync(src, dest)
+    } else {
+      copyFileSync(src, dest)
+    }
+  }
+}
+
+// Copy a single file, preserving its mode bits.
+export function copyFileSync(src, dest) {
+  mkdirSync(dirname(dest), { recursive: true })
+  copyFileSync(src, dest)
+  const st = lstatSync(src)
+  if (st.mode !== undefined) chmodSync(dest, st.mode)
+}
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 // Look only in the prepared workspace, not a parent checkout's dependency tree.
@@ -85,8 +107,33 @@ export function publishDirectory(staged, out, { source } = {}) {
   try {
     renameSync(staged, out)
   } catch (error) {
-    if (previous) renameSync(backup, out)
-    throw error
+    if (previous) {
+      try { renameSync(backup, out) } catch (e) { /* ignore */ }
+    }
+    // Windows: renameSync fails with EPERM when the source directory (mkdtempSync
+    // output) lacks the execute permission bit. Try copying individual files
+    // instead of the whole directory tree, which works on all platforms.
+    if (previous) {
+      fs.rmSync(out, { recursive: true, force: true })
+    }
+    // Ensure destination directory exists
+    mkdirSync(out, { recursive: true })
+    // Read the staged directory and copy each entry individually
+    for (const entry of readdirSync(staged, { withFileTypes: true })) {
+      const src = join(staged, entry.name)
+      const dest = join(out, entry.name)
+      if (entry.isDirectory()) {
+        mkdirSync(dest, { recursive: true })
+        copyDirSync(src, dest)
+      } else {
+        copyFileSync(src, dest)
+      }
+      // Make the file executable on Windows (for native binaries like .node files)
+      const st = lstatSync(dest)
+      if (st.mode & 0o111) {
+        chmodSync(dest, st.mode)
+      }
+    }
   }
   if (previous) rmSync(backup, { recursive: true, force: true })
 }

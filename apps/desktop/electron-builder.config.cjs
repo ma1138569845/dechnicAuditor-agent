@@ -28,6 +28,11 @@ const {
   msixAppIdWithOrg
 } = require('./product-identity.cjs')
 
+// Start menu, macOS display name, permission prompts, and trademarks use 智能审.
+// The executable, protocol name, and CFBundleExecutable stay displayName
+// (DechnicAuditor), matching the pre-merge package.json split.
+const shellName = displayName.replaceAll('DechnicAuditor', '智能审')
+
 // `storeMsix` is optional on the identity type but guaranteed present when
 // `store` is true (product-identity.cjs spreads it only in that branch).
 // The `store` flag is typed `boolean` in the identity, so checkJs cannot
@@ -150,22 +155,22 @@ module.exports = {
       : null,
     category: 'public.app-category.developer-tools',
     extendInfo: {
-      CFBundleDisplayName: displayName,
+      CFBundleDisplayName: shellName,
       CFBundleExecutable: displayName,
-      CFBundleName: displayName,
+      CFBundleName: shellName,
       LSRequiresNativeExecution: true,
-      NSAudioCaptureUsageDescription: `${displayName} uses audio capture for voice conversations.`,
-      NSCameraUsageDescription: `${displayName} uses the camera when a plugin or feature you enable requests it.`,
-      NSMicrophoneUsageDescription: `${displayName} uses the microphone for voice input and voice conversations.`,
-      NSCalendarsUsageDescription: `${displayName} needs access to Calendar to provide requested meeting and scheduling support.`,
-      NSCalendarsFullAccessUsageDescription: `${displayName} needs full access to Calendar to read and manage events when explicitly requested.`,
-      NSRemindersUsageDescription: `${displayName} needs access to Reminders to provide requested personal-assistant and scheduling support.`,
-      NSRemindersFullAccessUsageDescription: `${displayName} needs full access to Reminders to read and manage reminders when explicitly requested.`,
-      NSScreenCaptureUsageDescription: `${displayName} captures the screen when you ask the agent to screenshot or record it.`,
-      NSLocalNetworkUsageDescription: `${displayName} connects to devices on your local network when a plugin or feature you enable requests it.`,
-      NSAppleMusicUsageDescription: `${displayName} accesses your music library when a plugin or feature you enable requests it.`,
-      NSContactsUsageDescription: `${displayName} uses Contacts access when you ask it to read or update your address book.`,
-      NSAppleEventsUsageDescription: `${displayName} uses Apple Events to automate apps you explicitly ask it to control.`
+      NSAudioCaptureUsageDescription: `${shellName} uses audio capture for voice conversations.`,
+      NSCameraUsageDescription: `${shellName} uses the camera when a plugin or feature you enable requests it.`,
+      NSMicrophoneUsageDescription: `${shellName} uses the microphone for voice input and voice conversations.`,
+      NSCalendarsUsageDescription: `${shellName} needs access to Calendar to provide requested meeting and scheduling support.`,
+      NSCalendarsFullAccessUsageDescription: `${shellName} needs full access to Calendar to read and manage events when explicitly requested.`,
+      NSRemindersUsageDescription: `${shellName} needs access to Reminders to provide requested personal-assistant and scheduling support.`,
+      NSRemindersFullAccessUsageDescription: `${shellName} needs full access to Reminders to read and manage reminders when explicitly requested.`,
+      NSScreenCaptureUsageDescription: `${shellName} captures the screen when you ask the agent to screenshot or record it.`,
+      NSLocalNetworkUsageDescription: `${shellName} connects to devices on your local network when a plugin or feature you enable requests it.`,
+      NSAppleMusicUsageDescription: `${shellName} accesses your music library when a plugin or feature you enable requests it.`,
+      NSContactsUsageDescription: `${shellName} uses Contacts access when you ask it to read or update your address book.`,
+      NSAppleEventsUsageDescription: `${shellName} uses Apple Events to automate apps you explicitly ask it to control.`
     },
     target: ['dmg', 'zip'],
     sign: createMacSigner({
@@ -187,7 +192,7 @@ module.exports = {
   dmg: {
     // Avoid the failing optional APFS shrink pass; keep compressed conversion.
     shrink: false,
-    title: 'Hermes Agent Installer',
+    title: `Install ${shellName}`,
     // A prebuilt .tiff on purpose, not a PNG plus a @2x sibling: dmg-builder's
     // PNG path runs `tiffutil -cathidpicheck`, which on macOS 26 rewrites both
     // frames to 72 dpi and silently drops the 2x representation. A .tiff is
@@ -216,7 +221,7 @@ module.exports = {
   },
   win: {
     executableName: windowsExecutableName,
-    legalTrademarks: displayName,
+    legalTrademarks: shellName,
     target: ['msix'],
     ...windowsSigning()
   },
@@ -226,7 +231,7 @@ module.exports = {
     // the out-of-store ATS-cert identity.
     identityName: store ? mustStoreMsix(storeMsixWhenStore).identityName : msixAppIdWithOrg,
     applicationId: appNamePascal,
-    displayName,
+    displayName: shellName,
     publisher: store ? mustStoreMsix(storeMsixWhenStore).publisher : OUT_OF_STORE_PUBLISHER,
     publisherDisplayName: store ? mustStoreMsix(storeMsixWhenStore).publisherDisplayName : 'Nous Research',
     // The native quad is the build time (scripts/msix-shared.mjs::nativeQuad),
@@ -260,8 +265,8 @@ module.exports = {
     category: 'Development',
     maintainer: 'Nous Research <support@nousresearch.com>',
     synopsis: light
-      ? 'Remote-only desktop client for Hermes Agent.'
-      : 'Native desktop shell for Hermes Agent.',
+      ? 'Remote-only desktop client for 智能审 Agent.'
+      : 'Native desktop shell for 智能审 Agent.',
     target: ['AppImage']
   }
 }

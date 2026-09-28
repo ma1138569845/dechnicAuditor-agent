@@ -8,8 +8,8 @@ import { isMain, repoRoot } from '../../../scripts/build/frontend-common.mjs'
 export function buildSourceDesktop({ source = repoRoot, icons, run = execFileSync } = {}) {
   source = resolve(source)
   const app = join(source, 'apps/desktop')
-  const step = (script, args = []) => run(process.execPath, [join(source, script), ...args], { cwd: app, stdio: 'inherit' })
-  step('apps/desktop/scripts/assert-root-install.mjs')
+  const step = (script, args = []) => run(process.execPath, [resolve(app, script), ...args], { cwd: app, stdio: 'inherit' })
+  step('scripts/assert-root-install.mjs')
   // Default-brand icons are committed; only flavored release builds pass --icons.
   icons = resolve(icons ?? source)
   if (icons !== source) {
@@ -17,9 +17,9 @@ export function buildSourceDesktop({ source = repoRoot, icons, run = execFileSyn
     // prepared pixels; do not create another Python environment to redraw them.
     cpSync(join(icons, 'apps/desktop/assets'), join(app, 'assets'), { recursive: true })
   }
-  step('apps/desktop/scripts/write-build-stamp.mjs')
-  step('apps/desktop/scripts/stage-native-deps.mjs')
-  step('scripts/build/desktop.mjs', ['--source', source, '--icons', icons,
+  step('scripts/write-build-stamp.mjs')
+  step('scripts/stage-native-deps.mjs')
+  step('../../scripts/build/desktop.mjs', ['--source', source, '--icons', icons,
     '--stamp', join(app, 'build/install-stamp.json'), '--native-deps', join(app, 'build/native-deps'), '--out', join(app, 'dist')])
 }
 

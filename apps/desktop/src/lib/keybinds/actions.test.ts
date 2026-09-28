@@ -66,6 +66,14 @@ describe('KEYBIND_ACTIONS', () => {
 
   // jsdom never reports a Mac platform, so this is the Windows/Linux default.
   // Don't fake the host OS — assert the chord this runtime actually ships.
+  it('computes IS_MAC-dependent defaults without importing combo.ts (renderer TDZ)', () => {
+    // actions.ts used to import IS_MAC from combo.ts; combo.ts imported
+    // actions.ts. Native ESM hit TDZ on IS_MAC and the window stayed white.
+    const voice = keybindAction('composer.voice')
+
+    expect(voice?.defaults).toHaveLength(1)
+  })
+
   it('ships a voice chord that does not claim the sidebar chord or any other shipped combo', () => {
     const voice = defaultBindings()['composer.voice'].map(canonicalizeCombo)
 

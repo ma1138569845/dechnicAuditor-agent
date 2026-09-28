@@ -1,6 +1,9 @@
 // The desktop product identity — THE single source for every name-shaped
-// value a variant owns. HERMES_DESKTOP_VARIANT=light builds "Hermes
-// Light", the remote-only client; everything else is full "Hermes".
+// value a variant owns. HERMES_DESKTOP_VARIANT=light builds "DechnicAuditor
+// Light", the remote-only client; everything else is full "DechnicAuditor".
+// User-facing shell copy (开始菜单、macOS 显示名、权限说明) uses 智能审 via
+// electron-builder.config.cjs; the executable and protocol stay DechnicAuditor.
+// The payload CLI command stays `hermes` — that binary name is the agent launcher.
 //
 // Consumed at build time by electron-builder.config.cjs (packaging
 // identity). electron/product-identity.ts is the typed runtime accessor.
@@ -9,16 +12,16 @@
 'use strict'
 
 const variants = {
-  '': { display: 'Hermes', kebab: 'hermes', pascal: 'Hermes' },
+  '': { display: 'DechnicAuditor', kebab: 'dechnicauditor', pascal: 'DechnicAuditor' },
   light: {
-    display: 'Hermes Light',
-    kebab: 'hermes-light',
-    pascal: 'HermesLight'
+    display: 'DechnicAuditor Light',
+    kebab: 'dechnicauditor-light',
+    pascal: 'DechnicAuditorLight'
   },
   bundled: {
-    display: 'Hermes Agent',
-    kebab: 'hermes-bundled',
-    pascal: 'HermesBundled'
+    display: 'DechnicAuditor Agent',
+    kebab: 'dechnicauditor-bundled',
+    pascal: 'DechnicAuditorBundled'
   }
 }
 
@@ -66,14 +69,14 @@ const identity = {
   store,
   light,
   displayName,
-  appId: `com.nousresearch.${name.kebab}${kebabSuffix}`,
+  appId: `com.dechnic.${name.kebab}${kebabSuffix}`,
   // Store and commit builds do not publish a release feed.
   channel: store || buildCommit ? null : light ? (canary ? 'light-canary' : 'light') : (canary ? 'canary' : 'latest'),
   appNamePascal: `${name.pascal}${pascalSuffix}`,
   artifactNamePascal: name.pascal,
   windowsExecutableName: kebabSuffix ? cliName : displayName,
   cliName,
-  msixAppIdWithOrg: `NousResearch.${name.pascal}${pascalSuffix}`,
+  msixAppIdWithOrg: `Dechnic.${name.pascal}${pascalSuffix}`,
   ...(store
     ? {
         storeMsix: {

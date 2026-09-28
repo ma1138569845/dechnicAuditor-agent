@@ -1,4 +1,11 @@
 import { keybindActionAllowedInEditableTarget } from './actions'
+import { IS_MAC } from './platform'
+
+export { IS_MAC }
+
+// IS_MAC lives in platform.ts. Defining it here while this file imports
+// actions.ts (which reads IS_MAC at module init) is a circular TDZ crash
+// in native ESM — the renderer paints a white window.
 
 // Keybind combo normalization + display.
 //
@@ -13,8 +20,6 @@ import { keybindActionAllowedInEditableTarget } from './actions'
 // where `mod` is Cmd and Cmd+Tab is OS-reserved — so `ctrl+tab` is literally
 // Control+Tab. Off macOS, Control already *is* `mod`, so `canonicalizeCombo`
 // folds `ctrl` → `mod`.
-
-export const IS_MAC = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '')
 
 // event.code → canonical base token. Letters/digits map to their lowercase
 // character; everything else uses an explicit name so combos read cleanly.

@@ -735,12 +735,11 @@ export function stageGetWindows(
 export async function prepareDesktopNativeDependencies({ source, out, platform = process.platform, arch = process.arch, nativeToolchain }) {
   ;({ source, out } = productOutput(source, out, ['node_modules', 'apps/desktop/node_modules', 'apps/desktop/src', 'apps/desktop/electron']))
   rmSync(`${out}.prepared.json`, { force: true })
-  await withProduct(out, async product => {
-    stageNodePty({ source, out: product, platform, arch })
-    stageGetWindows({ source, out: product, platform, arch })
-    buildCommandScreenshotMonitor({ source, distDir: product, platform })
-    buildHudModifierMonitor({ source, distDir: product, platform, arch })
-  }, { source })
+  mkdirSync(out, { recursive: true })
+  stageNodePty({ source, out: out, platform, arch })
+  stageGetWindows({ source, out: out, platform, arch })
+  buildCommandScreenshotMonitor({ source, distDir: out, platform })
+  buildHudModifierMonitor({ source, distDir: out, platform, arch })
   recordNativeInputs({ source, out, platform, arch, nativeToolchain })
   return { out }
 }

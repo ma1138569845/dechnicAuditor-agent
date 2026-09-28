@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import { en } from '@/i18n/en'
 
 afterEach(() => {
   cleanup()
@@ -38,7 +39,7 @@ it('starts the skipped-film splash before the backend connects and removes it on
   )
 
   const { rerender } = render(view(false))
-  expect(screen.getByRole('status').textContent).toMatch(/Starting Hermes/)
+  expect(screen.getByRole('status').textContent).toContain(en.boot.steps.startingHermesDesktop)
   expect(kickoff).not.toHaveBeenCalled()
   rerender(view(true))
   await waitFor(() => expect(kickoff).toHaveBeenCalledOnce())

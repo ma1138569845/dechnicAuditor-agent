@@ -2,9 +2,10 @@ import { assetPath } from '@/lib/asset-path'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/themes'
 
-// Brand badge: the nous-girl mark in the app-icon squircle, theme-aware —
-// light mode shows the black girl on the white squircle, dark mode the white
-// girl on the #0d1117 squircle. Size via className (default size-14).
+// Brand badge: the globe mark, sized via className (default size-14). The art
+// is a transparent-background square, so it reads on either theme; the light
+// and dark files are byte-identical today — derive both from
+// `assets/appx/Wide310x150Logo.png` if the mark changes again.
 export function BrandMark({ className, ...props }: React.ComponentProps<'span'>) {
   const { renderedMode } = useTheme()
   const dark = renderedMode === 'dark'

@@ -8,7 +8,7 @@
 import { registry } from '@/contrib/registry'
 import type { Contribution } from '@/contrib/types'
 
-import { IS_MAC } from './combo'
+import { IS_MAC } from './platform'
 
 export type KeybindCategory = 'composer' | 'profiles' | 'session' | 'navigation' | 'view'
 
