@@ -877,10 +877,11 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         solar_rows = []
         result['missing'].append(f'光伏利用登记读取失败（{exc}）')
     solar = solar_rows[0] if solar_rows else None
-    if solar and _looks_like_test(
+    _solar_is_test = bool(solar) and _looks_like_test(
             solar.get('roof_utilization_form'), solar.get('other_desc'),
             solar.get('cooperation_mode'), solar.get('system_equipment_params'),
-            solar.get('solar_utilization_detail')):
+            solar.get('solar_utilization_detail'))
+    if _solar_is_test:
         solar = None
         result['missing'].append('光伏利用登记为测试数据（含"测试"字样），需在平台重新填报')
     if solar:
@@ -896,7 +897,7 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'system_type': (solar.get('system_type') or '').strip(),
             'other_desc': (solar.get('other_desc') or '').strip(),
         }
-    else:
+    elif not _solar_is_test:
         result['missing'].append('光伏/太阳能利用登记（ts_institution_solar 无有效记录）')
 
     # ---- 6.6 折标系数 ----
