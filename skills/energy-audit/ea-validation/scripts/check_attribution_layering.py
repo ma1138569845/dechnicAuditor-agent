@@ -38,6 +38,11 @@ ATTRIB_WORDS = ("由于", "因为", "原因", "导致", "造成", "有关", "影
                 "得益于", "归因", "源于", "致使", "系因", "受制于",
                 "成效", "见效", "归功", "发挥作用", "效果显现")
 
+# 豁免语境：不是"断言归因"，而是"提请核实"——判据词附近出现这些词时不算命中。
+# 实测样例：「建议进一步核实用气增长原因及燃气计量准确性」含"原因"但语义相反。
+EXEMPT_NEAR = ("核实", "待核", "不明", "待查", "未知", "未见", "无需")
+EXEMPT_WINDOW = 10
+
 _H3_RE = re.compile(r"^###\s+(5\.2\.\d+)\s*(.*)$")
 _H2_RE = re.compile(r"^##\s+(5\.\d+)\s*(.*)$")
 _CAPTION_RE = re.compile(r"^\s*(?:!\[)?\s*图\s*5\.\d+\s*(.*?)\s*\]?(?:\(.*\))?\s*$")
@@ -63,6 +68,23 @@ def resolve_source(project: str = "", file: str = "") -> Path:
 def is_total_caption(text: str) -> bool:
     """总量图注：含"总"且不含"逐月"（逐月图注形如"逐月用电量"）。"""
     return "总" in text and "逐月" not in text
+
+
+def find_attrib(text: str) -> list[str]:
+    """返回真正的归因词（剔除"提请核实"语境）。"""
+    bad = []
+    for w in ATTRIB_WORDS:
+        start = 0
+        while True:
+            i = text.find(w, start)
+            if i < 0:
+                break
+            win = text[max(0, i - EXEMPT_WINDOW): i + len(w) + EXEMPT_WINDOW]
+            if not any(e in win for e in EXEMPT_NEAR):
+                bad.append(w)
+                break
+            start = i + len(w)
+    return bad
 
 
 def scan(lines: list[str]) -> tuple[list[dict], list[str]]:
@@ -98,7 +120,7 @@ def scan(lines: list[str]) -> tuple[list[dict], list[str]]:
                 if "费用" in section:
                     checked.append(f"{section} → 跳过（费用节）")
                 else:
-                    bad = [w for w in ATTRIB_WORDS if w in para]
+                    bad = find_attrib(para)
                     checked.append(f"{section} → 图注后段 {len(para)} 字"
                                    + (f"，命中归因词 {'、'.join(bad)}" if bad else "，干净"))
                     if bad:
