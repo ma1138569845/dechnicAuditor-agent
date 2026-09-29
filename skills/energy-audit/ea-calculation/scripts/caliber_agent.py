@@ -142,6 +142,26 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
 #  指标计算
 # ================================================================
 
+def _resolve_heating_area(proj) -> float:
+    """采暖建筑面积取值（2026-09-29 口径判别）。
+
+    建筑表 heat_area 常被平台按「每栋建筑面积」默认填充（实测岚山医院 7 栋 heat_area
+    与 build_area 全等、合计 63,465.91㎡），而真实供暖面积在 scene.heat_area
+    （54,523.3㎡，与 120 万热费、22 元/㎡ 完全自洽）。
+    判别：聚合 build.heat_area 与建筑面积全等（疑似默认填充）且 metering.heat_area
+    > 0 且小于聚合值 → 用 scene 口径；否则沿用建筑表聚合
+    （法院 build=24,300、scene 为空 → 不受影响；2026-09-29 用户裁决本案用 54,523.3）。
+    """
+    buildings = list(getattr(proj, 'buildings', []) or [])
+    b_sum = sum(float(getattr(b, 'heating_area', 0) or 0) for b in buildings)
+    building_area = float(getattr(getattr(proj, 'base', None), 'building_area', 0) or 0)
+    m_heat = float(getattr(getattr(proj, 'metering', None), 'heat_area', None) or 0)
+    if (b_sum > 0 and building_area > 0 and abs(b_sum - building_area) < 0.5
+            and 0 < m_heat < b_sum):
+        return m_heat
+    return b_sum
+
+
 def calc_all_indicators(
     proj: AuditProject,
     yearly_data: List[YearlyEnergyData],
@@ -205,8 +225,7 @@ def calc_all_indicators(
     has_heating = any((getattr(d, 'heating_energy_heat', 0) or 0) > 0 or
                       (getattr(d, 'heating_energy_kwh', 0) or 0) > 0 for d in yearly_data)
     if has_heating:
-        heating_area = sum(float(getattr(b, 'heating_area', 0) or 0)
-                           for b in getattr(proj, 'buildings', []) or [])
+        heating_area = _resolve_heating_area(proj)
         r5 = calc_unit_area_heating_energy(latest, heating_area=heating_area,
                                            institution_type=inst_type, sub_type=st_heating)
         results['unit_area_heating'] = r5
@@ -401,10 +420,9 @@ def run_caliber(
             # 折标系数（data.json 持久化，三年一致取最新年）：md 与
             # indicators.json 同口径（2026-09-05 修复）
             'coefficients': dict(getattr(yearly_data[-1], 'coefficients', {}) or {}),
-            # 采暖建筑面积：建筑表 heat_area 聚合（5.3.5 供暖指标分母；
+            # 采暖建筑面积：_resolve_heating_area 口径判别（5.3.5 供暖指标分母；
             # 缺失/全 0 时 generate_chapter5_md 走建筑总面积兜底）
-            'heating_area': sum(float(getattr(b, 'heating_area', 0) or 0)
-                                for b in getattr(proj, 'buildings', []) or []),
+            'heating_area': _resolve_heating_area(proj),
             # 地下车库面积：建筑表 garage_area 聚合（D8：5.3.1/5.3.2 分母剔除）
             'garage_area': sum(float(getattr(b, 'garage_area', 0) or 0)
                                for b in getattr(proj, 'buildings', []) or []),

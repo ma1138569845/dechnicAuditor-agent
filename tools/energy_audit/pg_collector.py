@@ -630,12 +630,23 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     # ---- 3. 能耗数据 ----
     main_records = pg.get_institution_energy(customer_id=customer_id)
 
+    # 审计期年份过滤（2026-09-29）：get_institution_energy 按版本归一返回该客户**全部年份**，
+    # 平台可能残留审计期外孤例（实测岚山医院 2020 年单条电量 148 万 kWh，仅电、无水气热），
+    # 混入会污染年际对比与能耗基准（V2 曾判 2020→2022 指标 +240~260% 假 P0）。
+    # 按项目表解析的 data_start/data_end 截断年份，超界年份整年剔除。
+    _proj_found = (result.get('found') or {}).get('project') or {}
+    _ds_raw, _de_raw = str(_proj_found.get('data_start') or ''), str(_proj_found.get('data_end') or '')
+    _y_lo = int(_ds_raw[:4]) if len(_ds_raw) >= 4 and _ds_raw[:4].isdigit() else 0
+    _y_hi = int(_de_raw[:4]) if len(_de_raw) >= 4 and _de_raw[:4].isdigit() else 0
+
     yearly_map = {}
     for rec in main_records:
         year_str = rec['year']
         year = _int(year_str) if year_str and str(year_str).isdigit() else 0
         if year == 0:
             continue
+        if (_y_lo and year < _y_lo) or (_y_hi and year > _y_hi):
+            continue  # 审计期外年份剔除（不入 EnergyYearly）
         dt = _int(rec.get('data_type'))
         total = float(rec['unit_total_value'] or 0)
         monthly = [rec.get(f'value{i}', 0.0) for i in range(1, 13)]
@@ -768,7 +779,19 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     scenes = pg.get_institution_scene(customer_id=customer_id)
     result['found']['scenes'] = scenes or []  # 含 scene_img_id（单位整体外观，图2.1）
     if scenes:
-        scene = scenes[0]
+        # 场景年份选择（2026-09-29）：get_institution_scene 返回 ORDER BY year DESC，
+        # scenes[0] 是最新年度场景——医院常先录「最新年」试数据（实测岚山医院 2026 年
+        # 旧口径 1450 人/750 床/热价 34.5），真正反映审计基准期（reference_year 末年）
+        # 用能人数与供暖口径的记录在基准年（2024 年 578/302/2000/570/热价 22）。
+        # 取错年份会把用能人数、heat_price/heat_area/heat_day 整串带偏。
+        # 规则：data_end 所在年有场景则取之，否则退回最新年（scenes[0]）。
+        _de_raw = str(_proj_found.get('data_end') or '')
+        _y_ref = int(_de_raw[:4]) if len(_de_raw) >= 4 and _de_raw[:4].isdigit() else 0
+        scene = None
+        if _y_ref:
+            scene = next((s for s in scenes if _int(s.get('year')) == _y_ref), None)
+        if scene is None:
+            scene = scenes[0]
         metering = {
             'has_monitoring_system': scene.get('energy_metering') == 1 if scene.get('energy_metering') is not None else False,
             'has_separate_metering': scene.get('separate_meter') == 1 if scene.get('separate_meter') is not None else False,
