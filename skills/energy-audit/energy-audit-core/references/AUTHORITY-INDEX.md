@@ -29,7 +29,7 @@
 | 第5章结构 / 表号图号 / 写作细节 | `ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）★2026-09-18 合并后以此二者为准 | caliber、author 批2 | 原 8 个 5.x 文件（已归档 `_archive/2026-09-18/`） |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` | author、caliber | — |
 | 报告实例库 / 蓝本（法院/医院/学校） | `energy-audit-report/references/audit-examples.md`（2026-09-18 三合一） | author、energy-audit-style | 章节指南里不复述实例原文；蓝本只提供**形态**，变量必须来自本项目数据源 |
-| 写作论证链 / 句式 / 防抄 | `energy-audit-style/references/rules.md`、`rules.md`、`rules.md` | author、editor（**注意：当前未接入写作主流程，待决**） | — |
+| 写作论证链 / 句式 / 防抄 / 审查清单 | `energy-audit-style/references/rules.md`（第1~8章论证链 + 审查清单 16 项） | author、editor、datava V3。**关键规则已直接注入写章契约**（`ea-authoring/scripts/prepare_writing_context.py` 正文含：5.2 归因下沉、5.4 先判可比性、7.1 三类问题＋依据锚点、正文禁忌），`rules.md` 为完整版与审查依据 —— 2026-09-29 更新，此前"未接入写作主流程"的注已过期 | 各章指南不复述句式与禁词表（只路径引用）；锚点细节在 `ea-authoring/references/chapter7-anchor-table.md` |
 | Word 版式技术细则（页码域/前置节与正文节/首行缩进/水印/OOXML） | `ea-authoring/references/docx-techniques.md` | author、editor | 各 SKILL 只写"必做"，不复述命令与 XML 细节 |
 | OfficeCLI 集成与第5章公式方案（A/B/C） | `ea-authoring/references/docx-tools.md` | author（仅 office_editor 备用路径） | 装配主链不复述公式注入细节 |
 | 流向图 / KG 可视化 / 报告参考库检索 | `ea-calculation/references/ea-calculation-support.md`（**检索入口一节已压成指针**） | caliber | 检索入口与目录只在 `WORKFLOW.md` 第六节；本文件不复述 |

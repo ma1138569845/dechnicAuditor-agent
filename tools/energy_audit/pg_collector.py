@@ -1386,6 +1386,30 @@ def build_and_save_project(
         proj.indicators = {'status': 'pending', 'reason': str(e)}
         proj.data_sources['indicators'] = 'failed'
 
+    # ---- 建筑面积合计 vs 声明面积（2026-09-29 接入）----
+    # 背景：`detect_area_mismatch` 早已实现，但**从未被调用**（旧注见 ea-datacollection/SKILL.md），
+    # 导致"建筑表各栋合计"与"声明总面积"不一致时无人告警（偏差 >5% 应提示核实）。
+    # 平台侧**没有**声明面积字段（PG 的 building_area 就是建筑表合计），
+    # 故只有 **Excel 通道**提供声明值时才可比；无声明值 → 静默跳过（不是漏检，是无从比对）。
+    _declared_area = 0.0
+    if excel_data:
+        try:
+            _declared_area = float(excel_data.get('building_area') or 0)
+        except (TypeError, ValueError):
+            _declared_area = 0.0
+    if _declared_area > 0:
+        try:
+            # 函数级导入：data_collection_cli 在模块级导入本模块，模块级互相导入会成环
+            from tools.energy_audit.data_collection_cli import detect_area_mismatch
+            _area_warn = detect_area_mismatch(
+                pg_result.get('found', {}).get('buildings') or [], _declared_area)
+        except Exception as _area_exc:  # noqa: BLE001 —— 告警失败不得阻塞采集
+            _area_warn = None
+            print(f"[datacollection v2] 建筑面积校验未执行（不影响采集）：{_area_exc}")
+        if _area_warn:
+            print(f"[datacollection v2] ⚠️ {_area_warn}"
+                  "（按建筑表合计为准；若应以声明面积为准，请在 Excel 中修正各栋面积）")
+
     save_project(proj)
     return proj
 

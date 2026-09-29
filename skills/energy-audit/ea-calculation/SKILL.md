@@ -213,7 +213,7 @@ resolve_benchmark(institution_type, metric, sub_type=None, db_audit=True)
 | 二级分档/等级/场馆类型 | `ts_customer_info.children_func`（字典 `client_dept_type_<一级码>`） | 教育 8 档、医疗一~三级、党政省~市级以下、场馆 5 类 |
 | 气候区（医疗/党政） | **内置表** `climate_zone.py`（DB37/5026-2022 表3.0.1） | **不取** DB `climate_type`；地市优先按 `district_id` 行政区划码判 |
 | 供暖类型（表2） | 项目供暖方式；缺省"市政集中供暖（按热计量）" | 标准注1：按面积收费的市政供暖、燃煤自供暖均按此口径 |
-| 场馆省市档 | 单位名推断，缺省"市级" | 待补：纳入项目数据后可直接读 |
+| 场馆省市档 | **优先 `proj.base.admin_affiliation`（行政归属）判档**（省级/市级/区县级，先判区县）；取不到退回单位名推断，再兜底"市级" | 2026-09-29 已接入项目数据（`indicators._venue_area_grade`）；判据：DB37/T 3780-2019 表1 按**主管层级**分档 |
 
 ### DB 交叉校验规则
 

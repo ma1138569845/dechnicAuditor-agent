@@ -278,7 +278,7 @@ ok, issues = check_completeness(asdict(proj))
 3. **月度全零标记** — 用电/用水/天然气某年 12 个月逐月数据全为 0 → 标记"可能漏录"
 4. **面积偏差提示** — `detect_area_mismatch()`：各建筑面积合计与声明总面积偏差 >5% 时提示（仅提示，不修正数值，口径由用户确认）
 
-> 注意：当前 `data_collection_cli.py` 的 CLI 流程**只自动调用了 `detect_anomalies`**；`detect_area_mismatch` 已实现但尚未接入命令行流程。
+> 注意：CLI 流程自动调用的是 `detect_anomalies` / `detect_equipment_power_unit_issue` / `detect_heating_electricity_missing` / `detect_building_address_mismatch`（均在 `data_collection_cli.py`）。**`detect_area_mismatch`（建筑表合计 vs 声明面积，偏差 >5% 告警）已于 2026-09-29 接入**，但落点是 `pg_collector.build_and_save_project`（保存前校验），不在 CLI：因为**平台没有"声明面积"字段**，只有 **Excel 通道**给出 `building_area` 时才可比；无声明值即静默跳过。
 
 ### 输出方式（重要）
 
