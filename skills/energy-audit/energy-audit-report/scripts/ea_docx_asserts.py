@@ -304,6 +304,8 @@ def run(docx: str, pdf: str = None):
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
+        # 2026-09-29 用户定：正文引语一律中文全角引号；ASCII 直引号判不合格
+        "cn_quotes": '"' not in text,
     }
     details = {}
     flat = [p for p in FLAT_FORMULAS if p in text]
@@ -332,6 +334,11 @@ def run(docx: str, pdf: str = None):
         details["no_field_names"] = (
             "正文出现英文字段名或反引号：%s（数据来源只留在审核记录/data_sources，"
             "正文改写成中文事实）" % (_FIELDNAME_RE.findall(text)[:5],))
+    if not checks["cn_quotes"]:
+        n_ascii = text.count('"')
+        details["cn_quotes"] = (
+            "正文含 %d 个 ASCII 直引号（应为 0）；引语一律用中文全角引号“”"
+            "（见 report-format-spec.md《正文禁忌》，2026-09-29 用户定）" % n_ascii)
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
