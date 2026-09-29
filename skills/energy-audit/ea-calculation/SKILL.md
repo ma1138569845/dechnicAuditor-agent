@@ -117,7 +117,7 @@ proj = load_project(unit_name)
 | 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | Ejrcn=(综合−供暖−交通)/面积，全口径 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | (总电−供暖电)/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数（**采集侧已按口径落 `base.people_count`**）= 在岗 + 编外 + 门诊人数 + 床位数，仅医疗机构求和；四要素字段名 `base.work_staff/logistics_staff/clinic_num/beds_count`。严格式（含床位占用比例、年门诊/365）见 `standards-values.md`《医院用能人数计算规则》 |
-| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育=人均取水量 / 场馆·政务=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, bed_count, building_area, sub_type)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均）；场馆图书馆/博物馆按 4452 面积定额对标 |
+| 4 | 取水指标（医院=单位开放床日用水量 / 机关教育**政务**=人均取水量 / 场馆=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, bed_count, building_area, sub_type)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均）；场馆图书馆/博物馆按 4452 面积定额对标；**政务服务中心自 2026-09-29 改走机关人均口径**（4452 表2"机关"行，通用 25 / 先进 10 m³/(人·a)）→ 见 `standards-values.md` 同名条目与决策 7 |
 | 5 | 单位采暖建筑面积供暖能耗 | `calc_unit_area_heating_energy()` | **有供暖能耗的项目必算**（2026-09-02 新增，DB37/T 2672 表2 定额，详见上节） |
 
 另：`calc_baseline(yearly_data)` 计算 5.4 节建筑能耗基准（用量基准 + 费用基准，多年区间/趋势）。
@@ -133,7 +133,8 @@ proj = load_project(unit_name)
   高校:      Vu    = 年用水量 / 标准人数 Nu               m³/(人·a)（式3；Nu=统招生+留学生+0.5×教职工）
   中小学/幼儿园: Vs = 年用水量 / 标准人数 Ns              m³/(人·a)（式4；Ns=非住宿生+2×住宿生+教职工）
   医院:      Vz    = 住院部年用水 × 10³ / Σ实际开放床日    L/(床·日)（式5；ΣNi 缺失时按 床位×365 近似）
-  政务/场馆: Vui   = 年取水量 × 1000 / 建筑面积           L/(m²·a)（式6）
+  政务服务中心: Vuc = 年机关取水量 / 机关人数              m³/(人·a)（式7；2026-09-29 起，同"机关"行）
+  场馆:      Vui   = 年取水量 × 1000 / 建筑面积           L/(m²·a)（式6；图书馆/博物馆 有面积定额可对标）
 ```
 
 ---

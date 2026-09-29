@@ -312,8 +312,15 @@ _DEFAULT_BENCHMARKS = {
         'unit_area_non_heating': (14.0, 9.5, 6.5),
         'unit_area_elec': (48.0, 36.0, 26.0),
         'per_capita_energy': (850, 620, 420),
-        # 用水：4452 表2 **无政务服务中心定额** → 取值 (0,0,0)，评价显示"暂无定额标准可对标"。
-        # 原 water_per_person=(22, 9, 0) 于 2026-09-20 删除：4452 查无此值（无源），且政务走面积口径。
+        # 用水（2026-09-29 用户定，决策 7 选项 C）：政务服务中心**走机关人均口径**。
+        # 依据：4452 表2 里"机关"行（行业代码 S91～S96、T97 中国共产党机关、国家机构等）
+        # 是该类单位**唯一**对得上的行——表中没有"政务服务中心／政务大厅"这一类，
+        # 故面积口径永远无从对标。定额 m³/(人·a)：先进值 10 / 通用值 25，与 government 同组值
+        # （本三元组槽序：约束值=通用值 25、基准值=先进值 10、引导值无=0）。
+        # 口径说明（正文须写）：①按 4452 表1，机关取水量**不含对外服务的政务大厅**——
+        # 大厅未单独计量时按全量计并在正文说明；②Np 按"在编在岗+工作时间超半年非在编"，
+        # **不含流动人员**（平台 flow_staff 不进分母）。
+        'water_per_person': (25, 10, 0),
         'standard_name': 'DB37/T 3781-2019《政务服务中心能源消耗定额标准》',
         'water_standard': 'DB37/T 4452-2021《山东省教育、卫生等服务业用水定额》',
     },
@@ -1128,9 +1135,11 @@ def calc_water_indicator(
         'medical': 'water_per_bed_day',
         'government': 'water_per_person',
         'education': 'water_per_person',
-        # FORK: venue/service 显式映射为面积口径（单位建筑面积年取水量）
+        # FORK: venue 走面积口径（单位建筑面积年取水量）；
+        #       service（政务服务中心）**2026-09-29 起改走人均机关口径**（决策 7 选项 C）——
+        #       4452 表2 唯一对得上的是"机关"行，面积口径无定额可对标。
         'venue': 'water_per_area',
-        'service': 'water_per_area',
+        'service': 'water_per_person',
     }
     metric = metric_map.get(institution_type, 'water_per_person')
 
@@ -1168,10 +1177,11 @@ def calc_water_indicator(
             'benchmark': {**benchmark, '实际值': L_per_bed_day, '评价结果': evaluation, '单位': 'L/(床·d)'},
         }
 
-    # 政务服务中心/场馆：单位建筑面积年取水量 Vui = Vj/Nc × 1000（L/(m²·a)）
+    # 场馆：单位建筑面积年取水量 Vui = Vj/Nc × 1000（L/(m²·a)）
     # DB37/T 4452-2021 式(6)（用户 2026-09-05 确认 ×1000 口径）；
-    # DB37/T 4452-2021 无政务服务中心/场馆面积口径取水定额 → benchmark 为空，评价结果显示 "—"（标准待用户确认）
-    if institution_type in ('venue', 'service') and building_area and building_area > 0:
+    # 图书馆/档案馆、博物馆有面积口径定额 → 对标；剧院/体育馆/科技馆无 → benchmark 空，评价显示"—"。
+    # 注：政务服务中心（service）**自 2026-09-29 起不走本分支**，改走下方"机关人均口径"（决策 7 选项 C）。
+    if institution_type == 'venue' and building_area and building_area > 0:
         water_total = data.water_m3
         # ×1000: m³→L，单位 L/(m²·a)（与 4452 式(6) 一致）
         L_per_area = round(water_total * 1000 / building_area, 2)
@@ -1228,7 +1238,8 @@ def calc_water_indicator(
         'm3_per_person': per_person,
         'total_water_m3': data.water_m3,
         'people_count': data.people_count,
-        'metric': '人均取水量',
+        # 政务服务中心按 4452 式(7) 机关口径，指标名用"人均机关取水量"（2026-09-29 决策 7 选项 C）
+        'metric': '人均机关取水量' if institution_type == 'service' else '人均取水量',
         'benchmark': {**benchmark, '实际值': per_person, '评价结果': evaluation, '单位': 'm³/(人·a)'},
     }
 
