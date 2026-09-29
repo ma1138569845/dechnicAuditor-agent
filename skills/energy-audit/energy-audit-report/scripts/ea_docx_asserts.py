@@ -223,6 +223,49 @@ def _apx2_landscape_ok(sect_detail) -> bool:
     return apx2 is not None and apx2.get("orient") == "landscape"
 
 
+_APX_NUM_RE = re.compile(r"^附录\s*\d+\s*[:：]")
+_APX2_RE = re.compile(r"^附录\s*2\s*[:：]")
+
+
+def _chapter_pagebreak_ok(doc_xml: str) -> tuple[bool, str]:
+    """大章节另起一页（2026-09-29 用户定）：H1（第1~8章、「附录：」总页）与附录区段的
+    「附录N：」H2 **必须带 `<w:pageBreakBefore/>`**（段落属性，不用手工分页符）。
+
+    同时防"重复分页造成空白页"：**附录2** 已由横向分节符另起一页，**不得**再设分页。
+    """
+    missing: list[str] = []
+    dup: list[str] = []
+    prev_sect = False      # 上一段是否带 w:sectPr（= 分节符 → 本段位于新页之首）
+    for m in re.finditer(r"<w:p[ >].*?</w:p>", doc_xml, re.S):
+        seg = m.group(0)
+        st = re.search(r'<w:pStyle w:val="([^"]+)"', seg)
+        sect_here = "<w:sectPr" in seg
+        if not st:
+            prev_sect = sect_here
+            continue
+        style = st.group(1)
+        text = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", seg)).strip()
+        has_brk = "pageBreakBefore" in seg
+        if style == "Heading1":
+            if not has_brk:
+                missing.append(text[:24] or "(H1 空标题)")
+        elif style == "Heading2" and _APX_NUM_RE.match(text):
+            if _APX2_RE.match(text):
+                if has_brk:
+                    dup.append(text[:24])
+            elif not has_brk and not prev_sect:
+                # 紧跟分节符（新页）的附录标题无需再设 pageBreakBefore —— 分节符本身即另起一页，
+                # 重复设反而可能多出空白页（实测：附录3 由"切回纵向"的分节符另起一页）。
+                missing.append(text[:24])
+        prev_sect = sect_here
+    why = []
+    if missing:
+        why.append(f"未设分页 {len(missing)} 处：{'、'.join(missing[:4])}")
+    if dup:
+        why.append(f"附录2 重复设分页（会多空白页）：{'、'.join(dup[:2])}")
+    return (not missing and not dup), "；".join(why)
+
+
 def _apx2_table_ok(sect_detail) -> bool:
     """附录2 节内每张**逐月表**（表头首列=月份）：7 列固定列序（允许追加 1 列天然气）+ 合计行。
 
@@ -304,6 +347,8 @@ def run(docx: str, pdf: str = None):
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
+        # 大章节/附录另起一页（2026-09-29 用户定）：见 _chapter_pagebreak_ok
+        "chapter_new_page": _chapter_pagebreak_ok(doc)[0],
         # 2026-09-29 用户定：正文引语一律中文全角引号；ASCII 直引号判不合格
         "cn_quotes": '"' not in text,
     }
@@ -339,6 +384,8 @@ def run(docx: str, pdf: str = None):
         details["cn_quotes"] = (
             "正文含 %d 个 ASCII 直引号（应为 0）；引语一律用中文全角引号“”"
             "（见 report-format-spec.md《正文禁忌》，2026-09-29 用户定）" % n_ascii)
+    if not checks["chapter_new_page"]:
+        details["chapter_new_page"] = _chapter_pagebreak_ok(doc)[1]
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

@@ -473,14 +473,22 @@ def _heading(doc, text, level):
     p = doc.add_paragraph(style=f"Heading {level}")
     if level == 1:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # 大章节另起一页（2026-09-29 用户定）：用**段落属性 pageBreakBefore**，
+        # 不插手工分页符、不加空段落 → 不会产生空白页；目录/页码/页眉均不受影响。
+        # 覆盖：第1~8章（H1）与附录总页「附录：」（见 _apx_h1）。
+        p.paragraph_format.page_break_before = True
     set_font(p.add_run(text), {1: 15, 2: 14, 3: 12}[level], True)
     return p
 
 
 def _apx_h1(doc, text):
-    """附录总页标题：H1 样式但 12pt 不加粗左对齐（对齐终稿）。"""
+    """附录总页标题：H1 样式但 12pt 不加粗左对齐（对齐终稿）。
+
+    2026-09-29：`附录：` 总目录页也**另起一页**（用户定"附录算大章节"）。
+    """
     p = doc.add_paragraph(style="Heading 1")
     set_font(p.add_run(text), 12, False)
+    p.paragraph_format.page_break_before = True
     return p
 
 
@@ -604,6 +612,7 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif line.startswith("## "):
             listing = False
             head = line[3:].strip()
+            _apx_new_page = False      # 每个附录另起一页（2026-09-29 用户定）
             if appendix:
                 if in_apx2 and not head.startswith(APX2_LANDSCAPE_HEADING):
                     _end_landscape_section(doc)   # 附录2 结束 → 切回纵向
@@ -612,7 +621,14 @@ def _render_md(doc, md_path, ctx, appendix=False):
                     _start_landscape_section(doc)  # 附录2 开始 → 切横向
                     in_apx2 = True
                     apx2_tables = 0
-            _heading(doc, head, 2)
+                else:
+                    # 非分节切换的「附录N：」标题 → 另起一页。
+                    # ⚠️ 附录2 走上面的 elif（已由分节符另起一页）→ **不重复设分页**，否则多一张空白页；
+                    #    附录2 结束时把版面切回纵向的那条也同理（分节符本身即新页）。
+                    _apx_new_page = bool(re.match(r"^附录\d+\s*[:：]", head))
+            _h = _heading(doc, head, 2)
+            if _apx_new_page:
+                _h.paragraph_format.page_break_before = True
         elif line.startswith("# "):
             text = line[2:].strip()
             if appendix:

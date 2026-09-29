@@ -144,6 +144,20 @@ run._r.append(fld_begin); run._r.append(instr); run._r.append(fld_sep); run._r.a
 
 #### 大纲级别（红线：标题必须被识别为标题）
 
+#### 大章节另起一页（2026-09-29 用户定，硬规则）
+
+**第1~8章、附录总页（`附录：`）、以及每个附录（`附录N：`）都必须另起一页** —— 标题落在新页顶部，
+不得夹在上一章/上一附录的内容中间。
+
+| 要点 | 做法 |
+|---|---|
+| 用什么 | **段落属性 `<w:pageBreakBefore/>`**（脚本链：`p.paragraph_format.page_break_before = True`） |
+| 不用什么 | ❌ 手工分页符（`w:br type=page`，会多出空段落、上一段刚好收尾时产生**空白页**）❌ 分节符（会打乱页码/页眉继承） |
+| 谁负责 | **装配器**（`build_energy_audit_docx.py`）：`_heading(level=1)`、`_apx_h1()`、`_render_md` 里附录区段的 `附录N：` H2。**写作侧（md）不写任何分页标记** |
+| 例外（防空白页） | **附录2** 由横向分节符（`add_section(NEW_PAGE)`）已另起一页 → **不得**再设 pageBreakBefore；同理，紧跟任何分节符之后的标题都不重复设 |
+| 自检 | `ea_docx_asserts.py` 的 **`chapter_new_page`**：H1 与 `附录N：` H2 必须带 `pageBreakBefore`（或紧跟分节符），且附录2 不得带 |
+| 代价 | 章/附录尾部会出现**部分空白**，整份报告页数增加（实测三份 +5~7 页），属预期 |
+
 > ⚠️ **只设字体格式 ≠ 标题**。若 H1/H2/H3 只用 `Normal` 样式 + 手动字体/字号/加粗，而没有应用 `Heading 1/2/3` 段落样式、也没有 `w:outlineLvl`（大纲级别），则 Word 导航窗格不识别这些标题，**TOC 域无法收集它们**，目录无法通过域生成。
 
 正确做法：每个标题段落**必须应用 Word 内置 Heading 样式**（写 `w:pStyle`），再覆盖字体格式为上面的规范外观。
