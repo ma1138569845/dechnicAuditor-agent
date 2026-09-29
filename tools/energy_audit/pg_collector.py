@@ -385,6 +385,21 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
         'contact_phone': proj.get('audited_tel', ''),
         'auditor': proj.get('audit_dept_name', ''),
     }
+    # ---- 委托单位（2026-09-29 接线）----
+    # ts_institution_project.commission_id → ts_commission_unit(unit_name, area_name)。
+    # 口径（用户 2026-09-29 定）：**直接用平台数据，不做测试数据闸/质量过滤**——平台填什么落什么。
+    # 此前"委托单位"整条链没有字段，报告 1.1 的委托句只能凭记忆写（烟台曾写出"烟台黄渤海新区
+    # 大数据中心"这种无源专名，被变量闸门判 P0）。现改为数据驱动：有值写单位名，无值不写。
+    commission_id = proj.get('commission_id')
+    commission = pg.get_commission_unit(commission_id) if commission_id else None
+    if commission:
+        result['found']['project']['entrust_unit'] = (commission.get('unit_name') or '').strip()
+        result['found']['project']['entrust_unit_area'] = (commission.get('area_name') or '').strip()
+    elif commission_id:
+        result['missing'].append(
+            f'委托单位（commission_id={commission_id} 在 ts_commission_unit 无对应记录）')
+    if proj.get('commission_person'):
+        result['found']['project']['entrust_person'] = str(proj['commission_person']).strip()
     # 审计时间：DB 创建项目时间 ~ 报告生成时间（2026-09-03 用户确认）
     # 审计期/基准期：项目表 audit_year / reference_year，格式 YYYY年M月—YYYY年M月（全角破折号，2026-09-05 用户确认）
     def _fmt_ym(dt):
@@ -1146,6 +1161,20 @@ def build_and_save_project(
                                      ('PG', pg_project),
                                      ('Excel', excel_data),
                                      ('default', '')),
+            # 委托单位（2026-09-29 接线）：PG 取自 ts_commission_unit；平台无值则留空 →
+            # 报告 1.1 写"委托……对该单位"而**不写单位名**（禁止凭记忆补专名）。
+            entrust_unit=sr.resolve('entrust_unit',
+                                    ('PG', pg_project),
+                                    ('Excel', excel_data),
+                                    ('default', '')),
+            entrust_unit_area=sr.resolve('entrust_unit_area',
+                                         ('PG', pg_project),
+                                         ('Excel', excel_data),
+                                         ('default', '')),
+            entrust_person=sr.resolve('entrust_person',
+                                      ('PG', pg_project),
+                                      ('Excel', excel_data),
+                                      ('default', '')),
             auditor=_resolve_auditor(sr, pg_project, excel_data),
             # 审计机构信息（能源审计机构信息表）：name/address 来自 ts_register_info（PG），
             # 负责人/联系方式由用户提问提供（Excel 中可预填），表内 contact/mobile 作预填参考。

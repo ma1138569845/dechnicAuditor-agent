@@ -200,7 +200,10 @@ def collect_data_side(project_dir: str):
                 continue
             numbers_in(payload, numbers)
             base = payload.get("base") or {}
-            for key in ("unit_name", "unit_short", "auditor", "audit_org_name", "address"):
+            # entrust_unit（委托单位，2026-09-29 接线）也属"本项目数据源专名"——
+            # 它来自平台 ts_commission_unit，写进 1.1 后不得被 BLUEPRINT_HINTS 兜底误判为蓝本泄漏。
+            for key in ("unit_name", "unit_short", "auditor", "audit_org_name", "address",
+                        "entrust_unit", "entrust_unit_area", "entrust_person"):
                 if base.get(key):
                     orgs |= extract_orgs(str(base[key]))
                     orgs.add(str(base[key]))

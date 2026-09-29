@@ -222,7 +222,7 @@ class PgDataQuery:
             audited_name: 按被审计单位名称模糊查询（ILIKE）。
         """
         query = """SELECT id, audited_name, audited_person, audited_tel,
-                    commission_person, commission_tel, audit_dept_name,
+                    commission_id, commission_person, commission_tel, audit_dept_name,
                     audit_dept_person, audit_dept_tel,
                     audit_year, reference_year, start_time, end_time, create_time,
                     status, customer_id, remark, energy_codes, audit_template
@@ -238,6 +238,20 @@ class PgDataQuery:
     def find_project_by_name(self, project_name: str) -> Dict | None:
         """按名称模糊匹配最新一个项目，返回单条记录（含 customer_id）。"""
         rows = self.get_institution_project(audited_name=project_name)
+        return rows[0] if rows else None
+
+    def get_commission_unit(self, commission_id: int) -> Dict | None:
+        """按 ts_institution_project.commission_id 取委托单位（2026-09-29 接线）。
+
+        返回 {'unit_name', 'area_name'}；查不到返回 None。
+        **口径（用户 2026-09-29 定）：直接用平台数据，不做测试数据闸/质量过滤**——
+        平台里填的是什么就落什么，数据质量问题由平台侧修。
+        """
+        if not commission_id:
+            return None
+        rows = self._execute(
+            "SELECT unit_name, area_name FROM ts_commission_unit WHERE id = %s",
+            (commission_id,))
         return rows[0] if rows else None
 
     # ========== 标准规范 ==========

@@ -63,6 +63,13 @@ class ProjectBase:
     basic_situation: str = ""          # 单位基本情况概述（来自 ts_customer_info.basic_situation）
     contact_person: str = ""           # 联系人
     contact_phone: str = ""            # 联系电话
+    # ---- 委托单位（2026-09-29 接线）----
+    # 来源：ts_institution_project.commission_id → ts_commission_unit(unit_name, area_name)。
+    # 口径（用户 2026-09-29 定）：**直接使用平台数据，不做质量过滤**；
+    # 报告 1.1 委托句「有值写单位名、无值写"委托……对该单位"」（见 chapter-guides-1-4.md）。
+    entrust_unit: str = ""             # 委托单位名称（平台登记值）
+    entrust_unit_area: str = ""        # 委托单位所属地区
+    entrust_person: str = ""           # 委托单位联系人（平台 commission_person）
     audit_start: str = ""              # 审计起始时间 ex: "2025年6月"
     audit_end: str = ""                # 审计结束时间 ex: "2025年7月"
     audit_period: str = ""             # 审计期 ex: "2025年1月—2026年9月"（audit_year）

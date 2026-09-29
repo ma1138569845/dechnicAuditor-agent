@@ -369,6 +369,10 @@ def main(argv=None) -> int:
         "| 项 | 值 | 来源 |",
         "|---|---|---|",
         f"| 单位全称 | {base.get('unit_name') or '【待补充】'} | data.json → base.unit_name |",
+        # 委托单位（2026-09-29 接线）：1.1 委托句**只认这个值**；无值就写"委托……对该单位"，
+        # 禁止凭记忆补专名（烟台曾写出无源区名被判 P0）。口径＝直接用平台数据，不做质量过滤。
+        f"| 委托单位 | {base.get('entrust_unit') or '（平台无登记 → 1.1 写“委托……对该单位”，不写单位名）'}"
+        " | data.json → base.entrust_unit |",
         f"| 审计期 | {base.get('audit_period') or '【待补充】'} | data.json → base.audit_period |",
         f"| 基准期 | {base.get('base_period') or '【待补充】'} | data.json → base.base_period |",
         f"| 建筑面积（m²） | {base.get('building_area') or '【待补充】'} | data.json → base.building_area |",
