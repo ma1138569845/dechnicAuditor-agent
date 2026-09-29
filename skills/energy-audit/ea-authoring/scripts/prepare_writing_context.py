@@ -448,6 +448,26 @@ def main(argv=None) -> int:
         for label, val, src in heat_rows:
             lines.append(f"| {label} | {val} | {src} |")
 
+    # 空调与供暖控制方式（2026-09-29 接入）：第7章 7.1「C 类机会问题」第 1 个方向的**唯一**
+    # 依据是 data.json → metering.cold_control_type（采集自 ts_institution_scene）。
+    # 此前它只写在契约的"C 类只开放…"那句里、不显示值，写 7.1 时看不见 → C 类整类漏写。
+    # 这里把它连同取值一并摆到台面上；缺键直接显示【待补充】，避免"库里填了、快照没接、
+    # 报告里整类不写"这种静默漏写（2026-09-29 烟台法院实测缺键即源于快照早于接线）。
+    _cc = metering.get("cold_control_type")
+    _cc_show = _cc if _has(_cc) else "【待补充】"
+    lines += [
+        "",
+        "### 空调与供暖控制方式（第7.1 C 类依据）",
+        "",
+        "> **唯一**取自 `data.json → metering.cold_control_type`（现场情况表登记值）。"
+        "登记为非自动/无集中控制（如「人工控制」「半自动控制」）时，7.1 **应**写出该条 C 类"
+        "机会问题；为空或「自动控制」时**不得写**该条。",
+        "",
+        "| 项 | 值 | 来源 |",
+        "|---|---|---|",
+        f"| 空调与供暖控制方式 | {_cc_show} | data.json → metering.cold_control_type |",
+    ]
+
     lines += ["", "## 三、已落盘章节（其余为待写；**禁止重复生成已存在的章**）", ""]
     order = [f"ch{i}.md" for i in range(1, 9)] + ["appendix.md"]
     found = []
