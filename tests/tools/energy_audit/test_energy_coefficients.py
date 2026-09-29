@@ -104,9 +104,11 @@ def test_pg_collector_extracts_standard_coal_coefficient():
 
     ey = result['found']['energy_yearly'][0]
     assert ey['year'] == 2023
-    assert ey['coefficients']['electricity'] == pytest.approx(0.1229)
+    # ★2026-09-29：电 0.1229（当量旧错值）落 COEFFICIENT_RANGES(0.2~0.5) 之外 → 采集侧拒收，
+    # 不写进 coefficients（指标计算侧走内置默认 0.31）。
+    assert 'electricity' not in ey['coefficients']
+    assert 'electricity' not in ey['coefficient_sources']
     assert ey['coefficients']['water'] == pytest.approx(0.2571)
-    assert ey['coefficient_sources']['electricity'] == 'PG'
     assert ey['coefficient_sources']['water'] == 'PG'
 
 

@@ -24,7 +24,7 @@ from tools.energy_audit.project_data import (
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
 )
-from tools.energy_audit.indicators import compute_project_indicators
+from tools.energy_audit.indicators import compute_project_indicators, COEFFICIENT_RANGES
 from tools.energy_audit.institution_classifier import classify_institution
 from tools.energy_audit.dept_dict import classify_from_codes as _classify_from_codes
 from tools.energy_audit.file_resolver import (
@@ -680,14 +680,18 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             unit_total = total
             building_value = building_total if building_total > unit_total else 0
             # 折标煤系数（实物量记录 dt=1/4/5 统一记录；heat 单位归一 kgce/GJ → tce/GJ）
+            # ★2026-09-29：落盘前按 COEFFICIENT_RANGES 合理性拒收（与 resolve_coefficient 同一份边界），
+            # 防 DB 旧错值（如天然气 1.33）持久化进 data.json 后绕过指标计算侧拒收。
             if dt in (1, 4, 5):
                 coeff = rec.get('standard_coal_coefficient')
                 if is_valid_coefficient(coeff):
                     cval = float(coeff)
                     if coeff_type == 'heat' and cval > 1:
                         cval = cval / 1000  # DB 存 kgce/GJ（如 34.12），指标计算用 tce/GJ（0.03412）
-                    yearly_map[year].setdefault('coefficients', {})[coeff_type] = cval
-                    yearly_map[year].setdefault('coefficient_sources', {})[coeff_type] = 'PG'
+                    lo, hi = COEFFICIENT_RANGES.get(coeff_type, (0, float('inf')))
+                    if lo <= cval <= hi:
+                        yearly_map[year].setdefault('coefficients', {})[coeff_type] = cval
+                        yearly_map[year].setdefault('coefficient_sources', {})[coeff_type] = 'PG'
             if dt == 1:
                 yearly_map[year][field] = total
                 if building_value:

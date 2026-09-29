@@ -43,6 +43,13 @@ COEFFICIENTS = {
     'gasoline':    1.4714,   # kgce/kg
 }
 
+# 折标系数合理性范围（单点；2026-09-29 提为模块级常量，采集侧落盘前共用同一份拒收边界，
+# 防 DB 旧错值——如天然气 1.33——被写进 data.json 后绕过 resolve_coefficient 的拒收）。
+COEFFICIENT_RANGES = {
+    'electricity': (0.2, 0.5), 'natural_gas': (1.15, 1.30),
+    'heat': (0.01, 0.05), 'diesel': (1.0, 2.0), 'gasoline': (1.0, 2.0),
+}
+
 # 非供暖能耗计算使用等效电折标系数（区别于发电煤耗 0.1229）
 ELEC_COEFF_NON_HEATING = 0.31  # kgce/kWh（终端电力等价值）
 
@@ -676,18 +683,13 @@ def resolve_coefficient(energy_type: str) -> float:
       气 1.15~1.30（只接受 1.2143；1.33 当量旧错值拒收）,
       热 0.01~0.05, 油 1.0~2.0。水不折标，无系数查询。
     """
-    # 合理性范围（水不折标，无范围）
-    _ranges = {
-        'electricity': (0.2, 0.5), 'natural_gas': (1.15, 1.30),
-        'heat': (0.01, 0.05), 'diesel': (1.0, 2.0), 'gasoline': (1.0, 2.0),
-    }
+    lo, hi = COEFFICIENT_RANGES.get(energy_type, (0, float('inf')))
 
     # Layer 1
     code_map = {'electricity': '45', 'water': '01', 'natural_gas': '25',
                 'heat': '50', 'diesel': '300302', 'gasoline': '300301'}
     code = code_map.get(energy_type, energy_type)
     db_val = lookup_coefficient_from_db(code)
-    lo, hi = _ranges.get(energy_type, (0, float('inf')))
     if db_val is not None and lo <= db_val <= hi:
         return db_val
     elif db_val is not None:
