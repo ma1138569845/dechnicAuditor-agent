@@ -193,22 +193,26 @@ def _build_cover(doc, unit, org, date_text):
         if text:
             _para(doc, text, size=16, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=1.5, space_before=0, space_after=0)
-    _page_break(doc)
+    # 2026-09-29 修空白页：封面**不再追加"分页段落"**——原写法在封面刚好占满一页时
+    # （有落款日期行时实测 y=727pt，已接近可用下边界）该空段落自身溢出到次页，
+    # 它带来的分页又把信息表推到第 3 页 → 第 2 页变成空白页（中医/烟台实测，山东因无日期行幸免）。
+    # 改为把"另起一页"交给**下一段**（信息表首标题）的 pageBreakBefore —— 落款坐标一字不动。
 
 
 def _build_info_page(doc, institution, team, coop):
-    _info_title(doc, "能源审计机构信息表")
+    _info_title(doc, "能源审计机构信息表").paragraph_format.page_break_before = True
     _add_table(doc, institution)
     _info_title(doc, "能源审计组人员名单")
     _add_table(doc, team)
     _info_title(doc, "能源审计配合人员名单")
     _add_table(doc, coop)
     doc.add_paragraph()
-    _page_break(doc)
+    # 同上：信息页之后不再插分页段落，由目录标题承担（见 _build_toc_page）
 
 
 def _build_toc_page(doc):
-    _para(doc, "目  录", size=15, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER, line=1.5)
+    _para(doc, "目  录", size=15, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
+          line=1.5).paragraph_format.page_break_before = True
     _add_toc_field(doc.add_paragraph())
 
 
