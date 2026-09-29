@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -99,9 +100,19 @@ _CN_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七":
 RE_CHAPTER = re.compile(r"^第\s*([0-9]+|[一二三四五六七八九])\s*章")
 RE_H2 = re.compile(r"^(\d+)\.(\d+)(?![.\d])")
 RE_H3 = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
-RE_AREA = re.compile(
-    r"(?:总?建筑面积|建筑总面积)[^0-9]{0,16}([0-9][0-9,]*(?:\.[0-9]+)?)\s*(万)?\s*(?:m2|m²|平方米|㎡)"
+# 2026-09-29：增加"建筑面积与数字之间的连接词"捕获组（第 1 组），用于排除**标准条文阈值**。
+_RE_AREA = (
+    r"(?:总?建筑面积|建筑总面积)([^0-9]{0,16})([0-9][0-9,]*(?:\.[0-9]+)?)\s*(万)?\s*"
+    r"(?:m2|m²|平方米|㎡)"
 )
+RE_AREA = re.compile(_RE_AREA)
+
+# 面积阈值语：引标准条文时常见「建筑面积不低于 20000m² 且采用集中空调的公共建筑，应设置…」，
+# 其中数字是**标准阈值**、不是本项目面积陈述。实测（2026-09-29）：7.1 引 GB 55015-2021 第 3.3.6 条
+# 后，山东（20,549.74 vs 条文 20,000）被判极差 2.75% P0、烟台（24,300 vs 20,000）被判 21.5% P0——
+# 两条都是误报。凡"建筑面积 + 阈值语 + 数字"一律不计入本项目面积陈述。
+_AREA_THRESHOLD_WORDS = ("不低于", "不少于", "不超过", "不高于", "不超出",
+                         "大于", "小于", "≥", "≤")
 RE_TCE = re.compile(r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:tce|吨标(?:准)?煤)")
 RE_LIST_ITEM = re.compile(r"^(?:[（(]?\d+[)）\.、]|[·•\-—])")
 
@@ -171,12 +182,19 @@ def _normalize_area(value: str, wan: Optional[str]) -> float:
 
 
 def extract_areas(blocks: Sequence[Block]) -> Dict[int, List[float]]:
-    """按章节提取建筑面积陈述值（万 m² 已换算为 m²）。"""
+    """按章节提取建筑面积陈述值（万 m² 已换算为 m²）。
+
+    排除"建筑面积 + 阈值语（不低于/不超过/大于/小于/≥/≤）+ 数字"的**标准条文阈值**
+    （见 `_AREA_THRESHOLD_WORDS`），否则引用条文会污染跨章面积一致性判定。
+    """
     found: Dict[int, List[float]] = {}
     for block in blocks:
         if block.kind != "p" or not block.text:
             continue
-        for value, wan in RE_AREA.findall(block.text):
+        for m in RE_AREA.finditer(block.text):
+            connector, value, wan = m.group(1) or "", m.group(2), m.group(3)
+            if any(w in connector for w in _AREA_THRESHOLD_WORDS):
+                continue        # 条文阈值，不是本项目面积
             found.setdefault(block.chapter, []).append(_normalize_area(value, wan))
     return found
 
@@ -939,6 +957,66 @@ def load_missing_registry(
             out.append({str(k): str(v) for k, v in item.items() if v is not None})
     return out
 
+def check_attribution_layering(project: str) -> List[Finding]:
+    """5.2「归因下沉」律 1 —— 总量图注后第一段不得含归因词（2026-09-29 接入自动闸门）。
+
+    此前该检查只能手动跑：`ea-validation/scripts/check_attribution_layering.py` 的 docstring 自述
+    "建议性检查，尚未接入 datava REPORT_REVIEW 的 P0/P1 闸门"。实测漏检事故：烟台法院报告的
+    5.2.1「…可能得益于节能改造…」与 5.2.2「…与节水管理措施…有关」两处越级归因，直到交付前人工核对才发现。
+
+    判据与定位**完全复用**该脚本（结构定位：总量图注 → 紧随其后的第一段；费用节跳过；
+    "提请核实"语境豁免）。严重级别 **P1（待修，不阻塞交付）**：它是明确的规则违反（rules.md 律 1），
+    但不改变数据结论，故不设 P0。
+    """
+    try:
+        _scripts_dir = str(Path(__file__).resolve().parents[1])   # …/ea-validation/scripts
+        if _scripts_dir not in sys.path:
+            sys.path.insert(0, _scripts_dir)
+        from check_attribution_layering import resolve_source, scan  # type: ignore
+    except Exception as exc:  # noqa: BLE001 —— 检查器不可用不得让整轮审查失败
+        return [Finding(
+            code="V3.CH5.ATTRIB_CHECKER_UNAVAILABLE",
+            category="写作规范",
+            severity=SEV_P2,
+            title="5.2 归因下沉检查未能执行",
+            detail=f"无法加载 check_attribution_layering：{exc}",
+            suggestion="确认 ea-validation/scripts/check_attribution_layering.py 存在且可导入",
+        )]
+
+    src = Path(resolve_source(project or "", ""))
+    if not src.is_file():
+        return []
+    try:
+        hits, _checked = scan(src.read_text(encoding="utf-8", errors="replace").splitlines())
+    except Exception as exc:  # noqa: BLE001
+        return [Finding(
+            code="V3.CH5.ATTRIB_CHECKER_UNAVAILABLE",
+            category="写作规范",
+            severity=SEV_P2,
+            title="5.2 归因下沉检查未能执行",
+            detail=f"扫描 {src.name} 失败：{exc}",
+            suggestion="确认第5章装配稿编码正常（UTF-8）",
+        )]
+
+    out: List[Finding] = []
+    for h in hits:
+        words = "、".join(h.get("words") or [])
+        out.append(Finding(
+            code="V3.CH5.ATTRIB_LAYERING",
+            category="写作规范",
+            severity=SEV_P1,
+            title=f"5.2 越级归因（归因下沉律 1）：{h.get('section', '')}",
+            detail=f"{src.name} 第 {h.get('line')} 行命中归因词「{words}」；原文："
+                   f"{str(h.get('text') or '')[:120]}",
+            location=f"第5章 {h.get('section', '')}",
+            expected="总量图注之后那一段只写增量 / 增减率 / 波动区间 / 极值",
+            actual=f"出现归因词「{words}」",
+            suggestion="把归因移到该品种的逐月段（图5.N+1 之后），只挂设备形式或现场事件；"
+                       "挂不上改写「成因待核实」（rules.md《归因下沉三律》律 1）",
+        ))
+    return out
+
+
 def run(
     project: str,
     *,
@@ -982,6 +1060,8 @@ def run(
     findings += check_chapter6_h3(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
+    # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）
+    findings += check_attribution_layering(project)
     findings += check_building_tables(blocks)
     findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area)
     findings += check_energy_consistency(blocks)

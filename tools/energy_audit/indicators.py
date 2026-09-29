@@ -455,13 +455,26 @@ def build_sub_type(metric: str, children_label: str = '', climate_zone: str = ''
 DEFAULT_HEATING_NAME = '市政集中供暖（按热计量）'
 
 
-def _venue_area_grade(text: str) -> str:
-    """从单位名猜场馆的省市档（省级/市级/区县级）。猜不出按"市级"。"""
-    t = str(text or '')
-    if '省' in t:
-        return '省级'
-    if any(k in t for k in ('区', '县', '镇', '街道')):
-        return '区县级'
+def _venue_area_grade(text: str, affiliation: str = '') -> str:
+    """场馆的省市档（省级/市级/区县级）。
+
+    2026-09-29 接入项目数据：**优先用 `admin_affiliation`（行政归属）判档**，取不到再退回单位名。
+    理由：DB37/T 3780-2019 表1 的省市档按**主管层级**分（省属/市属/区县属），
+    `admin_affiliation` 正是这个语义（如"山东省文化和旅游厅"→省级、
+    "烟台市文化和旅游局"→市级、"日照市岚山区文化和旅游局"→区县级）；
+    早前只能靠单位名猜、缺省"市级"（见 `ea-calculation/SKILL.md` 旧"待补"注）。
+    判序：**先判区县**（"XX市XX区…"同时含市与区，必须以区县为准）→ 再判省 → 再判市 → 兜底"市级"。
+    """
+    for src in (affiliation, text):
+        s = str(src or '')
+        if not s:
+            continue
+        if any(k in s for k in ('区', '县', '镇', '街道')):
+            return '区县级'
+        if '省' in s:
+            return '省级'
+        if '市' in s:
+            return '市级'
     return '市级'
 
 
@@ -497,7 +510,9 @@ def project_sub_type(base, institution_type: str, metric: str,
             bv('city'), bv('district'), bv('address'), bv('district_id') or None)
         return f"{label}·{zone}" if zone else label
     if institution_type == 'venue':
-        grade = _venue_area_grade(bv('unit_name') or bv('name'))
+        # 2026-09-29：优先用项目数据的行政归属判省市档，退回单位名（见 _venue_area_grade）
+        grade = _venue_area_grade(bv('unit_name') or bv('name'),
+                                  bv('admin_affiliation'))
         return f"{label}·{grade}"
     return label
 

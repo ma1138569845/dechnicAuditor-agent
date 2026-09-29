@@ -19,7 +19,9 @@
 
 退出码：0 = 未发现越级归因（或未找到可检查段落）；1 = 有命中；2 = 入参/文件问题。
 
-⚠️ 定位：**建议性检查**（advisory），尚未接入 datava REPORT_REVIEW 的 P0/P1 闸门——
+⚠️ 定位（2026-09-29 更新）：**已接入 datava REPORT_REVIEW 自动闸门**——
+    `datava/mode_report_review.py::check_attribution_layering()` 直接复用本脚本的
+    `resolve_source` / `scan`，命中记 **P1（待修，不阻塞交付）**；本脚本仍可独立跑做单点排查。
     语义判断留给 editor 终审，本脚本只抓"图注后第一段带归因词"这一种最明确的越级形态。
 """
 from __future__ import annotations
