@@ -404,7 +404,7 @@ def main(argv=None) -> int:
         baseline = ind.get("baseline") or {}
         usage = (baseline.get("usage") or {}) if isinstance(baseline, dict) else {}
         if usage:
-            lines += ["", "### 能耗基准（第5.4 / 第8.3 引用）", "", "| 品种 | 基准值 | 单位 | 取法 |", "|---|---|---|---|"]
+            lines += ["", "### 能耗基准（第5.4 与第8章末段引用）", "", "| 品种 | 基准值 | 单位 | 取法 |", "|---|---|---|---|"]
             for name, item in usage.items():
                 if isinstance(item, dict):
                     lines.append(
