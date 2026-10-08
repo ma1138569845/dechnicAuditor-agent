@@ -320,6 +320,7 @@ native/fts5_cjk/*.so
 /apps/desktop/_electron_restart.log
 /apps/desktop/electron-dev.log
 /apps/desktop/renderer-dev.log
+/apps/desktop/renderer.log
 /electron-restart.log
 
 # Energy audit tool output: generated reports (.md/.docx) + downloaded attachment
