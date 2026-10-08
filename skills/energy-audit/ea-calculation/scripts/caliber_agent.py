@@ -146,11 +146,11 @@ def _resolve_heating_area(proj) -> float:
     """采暖建筑面积取值（2026-09-29 口径判别）。
 
     建筑表 heat_area 常被平台按「每栋建筑面积」默认填充（实测岚山医院 7 栋 heat_area
-    与 build_area 全等、合计 63,465.91㎡），而真实供暖面积在 scene.heat_area
-    （54,523.3㎡，与 120 万热费、22 元/㎡ 完全自洽）。
+    与 build_area 全等、合计 63465.91㎡），而真实供暖面积在 scene.heat_area
+    （54523.3㎡，与 120 万热费、22 元/㎡ 完全自洽）。
     判别：聚合 build.heat_area 与建筑面积全等（疑似默认填充）且 metering.heat_area
     > 0 且小于聚合值 → 用 scene 口径；否则沿用建筑表聚合
-    （法院 build=24,300、scene 为空 → 不受影响；2026-09-29 用户裁决本案用 54,523.3）。
+    （法院 build=24300、scene 为空 → 不受影响；2026-09-29 用户裁决本案用 54523.3）。
     """
     buildings = list(getattr(proj, 'buildings', []) or [])
     b_sum = sum(float(getattr(b, 'heating_area', 0) or 0) for b in buildings)
@@ -249,8 +249,8 @@ def format_indicators_report(results: dict) -> str:
     lines.append("=" * 60)
     lines.append(f"项目: {results.get('project', '')}")
     lines.append(f"年度: {results.get('year', '')} | 类型: {results.get('institution_type', '')}")
-    lines.append(f"面积: {results.get('building_area', 0):,.0f} m² | "
-                 f"人数: {results.get('people_count', 0):,}")
+    lines.append(f"面积: {results.get('building_area', 0):.0f} m² | "
+                 f"人数: {results.get('people_count', 0)}")
     lines.append("")
 
     # 指标(1)
@@ -296,7 +296,7 @@ def format_indicators_report(results: dict) -> str:
         bm5 = r5.get('benchmark') or {}
         lines.append(f"5. 单位采暖建筑面积供暖能耗: {r5.get('kgce_per_m2','-')} kgce/(m²·a)")
         lines.append(f"   对标: {bm5.get('评价结果','-')}")
-        lines.append(f"   采暖建筑面积: {r5.get('heating_area_m2',0):,.0f} m²")
+        lines.append(f"   采暖建筑面积: {r5.get('heating_area_m2',0):.0f} m²")
         lines.append("")
 
     # 基准
@@ -304,7 +304,7 @@ def format_indicators_report(results: dict) -> str:
     if baseline and 'usage' in baseline:
         lines.append(f"6. 建筑能耗基准 ({'、'.join(map(str, baseline.get('years', [])))}年):")
         for label, info in baseline.get('usage', {}).items():
-            lines.append(f"   {label}: {info['基准值']:,.2f}{info['单位']} [{info['方法']}]")
+            lines.append(f"   {label}: {info['基准值']:.2f}{info['单位']} [{info['方法']}]")
 
     lines.append("")
     lines.append("=" * 60)

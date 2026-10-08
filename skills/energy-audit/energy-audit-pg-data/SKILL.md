@@ -109,7 +109,7 @@ role/dept/name/gender/position），`pg_collector` 按上表映射组装即可�
 供暖电耗（供暖循环泵/供暖风机电耗，须从总电量剔除再算非供暖能耗/常规电耗）
 在 energy_main 的挂法：**data_type=4 + energy_code=45（电）+ energy_unit=kWh**。
 与 dt=4 热力(50)（供暖热量 GJ）并存于同一 data_type 下，按 energy_code 区分。
-烟台法院三年值：2023=159,682.5 / 2024=120,075 / 2025=78,210 kWh（用户平台录入，
+烟台法院三年值：2023=159682.5 / 2024=120075 / 2025=78210 kWh（用户平台录入，
 录入时为草稿 is_draft=1；该业务键无正式版本时草稿兜底生效）。取数链路已打通：
 pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 `EnergyYearly.heating_energy_kwh`（project_data 字段）→ indicators.py
@@ -228,8 +228,8 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 - `ts_institution_device` 总表可能为 0 条，设备数据全在分类表中。
 - `energy_audit_*` 工具 handler 签名须保持 `(args: dict, **kwargs)`（注册层会
   传 task_id 等 kwargs）；改动工具时勿退回单参数签名。
-- **正式版可能在版本升级时被改错/丢数据**（实测：烟台法院 2025 电量正式版 1,011,885
-  vs 草稿正确 1,040,085；热力 2024/2025 颠倒；2023/2024 水实物量正式版缺失）→
+- **正式版可能在版本升级时被改错/丢数据**（实测：烟台法院 2025 电量正式版 1011885
+  vs 草稿正确 1040085；热力 2024/2025 颠倒；2023/2024 水实物量正式版缺失）→
   取数时与草稿交叉核对，不一致**以账单为准并告警**；无法判断谁对时用下面的
   "热价/单价交叉验证法"判定。
 - **热价/单价交叉验证法（判定草稿 vs 正式版谁对，烟台法院实证）**：用
@@ -262,7 +262,7 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
   会标记小功率设备被标 kW（真阳性，提示 DB 人工核实）。
 - **逐月自洽验证**：`ts_institution_energy_data` 草稿月度合计应=主表
   total_value；若某版本月度合计≠其主表值（烟台法院 PL0402 月度合计 932580
-  ≠ 主表 1,011,885），该版本主表值与月度明细自相矛盾，整版不可信，弃用。
+  ≠ 主表 1011885），该版本主表值与月度明细自相矛盾，整版不可信，弃用。
   注意半年/季度粒度均摊（period_code 含 '~'）会引入舍入差，用主表 total
   为准。
 - **定额值不在 DB**：`ts_energy_standard` 仅存折标系数（电 0.1229/0.31、天然气

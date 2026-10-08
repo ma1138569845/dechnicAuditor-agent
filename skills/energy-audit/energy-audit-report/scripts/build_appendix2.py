@@ -54,13 +54,13 @@ def d(v) -> Decimal:
 
 
 def money(v: Decimal) -> str:
-    return f"{v.quantize(Q, rounding=ROUND_HALF_UP):,.2f}"
+    return f"{v.quantize(Q, rounding=ROUND_HALF_UP):.2f}"
 
 
 def price(cost: Decimal, vol: Decimal) -> str:
     if not vol:
         return "—"
-    return f"{(cost / vol).quantize(Q, rounding=ROUND_HALF_UP):,.2f}"
+    return f"{(cost / vol).quantize(Q, rounding=ROUND_HALF_UP):.2f}"
 
 
 def balance(months: list[Decimal], annual: Decimal) -> tuple[list[Decimal], Decimal]:

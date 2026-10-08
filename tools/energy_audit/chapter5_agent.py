@@ -251,8 +251,8 @@ def _co_location_note(en: dict, year: str, codes: list, unit_name: str) -> str:
             c = _coeff_info(code)
             ratio = round(building / unit, 2)
             notes.append(
-                f"- **{c['name']}**：整栋建筑共消耗 **{building:,.2f} {c['unit']}**，"
-                f"其中{unit_name}实际用量 **{unit:,.2f} {c['unit']}**（合署比 {ratio}，即建筑总量是本单位用量的 {ratio} 倍）"
+                f"- **{c['name']}**：整栋建筑共消耗 **{building:.2f} {c['unit']}**，"
+                f"其中{unit_name}实际用量 **{unit:.2f} {c['unit']}**（合署比 {ratio}，即建筑总量是本单位用量的 {ratio} 倍）"
             )
     if not notes:
         return ""
@@ -316,7 +316,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         coeff = c['coeff'] * 1000 if std == 'heat' else c['coeff']
         tce_val = round(total * coeff / 1000, 2)
         pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
-        _struct_parts.append(f"{c['name']} {total:,.2f} {c['unit']}（{tce_val:,.2f} tce，占 {pct}%）")
+        _struct_parts.append(f"{c['name']} {total:.2f} {c['unit']}（{tce_val:.2f} tce，占 {pct}%）")
     md += "**能源消费结构（写作参考）**：" + "；".join(_struct_parts) + "\n\n"
     # 2026-09-05 口径：5.1 不列综合能耗数值（铁律：综合能耗数值只在 5.3.3 给出）
 
@@ -325,7 +325,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
     # 逐年对比（写作参考——纯文本行输出，禁止渲染为正文表格）
     if len(years) > 1:
-        _tce_txt = "/".join(f"{year_tce[y]:,.2f}" for y in years)
+        _tce_txt = "/".join(f"{year_tce[y]:.2f}" for y in years)
         _pc_txt = "/".join(f"{year_tce[y]/people:.4f}" if people else "0" for y in years)
         _m2_txt = "/".join(f"{year_tce[y]/area:.4f}" if area else "0" for y in years)
         md += (f"**逐年能耗对比（写作参考）**：综合能耗 {_tce_txt} tce；"
@@ -350,7 +350,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
         # 逐年总量（写作参考数据行，正式报告 5.2 无表，author 转文字）
         vals_txt = "；".join(
-            f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):,.2f} {c['unit']}"
+            f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):.2f} {c['unit']}"
             for y in years)
         md += f"**数据参考**：{vals_txt}\n\n"
 
@@ -363,7 +363,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 monthly_ok = True
             monthly_rows.append((m + [0] * 12)[:12])
         if monthly_ok:
-            fmt = ',.2f' if 'm³' in c['unit'] else ',.0f'
+            fmt = '.2f' if 'm³' in c['unit'] else '.0f'
             for y, m in zip(years, monthly_rows):
                 m_txt = " / ".join(f"{i + 1}月 {float(v or 0):{fmt}}" for i, v in enumerate(m))
                 md += f"**逐月参考**：{str(y)[:4]}年 {m_txt}\n"
@@ -388,7 +388,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         for code in minor_codes:
             c = _coeff_info(code)
             vals_txt = "；".join(
-                f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):,.2f} {c['unit']}"
+                f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):.2f} {c['unit']}"
                 for y in years)
             md += f"- {c['name']}：{vals_txt}\n"
         md += "\n"
@@ -431,8 +431,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                         for c in codes_l)
                 vals.append(v)
                 total += v
-            md += f"| {y4}年 |" + "".join(f" {v*10000:,.2f} |" for v in vals) \
-                  + f" {total*10000:,.2f} |\n"
+            md += f"| {y4}年 |" + "".join(f" {v*10000:.2f} |" for v in vals) \
+                  + f" {total*10000:.2f} |\n"
         md += "\n"
         # 能源费用占比饼图（每年一张，连号，与正式报告一致）
         pie_no = fig_no
@@ -500,8 +500,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         _garage = float(getattr(yd_list[0], 'garage_area', 0) or 0) if yd_list else 0
         if _garage > 0 and area:
             md += (f"注：按定额标准统计口径，地下车库面积不计入建筑面积统计，"
-                   f"本指标计算分母按建筑面积扣除地下车库后 {area - _garage:,.0f} m²"
-                   f"（{area:,.0f} − {_garage:,.0f}）计取。\n\n")
+                   f"本指标计算分母按建筑面积扣除地下车库后 {area - _garage:.0f} m²"
+                   f"（{area:.0f} − {_garage:.0f}）计取。\n\n")
         md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
         table_no += 1
         md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
@@ -526,15 +526,15 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 r['benchmark'] = compare_with_benchmark(
                     r['kgce_per_m2'], institution_type=institution_type,
                     sub_type=st_non_heating)
-            _nh_rows['nh_elec'].append(f" {yd.electricity_kwh:,.2f} |")
-            _nh_rows['nh_heat_elec'].append(f" {float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f} |")
+            _nh_rows['nh_elec'].append(f" {yd.electricity_kwh:.2f} |")
+            _nh_rows['nh_heat_elec'].append(f" {float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f} |")
             _nh_rows['nh_coeff'].append(f" {_elec_coeff:g} |")
-            _nh_rows['nh'].append(f" {r['non_heating_kgce']:,.2f} |")
-            _nh_rows['area'].append(f" {r['building_area_m2']:,.0f} |")
-            _nh_rows['m2'].append(f" {r['kgce_per_m2']:,.2f} |")
-            _nh_rows['cons'].append(f" {r['benchmark'].get('约束值', ''):,.2f} |")
-            _nh_rows['base'].append(f" {r['benchmark'].get('基准值', ''):,.2f} |")
-            _nh_rows['guide'].append(f" {r['benchmark'].get('引导值', ''):,.2f} |")
+            _nh_rows['nh'].append(f" {r['non_heating_kgce']:.2f} |")
+            _nh_rows['area'].append(f" {r['building_area_m2']:.0f} |")
+            _nh_rows['m2'].append(f" {r['kgce_per_m2']:.2f} |")
+            _nh_rows['cons'].append(f" {r['benchmark'].get('约束值', ''):.2f} |")
+            _nh_rows['base'].append(f" {r['benchmark'].get('基准值', ''):.2f} |")
+            _nh_rows['guide'].append(f" {r['benchmark'].get('引导值', ''):.2f} |")
             _nh_rows['ev'].append(f" {r['benchmark']['评价结果']} |")
         if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
             _nh_rows.pop('nh_heat_elec', None)
@@ -555,13 +555,13 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             for yd in yd_list:
                 r = calc_unit_area_electricity(yd, institution_type=institution_type,
                                                sub_type=st_elec)
-                cols_elec["年耗电量(kWh)"].append(f"{yd.electricity_kwh:,.2f}")
-                cols_elec["供暖耗电量(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f}")
-                cols_elec["建筑面积(m²)"].append(f"{r['building_area_m2']:,.0f}")
-                cols_elec["单位建筑面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:,.2f}")
-                cols_elec["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
-                cols_elec["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
-                cols_elec["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}")
+                cols_elec["年耗电量(kWh)"].append(f"{yd.electricity_kwh:.2f}")
+                cols_elec["供暖耗电量(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
+                cols_elec["建筑面积(m²)"].append(f"{r['building_area_m2']:.0f}")
+                cols_elec["单位建筑面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:.2f}")
+                cols_elec["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                cols_elec["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                cols_elec["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
                 cols_elec["评价结果"].append(str(r['benchmark']['评价结果']))
             if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
                 cols_elec.pop("供暖耗电量(kWh)", None)
@@ -590,20 +590,20 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             for yd in yd_list:
                 r = calc_per_capita_energy(yd, institution_type=institution_type,
                                            sub_type=st_capita)
-                cols_pc["年耗电量(kWh)"].append(f"{yd.electricity_kwh:,.2f}")
+                cols_pc["年耗电量(kWh)"].append(f"{yd.electricity_kwh:.2f}")
                 cols_pc["折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
-                cols_pc["供热量(GJ)"].append(f"{yd.heating_energy_heat:,.2f}")
+                cols_pc["供热量(GJ)"].append(f"{yd.heating_energy_heat:.2f}")
                 cols_pc["折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
-                cols_pc["用汽油量(kg)"].append(f"{yd.transportation_petrol_kg:,.2f}")
+                cols_pc["用汽油量(kg)"].append(f"{yd.transportation_petrol_kg:.2f}")
                 cols_pc["折标系数(kgce/kg)"].append(f"{yd.get_coefficient('gasoline'):g}")
-                cols_pc["天然气量(m³)"].append(f"{yd.natural_gas_m3:,.2f}")
+                cols_pc["天然气量(m³)"].append(f"{yd.natural_gas_m3:.2f}")
                 cols_pc["折标系数(kgce/m³)"].append(f"{yd.get_coefficient('natural_gas'):g}")
-                cols_pc["综合能耗(tce)"].append(f"{r['total_kgce']/1000:,.2f}")
+                cols_pc["综合能耗(tce)"].append(f"{r['total_kgce']/1000:.2f}")
                 cols_pc["用能人数"].append(f"{people}")
-                cols_pc["人均综合能耗(kgce/(p·a))"].append(f"{r['kgce_per_person']:,.2f}")
-                cols_pc["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
-                cols_pc["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
-                cols_pc["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}")
+                cols_pc["人均综合能耗(kgce/(p·a))"].append(f"{r['kgce_per_person']:.2f}")
+                cols_pc["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                cols_pc["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                cols_pc["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
                 cols_pc["评价结果"].append(str(r['benchmark']['评价结果']))
             for _qty, _coeff_key in (("年耗电量(kWh)", "折标系数(kgce/kWh)"),
                                      ("供热量(GJ)", "折标系数(tce/GJ)"),
@@ -630,11 +630,11 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type='medical',
                                              bed_count=bed_count, sub_type=st_water)
-                    cols_bed["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
+                    cols_bed["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
                     cols_bed["床位数"].append(f"{bed_count}")
-                    cols_bed["单位开放床日用水量(L/床·d)"].append(f"{r['L_per_bed_day']:,.2f}")
-                    cols_bed["通用值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
-                    cols_bed["先进值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
+                    cols_bed["单位开放床日用水量(L/床·d)"].append(f"{r['L_per_bed_day']:.2f}")
+                    cols_bed["通用值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                    cols_bed["先进值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
                     cols_bed["评价结果"].append(str(r['benchmark']['评价结果']))
                 md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
                 md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
@@ -656,9 +656,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
             for yd in yd_list:
                 r = calc_water_indicator(yd, institution_type=institution_type,
                                          building_area=area, sub_type=st_water)
-                cols_va["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
-                cols_va["建筑面积(m²)"].append(f"{area:,.0f}")
-                cols_va["单位建筑面积年取水量(L/(m²·a))"].append(f"{r['L_per_area']:,.2f}")
+                cols_va["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
+                cols_va["建筑面积(m²)"].append(f"{area:.0f}")
+                cols_va["单位建筑面积年取水量(L/(m²·a))"].append(f"{r['L_per_area']:.2f}")
                 cols_va["评价结果"].append("—")
             md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
@@ -679,11 +679,11 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type,
                                              sub_type=st_water)
-                    cols_w["取水量(m³)"].append(f"{r['total_water_m3']:,.2f}")
+                    cols_w["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
                     cols_w["用能人数"].append(f"{people}")
-                    cols_w[f"{title}(m³/(人·a))"].append(f"{r['m3_per_person']:,.2f}")
-                    cols_w["通用值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}")
-                    cols_w["先进值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}")
+                    cols_w[f"{title}(m³/(人·a))"].append(f"{r['m3_per_person']:.2f}")
+                    cols_w["通用值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                    cols_w["先进值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
                     cols_w["评价结果"].append(str(r['benchmark']['评价结果']))
                 md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
                 md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
@@ -727,16 +727,16 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                                                   institution_type=institution_type,
                                                   sub_type=st_heating)
                 ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
-                cols_h["供暖电耗(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):,.2f}")
+                cols_h["供暖电耗(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
                 cols_h["电折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
-                cols_h["供热量(GJ)"].append(f"{yd.heating_energy_heat:,.2f}")
+                cols_h["供热量(GJ)"].append(f"{yd.heating_energy_heat:.2f}")
                 cols_h["热力折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
-                cols_h["供暖能耗(kgce)"].append(f"{r['heating_energy_kgce']:,.2f}")
-                cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:,.0f}")
-                cols_h["单位采暖建筑面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:,.2f}")
-                cols_h["约束值"].append(f"{r['benchmark'].get('约束值', ''):,.2f}" if r.get('benchmark') else '—')
-                cols_h["基准值"].append(f"{r['benchmark'].get('基准值', ''):,.2f}" if r.get('benchmark') else '—')
-                cols_h["引导值"].append(f"{r['benchmark'].get('引导值', ''):,.2f}" if r.get('benchmark') else '—')
+                cols_h["供暖能耗(kgce)"].append(f"{r['heating_energy_kgce']:.2f}")
+                cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:.0f}")
+                cols_h["单位采暖建筑面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:.2f}")
+                cols_h["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}" if r.get('benchmark') else '—')
+                cols_h["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}" if r.get('benchmark') else '—')
+                cols_h["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}" if r.get('benchmark') else '—')
                 cols_h["评价结果"].append(str(ev))
             if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
                 cols_h.pop("供暖电耗(kWh)", None)
@@ -763,13 +763,13 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "| 能源类型 | 用量基准 | 单位 | 计算方法 |\n"
     md += "|----------|----------|------|----------|\n"
     for label, info in bl.get('usage', {}).items():
-        md += f"| {label} | {info['基准值']:,.2f} | {info.get('单位', '')} | {info.get('方法', '')} |\n"
+        md += f"| {label} | {info['基准值']:.2f} | {info.get('单位', '')} | {info.get('方法', '')} |\n"
     if not bl.get('usage'):
         for code in all_codes:
             vals = [en.get(y, {}).get(code, {}).get('total', 0) for y in years]
             avg = sum(vals) / len(vals) if vals else 0
             c = _coeff_info(code)
-            md += f"| {c['name']} | {avg:,.2f} | {c['unit']} | 三年均值 |\n"
+            md += f"| {c['name']} | {avg:.2f} | {c['unit']} | 三年均值 |\n"
     md += "\n"
 
     # 5.4.2 费用基准
@@ -779,13 +779,13 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         md += "| 能源类型 | 费用基准(万元) | 计算方法 |\n"
         md += "|----------|---------------|----------|\n"
         for label, info in bl.get('cost', {}).items():
-            md += f"| {label} | {info['基准值']:,.2f} | {info.get('方法', '')} |\n"
+            md += f"| {label} | {info['基准值']:.2f} | {info.get('方法', '')} |\n"
         if not bl.get('cost'):
             for code in all_codes:
                 vals = [co.get(y, {}).get(code, {}).get('total', 0) for y in years]
                 avg = sum(vals) / len(vals) if vals else 0
                 c = _coeff_info(code)
-                md += f"| {c['name']} | {avg:,.2f} | 三年均值 |\n"
+                md += f"| {c['name']} | {avg:.2f} | 三年均值 |\n"
         md += "\n"
     else:
         md += "（费用数据待用户提供）\n\n"
@@ -916,7 +916,7 @@ def _generate_total_bar_chart(years, totals, name_cn, unit, output_dir, fname) -
     fig, ax = plt.subplots(figsize=(7, 4))
     bars = ax.bar(y_labels, totals, color='#4C8BF5', width=0.5)
     for b, v in zip(bars, totals):
-        ax.text(b.get_x() + b.get_width() / 2, b.get_height(), f'{v:,.2f}',
+        ax.text(b.get_x() + b.get_width() / 2, b.get_height(), f'{v:.2f}',
                 ha='center', va='bottom', fontsize=9)
     ax.set_title(chart_text(f'{y_labels[0]}年-{y_labels[-1]}年总{name_cn}量（单位：{unit}）'))
     ax.grid(True, alpha=0.3, axis='y')

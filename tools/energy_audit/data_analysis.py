@@ -162,7 +162,7 @@ def analyze_energy_data(energy_yearly: List[Dict], project_name: str = '') -> An
             change_pct = (curr_val - prev_val) / prev_val * 100
             if abs(change_pct) >= 30:
                 severity = 'critical' if abs(change_pct) >= 50 else 'warning'
-                desc = f'{cn}用量 {prev_year}→{curr_year}年变化{change_pct:+.1f}%（{prev_val:,.0f}→{curr_val:,.0f}{unit}）'
+                desc = f'{cn}用量 {prev_year}→{curr_year}年变化{change_pct:+.1f}%（{prev_val:.0f}→{curr_val:.0f}{unit}）'
                 result.anomalies.append(AnomalyItem(
                     category='年度对比', energy_type=cn,
                     description=desc,
@@ -200,7 +200,7 @@ def analyze_energy_data(energy_yearly: List[Dict], project_name: str = '') -> An
                 if abs(v - avg) > 2 * std:
                     pct = (v - avg) / avg * 100
                     severity = 'critical' if abs(pct) >= 50 else 'warning'
-                    desc = f'{year}年{m+1}月{cn}用量异常（{v:,.0f}{unit}，偏离均值{pct:+.1f}%）'
+                    desc = f'{year}年{m+1}月{cn}用量异常（{v:.0f}{unit}，偏离均值{pct:+.1f}%）'
                     result.anomalies.append(AnomalyItem(
                         category='逐月异常', energy_type=cn,
                         description=desc,

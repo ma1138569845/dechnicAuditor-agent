@@ -1345,7 +1345,7 @@ def _generate_single_energy_chart(yd_objects, et_key, label, unit, output_dir='.
         bars = ax.bar([str(y) for y in years], values, color='#4CAF50', width=0.4)
         for bar, val in zip(bars, values):
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.02,
-                    f'{val:,.0f}', ha='center', va='bottom', fontsize=8)
+                    f'{val:.0f}', ha='center', va='bottom', fontsize=8)
         ax.set_ylabel(chart_text(f'{label}({unit})'), fontsize=9)
         ax.set_title(chart_text(f'逐年{label}趋势'), fontsize=11)
         ax.spines['top'].set_visible(False)

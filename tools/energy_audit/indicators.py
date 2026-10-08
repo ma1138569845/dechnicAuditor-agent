@@ -1337,9 +1337,9 @@ def calc_baseline(
 
     # 生成文字总结
     for label, info in {**usage_result, **cost_result}.items():
-        years_str = '、'.join(f"{y}年{info['各年'][y]:,.2f}{info['单位']}" for y in years)
+        years_str = '、'.join(f"{y}年{info['各年'][y]:.2f}{info['单位']}" for y in years)
         summary_parts.append(
-            f"{years_str}，{info['方法']}，{label}基准值={info['基准值']:,.2f}{info['单位']}（波动{info['波动范围']}）。"
+            f"{years_str}，{info['方法']}，{label}基准值={info['基准值']:.2f}{info['单位']}（波动{info['波动范围']}）。"
         )
 
     return {
@@ -1649,9 +1649,9 @@ def _test():
     baseline = calc_baseline([d2022, d2023, d2024])
     print(f"年限: {baseline['years']}")
     for label, info in baseline['usage'].items():
-        print(f"  {label}: 基准={info['基准值']:,.2f}{info['单位']} [{info['方法']}] 波动={info['波动范围']}")
+        print(f"  {label}: 基准={info['基准值']:.2f}{info['单位']} [{info['方法']}] 波动={info['波动范围']}")
     for label, info in baseline['cost'].items():
-        print(f"  {label}: 基准={info['基准值']:,.2f}{info['单位']} [{info['方法']}] 波动={info['波动范围']}")
+        print(f"  {label}: 基准={info['基准值']:.2f}{info['单位']} [{info['方法']}] 波动={info['波动范围']}")
     print(f"\n总结: {baseline['summary'][:200]}...")
 
 

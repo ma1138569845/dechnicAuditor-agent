@@ -133,7 +133,7 @@
 - 指标公式已含剔除逻辑（`(electricity_kwh - heating_energy_kwh) × 0.31`）。
 - **DB 挂法（用户已录入法院三年值）**：energy_main `data_type=4 + energy_code=45（电）
   + energy_unit=kWh` = 供暖电耗（与 dt=4 热力 GJ 按 code 区分）。2023/2024/2025 =
-  159,682.5 / 120,075 / 78,210 kWh。
+  159682.5 / 120075 / 78210 kWh。
 - **取数链路已打通**（原缺陷：DB 无记录 + pg_collector 从不传 heating_energy_kwh →
   恒 0，预计算偏高 13.27 vs 正确 12.27）：pg_collector 能耗段加
   `dt==4 and field=='electricity_kwh' → yearly_map[year]['heating_energy_kwh']`；

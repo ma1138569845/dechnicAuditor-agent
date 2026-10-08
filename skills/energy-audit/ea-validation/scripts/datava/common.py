@@ -263,4 +263,4 @@ def fmt_num(value: Any, digits: int = 2) -> str:
     number = safe_float(value, float("nan"))
     if number != number:  # NaN
         return str(value)
-    return f"{number:,.{digits}f}".rstrip("0").rstrip(".") if digits else f"{number:,.0f}"
+    return f"{number:.{digits}f}".rstrip("0").rstrip(".") if digits else f"{number:.0f}"
