@@ -12,9 +12,8 @@ export type SettingsView =
   | 'keybinds'
   | 'keys'
   | 'notifications'
-// FORK: keep our 'onlyoffice' view. 'plugins' view was removed upstream
-// (one Plugins surface in app/skills now).
   | 'onlyoffice'
+  | 'plugins'
   | 'providers'
   | 'sessions'
   | 'vault'

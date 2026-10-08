@@ -11,12 +11,13 @@ export {
   HermesGateway,
   profileScopeKey,
   PROMPT_SUBMIT_REQUEST_TIMEOUT_MS,
+  resolveOwnerNow,
   setApiRequestConnection,
   setApiRequestProfile,
   STARTUP_REQUEST_TIMEOUT_MS
 } from './api/client'
 import { profileScoped } from './api/client'
-export type { ProfileScope } from './api/client'
+export type { ProfileScope, ResolvedOwner } from './api/client'
 export * from './api/knowledge'
 export * from './api/config'
 export * from './api/cron'
