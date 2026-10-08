@@ -521,6 +521,11 @@ def _bullet(doc, text):
 
 def _add_image_para(doc, path, width_cm=12.0):
     """图片独立段：居中、12cm 宽、无缩进（对齐规范；终稿缩进漂移不复制）。"""
+    # 费用占比饼图收窄（2026-10-08 用户定）：`charts/cost_pie_*.png` 一律按 8.5cm 插入
+    # （约半页宽）——原 12cm 会让一张饼图独占一行/一页、并把上一页的表格挤下去。
+    # 其余图（流向图/柱状图/照片）维持 12cm 不变。
+    if width_cm == 12.0 and "cost_pie_" in os.path.basename(str(path)):
+        width_cm = 8.5
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     pf = p.paragraph_format

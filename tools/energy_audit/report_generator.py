@@ -1423,10 +1423,31 @@ def _generate_cost_pie_chart(year: int, labels: list, values: list, output_dir='
         lbls, vals = zip(*filtered)
 
         fig, ax = plt.subplots(figsize=(5, 4))
-        colors = ['#4CAF50','#2196F3','#FF9800','#F44336','#9C27B0']
+        # 固定"品种 → 颜色"查色表（2026-10-08 用户定，与 chapter5_agent 同表）：
+        # 电费=蓝、供暖费/热费=绿、水费=橙、天然气费=紫、汽油费=黄、柴油等其他=灰。
+        # 原来按 labels 出现顺序取色 → 同品种跨年/跨报告换色，此处一并修正。
+        _COLOR_MAP = (
+            ('电', '#4472C4'), ('热', '#70AD47'), ('供暖', '#70AD47'),
+            ('水', '#ED7D31'), ('天然气', '#9C6BD6'), ('燃气', '#9C6BD6'),
+            ('汽油', '#FFC000'), ('油', '#FFC000'), ('柴油', '#A5A5A5'),
+        )
+        _FALLBACK = ('#A5A5A5', '#5B9BD5', '#ED7D31', '#70AD47', '#FFC000')
+        _used, colors = set(), []
+        for _lbl in lbls:
+            _s = str(_lbl or '')
+            _c = ''
+            for _k, _v in _COLOR_MAP:
+                if _k in _s and _v not in _used:
+                    _c = _v
+                    break
+            if not _c:
+                _c = next((x for x in (_FALLBACK + tuple(v for _, v in _COLOR_MAP))
+                           if x not in _used), '#A5A5A5')
+            _used.add(_c)
+            colors.append(_c)
         wedges, texts, autotexts = ax.pie(
             vals, labels=lbls, autopct='%1.1f%%',
-            colors=colors[:len(vals)], startangle=90,
+            colors=colors, startangle=90,
             textprops={'fontsize': 9}
         )
         ax.set_title(chart_text(f'{year}年能源费用占比'), fontsize=12)

@@ -9,7 +9,7 @@
   备用路径 = load_from_db 直查 ts_institution_energy_main/data（dt 旧分类 1=能耗,2=费用,3=供冷,4=供热,5=交通；仅 CLI 调试用）
 """
 
-import argparse, json, os, sys
+import argparse, json, math, os, sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -989,6 +989,45 @@ def _classify_energy_types(en: dict, years: list):
     return major_codes, minor_codes
 
 
+# ============================================================
+# 费用占比饼图查色表（2026-10-08 用户定，唯一权威）
+# ============================================================
+# 颜色按**品种固定**，不得按品种出现顺序取色 —— 否则同一种能源在不同年份/
+# 不同报告里会换色（实测：山东省立医院东院区 2023 热费=红、中医医院 2024 热费=橙、
+# 用户截图中电费变蓝）。用户指定采用"第三张图"那套配色：
+#   电费=蓝、供暖费/热费=绿、水费=橙、天然气费=紫、汽油费=黄、柴油等其他=灰。
+COST_PIE_COLOR_MAP = (
+    ('电', '#4472C4'),      # 蓝
+    ('热', '#70AD47'),      # 绿（热费）
+    ('供暖', '#70AD47'),    # 绿（供暖费）
+    ('水', '#ED7D31'),      # 橙
+    ('天然气', '#9C6BD6'),  # 紫
+    ('燃气', '#9C6BD6'),    # 紫
+    ('汽油', '#FFC000'),    # 黄
+    ('油', '#FFC000'),      # 黄（"油费"等）
+    ('柴油', '#A5A5A5'),    # 灰
+)
+COST_PIE_COLOR_FALLBACK = ('#A5A5A5', '#5B9BD5', '#ED7D31', '#70AD47', '#FFC000')
+
+
+def cost_pie_colors(names) -> list:
+    """按品种名查固定颜色；同一张图内不重复取色（防两个品种撞色）。"""
+    used, picked = set(), []
+    all_colors = COST_PIE_COLOR_FALLBACK + tuple(c for _, c in COST_PIE_COLOR_MAP)
+    for name in names:
+        s = str(name or '')
+        color = ''
+        for key, val in COST_PIE_COLOR_MAP:
+            if key in s and val not in used:
+                color = val
+                break
+        if not color:
+            color = next((c for c in all_colors if c not in used), '#A5A5A5')
+        used.add(color)
+        picked.append(color)
+    return picked
+
+
 def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
     """生成第5章全部图表：
     - energy_flow.png（5.1 流向图）
@@ -1038,7 +1077,6 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
             setup_chart_font(plt)
         except ImportError:
             return
-        cost_colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#795548']
         for y in years:
             labels, values = [], []
             for code, entry in (co.get(y) or {}).items():
@@ -1049,10 +1087,40 @@ def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
                     values.append(v)
             if not values:
                 continue
-            fig, ax = plt.subplots(figsize=(6, 6))
-            ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90,
-                   colors=cost_colors[:len(values)])
-            ax.set_title(chart_text(f'{y[:4]}年能源费用占比'))
+            # 尺寸（2026-10-08 用户定）：6×6 → 4.6×3.9；配合装配器插图宽度 8.5cm，
+            # 使 5.2.5 首页能放下"表5.1 + 图"，不再一图独占一行/一页。
+            fig, ax = plt.subplots(figsize=(4.6, 3.9))
+            total = sum(values) or 1.0
+            outer = [lab if 100.0 * v / total >= 5 else '' for lab, v in zip(labels, values)]
+            wedges, _t_out, _t_in = ax.pie(
+                values, labels=outer, colors=cost_pie_colors(labels),
+                startangle=90, counterclock=False,
+                labeldistance=1.05, pctdistance=0.62,
+                textprops={'fontsize': 8.5},
+                autopct=lambda p: (f'{p:.1f}%' if p >= 5 else ''),
+                wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'})
+            # 小切片（<5%）：名称与百分比**合并**、用引导线拉到圈外并纵向错开，
+            # 根治相邻小扇区标签互压（实测烟台 2023「天然气费 3.0% / 水费 1.6%」重叠）。
+            small = []
+            for i, (lab, v) in enumerate(zip(labels, values)):
+                pct = 100.0 * v / total
+                if pct < 5:
+                    ang = math.radians((wedges[i].theta1 + wedges[i].theta2) / 2.0)
+                    small.append([lab, pct, ang])
+            if small:
+                small.sort(key=lambda r: math.sin(r[2]), reverse=True)
+                ys = [1.05 * math.sin(r[2]) for r in small]
+                for k in range(1, len(ys)):
+                    if ys[k - 1] - ys[k] < 0.26:
+                        ys[k] = ys[k - 1] - 0.26
+                for (lab, pct, ang), ty in zip(small, ys):
+                    tx = 1.22 if math.cos(ang) >= 0 else -1.22
+                    ax.annotate(f'{lab} {pct:.1f}%',
+                                xy=(0.9 * math.cos(ang), 0.9 * math.sin(ang)),
+                                xytext=(tx, ty), ha='left' if tx > 0 else 'right',
+                                va='center', fontsize=8, annotation_clip=False,
+                                arrowprops=dict(arrowstyle='-', lw=0.6, color='#808080'))
+            ax.set_title(chart_text(f'{y[:4]}年能源费用占比'), fontsize=11)
             fig.savefig(os.path.join(output_dir, f'cost_pie_{y[:4]}.png'), dpi=150,
                         bbox_inches='tight', facecolor='white')
             plt.close(fig)
