@@ -390,10 +390,13 @@ rag = [
 # Opt-in：energy_audit 采用懒导入（energy_audit/__init__.py），缺依赖时工具优雅降级；
 # pandas 用于 excel_processor（read_excel/DataFrame），openpyxl 是其读 .xlsx 的必需引擎，
 # psycopg2-binary 用于 pg_query 的 PG 连接，python-docx 用于 Word 报告生成与参考报告切章。
+# psycopg2-binary 2.9.10 只有 cp39–cp313 wheel；项目 requirements-python 上限到 3.14，
+# 在 3.14 上会回退源码编译并要求 MSVC，导致 `uv sync` 整个 energy extra 装不上。
+# 2.9.13 起提供 cp314 win_amd64 wheel（发布于 2026-09-09，已超出 14 天 exclude-newer 窗口）。
 energy = [
   "pandas==3.0.5",
   "openpyxl==3.1.5",
-  "psycopg2-binary==2.9.10",
+  "psycopg2-binary==2.9.13",
   "python-docx==1.2.0",
   "matplotlib>=3.9,<4",
 ]
