@@ -32,8 +32,8 @@ import sys
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
-HEAD = ["月份", "水量(m³)", "水费(元)", "水单价(元/m³)",
-        "电量(kWh)", "电费(元)", "电单价(元/kWh)"]
+HEAD = ["月份", "水量（m³）", "水费（元）", "水单价（元/m³）",
+        "电量（kWh）", "电费（元）", "电单价（元/kWh）"]
 
 # (表内列序, 逐月用量键, 逐月费用键, 年度用量键, 年度费用键（万元）)
 SERIES = [
@@ -114,7 +114,7 @@ def build_year_table(year: dict, idx: int, report: list) -> tuple[str, list]:
                 report.append(f"  {yr} {key} {label} 尾差 {r} 元/单位 → 调进 12 月")
 
     lines = [f"附表2-{idx} {yr}年逐月能源资源消耗及费用统计表", ""]
-    head = HEAD + (["天然气(m³)"] if has_gas else [])
+        head = HEAD + (["天然气（m³）"] if has_gas else [])
     lines.append("| " + " | ".join(head) + " |")
     lines.append("|" + "---|" * len(head))
     for i in range(12):

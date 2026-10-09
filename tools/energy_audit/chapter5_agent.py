@@ -29,6 +29,7 @@ from tools.energy_audit.indicators import (
     project_sub_type,
     COEFFICIENTS,
 )
+from tools.energy_audit.institution_org_map import (org_type_for as _org_type_for, special_note_for as _special_note_for)
 
 # 能源类型中英文映射（使用 indicators 中的标准 key）
 _ENERGY_CN_MAP = {
@@ -279,6 +280,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     area = config.get('building_area', 0)
     people = config.get('people_count', 0)
     unit_name = config.get('unit_name', '被审计单位')
+    unit_short = (config.get('unit_short') or '').strip() or unit_name
 
     # 收集所有能源代码
     all_codes = set()
@@ -486,36 +488,32 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         table_no = 2  # 表5.1 = 各项能源费用统计表（5.2 费用节）
         # 5.3.1 单位建筑面积非供暖能耗
         md += "### 5.3.1 单位建筑面积非供暖能耗\n\n"
-        md += "单位建筑面积非供暖能耗 Ejrcn = (E − Egn − Ejt) / M（式中 E 综合能耗、Egn 供暖能耗、Ejt 交通能耗、M 建筑面积）。\n\n"
-        # 注文按机构类型自适应（2026-09-05 修复：原硬编码"党政机关"）
-        _special_notes = {
-            'medical': '大型医疗设备、数据中心、厨房炊事、洗衣房',
-            'service': '数据中心、厨房炊事',
-            'venue': '数据中心、厨房炊事、专业设备',
-            'education': '数据中心、实验室、厨房炊事',
-            'government': '数据中心、厨房炊事、专业用途设备',
-        }
-        _sn = _special_notes.get(institution_type, _special_notes['government'])
-        md += f"注：本机构内{_sn}等特定功能用能不纳入非供暖能耗，计算时应同时剔除特殊用能系统对应的建筑面积（天然气/水/油不计入非供暖能耗）。\n\n"
+        # 机构类型映射唯一权威＝chapter5-templates.md §5.3.1（2026-10-08 收口）
+        _org = _org_type_for(institution_type)
+        _sn = _special_note_for(institution_type)
+        md += (f"注：{_org}内的{_sn}等特定功能的用能不计入{_org}非供暖能耗，"
+               f"计算单位建筑面积非供暖能耗时，应同时剔除特殊用能系统对应的建筑面积。\n\n")
         _garage = float(getattr(yd_list[0], 'garage_area', 0) or 0) if yd_list else 0
         if _garage > 0 and area:
             md += (f"注：按定额标准统计口径，地下车库面积不计入建筑面积统计，"
                    f"本指标计算分母按建筑面积扣除地下车库后 {area - _garage:.0f} m²"
                    f"（{area:.0f} − {_garage:.0f}）计取。\n\n")
+        md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+               f"单位建筑面积非供暖能耗指标如表5.{table_no}所示：\n\n")
         md += f"**表5.{table_no} 单位建筑面积非供暖能耗**\n\n"
         table_no += 1
-        md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+        md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
         md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
         _nh_rows = {
-            'nh_elec': ["| 年耗电量(kWh) |"],
-            'nh_heat_elec': ["| 供暖耗电量(kWh) |"],
-            'nh_coeff': ["| 折标系数(kgce/kWh) |"],
-            'nh': ["| 非供暖能耗(kgce) |"],
-            'area': ["| 建筑面积(m²) |"],
-            'm2': ["| 单位建筑面积非供暖能耗(kgce/(m²·a)) |"],
-            'cons': ["| 约束值 |"],
-            'base': ["| 基准值 |"],
-            'guide': ["| 引导值 |"],
+            'nh_elec': ["| 年耗电量（kWh） |"],
+            'nh_heat_elec': ["| 供暖耗电量（kWh） |"],
+            'nh_coeff': ["| 折标系数（kgce/kWh） |"],
+            'nh': ["| 非供暖能耗（kgce） |"],
+            'area': ["| 建筑面积（m²） |"],
+            'm2': ["| 单位建筑面积非供暖能耗（kgce/（m²·a）） |"],
+            'cons': ["| 定额标准约束值（kgce/（m²·a）） |"],
+            'base': ["| 定额标准基准值（kgce/（m²·a）） |"],
+            'guide': ["| 定额标准引导值（kgce/（m²·a）） |"],
             'ev': ["| 评价结果 |"],
         }
         _elec_coeff = yd_list[0].get_coefficient('electricity') if yd_list else 0.31
@@ -545,27 +543,28 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
         # 5.3.2 常规用能系统单位建筑面积电耗
         md += "### 5.3.2 常规用能系统单位建筑面积电耗\n\n"
-        md += "常规用能系统单位建筑面积电耗 = （年总用电量 − 供暖耗电量）/ 建筑面积\n\n"
         if area:
+            md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                   f"常规用能系统单位建筑面积电耗指标如表5.{table_no}所示：\n\n")
             md += f"**表5.{table_no} 常规用能系统单位建筑面积电耗**\n\n"
             table_no += 1
             # 转置布局（指标项为行、年份为列；基础行按 chapter5-spec 补齐，2026-09-20）
-            cols_elec = {"年耗电量(kWh)": [], "供暖耗电量(kWh)": [], "建筑面积(m²)": [],
-                         "单位建筑面积电耗(kWh/m²)": [], "约束值": [], "基准值": [], "引导值": [], "评价结果": []}
+            cols_elec = {"年耗电量（kWh）": [], "供暖耗电量（kWh）": [], "建筑面积（m²）": [],
+                         "单位建筑面积电耗（kWh/m²）": [], "定额标准约束值（kWh/m²）": [], "定额标准基准值（kWh/m²）": [], "定额标准引导值（kWh/m²）": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_unit_area_electricity(yd, institution_type=institution_type,
                                                sub_type=st_elec)
-                cols_elec["年耗电量(kWh)"].append(f"{yd.electricity_kwh:.2f}")
-                cols_elec["供暖耗电量(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
-                cols_elec["建筑面积(m²)"].append(f"{r['building_area_m2']:.0f}")
-                cols_elec["单位建筑面积电耗(kWh/m²)"].append(f"{r['kwh_per_m2']:.2f}")
-                cols_elec["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
-                cols_elec["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
-                cols_elec["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
+                cols_elec["年耗电量（kWh）"].append(f"{yd.electricity_kwh:.2f}")
+                cols_elec["供暖耗电量（kWh）"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
+                cols_elec["建筑面积（m²）"].append(f"{r['building_area_m2']:.0f}")
+                cols_elec["单位建筑面积电耗（kWh/m²）"].append(f"{r['kwh_per_m2']:.2f}")
+                cols_elec["定额标准约束值（kWh/m²）"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                cols_elec["定额标准基准值（kWh/m²）"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                cols_elec["定额标准引导值（kWh/m²）"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
                 cols_elec["评价结果"].append(str(r['benchmark']['评价结果']))
             if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
-                cols_elec.pop("供暖耗电量(kWh)", None)
-            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                cols_elec.pop("供暖耗电量（kWh）", None)
+            md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_elec.items():
                 md += f"| {name} | " + " | ".join(vals) + " |\n"
@@ -573,46 +572,47 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
         # 5.3.3 人均综合能耗
         md += "### 5.3.3 人均综合能耗\n\n"
-        md += "人均综合能耗 = 综合能耗 / 用能人数\n\n"
         if people:
+            md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                   f"人均综合能耗指标如表5.{table_no}所示：\n\n")
             md += f"**表5.{table_no} 人均综合能耗**\n\n"
             table_no += 1
             # 转置布局（指标项为行、年份为列；基础行列按 chapter5-spec 计算过程表，2026-09-20）
             cols_pc = {
-                "年耗电量(kWh)": [], "折标系数(kgce/kWh)": [],
-                "供热量(GJ)": [], "折标系数(tce/GJ)": [],
-                "用汽油量(kg)": [], "折标系数(kgce/kg)": [],
-                "天然气量(m³)": [], "折标系数(kgce/m³)": [],
-                "综合能耗(tce)": [], "用能人数": [],
-                "人均综合能耗(kgce/(p·a))": [],
-                "约束值": [], "基准值": [], "引导值": [], "评价结果": [],
+                "年耗电量（kWh）": [], "折标系数（kgce/kWh）": [],
+                "供热量（GJ）": [], "折标系数（tce/GJ）": [],
+                "用汽油量（kg）": [], "折标系数（kgce/kg）": [],
+                "天然气量（m³）": [], "折标系数（kgce/m³）": [],
+                "综合能耗（tce）": [], "用能人数": [],
+                "人均综合能耗（kgce/（p·a））": [],
+                "定额标准约束值（kgce/（p·a））": [], "定额标准基准值（kgce/（p·a））": [], "定额标准引导值（kgce/（p·a））": [], "评价结果": [],
             }
             for yd in yd_list:
                 r = calc_per_capita_energy(yd, institution_type=institution_type,
                                            sub_type=st_capita)
-                cols_pc["年耗电量(kWh)"].append(f"{yd.electricity_kwh:.2f}")
-                cols_pc["折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
-                cols_pc["供热量(GJ)"].append(f"{yd.heating_energy_heat:.2f}")
-                cols_pc["折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
-                cols_pc["用汽油量(kg)"].append(f"{yd.transportation_petrol_kg:.2f}")
-                cols_pc["折标系数(kgce/kg)"].append(f"{yd.get_coefficient('gasoline'):g}")
-                cols_pc["天然气量(m³)"].append(f"{yd.natural_gas_m3:.2f}")
-                cols_pc["折标系数(kgce/m³)"].append(f"{yd.get_coefficient('natural_gas'):g}")
-                cols_pc["综合能耗(tce)"].append(f"{r['total_kgce']/1000:.2f}")
+                cols_pc["年耗电量（kWh）"].append(f"{yd.electricity_kwh:.2f}")
+                cols_pc["折标系数（kgce/kWh）"].append(f"{yd.get_coefficient('electricity'):g}")
+                cols_pc["供热量（GJ）"].append(f"{yd.heating_energy_heat:.2f}")
+                cols_pc["折标系数（tce/GJ）"].append(f"{yd.get_coefficient('heat'):g}")
+                cols_pc["用汽油量（kg）"].append(f"{yd.transportation_petrol_kg:.2f}")
+                cols_pc["折标系数（kgce/kg）"].append(f"{yd.get_coefficient('gasoline'):g}")
+                cols_pc["天然气量（m³）"].append(f"{yd.natural_gas_m3:.2f}")
+                cols_pc["折标系数（kgce/m³）"].append(f"{yd.get_coefficient('natural_gas'):g}")
+                cols_pc["综合能耗（tce）"].append(f"{r['total_kgce']/1000:.2f}")
                 cols_pc["用能人数"].append(f"{people}")
-                cols_pc["人均综合能耗(kgce/(p·a))"].append(f"{r['kgce_per_person']:.2f}")
-                cols_pc["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
-                cols_pc["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
-                cols_pc["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
+                cols_pc["人均综合能耗（kgce/（p·a））"].append(f"{r['kgce_per_person']:.2f}")
+                cols_pc["定额标准约束值（kgce/（p·a））"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                cols_pc["定额标准基准值（kgce/（p·a））"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                cols_pc["定额标准引导值（kgce/（p·a））"].append(f"{r['benchmark'].get('引导值', ''):.2f}")
                 cols_pc["评价结果"].append(str(r['benchmark']['评价结果']))
-            for _qty, _coeff_key in (("年耗电量(kWh)", "折标系数(kgce/kWh)"),
-                                     ("供热量(GJ)", "折标系数(tce/GJ)"),
-                                     ("用汽油量(kg)", "折标系数(kgce/kg)"),
-                                     ("天然气量(m³)", "折标系数(kgce/m³)")):
+            for _qty, _coeff_key in (("年耗电量（kWh）", "折标系数（kgce/kWh）"),
+                                     ("供热量（GJ）", "折标系数（tce/GJ）"),
+                                     ("用汽油量（kg）", "折标系数（kgce/kg）"),
+                                     ("天然气量（m³）", "折标系数（kgce/m³）")):
                 if not any(v.strip() not in ('0.00', '') and float(v.replace(',', '')) > 0 for v in cols_pc[_qty]):
                     cols_pc.pop(_qty, None)
                     cols_pc.pop(_coeff_key, None)
-            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_pc.items():
                 md += f"| {name} | " + " | ".join(vals) + " |\n"
@@ -622,70 +622,69 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         if institution_type == 'medical':
             md += "### 5.3.4 单位开放床日用水量\n\n"
             if bed_count:
-                md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)；开放床日数缺失时按 床位数×365 近似）\n\n"
+                md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                       f"单位开放床日用水量指标如表5.{table_no}所示：\n\n")
                 md += f"**表5.{table_no} 单位开放床日用水量**\n\n"
                 table_no += 1
                 # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
-                cols_bed = {"取水量(m³)": [], "床位数": [], "单位开放床日用水量(L/床·d)": [], "通用值": [], "先进值": [], "评价结果": []}
+                cols_bed = {"取水量（m³）": [], "床位数": [], "单位开放床日用水量（L/床·d）": [], "定额标准通用值（L/（床·d））": [], "定额标准先进值（L/（床·d））": [], "评价结果": []}
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type='medical',
                                              bed_count=bed_count, sub_type=st_water)
-                    cols_bed["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
+                    cols_bed["取水量（m³）"].append(f"{r['total_water_m3']:.2f}")
                     cols_bed["床位数"].append(f"{bed_count}")
-                    cols_bed["单位开放床日用水量(L/床·d)"].append(f"{r['L_per_bed_day']:.2f}")
-                    cols_bed["通用值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
-                    cols_bed["先进值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                    cols_bed["单位开放床日用水量（L/床·d）"].append(f"{r['L_per_bed_day']:.2f}")
+                    cols_bed["定额标准通用值（L/（床·d））"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                    cols_bed["定额标准先进值（L/（床·d））"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
                     cols_bed["评价结果"].append(str(r['benchmark']['评价结果']))
-                md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
                 md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
                 for name, vals in cols_bed.items():
                     md += f"| {name} | " + " | ".join(vals) + " |\n"
             else:
                 # 医院缺床位数：不降级成机关口径，标注待补充（2026-09-05 修复）
-                md += "单位开放床日用水量 = 年用水总量 / Σ全年实际开放床日数 × 10³（L/(床·d)，4452 式(5)）\n\n"
                 md += "床位数【待补充】：采集侧无床位数数据，暂无法计算单位开放床日用水量。\n\n"
         # 政务服务中心（service）自 2026-09-29 起不走面积口径，改由下方"人均机关取水量"分支生成
         # （决策 7 选项 C：4452 表2 唯一对得上的是"机关"行）。
         elif institution_type == 'venue' and area:
             md += "### 5.3.4 单位建筑面积年取水量\n\n"
-            md += "单位建筑面积年取水量 = 年取水量 × 1000 / 建筑面积（L/(m²·a)，4452 式(6)；4452 无面积口径取水定额，不对标）\n\n"
+            md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                   f"单位建筑面积年取水量指标如表5.{table_no}所示：\n\n")
             md += f"**表5.{table_no} 单位建筑面积年取水量**\n\n"
             table_no += 1
             # 转置布局（指标项为行、年份为列，2026-09-06）
-            cols_va = {"取水量(m³)": [], "建筑面积(m²)": [], "单位建筑面积年取水量(L/(m²·a))": [], "评价结果": []}
+            cols_va = {"取水量（m³）": [], "建筑面积（m²）": [], "单位建筑面积年取水量（L/（m²·a））": [], "评价结果": []}
             for yd in yd_list:
                 r = calc_water_indicator(yd, institution_type=institution_type,
                                          building_area=area, sub_type=st_water)
-                cols_va["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
-                cols_va["建筑面积(m²)"].append(f"{area:.0f}")
-                cols_va["单位建筑面积年取水量(L/(m²·a))"].append(f"{r['L_per_area']:.2f}")
+                cols_va["取水量（m³）"].append(f"{r['total_water_m3']:.2f}")
+                cols_va["建筑面积（m²）"].append(f"{area:.0f}")
+                cols_va["单位建筑面积年取水量（L/（m²·a））"].append(f"{r['L_per_area']:.2f}")
                 cols_va["评价结果"].append("—")
-            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+            md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_va.items():
                 md += f"| {name} | " + " | ".join(vals) + " |\n"
         else:
             title = "标准人数年均取水量" if institution_type == 'education' else "人均机关取水量"
             md += f"### 5.3.4 {title}\n\n"
-            if institution_type == 'education':
-                md += "标准人数年均取水量 = 年取水量 / 标准人数（m³/(人·a)，4452 式(3)/(4)；高校标准人数=统招生+留学生+0.5×教职工，中小学/幼儿园标准人数=非住宿生+2×住宿生+教职工；人数细分数据缺失时用用能人数近似）\n\n"
-            else:
-                md += "人均机关取水量 = 年机关取水量 / 机关人数（m³/(人·a)，4452 式(7)）\n\n"
             if people:
+                md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                       f"{title}指标如表5.{table_no}所示：\n\n")
                 md += f"**表5.{table_no} {title}**\n\n"
                 table_no += 1
                 # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
-                cols_w = {"取水量(m³)": [], "用能人数": [], f"{title}(m³/(人·a))": [], "通用值": [], "先进值": [], "评价结果": []}
+                cols_w = {"取水量（m³）": [], "用能人数": [], f"{title}（m³/（人·a））": [], "定额标准通用值（m³/（人·a））": [], "定额标准先进值（m³/（人·a））": [], "评价结果": []}
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type,
                                              sub_type=st_water)
-                    cols_w["取水量(m³)"].append(f"{r['total_water_m3']:.2f}")
+                    cols_w["取水量（m³）"].append(f"{r['total_water_m3']:.2f}")
                     cols_w["用能人数"].append(f"{people}")
-                    cols_w[f"{title}(m³/(人·a))"].append(f"{r['m3_per_person']:.2f}")
-                    cols_w["通用值"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
-                    cols_w["先进值"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                    cols_w[f"{title}（m³/（人·a））"].append(f"{r['m3_per_person']:.2f}")
+                    cols_w["定额标准通用值（m³/（人·a））"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                    cols_w["定额标准先进值（m³/（人·a））"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
                     cols_w["评价结果"].append(str(r['benchmark']['评价结果']))
-                md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
                 md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
                 for name, vals in cols_w.items():
                     md += f"| {name} | " + " | ".join(vals) + " |\n"
@@ -693,7 +692,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                     # 政务服务中心取水口径说明（2026-09-29 决策 7 选项 C）：必须写进正文。
                     md += ("注：政务服务中心取水指标按《山东省教育、卫生等服务业用水定额》"
                            "（DB37/T 4452-2021）表2“机关”行（行业代码 S91～S96、T97 中国共产党机关、"
-                           "国家机构等）对标，先进值 10 m³/(人·a)、通用值 25 m³/(人·a)；"
+                           "国家机构等）对标，先进值 10 m³/（人·a）、通用值 25 m³/（人·a）；"
                            "按该标准表1，机关取水量不含对外服务的政务大厅用水，本项目政务大厅未单独计量，"
                            "暂按全量计；机关人数按在编在岗及工作时间超过半年的非在编人员计，不含流动人员。\n\n")
         md += "\n"
@@ -711,40 +710,41 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                                    for b in (data.get('buildings') or []))
                             or area)
             md += "### 5.3.5 单位采暖建筑面积供暖能耗\n\n"
-            md += "单位采暖建筑面积供暖能耗 = 供暖能耗 / 采暖建筑面积\n\n"
+            md += (f"{unit_short}{years_short[0]}年-{years_short[-1]}年"
+                   f"单位采暖建筑面积供暖能耗指标如表5.{table_no}所示：\n\n")
             md += f"**表5.{table_no} 单位采暖建筑面积供暖能耗**\n\n"
             table_no += 1
             # 转置布局（指标项为行、年份为列；基础行列按 chapter5-spec 计算过程表，2026-09-20）
             cols_h = {
-                "供暖电耗(kWh)": [], "电折标系数(kgce/kWh)": [],
-                "供热量(GJ)": [], "热力折标系数(tce/GJ)": [],
-                "供暖能耗(kgce)": [], "采暖建筑面积(m²)": [],
-                "单位采暖建筑面积供暖能耗(kgce/m²)": [],
-                "约束值": [], "基准值": [], "引导值": [], "评价结果": [],
+                "供暖电耗（kWh）": [], "电折标系数（kgce/kWh）": [],
+                "供热量（GJ）": [], "热力折标系数（tce/GJ）": [],
+                "供暖能耗（kgce）": [], "采暖建筑面积（m²）": [],
+                "单位采暖建筑面积供暖能耗（kgce/m²）": [],
+                "定额标准约束值（kgce/m²）": [], "定额标准基准值（kgce/m²）": [], "定额标准引导值（kgce/m²）": [], "评价结果": [],
             }
             for yd in yd_list:
                 r = calc_unit_area_heating_energy(yd, heating_area=heating_area,
                                                   institution_type=institution_type,
                                                   sub_type=st_heating)
                 ev = r['benchmark']['评价结果'] if r.get('benchmark') else '—'
-                cols_h["供暖电耗(kWh)"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
-                cols_h["电折标系数(kgce/kWh)"].append(f"{yd.get_coefficient('electricity'):g}")
-                cols_h["供热量(GJ)"].append(f"{yd.heating_energy_heat:.2f}")
-                cols_h["热力折标系数(tce/GJ)"].append(f"{yd.get_coefficient('heat'):g}")
-                cols_h["供暖能耗(kgce)"].append(f"{r['heating_energy_kgce']:.2f}")
-                cols_h["采暖建筑面积(m²)"].append(f"{r['heating_area_m2']:.0f}")
-                cols_h["单位采暖建筑面积供暖能耗(kgce/m²)"].append(f"{r['kgce_per_m2']:.2f}")
-                cols_h["约束值"].append(f"{r['benchmark'].get('约束值', ''):.2f}" if r.get('benchmark') else '—')
-                cols_h["基准值"].append(f"{r['benchmark'].get('基准值', ''):.2f}" if r.get('benchmark') else '—')
-                cols_h["引导值"].append(f"{r['benchmark'].get('引导值', ''):.2f}" if r.get('benchmark') else '—')
+                cols_h["供暖电耗（kWh）"].append(f"{float(getattr(yd, 'heating_energy_kwh', 0) or 0):.2f}")
+                cols_h["电折标系数（kgce/kWh）"].append(f"{yd.get_coefficient('electricity'):g}")
+                cols_h["供热量（GJ）"].append(f"{yd.heating_energy_heat:.2f}")
+                cols_h["热力折标系数（tce/GJ）"].append(f"{yd.get_coefficient('heat'):g}")
+                cols_h["供暖能耗（kgce）"].append(f"{r['heating_energy_kgce']:.2f}")
+                cols_h["采暖建筑面积（m²）"].append(f"{r['heating_area_m2']:.0f}")
+                cols_h["单位采暖建筑面积供暖能耗（kgce/m²）"].append(f"{r['kgce_per_m2']:.2f}")
+                cols_h["定额标准约束值（kgce/m²）"].append(f"{r['benchmark'].get('约束值', ''):.2f}" if r.get('benchmark') else '—')
+                cols_h["定额标准基准值（kgce/m²）"].append(f"{r['benchmark'].get('基准值', ''):.2f}" if r.get('benchmark') else '—')
+                cols_h["定额标准引导值（kgce/m²）"].append(f"{r['benchmark'].get('引导值', ''):.2f}" if r.get('benchmark') else '—')
                 cols_h["评价结果"].append(str(ev))
             if not any((float(getattr(yd, 'heating_energy_kwh', 0) or 0) > 0) for yd in yd_list):
-                cols_h.pop("供暖电耗(kWh)", None)
-                cols_h.pop("电折标系数(kgce/kWh)", None)
+                cols_h.pop("供暖电耗（kWh）", None)
+                cols_h.pop("电折标系数（kgce/kWh）", None)
             if not any((yd.heating_energy_heat or 0) > 0 for yd in yd_list):
-                cols_h.pop("供热量(GJ)", None)
-                cols_h.pop("热力折标系数(tce/GJ)", None)
-            md += "| 项目 | " + " | ".join(f"{y}年" for y in years) + " |\n"
+                cols_h.pop("供热量（GJ）", None)
+                cols_h.pop("热力折标系数（tce/GJ）", None)
+            md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
             md += "|------|" + "|".join(["------"]*len(years)) + "|\n"
             for name, vals in cols_h.items():
                 md += f"| {name} | " + " | ".join(vals) + " |\n"
@@ -776,7 +776,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "### 5.4.2 能源资源费用基准\n\n"
     if co:
         md += f"**表5.{table_no} 能源资源费用基准表**\n\n"
-        md += "| 能源类型 | 费用基准(万元) | 计算方法 |\n"
+        md += "| 能源类型 | 费用基准（万元） | 计算方法 |\n"
         md += "|----------|---------------|----------|\n"
         for label, info in bl.get('cost', {}).items():
             md += f"| {label} | {info['基准值']:.2f} | {info.get('方法', '')} |\n"
@@ -920,6 +920,12 @@ def _generate_total_bar_chart(years, totals, name_cn, unit, output_dir, fname) -
                 ha='center', va='bottom', fontsize=9)
     ax.set_title(chart_text(f'{y_labels[0]}年-{y_labels[-1]}年总{name_cn}量（单位：{unit}）'))
     ax.grid(True, alpha=0.3, axis='y')
+    from matplotlib.ticker import FuncFormatter
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f'{v:.0f}'))  # 2026-10-09 禁用科学计数法（1e6）：固定输出完整数字，与柱顶标注口径一致
+    ax.tick_params(axis='y', labelsize=9)
+    from matplotlib.ticker import FuncFormatter
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f'{v:.0f}'))  # 2026-10-09 禁用科学计数法（1e6）：固定输出完整数字，与柱顶标注口径一致
+    ax.tick_params(axis='y', labelsize=9)
     fig.savefig(os.path.join(output_dir, fname), dpi=150, bbox_inches='tight', facecolor='white')
     plt.close(fig)
     return True

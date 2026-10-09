@@ -1346,6 +1346,9 @@ def _generate_single_energy_chart(yd_objects, et_key, label, unit, output_dir='.
         for bar, val in zip(bars, values):
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(values)*0.02,
                     f'{val:.0f}', ha='center', va='bottom', fontsize=8)
+        from matplotlib.ticker import FuncFormatter
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f'{v:.0f}'))  # 2026-10-09 禁用科学计数法（1e6）：固定输出完整数字，与柱顶标注口径一致
+        ax.tick_params(axis='y', labelsize=8)
         ax.set_ylabel(chart_text(f'{label}({unit})'), fontsize=9)
         ax.set_title(chart_text(f'逐年{label}趋势'), fontsize=11)
         ax.spines['top'].set_visible(False)
@@ -1397,6 +1400,9 @@ def _generate_monthly_bar_chart(energy_data_list, et_key, monthly_attr, label, u
         ax.set_ylabel(chart_text(f'{label}({unit})'), fontsize=9)
         ax.set_title(chart_text(f'逐月{label}趋势（年度对比）'), fontsize=12, fontweight='bold')
         ax.legend(fontsize=9)
+        from matplotlib.ticker import FuncFormatter
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _pos: f'{v:.0f}'))  # 2026-10-09 禁用科学计数法（1e6）：固定输出完整数字，与柱顶标注口径一致
+        ax.tick_params(axis='y', labelsize=8)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.tight_layout()

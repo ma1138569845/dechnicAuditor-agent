@@ -21,6 +21,8 @@
     no_flat_formula   无公式压平残留（已知形态清单）
     no_writer_markers 无写作标记残留（写作参考/数据参考/逐月参考/[FORMULA）
     ch5_narrative     第5章分析叙述段计数 ≥ 15（防「只有图表无文字」，2026-09-20 新增）
+    ch5_531_leadin    5.3.1 表前结构：定义段（统计报告期内）＋式中＋引表句（如表5），
+                      且「式中」与特殊用能注各恰 1 次（2026-10-08 新增，P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -40,6 +42,8 @@ from lxml import etree
 
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
+# P1（2026-10-08 定）：只报告/告警，不阻断装配
+P1_NONBLOCKING = {"ch5_531_leadin"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -97,6 +101,59 @@ def ch5_narrative_count(doc_xml: str) -> int:
             continue
         n += 1
     return n
+
+
+def ch5_531_leadin_ok(doc_xml: str):
+    """5.3.1 表格前结构（2026-10-08 定，形态基准＝莘县行政审批服务局样板）。
+
+    区间 = 正文「5.3.1」标题 → 其后第一张表。要求同时具备：
+      ① 定义段（含「统计报告期内」）② 符号段（含「式中」）③ 引表句（含「如表5」）
+    防重复：区间内「式中」恰 1 次、特殊用能注恰 1 条。
+    分级 P1：只报告，不阻断装配。
+    """
+    blocks = re.findall(r"<w:p[ >].*?</w:p>|<w:tbl>.*?</w:tbl>", doc_xml, re.S)
+
+    def _ptext(b: str) -> str:
+        return "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", b))
+
+    cands = [i for i, b in enumerate(blocks)
+             if b.startswith("<w:p") and "5.3.1" in norm(_ptext(b))]
+    if not cands:
+        return False, "未找到含 5.3.1 的段落"
+    head = None
+    for i in cands:
+        m = re.search(r'w:pStyle[^>]*w:val="([^"]*)"', blocks[i])
+        style = m.group(1) if m else ""
+        if "eading" in style or "标题" in style:
+            head = i
+            break
+    if head is None:                      # 退路：取最后一个（目录条目在前）
+        head = cands[-1]
+    texts, j = [], head + 1
+    while j < len(blocks) and not blocks[j].startswith("<w:tbl"):
+        texts.append(_ptext(blocks[j]))
+        j += 1
+    if j >= len(blocks):
+        return False, "5.3.1 之后未找到数据表"
+    region = norm("".join(texts))
+    miss = []
+    if "统计报告期内" not in region:
+        miss.append("缺定义段（未含「统计报告期内」）")
+    if "式中" not in region:
+        miss.append("缺符号段（未含「式中」）")
+    if "如表5" not in region:
+        miss.append("缺引表句（未含「如表5…所示：」）")
+    if region.count("式中") > 1:
+        miss.append("「式中」出现 %d 次（应 1 次，疑脚本公式与写作层公式重复）" % region.count("式中"))
+    # 特殊用能注按「段」计、不挑措辞：段落以「注：」开头且提到「特殊用能」或「特定功能」。
+    # 车库注（只提车库）与项目特有的数据缺口注（如供暖未计量）都不计入。
+    n_note = sum(1 for t in texts
+                 if "注：" in norm(t) and ("特殊用能" in norm(t) or "特定功能" in norm(t)))
+    if n_note != 1:
+        miss.append("特殊用能注 %d 条（应恰 1 条）" % n_note)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
 
 
 def building_tables_info(doc_xml: str):
@@ -195,8 +252,13 @@ def sections_detail(z):
     return out
 
 
-APX2_HEAD_COLS = ["月份", "水量(m³)", "水费(元)", "水单价(元/m³)",
-                  "电量(kWh)", "电费(元)", "电单价(元/kWh)"]
+# 2026-10-08：单位括号统一全角；比对时做括号归一，半角/全角都认（向后兼容旧稿）
+APX2_HEAD_COLS = ["月份", "水量（m³）", "水费（元）", "水单价（元/m³）",
+                  "电量（kWh）", "电费（元）", "电单价（元/kWh）"]
+
+
+def _norm_paren(s: str) -> str:
+    return (s or "").replace("(", "（").replace(")", "）").strip()
 
 # 正文禁忌（2026-09-28）：不得出现 snake_case 形态的英文字段名与 markdown 反引号。
 # 只看小写+下划线（如 water_saving_fixture_replacement），避免误伤设备型号/编号
@@ -288,7 +350,7 @@ def _apx2_table_ok(sect_detail) -> bool:
         if len(head) not in (7, 8):
             return False
         for want, got in zip(APX2_HEAD_COLS, head):
-            if want != got:
+            if _norm_paren(want) != _norm_paren(got):
                 return False
         if not any(r and r[0].strip() == "合计" for r in rows):
             return False
@@ -310,6 +372,7 @@ def run(docx: str, pdf: str = None):
     text = visible_text(doc)
     tn = norm(text)
     ch5_n = ch5_narrative_count(doc)
+    c531_ok, c531_why = ch5_531_leadin_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -344,6 +407,8 @@ def run(docx: str, pdf: str = None):
         "no_flat_formula": not [p for p in FLAT_FORMULAS if p in text],
         "no_writer_markers": not [m for m in MARKERS if m in text],
         "ch5_narrative": ch5_n >= 15,
+        # 5.3.1 表格前结构（定义段/式中/引表句/注唯一）——P1，不阻断
+        "ch5_531_leadin": c531_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -386,6 +451,8 @@ def run(docx: str, pdf: str = None):
             "（见 report-format-spec.md《正文禁忌》，2026-09-29 用户定）" % n_ascii)
     if not checks["chapter_new_page"]:
         details["chapter_new_page"] = _chapter_pagebreak_ok(doc)[1]
+    if not c531_ok:
+        details["ch5_531_leadin"] = c531_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
@@ -469,6 +536,10 @@ def run(docx: str, pdf: str = None):
 
 
 def main() -> int:
+    try:                                   # 详情里可能含 m³ 等非 GBK 字符，避免打印崩掉掩盖结果
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="能源审计报告交付断言器")
     ap.add_argument("docx")
     ap.add_argument("--pdf", default=None)
@@ -503,10 +574,12 @@ def main() -> int:
         if not ok:
             exp_fail.append("%s: got %s expect %s" % (k, got, v))
 
-    failed = [k for k, v in checks.items() if not v] + ["expect:" + f for f in exp_fail]
+    warned = [k for k, v in checks.items() if not v and k in P1_NONBLOCKING]
+    failed = [k for k, v in checks.items() if not v and k not in P1_NONBLOCKING] + \
+             ["expect:" + f for f in exp_fail]
 
     for k, v in checks.items():
-        tag = "[OK]" if v else "[FAIL]"
+        tag = "[OK]" if v else ("[WARN]" if k in P1_NONBLOCKING else "[FAIL]")
         d = ""
         if k in details:
             d = " — %s" % details[k]
@@ -524,6 +597,8 @@ def main() -> int:
             "failed": failed, "passed": not failed,
         }, open(args.json_out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
+    if warned:
+        print("[WARN] %d 项 P1 告警（不阻断）：%s" % (len(warned), "、".join(warned)))
     print("[%s] %d 检查失败" % ("PASS" if not failed else "FAIL", len(failed)))
     return 0 if not failed else 1
 
