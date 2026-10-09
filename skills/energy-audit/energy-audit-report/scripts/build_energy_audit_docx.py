@@ -462,15 +462,36 @@ def _body(doc, text):
     return p
 
 
+_SUBSCRIPT_RE = re.compile(r"_\{([^{}]*)\}")
+
+
+def _runs_with_subscript(p, text, size, bold):
+    """段内 `_{...}` → Word 下标（2026-10-09 新增，供 5.3 指标符号段用）。
+
+    例：`E_{jrcn}——单位建筑面积非供暖能耗，kgce/（m²·a）；` → E 正体 + jrcn 下标 + 破折号文本。
+    只认带花括号的形式（`_{…}`），避免误伤正文里普通的英文下划线（如 chapter_md）。
+    """
+    pos = 0
+    for m in _SUBSCRIPT_RE.finditer(text):
+        if m.start() > pos:
+            set_font(p.add_run(text[pos:m.start()]), size, bold)
+        run = p.add_run(m.group(1))
+        set_font(run, size, bold)
+        run.font.subscript = True
+        pos = m.end()
+    if pos < len(text):
+        set_font(p.add_run(text[pos:]), size, bold)
+
+
 def _add_rich(p, text, size=12):
-    """按 **…** 拆分内联加粗。"""
+    """按 **…** 拆分内联加粗；段内 `_{...}` 转 Word 下标。"""
     for seg in re.split(r"(\*\*.+?\*\*)", text):
         if not seg:
             continue
         if seg.startswith("**") and seg.endswith("**") and len(seg) > 4:
-            set_font(p.add_run(seg[2:-2]), size, True)
+            _runs_with_subscript(p, seg[2:-2], size, True)
         else:
-            set_font(p.add_run(seg), size, False)
+            _runs_with_subscript(p, seg, size, False)
 
 
 def _heading(doc, text, level):

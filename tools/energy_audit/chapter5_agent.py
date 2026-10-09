@@ -298,13 +298,13 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += f"等用能数据，并根据近三年总用能及各项用能数据进行计算分析。\n\n"
 
     # ===== 5.1 概况 =====
-    md += "## 5.1 能源资源消费/消耗概况\n\n"
+    md += "## 5.1能源资源消费/消耗概况\n\n"
     md += f"{unit_name}主要用能类型包括"
     md += "、".join([_coeff_info(c)['name'] for c in all_codes])
     md += "。能源流向如图5.1所示。\n\n"
     chart_dir = config.get('chart_dir', './charts')
     if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
-        md += "![图5.1 能源流向图](charts/energy_flow.png)\n\n"
+        md += "![图5.1 能源资源流向图](charts/energy_flow.png)\n\n"
 
     latest_year = years[-1]
     # 2026-10-09 收口：5.1 = 一句话概述 + 图5.1，图注之后不得再有内容（见 chapter5-templates §5.1）。

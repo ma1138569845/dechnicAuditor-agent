@@ -806,7 +806,28 @@ class WordReportBuilder:
         if not any(v > 0 for v in values):
             return None
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
+        # 固定"品种 → 颜色"查色表（2026-10-09 用户定，与费用饼图同表）：
+        # 电=蓝、热=绿、水=橙、天然气=紫、汽油=黄、柴油等其他=灰。
+        _COLOR_MAP = (
+            ('电', '#4472C4'), ('热', '#70AD47'), ('供暖', '#70AD47'),
+            ('水', '#ED7D31'), ('天然气', '#9C6BD6'), ('燃气', '#9C6BD6'),
+            ('汽油', '#FFC000'), ('油', '#FFC000'), ('柴油', '#A5A5A5'),
+        )
+        _FALLBACK = ('#A5A5A5', '#5B9BD5', '#ED7D31', '#70AD47', '#FFC000')
+        _used, colors = set(), []
+        for _lbl in labels:
+            _s, _c = str(_lbl or ''), ''
+            for _k, _v in _COLOR_MAP:
+                if _k in _s and _v not in _used:
+                    _c = _v
+                    break
+            if not _c:
+                _c = next((x for x in (_FALLBACK + tuple(v for _, v in _COLOR_MAP))
+                           if x not in _used), '#A5A5A5')
+            _used.add(_c)
+            colors.append(_c)
+        ax.pie(values, labels=labels, autopct='%1.1f%%',
+               colors=colors, startangle=90)
         ax.set_title(chart_text(f'{latest.year}年能源消费结构'))
         path = os.path.join(output_dir, 'chart_structure.png')
         fig.savefig(path, dpi=150, bbox_inches='tight')
