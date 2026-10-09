@@ -306,32 +306,16 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
         md += "![图5.1 能源流向图](charts/energy_flow.png)\n\n"
 
-    # 各类型消费总量（写作参考——纯文本行输出，禁止渲染为正文表格；正式报告 5.1 无表）
     latest_year = years[-1]
-    total_tce = year_tce[latest_year]
-    _struct_parts = []
-    for code in all_codes:
-        info = en.get(latest_year, {}).get(code, {})
-        total = info.get('total', 0)
-        c = _coeff_info(code)
-        std = _normalize_energy_code(code)
-        coeff = c['coeff'] * 1000 if std == 'heat' else c['coeff']
-        tce_val = round(total * coeff / 1000, 2)
-        pct = round(tce_val / total_tce * 100, 1) if total_tce else 0
-        _struct_parts.append(f"{c['name']} {total:.2f} {c['unit']}（{tce_val:.2f} tce，占 {pct}%）")
-    md += "**能源消费结构（写作参考）**：" + "；".join(_struct_parts) + "\n\n"
-    # 2026-09-05 口径：5.1 不列综合能耗数值（铁律：综合能耗数值只在 5.3.3 给出）
+    # 2026-10-09 收口：5.1 = 一句话概述 + 图5.1，图注之后不得再有内容（见 chapter5-templates §5.1）。
+    # 原先在此注入的两行"写作参考"已删除——它们正是 5.1 明令不得出现的内容：
+    #   · **能源消费结构（写作参考）**…：属"能源结构表"，且含各品种折算 tce 与占比
+    #   · **逐年能耗对比（写作参考）**…：含综合能耗数值（铁律：综合能耗只在 5.3.3 给出）
+    # 且两行的位置正落在图5.1 之后，违反"图后无内容"。
 
     # ===== 合署办公追溯说明 =====
     md += _co_location_note(en, latest_year, all_codes, unit_name)
 
-    # 逐年对比（写作参考——纯文本行输出，禁止渲染为正文表格）
-    if len(years) > 1:
-        _tce_txt = "/".join(f"{year_tce[y]:.2f}" for y in years)
-        _pc_txt = "/".join(f"{year_tce[y]/people:.4f}" if people else "0" for y in years)
-        _m2_txt = "/".join(f"{year_tce[y]/area:.4f}" if area else "0" for y in years)
-        md += (f"**逐年能耗对比（写作参考）**：综合能耗 {_tce_txt} tce；"
-               f"人均能耗 {_pc_txt} tce/人；单位面积能耗 {_m2_txt} tce/m²。\n\n")
 
     # ===== 5.2 数据（按类型动态H3） =====
     md += "## 5.2 能源资源消耗/消费数据\n\n"
