@@ -82,15 +82,9 @@ Director ←──────────────────────�
 - **产出:** 第8章 `chapter_md/ch8.md` + 附录 `chapter_md/appendix.md` 落盘 → **跑一次装配主链三命令**（`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`，见 `energy-audit-report/references/script-assembly-chain.md`）→ 交付件（docx + 签章 PDF）。收尾三项（目录域刷新／正文首行缩进／页眉文字+分隔线+水印）由装配链一次注入
 - **完成标记:** `kanban_complete(metadata={"report_path": "...", "pdf_path": "..."})`
 
-**另加收尾：交付件入库（S16a，2026-09-21 接线）** —— 交付件定稿后跑一条命令把成稿回灌知识库：
-
-```bash
-python <skills>/energy-audit-core/scripts/sync_report_library.py --add "<交付件绝对路径>"
-```
-
-此步**不在 8 任务图内**（任务图仍是 采集→V1→计算→V2→卡1/2/3→V3），由卡3 收尾一并执行；
-自检 `sync_report_library.py --check` 应报"目录与向量库一致"。不做这步，下一份报告的
-"同类成稿参考"就查不到东西。
+**另加收尾：不再入库（2026-10-10 用户定，原 S16a 废止）** —— 本管线生成的报告**不回灌知识库**，
+交付完即结束；`sync_report_library.py --add` 会拒绝自产件（`EAWatermark` / `python-docx` 指纹，
+需 `--allow-self` 才放行）。知识库只收外部正式报告。
 
 **三卡铁律（防口径分裂）**：所有数值一律从 data.json / indicators.json / chapter5.md 读取，禁止从前序章节文本提取数值；每卡完成必须 `office_save` 落盘后再 `kanban_complete`；卡2/卡3 用 `office_open` 接续编辑，禁止重建文件；**正文写入禁逐段 `doc_insert_paragraph_with_text`，一律 `doc_insert_markdown` 整章导入**（图片嵌入、封面表模板注入例外），导入后跑格式修复链（序列见 ea-authoring/references/docx-techniques.md「md 导入与格式修复链」）。
 

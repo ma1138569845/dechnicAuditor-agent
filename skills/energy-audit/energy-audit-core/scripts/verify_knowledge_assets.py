@@ -17,7 +17,7 @@
   7 归档完备性：rag/data/<kb>/ 里的每份文件都必须在 rag/standards/ 有同名/同哈希副本
     （2026-09-20 教训：delete_knowledge_document 会连磁盘原件一起 unlink）
   8 报告料源一致性：本地成稿目录 rag/report/ ↔ 向量库 energy_audit_reports
-    （S16a 交付件入库的门禁：孤儿 P0 / 待入库 P1；比对逻辑复用 sync_report_library.py）
+    （成稿库↔向量库门禁：孤儿 P0 / 待入库 P1；比对逻辑复用 sync_report_library.py。2026-10-10 起待入库清单已排除自产件）
 
 用法:
   python verify_knowledge_assets.py                # 只检查（需要 Qdrant 才查第 2/4 项）
@@ -316,11 +316,11 @@ def check_archive_completeness() -> None:
 
 
 def check_report_catalog_sync() -> None:
-    """8 报告料源一致性：本地成稿目录 ↔ 向量库（S16a 的门禁）。
+    """8 报告料源一致性：本地成稿目录 ↔ 向量库（原 S16a 门禁；2026-10-10 起待入库清单排除自产件）。
 
     比对逻辑复用同目录的 sync_report_library.py，避免两处判据漂移。
     """
-    print("\n=== 8 报告料源一致性（S16a 门禁）===")
+    print("\n=== 8 报告料源一致性（成稿库↔向量库门禁）===")
     import sys as _sys
     here = str(Path(__file__).resolve().parent)
     if here not in _sys.path:

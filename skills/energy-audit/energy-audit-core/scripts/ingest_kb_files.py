@@ -51,6 +51,7 @@ import shutil
 import sqlite3
 import sys
 import time
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -224,6 +225,33 @@ def wiki_page_on_disk(file_name: str, min_bytes: int = 512) -> bool:
     return False
 
 
+def is_self_produced(path: Path) -> bool:
+    """本管线自产件指纹（2026-10-10 用户定：**自产报告不入库**）。
+
+    两个判据任一命中即认：
+      · 装配器 `build_energy_audit_docx.py` 注入的 DrawingML 水印名 `EAWatermark`；
+      · `docProps/core.xml` 的作者为 `python-docx`（本链装配器的默认元数据）。
+    外部报告的作者是「my / 沉默是金 / 昕硕 邹」等，且无水印。
+    """
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = z.namelist()
+            blob = "".join(
+                z.read(n).decode("utf-8", "ignore")
+                for n in names
+                if n.endswith(".xml") and n.startswith(("word/", "docProps/")))
+            if "EAWatermark" in blob:
+                return True
+            if "docProps/core.xml" in names:
+                core = z.read("docProps/core.xml").decode("utf-8", "ignore")
+                m = re.search(r"<dc:creator>([^<]*)", core)
+                if m and m.group(1).strip() == "python-docx":
+                    return True
+    except Exception:  # noqa: BLE001  —— 读不了就当外部件处理，交人工判断
+        return False
+    return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="知识库投递入库")
     ap.add_argument("--kb", choices=[GUIDELINES, QUOTA, REPORTS], help="只入某个库（配 --from 用）")
@@ -237,6 +265,9 @@ def main() -> int:
                     help="只做切片+向量（检索必需），跳过实体抽取与 wiki 生成——"
                          "批量入料时用，避免逐份等 LLM 而频繁读超时；实体/wiki 可事后补跑")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-self", action="store_true",
+                    help="允许入库本管线自产件（默认拒绝：自产报告不回灌知识库，"
+                         "避免「照着自己的旧稿学」的自我循环；2026-10-10 用户定）")
     ap.add_argument("--allow-low-cjk", action="store_true",
                     # 注意：argparse 的 help 会走 `%` 格式化，百分号必须写 `%%`
                     help=f"放行中文占比低于 {int(CJK_MIN_RATIO * 100)}%% 的 PDF（默认拒绝："
@@ -308,6 +339,11 @@ def main() -> int:
     done, skipped, failed = [], [], []
     for src, kb_id in todo:
         print(f"\n── {src.name}  →  {kb_id}")
+        if is_self_produced(src) and not args.allow_self:
+            print("   ⏭  自产件（EAWatermark / python-docx 指纹）：本管线生成的报告不入库；"
+                  "确需入库请加 --allow-self")
+            skipped.append(src.name)
+            continue
         h = sha256(src)
         if h in seen and not args.reindex_only:
             print(f"   ⏭  已存在（sha256 命中 {seen[h][1]}），跳过")

@@ -13,7 +13,7 @@
 
 | 库（kb_id） | 装什么 | **不装什么** |
 |---|---|---|
-| `energy_audit_reports` | 已交付的能源审计成稿 | 标准原文、草稿、中间稿 |
+| `energy_audit_reports` | **外部**已交付的能源审计成稿（公司/他人正式稿） | 标准原文、草稿、中间稿；**本管线自产件（2026-10-10 定：生成完即结束，不回灌）** |
 | `energy_quota_standards` | **定额 / 限额**类标准（能耗定额、用水定额、建筑能耗限额） | 报告成稿；技术规范/办法 |
 | `energy_audit_technical_guidelines` | **技术规范 / 导则 / 办法**（审计技术导则、上级管理办法、地方法规） | 定额类（归 quota）；报告模板 |
 
@@ -29,12 +29,12 @@
 
 | 触发 | 谁 | 时机 | 动作 |
 |---|---|---|---|
-| 报告交付定稿 | author | **S16a**（每次交付，固定动作） | **一条命令**：`python <skills>/energy-audit-core/scripts/sync_report_library.py --add <交付件>`（内部：落 `rag/report/<审计类型>/<类别>/` → 入向量库；`--check` 自检） |
+| 报告交付定稿 | author | **不再入库（2026-10-10 用户定，原 S16a 废止）** | **不动作**：自产报告不回灌知识库（避免照着自己的旧稿学）；`sync_report_library.py --add` 与 `ingest_kb_files.py` 会拒绝自产件（`EAWatermark`/`python-docx` 指纹），需 `--allow-self` 才放行 |
 | 拿到新的/换版标准原文 | **knowledger** | 收到即办，不攒 | 投递区 → `ingest_kb_files.py`（第三节） |
 | 例行巡检 | **knowledger** | 每季度，或"检索查不到东西"时随时 | `verify_knowledge_assets.py` + 抽查检索（第四节） |
 | 删除错误入库 | **knowledger** | 发现即删 | **先确认归档副本存在**（第五节） |
 
-> 交付件入库是 author 的固定动作（2026-09-21 接线：`ea-authoring/SKILL.md` 有专节、
+> **交付件入库（原 S16a）已于 2026-10-10 废止**：本管线生成的报告不再回灌知识库（自产件不入库，避免写作侧照着自己的旧稿学）；本节只适用于**外部正式报告**的投递。
 > kanban 卡3 有收尾步、门禁 = 本文件第五节的治理脚本第 8 项）；
 > **标准/规范的维护是 knowledger 的专属职责**。两者都不要等别人提醒。
 
@@ -47,8 +47,7 @@
 #    %LOCALAPPDATA%\hermes\rag\standards\_inbox\
 #        guidelines\        → 技术规范/导则/办法
 #        quota_standards\   → 定额/限额标准
-#        reports\           → 一般不手工投（走 S16a）
-
+#        reports\           → 一般不手工投（自产件不入库；外部正式报告可指定投递）
 # 2) 先看会入哪些（只读）
 python <skills>/energy-audit-core/scripts/ingest_kb_files.py --dry-run
 

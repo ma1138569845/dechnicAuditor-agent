@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""sync_report_library.py — 交付件入库 + 成稿库↔向量库一致性（S16a 的唯一入口）
+"""sync_report_library.py — 成稿库↔向量库一致性门禁 + 自产件入库拦截（原 S16a，2026-10-10 改口径）
+
+> **2026-10-10 用户定**：原 S16a「交付件入库」**废止**——本管线生成的报告不再回灌知识库
+> （生成完即结束，避免写作侧照着自己的旧稿学，自我循环放大瑕疵）。本脚本保留两个用途：
+> ① `--check` 两张清单门禁（**待入库清单已排除自产件**，不再因自产件持续报警）；
+> ② `--add` 只服务**外部正式报告**——自产件（`EAWatermark` / 作者 `python-docx` 指纹）一律拒绝，
+>    确需入库加 `--allow-self`。
 
 ## 治什么问题
 
@@ -44,10 +50,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -102,6 +110,32 @@ def rag_root() -> Path:
     return hermes_home() / "rag"
 
 
+def is_self_produced(path: Path) -> bool:
+    """本管线自产件指纹（EAWatermark 水印 或 作者=python-docx）。
+
+    2026-10-10 用户定：**自产件不入库、不进蓝本**——生成完即结束，不做"自我积累"。
+    原因：S16a 原设计把每次交付回灌知识库，导致写作侧照着自己的旧稿学，瑕疵被放大
+    （实测：库内 4 份自产件 vs 12 份外部样板混在同一目录）。
+    """
+    try:
+        with zipfile.ZipFile(path) as z:
+            names = z.namelist()
+            blob = "".join(
+                z.read(n).decode("utf-8", "ignore")
+                for n in names
+                if n.endswith(".xml") and n.startswith(("word/", "docProps/")))
+            if "EAWatermark" in blob:
+                return True
+            if "docProps/core.xml" in names:
+                core = z.read("docProps/core.xml").decode("utf-8", "ignore")
+                m = re.search(r"<dc:creator>([^<]*)", core)
+                if m and m.group(1).strip() == "python-docx":
+                    return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def catalog_files() -> list:
     root = rag_root() / "report"
     out = []
@@ -131,15 +165,27 @@ def kb_files() -> list:
 
 
 def catalog_vs_kb() -> dict:
-    """两张清单。供本脚本 --check 与 verify_knowledge_assets.py 第 8 项共用。"""
+    """两张清单。供本脚本 --check 与 verify_knowledge_assets.py 第 8 项共用。
+
+    2026-10-10 用户定：**待入库清单排除自产件**——自产件本就不该入库，
+    留在成稿目录里是历史遗留，不该被门禁报成"待入库"（否则永远报警）。
+    """
     cat = catalog_files()
     cat_names = {p.name for p in cat}
     kb_names = set(kb_files())
+    by_name = {}
+    for p in cat:
+        by_name.setdefault(p.name, p)
+    only_cat, self_in_catalog = [], []
+    for n in sorted(cat_names - kb_names):
+        p = by_name.get(n)
+        (self_in_catalog if (p and is_self_produced(p)) else only_cat).append(n)
     return {
         "catalog_count": len(cat),
         "kb_count": len(kb_names),
-        "only_catalog": sorted(cat_names - kb_names),   # 待入库（P1）
+        "only_catalog": only_cat,                       # 待入库（P1；已排除自产件）
         "only_kb": sorted(kb_names - cat_names),        # 孤儿（P0）
+        "self_in_catalog": self_in_catalog,             # 自产件（不计门禁，仅提示）
     }
 
 
@@ -192,6 +238,10 @@ def cmd_check(_args) -> int:
     print(f"[P1] 目录有、向量库没有（待入库）{len(r['only_catalog'])} 份：")
     for n in r["only_catalog"]:
         print(f"    · {n}")
+    if r.get("self_in_catalog"):
+        print(f"[提示] 目录里的自产件 {len(r['self_in_catalog'])} 份（按口径不入库，不计门禁）：")
+        for n in r["self_in_catalog"]:
+            print(f"    · {n}")
     print(f"[P0] 向量库有、目录没有（孤儿）{len(r['only_kb'])} 份：")
     for n in r["only_kb"]:
         print(f"    · {n}")
@@ -209,6 +259,13 @@ def cmd_add(args) -> int:
         src = Path(raw).expanduser()
         if not src.is_file():
             print(f"✗ 交付件不存在：{src}")
+            ok = False
+            continue
+        if is_self_produced(src) and not getattr(args, "allow_self", False):
+            print(f"✗ 拒绝入库（自产件）：{src.name}")
+            print("   2026-10-10 用户定：本管线生成的报告**不再回灌知识库**——"
+                  "生成完即结束，避免写作侧照着自己的旧稿学（自我循环）。")
+            print("   确需入库（如外部送审稿）请显式加 --allow-self。")
             ok = False
             continue
         audit_type, category = classify_for_placement(src.name, args.audit_type,
@@ -259,6 +316,8 @@ def main(argv=None) -> int:
     ap.add_argument("--full", action="store_true",
                     help="入库时同时跑实体抽取与 wiki（默认只做切片+向量）")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--allow-self", action="store_true",
+                    help="允许把本管线自产件入库（默认拒绝；2026-10-10 用户定）")
     args = ap.parse_args(argv)
 
     if args.check:
