@@ -23,6 +23,8 @@
     ch5_narrative     第5章分析叙述段计数 ≥ 15（防「只有图表无文字」，2026-09-20 新增）
     ch5_531_leadin    5.3.1 表前结构：定义段（统计报告期内）＋式中＋引表句（如表5），
                       且「式中」与特殊用能注各恰 1 次（2026-10-08 新增，P1 只告警不阻断）
+    ch2_22_structure  2.2 表前结构：须含「全院合计」（面积汇总）与「建筑面积」（逐栋段必填项）
+                      （2026-10-10 新增，P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -43,7 +45,7 @@ from lxml import etree
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
-P1_NONBLOCKING = {"ch5_531_leadin"}
+P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -151,6 +153,50 @@ def ch5_531_leadin_ok(doc_xml: str):
                  if "注：" in norm(t) and ("特殊用能" in norm(t) or "特定功能" in norm(t)))
     if n_note != 1:
         miss.append("特殊用能注 %d 条（应恰 1 条）" % n_note)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
+def ch2_22_structure_ok(doc_xml: str):
+    """2.2 建筑物概况 表前结构（2026-10-10 定，选项②）。
+
+    区间 = 正文「2.2 …建筑物概况」标题 → 其后第一张表。要求：
+      ① 含「全院合计」（面积汇总必须独立成句，不得并进总览段或省略）
+      ② 含「建筑面积」（逐栋详情段的必填字段）
+    分级 P1：只报告，不阻断装配。
+    """
+    blocks = re.findall(r"<w:p[ >].*?</w:p>|<w:tbl>.*?</w:tbl>", doc_xml, re.S)
+
+    def _ptext(b: str) -> str:
+        return "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", b))
+
+    head = None
+    for i, b in enumerate(blocks):
+        if not b.startswith("<w:p"):
+            continue
+        m = re.search(r'w:pStyle[^>]*w:val="([^"]*)"', b)
+        style = (m.group(1) if m else "") or ""
+        if style.lower().startswith("toc"):        # 目录缓存条目不算正文标题
+            continue
+        t = norm(_ptext(b))
+        if t.startswith("2.2") and "建筑物概况" in t:
+            head = i
+            break
+    if head is None:
+        return False, "未定位到 2.2 建筑物概况 标题"
+    texts, j = [], head + 1
+    while j < len(blocks) and not blocks[j].startswith("<w:tbl"):
+        texts.append(_ptext(blocks[j]))
+        j += 1
+    if j >= len(blocks):
+        return False, "2.2 之后未找到建筑表"
+    region = norm("".join(texts))
+    miss = []
+    if "全院合计" not in region:
+        miss.append("缺面积汇总句（未含「全院合计」）")
+    if "建筑面积" not in region:
+        miss.append("逐栋段缺必填项「建筑面积」")
     if miss:
         return False, "；".join(miss)
     return True, ""
@@ -373,6 +419,7 @@ def run(docx: str, pdf: str = None):
     tn = norm(text)
     ch5_n = ch5_narrative_count(doc)
     c531_ok, c531_why = ch5_531_leadin_ok(doc)
+    c222_ok, c222_why = ch2_22_structure_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -409,6 +456,8 @@ def run(docx: str, pdf: str = None):
         "ch5_narrative": ch5_n >= 15,
         # 5.3.1 表格前结构（定义段/式中/引表句/注唯一）——P1，不阻断
         "ch5_531_leadin": c531_ok,
+        # 2.2 表前结构（全院合计 + 逐栋建筑面积）——P1，不阻断
+        "ch2_22_structure": c222_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -453,6 +502,8 @@ def run(docx: str, pdf: str = None):
         details["chapter_new_page"] = _chapter_pagebreak_ok(doc)[1]
     if not c531_ok:
         details["ch5_531_leadin"] = c531_why
+    if not c222_ok:
+        details["ch2_22_structure"] = c222_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
