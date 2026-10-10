@@ -17,6 +17,7 @@ Priority (high → low):
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -125,15 +126,36 @@ def _non_blank(value: Any) -> bool:
     return value is not None and str(value).strip() != ""
 
 
+_YAML_WARNED = False
+
+
 def _load_yaml(path: Path) -> dict:
+    """读 YAML 配置；**失败不再静默降级**（2026-10-10 加固）。
+
+    历史事故：某 venv 缺 PyYAML → `import yaml` 抛 ImportError 被 `except Exception` 吞掉
+    → `config.yaml` 被整体忽略 → Qdrant 地址回落到内置默认 `127.0.0.1:6334`
+    → 命令行入库/向量化全部连不上（报 Connection refused），且看不出是“配置没读到”。
+    现在：缺 PyYAML 或解析失败都会向 stderr 打一条显式告警（只打一次，附修法）。
+    """
+    global _YAML_WARNED
     if not path.exists():
         return {}
     try:
         import yaml
-
+    except ImportError:
+        if not _YAML_WARNED:
+            _YAML_WARNED = True
+            print(f"[rag.config] 警告：当前 Python 缺 PyYAML，配置文件被忽略（{path}）"
+                  f"——将回落到内置默认值（Qdrant 默认 127.0.0.1:6334）。"
+                  f"修法：uv pip install pyyaml --python <该解释器>", file=sys.stderr)
+        return {}
+    try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        if not _YAML_WARNED:
+            _YAML_WARNED = True
+            print(f"[rag.config] 警告：解析 {path} 失败（{type(exc).__name__}: {exc}）——将回落到内置默认值", file=sys.stderr)
         return {}
 
 
