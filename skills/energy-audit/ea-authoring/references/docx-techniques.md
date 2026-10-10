@@ -119,7 +119,7 @@ para = doc.add_paragraph()
 run = para.add_run()
 fld_begin = OxmlElement('w:fldChar'); fld_begin.set(qn('w:fldCharType'), 'begin')
 instr = OxmlElement('w:instrText'); instr.set(qn('xml:space'), 'preserve')
-instr.text = ' TOC \\o "1-3" \\h \\z \\u '   # \o=收集1-3级标题 \h=超链接 \u=按大纲级别
+instr.text = ' TOC \\o "1-2" \\h \\z \\u '   # \o=收集1-2级标题（本报告口径只到章/节两级，见 report-format-spec）\h=超链接 \u=按大纲级别
 fld_sep = OxmlElement('w:fldChar'); fld_sep.set(qn('w:fldCharType'), 'separate')
 t = OxmlElement('w:t'); t.text = '(打开后按 F9 更新目录)'
 fld_end = OxmlElement('w:fldChar'); fld_end.set(qn('w:fldCharType'), 'end')

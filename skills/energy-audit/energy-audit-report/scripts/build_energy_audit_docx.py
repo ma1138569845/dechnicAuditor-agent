@@ -4,7 +4,7 @@
 一次构建报告 docx 的固定版式 + 章节正文 + 附录 + 页眉/水印/页脚：
   封面（3空 + 单位22pt + 报告名26pt + 8空 + 机构/日期 + 分页）
   三张信息表（能源审计机构 / 审计组 / 配合人员，数据源 data.json）
-  目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-3"，其后插「下一页」分节符（前置节｜正文节分界）
+  目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-2"（只收章/节两级，2026-10-10 定），其后插「下一页」分节符（前置节｜正文节分界）
   第 1~8 章渲染（chapter_md/chN.md → Heading 样式 + 正文 + 表格 + 图 + OMML 公式）
   附录渲染（chapter_md/appendix.md → '附录：'总页 + 附表 + 附录说明文字）
 
@@ -126,11 +126,16 @@ def _page_break(doc):
 
 
 def _add_toc_field(paragraph):
-    """插入 TOC 域（\\o "1-3"），占位文本待 Word 打开/收尾脚本更新。"""
+    """插入 TOC 域（\\o "1-2"：只收章/节两级），占位文本待 Word 打开/收尾脚本更新。
+
+    2026-10-10 由 1-3 改 1-2（用户定）：正文仍保留 5.3.1/7.1.1 这类三级标题，
+    但目录只列到二级——与 report-format-spec.md「TOC \\o "1-2"」及淄博一四八、
+    莘县行政审批等 10 份样板一致（原 1-3 会让目录多出 26 条三级细目、涨到 1.5 页）。
+    """
     run = paragraph.add_run()
     f1 = OxmlElement("w:fldChar"); f1.set(qn("w:fldCharType"), "begin"); run._r.append(f1)
     instr = OxmlElement("w:instrText"); instr.set(qn("xml:space"), "preserve")
-    instr.text = ' TOC \\o "1-3" '
+    instr.text = ' TOC \\o "1-2" '
     run._r.append(instr)
     f2 = OxmlElement("w:fldChar"); f2.set(qn("w:fldCharType"), "separate"); run._r.append(f2)
     t = OxmlElement("w:t"); t.text = "（打开文档后目录将自动更新）"; run._r.append(t)
