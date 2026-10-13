@@ -28,6 +28,8 @@
                       （2026-10-13 改写：D 形态不再有「全院合计」独立段；P1 只告警不阻断）
     ch2_22_photos     2.2 图区一致性：图注段数 = 内嵌图片数，且图注编号自 图2.2 起连续
                       （2026-10-13 新增，专抓"清单缺条目 ⇒ 图注在、图不在"；P1 只告警不阻断）
+    ch3_photos        第3章图区一致性：图注段数 = 内嵌图片数，且图注编号自 图3.1 起连续
+                      （2026-10-13 新增；第3章照片是硬要求，漏写图注行会静默无图；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -48,7 +50,7 @@ from lxml import etree
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
-P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos"}
+P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -195,6 +197,30 @@ def ch2_22_region(doc_xml: str):
     return blocks[start + 1:] if start is not None else []
 
 
+def _chapter_region(doc_xml: str, chapter_no: int):
+    """第 N 章区间：正文「第N章 …」标题之后 → 下一个「第N+1章」/「附录」之前。
+
+    目录缓存条目（pStyle 以 toc 开头）不计入，避免目录里的章名被当成正文标题。
+    """
+    blocks = re.findall(r"<w:p[ >].*?</w:p>|<w:tbl>.*?</w:tbl>", doc_xml, re.S)
+    self_pat = re.compile(r"^第%d章" % chapter_no)
+    next_pat = re.compile(r"^第\d+章|^附录")
+    start = None
+    for i, b in enumerate(blocks):
+        if not b.startswith("<w:p"):
+            continue
+        if _pstyle(b).lower().startswith("toc"):
+            continue
+        t = norm(_ptext(b))
+        if start is None:
+            if self_pat.match(t):
+                start = i
+            continue
+        if next_pat.match(t) and not self_pat.match(t):
+            return blocks[start + 1:i]
+    return blocks[start + 1:] if start is not None else []
+
+
 def ch2_22_structure_ok(doc_xml: str):
     """2.2 三段式结构（2026-10-13 改写）。
 
@@ -258,6 +284,41 @@ def ch2_22_photos_ok(doc_xml: str):
                     % (len(nums), imgs))
     if nums and nums != list(range(2, 2 + len(nums))):
         miss.append("图注编号不连续：%s（应自 图2.2 起连号）" % nums)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
+def ch3_photos_ok(doc_xml: str):
+    """第3章图区一致性（2026-10-13 新增，P1 只告警）。
+
+    ① 图注段数 = 内嵌图片数（防"图注在、图不在"）；
+    ② 图注编号自 图3.1 起连续。
+
+    背景：第3章照片是规则**硬要求**（管理文件截图 / 荣誉证书，见 chapter-guides-1-4.md
+    「图片路由」），但装配端只认 md 图注行——漏写就静默无图。实测岚山区人民医院：
+    `es` 里有 2 张可用照片，ch3.md 一条图注行都没有，新旧两版交付件 3.2/3.3 全无图。
+    """
+    region = _chapter_region(doc_xml, 3)
+    if not region:
+        return False, "未定位到 第3章 区间"
+    nums, imgs = [], 0
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        m = re.match(r"图3\.(\d+)", norm(_ptext(b)))
+        if m:
+            nums.append(int(m.group(1)))
+        if ("<w:drawing" in b) or ("<w:pict" in b):
+            imgs += 1
+    if not nums and imgs == 0:
+        return True, ""
+    miss = []
+    if len(nums) != imgs:
+        miss.append("图注 %d 条 ≠ 图片 %d 张（清单缺条目时装配只打 WARN，图不会出现）"
+                    % (len(nums), imgs))
+    if nums and nums != list(range(1, 1 + len(nums))):
+        miss.append("图注编号不连续：%s（应自 图3.1 起连号）" % nums)
     if miss:
         return False, "；".join(miss)
     return True, ""
@@ -482,6 +543,7 @@ def run(docx: str, pdf: str = None):
     c531_ok, c531_why = ch5_531_leadin_ok(doc)
     c222_ok, c222_why = ch2_22_structure_ok(doc)
     c222p_ok, c222p_why = ch2_22_photos_ok(doc)
+    c3p_ok, c3p_why = ch3_photos_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -522,6 +584,8 @@ def run(docx: str, pdf: str = None):
         "ch2_22_structure": c222_ok,
         # 2.2 图区一致性（图注数 = 图片数、编号连续）——P1，不阻断
         "ch2_22_photos": c222p_ok,
+        # 第3章图区一致性（图注数 = 图片数、编号连续）——P1，不阻断
+        "ch3_photos": c3p_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -570,6 +634,8 @@ def run(docx: str, pdf: str = None):
         details["ch2_22_structure"] = c222_why
     if not c222p_ok:
         details["ch2_22_photos"] = c222p_why
+    if not c3p_ok:
+        details["ch3_photos"] = c3p_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

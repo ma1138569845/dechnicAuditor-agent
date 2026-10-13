@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""prepare_report_photos.py — 报告照片归置器（2.1/2.2 建筑外观照）
+"""prepare_report_photos.py — 报告照片归置器（第2章建筑外观照 + 第3章管理文件/荣誉证书）
 
 背景（2026-10-13）：照片从"采集产物"到"报告图表"这一段此前**没有任何工序**——
 谁复制、放哪个目录、叫什么名、清单怎么写全靠人临场决定，于是出现三种后果：
@@ -12,8 +12,17 @@
 `data.json` 的照片里取对应照片，复制到 `<项目>/data/images/` 并写出
 `report_images.json` 的第2章照片条目。
 
+覆盖范围（2026-10-13 扩到第3章）：
+  - **第2章**：图 2.1（单位整体外观）+ 图 2.2…（逐栋建筑外观照，来源
+    `proj.images[]` 的 `建筑外观` + `building_name`）；
+  - **第3章**：图 3.1…（管理文件截图 / 荣誉证书，来源
+    `es.management_file_images` / `es.award_certificate_images`）；选图规则 =
+    文件名主干命中图注 → 关键词判池（荣誉/奖/证书 → 荣誉证书；制度/文件/标识/
+    管理/规定/措施/截图 → 管理文件）→ 按池顺序兜底。
+
 分工：
   - 本脚本：装配**前**的三方一致（md 图注 ↔ 清单 ↔ 磁盘文件）+ 未引用照片提示；
+    第3章照片**规则要求必给**，所以"有照片但 ch3.md 没写图注行"会按告警报出（rc=2）；
   - ea_docx_asserts.py 的 ch2_22_photos：装配**后**的成品一致（图注 ↔ 图）。
 
 用法:
@@ -34,7 +43,7 @@
       "图2.1 {单位简称}单位整体外观"；
     - 图 2.N（N≥2）→ 图注里的建筑名 → 该建筑的 `building_name` 照片，图注措辞
       "图2.N {楼名}总体外观"；**图数不要求等于栋数**（挑几张即可）；
-    - 非第2章条目（图表、附录照片等）原样保留，本脚本不碰。
+    - 本章之外条目（图表、附录照片等）原样保留，本脚本不碰。
 """
 import argparse
 import hashlib
@@ -44,11 +53,17 @@ import re
 import shutil
 import sys
 
-CAP_RE = re.compile(r"^图2\.(\d+)\s*(.+?)\s*$")
+CAP_RE = re.compile(r"^图([23])\.(\d+)\s*(.+?)\s*$")
 BUILDING_CAT = "建筑外观"
 OVERALL_CAT = "单位整体外观"
 IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
-MANAGED_PREFIX = "图2."
+# 本脚本负责重建的图注前缀（其余条目原样保留）
+MANAGED_PREFIXES = ("图2.", "图3.")
+# 第3章：来源 → 图注关键词（照 chapter-guides-1-4.md「图片路由」节）
+CH3_RULES = (
+    ("award", "荣誉证书", ("荣誉", "奖", "证书", "称号", "授牌")),
+    ("management", "管理文件", ("制度", "文件", "标识", "管理", "规定", "措施", "截图", "提示")),
+)
 # python-docx 可直接嵌入的格式（真实格式，不看扩展名）
 EMBEDDABLE = {"png": ".png", "jpeg": ".jpg", "gif": ".gif", "bmp": ".bmp", "tiff": ".tif"}
 """实测（2026-10-13 岚山区人民医院）：平台附件里存在**扩展名骗人**的图片——
@@ -120,15 +135,37 @@ def read_json(path: str, default):
         return json.load(f)
 
 
-def parse_captions(md_path: str):
-    """返回 [(图号 int, 图注全文, 说明文字)]，按 md 出现顺序。"""
+def parse_captions(md_path: str, chapter: str):
+    """返回指定章的 [(图号 int, 图注全文, 说明文字)]，按 md 出现顺序。"""
     out = []
     with open(md_path, encoding="utf-8") as f:
         for line in f:
             m = CAP_RE.match(line.strip())
-            if m:
-                out.append((int(m.group(1)), line.strip(), m.group(2).strip()))
+            if m and m.group(1) == chapter:
+                out.append((int(m.group(2)), line.strip(), m.group(3).strip()))
     return out
+
+
+def pick_ch3_photo(desc: str, pools: dict, used: set):
+    """第3章选图：①文件名主干命中图注 → ②关键词判池 → ③按池顺序兜底。
+
+    pools = {"management": [管理文件截图路径…], "award": [荣誉证书路径…]}
+    """
+    all_files = [(kind, p) for kind in ("management", "award") for p in pools[kind]]
+    for kind, p in all_files:
+        stem = os.path.splitext(os.path.basename(p))[0]
+        if stem and stem in desc and p not in used:
+            return p, kind
+    for kind, label, keys in CH3_RULES:
+        if any(k in desc for k in keys):
+            for p in pools[kind]:
+                if p not in used:
+                    return p, kind
+    for kind in ("management", "award"):          # 兜底：按池顺序取未用过的
+        for p in pools[kind]:
+            if p not in used:
+                return p, kind
+    return "", ""
 
 
 def match_building(desc: str, buildings):
@@ -214,7 +251,7 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="报告照片归置器（2.1/2.2 建筑外观照）")
+    ap = argparse.ArgumentParser(description="报告照片归置器（第2章建筑外观照 / 第3章管理文件·荣誉证书）")
     ap.add_argument("project", help="项目名（~/projects/energy-audit/<项目名>）或项目目录")
     ap.add_argument("--force", action="store_true", help="同名不同内容时覆盖既有副本/清单")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不复制、不写清单")
@@ -230,8 +267,9 @@ def main(argv=None) -> int:
         print(f"[错误] 项目目录不存在: {args.project}（查找根: {projects_root()}）")
         return 1
     data_path = os.path.join(pdir, "data.json")
-    md_path = os.path.join(pdir, "chapter_md", "ch2.md")
-    for need in (data_path, md_path):
+    md2_path = os.path.join(pdir, "chapter_md", "ch2.md")
+    md3_path = os.path.join(pdir, "chapter_md", "ch3.md")
+    for need in (data_path, md2_path):
         if not os.path.isfile(need):
             print(f"[错误] 缺少输入: {need}")
             return 1
@@ -241,22 +279,26 @@ def main(argv=None) -> int:
     buildings = [(b.get("name") or "").strip() for b in (data.get("buildings") or [])]
     base = data.get("base") or {}
     unit_short = base.get("unit_short") or base.get("unit_name") or "单位"
+    saving = data.get("energy_saving") or []
 
-    captions = parse_captions(md_path)
-    if not captions:
-        print(f"[错误] {md_path} 里没有 '图2.x' 图注行——"
+    caps2 = parse_captions(md2_path, "2")
+    caps3 = parse_captions(md3_path, "3") if os.path.isfile(md3_path) else []
+    if not caps2 and not caps3:
+        print(f"[错误] {md2_path} / {md3_path} 里都没有 '图2.x' / '图3.x' 图注行——"
               f"图注行是编号唯一来源，请先把它写进 md")
         return 1
 
     say(f"[项目] {pdir}")
-    say(f"[输入] 建筑 {len(buildings)} 栋；照片 {len(images)} 条；md 图注 {len(captions)} 条")
+    say(f"[输入] 建筑 {len(buildings)} 栋；照片 {len(images)} 条；"
+        f"图注 第2章 {len(caps2)} 条 / 第3章 {len(caps3)} 条")
 
     photo_entries = []
     copy_cache = {}
     warnings = []
     used_sources = set()
+    used3 = set()
 
-    for num, caption, desc in captions:
+    for num, caption, desc in caps2:
         if num == 1:
             src = pick_photo(images, OVERALL_CAT) or pick_photo(images, BUILDING_CAT)
             stem = "单位整体外观"
@@ -292,16 +334,52 @@ def main(argv=None) -> int:
         say(f"[提示] 有 {len(unused)} 条建筑照未被第2章引用（{'、'.join(names)}）"
             f"——按现口径允许只挑代表性照片，无需处理")
 
+    # ---- 第3章：管理文件截图 / 荣誉证书（来源 es.management_file_images / award_certificate_images）----
+    pools = {"management": [], "award": []}
+    for es in saving:
+        for p in (es.get("management_file_images") or []):
+            if p and os.path.isfile(p) and p not in pools["management"]:
+                pools["management"].append(p)
+        for p in (es.get("award_certificate_images") or []):
+            if p and os.path.isfile(p) and p not in pools["award"]:
+                pools["award"].append(p)
+    pool_total = len(pools["management"]) + len(pools["award"])
+    if caps3:
+        say(f"[第3章] 可用照片：管理文件 {len(pools['management'])} 张 / "
+            f"荣誉证书 {len(pools['award'])} 张")
+    for num, caption, desc in caps3:
+        src, kind = pick_ch3_photo(desc, pools, used3)
+        if not src:
+            warnings.append(f"{caption}：第3章没有可用照片（es.management_file_images / "
+                            f"award_certificate_images 均为空或已用完）")
+            continue
+        used3.add(src)
+        prefix = "管理文件" if kind == "management" else "荣誉证书"
+        stem = f"{prefix}_{os.path.splitext(os.path.basename(src))[0]}"
+        if args.dry_run:
+            say(f"  · {caption}  <=  {src}")
+            photo_entries.append({"caption": caption,
+                                  "src": f"data/images/{safe_name(stem)}"})
+            continue
+        rel = place(pdir, src, stem, args.force, copy_cache, say)
+        if rel:
+            photo_entries.append({"caption": caption, "src": rel})
+    if pool_total and not caps3:
+        warnings.append(f"第3章有 {pool_total} 张可用照片（管理文件 "
+                        f"{len(pools['management'])} / 荣誉证书 {len(pools['award'])}），"
+                        f"但 ch3.md 没有 '图3.x' 图注行——按规则第3章**必须提供照片**，"
+                        f"请在 3.2（管理文件截图）/ 3.3（荣誉证书）末尾补图注行后重跑")
+
     man_path = os.path.join(pdir, "report_images.json")
     if args.dry_run:
-        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2章照片条目，未落盘")
+        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2/3章照片条目，未落盘")
     else:
         man = read_json(man_path, {"images": []})
         if not isinstance(man, dict):
             man = {"images": []}
         old = man.get("images") or []
         kept = [e for e in old
-                if not str(e.get("caption") or "").strip().startswith(MANAGED_PREFIX)]
+                if not str(e.get("caption") or "").strip().startswith(MANAGED_PREFIXES)]
         dropped = len(old) - len(kept)
         man["images"] = kept + photo_entries
         if os.path.isfile(man_path):

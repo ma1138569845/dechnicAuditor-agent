@@ -19,7 +19,7 @@
 | S7 | 写章 批1 | author | S2~S6 产物 + 蓝本 | 契约 → 蓝本 → 第1~4章写作 | `chapter_md/ch1~ch4.md` | 每章落盘；收工重跑契约脚本 |
 | S8 | 写章 批2 | author | 同上 | 第5章装配稿补叙述（禁重算）+ 第6/7章 | `ch5_import.md`（已就位）、`ch6.md`、`ch7.md` | 同上 |
 | S9 | 写章 批3 | author | 同上 | 第8章 + 附录 | `ch8.md`、`appendix.md` | 同上 |
-| S9.5 | 照片归置 | author | `data.json` + `chapter_md/ch2.md` | `ea-authoring/scripts/prepare_report_photos.py <项目名>` | `<项目>/data/images/*` + `report_images.json` 第2章条目 | exit 2（图注匹配不到照片）→ 先修 md 图注或归属再继续；**必须早于 S10 装配**，否则图注在、图不出来 |
+| S9.5 | 照片归置 | author | `data.json` + `chapter_md/ch2.md` + `ch3.md` | `ea-authoring/scripts/prepare_report_photos.py <项目名>` | `<项目>/data/images/*` + `report_images.json` 第2/3章条目 | exit 2（图注匹配不到照片；或第3章有照片却没写 `图3.x` 图注行）→ 先修 md 再继续；**必须早于 S10 装配**，否则图注在、图不出来 |
 | S10 | 装配 | author | `data.json`+`chapter_md/`+`report_images.json` | `build_energy_audit_docx.py --project-dir <项目>` | `output/_script_build/<单位>能源审计报告.docx` | 缺章仅告警（会出空章）；公式占位必须命中资产库 |
 | S11 | 收尾 | author | 上一步 docx | `finalize_energy_audit_pdf.py --project-dir <项目>` | 同名 `.pdf`（刷目录+盖章） | Word COM 必须绝对路径；updateFields 自动补写 |
 | S12 | 断言 | author | docx + pdf | `ea_docx_asserts.py <docx> --pdf <pdf>` | 断言结果 | **10 项硬检查全过，失败不得报"完成"** |
