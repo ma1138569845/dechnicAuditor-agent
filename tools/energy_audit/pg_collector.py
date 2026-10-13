@@ -1079,19 +1079,27 @@ def build_and_save_project(
     # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
     # base_url 未配置时返回空列表，不阻塞采集（照片缺失由 photo_manager 检查提示）。
     photo_items: List[ImageItem] = []
-    _photo_id_map = []  # [(group_id, category)]
+    # 每项 = (group_id, category, caption, building_name)（2026-10-13 改为四元组）
+    #   caption       ：缴费发票等"图注类"分类用（报告内展示）
+    #   building_name ：**行归属**，建筑外观照填所属建筑名（来源 ts_institution_build.build_name），
+    #                   供 2.2 逐栋配图自动归属；其余分类留空。归属不复用 caption——
+    #                   仿写链路 report_generator._add_image_with_caption 会把 caption 逐字当图注写进 docx。
+    _photo_id_map = []
     # 单位整体外观（ts_institution_scene.scene_img_id → 图2.1，2026-09-05 用户确认）
     # scene_img_id 即 ts_attachment.group_id（bigint 单值）；scenes 按 year DESC，
     # 取最新年份第一个非空值，避免多年份同图重复
     _scene_img = next((sc.get('scene_img_id') for sc in pg_result['found'].get('scenes', []) if sc.get('scene_img_id')), None)
     if _scene_img:
-        _photo_id_map.append((int(_scene_img), '单位整体外观'))
+        _photo_id_map.append((int(_scene_img), '单位整体外观', '', ''))
+    # 建筑外观（ts_institution_build.build_img → 2.2 图区/逐栋照）：
+    # 2026-10-13 实测一栋一行、各带 build_name、无共用图组（中医 5/5、岚山 7/7、法院 1/1）
     for bi in pg_result['found'].get('building_images', []) or []:
+        _bname = (bi.get('build_name') or '').strip()
         for fid in parse_file_ids(bi.get('build_img') or ''):
-            _photo_id_map.append((fid, '建筑外观'))
+            _photo_id_map.append((fid, '建筑外观', '', _bname))
     for mr in pg_result['found'].get('energy_meter', []) or []:
         for fid in parse_file_ids(mr.get('device_img') or ''):
-            _photo_id_map.append((fid, '计量器具'))
+            _photo_id_map.append((fid, '计量器具', '', ''))
     # 发票照片（ts_institution_energy_invoice + invoice_image 双表）→ 分类'缴费发票'，
     # caption 带能源类型与期间（如"电费 1月~2月"），附录按 caption 前缀分组排列。
     _INVOICE_TYPE_CN = {
@@ -1107,7 +1115,7 @@ def build_and_save_project(
                 continue
             for fid in parse_file_ids(_fid):
                 _period = _img.get('period_name') or _img.get('period_code') or ''
-                _photo_id_map.append((fid, ('缴费发票', f"{_type_cn} {_period}".strip())))
+                _photo_id_map.append((fid, '缴费发票', f"{_type_cn} {_period}".strip(), ''))
     # 设备分表照片（_img 列）→ 第6章分系统分类（2026-09-04 补，此前正文无设备照片）
     _DEVICE_PHOTO_CATEGORY = {
         '空调': '制冷设备', '照明': '照明设备', '办公': '办公设备',
@@ -1121,20 +1129,18 @@ def build_and_save_project(
         if not _cat:
             continue
         for fid in (eq.get('img_ids') or []):
-            _photo_id_map.append((fid, _cat))
+            _photo_id_map.append((fid, _cat, '', ''))
     if _photo_id_map:
-        _atts = resolve_attachment_urls([fid for fid, _ in _photo_id_map])
+        _atts = resolve_attachment_urls([fid for fid, *_ in _photo_id_map])
         _path_by_id = {}
         for att in _atts:
             for pth in download_attachment_images([att]):
                 _path_by_id[att['group_id']] = pth
-        for fid, cat in _photo_id_map:
+        for fid, cat, cap, bname in _photo_id_map:
             pth = _path_by_id.get(fid)
             if pth:
-                if isinstance(cat, tuple):  # (category, caption) — 缴费发票等带图注分类
-                    photo_items.append(ImageItem(path=pth, category=cat[0], caption=cat[1]))
-                else:
-                    photo_items.append(ImageItem(path=pth, category=cat))
+                photo_items.append(ImageItem(path=pth, category=cat,
+                                             caption=cap, building_name=bname))
     if photo_items:
         _cats = sorted({im.category for im in photo_items})
         print(f"[datacollection v2] 已采集照片 {len(photo_items)} 张（{'/'.join(_cats)}）")

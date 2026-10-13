@@ -356,7 +356,7 @@ echo "    → ${v2_var}"''')
 
 写入方式（**只落 md，不建 docx、不导入、不跑格式修复链**；装配统一在卡3 一次完成，2026-09-22 定）:
 - 第1~4章 LLM 分 1~2 批生成章节 markdown，落盘 {CH_MD}/cover.md 与 {CH_MD}/ch1.md ~ ch4.md
-- 图片不手工插：第2章建筑图由装配链按 report_images.json 的图注精确匹配注入
+- 图片不手工插：第2章建筑图先跑 `prepare_report_photos.py <项目名>` 归置（副本落 <项目>/data/images/、写 report_images.json 第2章条目），再由装配链按图注精确匹配注入
 - 封面/审计信息表由装配链按 md 渲染，无需 office_create / office_save
 
 输入:

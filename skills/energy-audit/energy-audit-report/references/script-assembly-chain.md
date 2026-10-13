@@ -40,7 +40,7 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 | `data.json` | base（unit_name/audit_org_name/audit_org_address/contact/phone/report_date）、audit_team、cooperation |
 | `chapter_md/ch1..ch8.md` | LLM 逐章正文（第5章用 caliber 产出的 `ch5_import.md`，脚本优先匹配 `chN_import.md`）。`ch5_import.md` 由 `ea-calculation/scripts/prepare_chapter_md.py <项目名>` 就位（不覆盖作者已并入叙述段的版本；退出码 2 = 装配稿早于计算产物需人工确认） |
 | `chapter_md/appendix.md` | 附录（7 附录约定；有发票插发票附录） |
-| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径}]}`；caption 须与 md 图注行**精确一致**（`图4.1` 双图=两条同 caption 记录） |
+| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径}]}`；caption 须与 md 图注行**精确一致**（`图4.1` 双图=两条同 caption 记录）。**第2章照片条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 生成**（副本落 `<项目>/data/images/`，src 写 `data/images/xxx.png`）；⚠️ **清单缺条目时装配只打 WARN、图注照写而图不出现**——发布前必须跑该脚本，并由 `ea_docx_asserts.py` 的 `ch2_22_photos` 兜底 |
 | `assets/omml_formulas.json` | OMML 公式库（当前法院/机关型 5 个）。其他机构类型在其项目首次使用时从同类成品提取补入——同一 JSON 加键 `FORMULAn` 即可，无需改代码 |
 
 ### 装配覆盖（对齐 45 页终稿）

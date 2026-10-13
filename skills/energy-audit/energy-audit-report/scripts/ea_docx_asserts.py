@@ -23,8 +23,11 @@
     ch5_narrative     第5章分析叙述段计数 ≥ 15（防「只有图表无文字」，2026-09-20 新增）
     ch5_531_leadin    5.3.1 表前结构：定义段（统计报告期内）＋式中＋引表句（如表5），
                       且「式中」与特殊用能注各恰 1 次（2026-10-08 新增，P1 只告警不阻断）
-    ch2_22_structure  2.2 表前结构：须含「全院合计」（面积汇总）与「建筑面积」（逐栋段必填项）
-                      （2026-10-10 新增，P1 只告警不阻断）
+    ch2_22_structure  2.2 三段式结构：文字区须含「建筑面积」（逐栋段必填项）；
+                      建筑表数 ≥1 且表号连续（表2.1、表2.2…）
+                      （2026-10-13 改写：D 形态不再有「全院合计」独立段；P1 只告警不阻断）
+    ch2_22_photos     2.2 图区一致性：图注段数 = 内嵌图片数，且图注编号自 图2.2 起连续
+                      （2026-10-13 新增，专抓"清单缺条目 ⇒ 图注在、图不在"；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -45,7 +48,7 @@ from lxml import etree
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
-P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure"}
+P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -158,45 +161,103 @@ def ch5_531_leadin_ok(doc_xml: str):
     return True, ""
 
 
-def ch2_22_structure_ok(doc_xml: str):
-    """2.2 建筑物概况 表前结构（2026-10-10 定，选项②）。
+def _ptext(block: str) -> str:
+    """段落/表格块里的可见文本（拼接全部 w:t）。"""
+    return "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", block))
 
-    区间 = 正文「2.2 …建筑物概况」标题 → 其后第一张表。要求：
-      ① 含「全院合计」（面积汇总必须独立成句，不得并进总览段或省略）
-      ② 含「建筑面积」（逐栋详情段的必填字段）
-    分级 P1：只报告，不阻断装配。
+
+def _pstyle(block: str) -> str:
+    m = re.search(r'w:pStyle[^>]*w:val="([^"]*)"', block)
+    return (m.group(1) if m else "") or ""
+
+
+def ch2_22_region(doc_xml: str):
+    """2.2 建筑物概况 区间：标题之后 → 下一个标题（2.3/第N章/附录/任何 Heading）之前。
+
+    目录缓存条目（pStyle 以 toc 开头）不计入，避免目录里的「2.2 …」被当成正文标题。
     """
     blocks = re.findall(r"<w:p[ >].*?</w:p>|<w:tbl>.*?</w:tbl>", doc_xml, re.S)
-
-    def _ptext(b: str) -> str:
-        return "".join(re.findall(r"<w:t(?: [^>]*)?>([^<]*)</w:t>", b))
-
-    head = None
+    start = None
     for i, b in enumerate(blocks):
         if not b.startswith("<w:p"):
             continue
-        m = re.search(r'w:pStyle[^>]*w:val="([^"]*)"', b)
-        style = (m.group(1) if m else "") or ""
-        if style.lower().startswith("toc"):        # 目录缓存条目不算正文标题
+        style = _pstyle(b)
+        if style.lower().startswith("toc"):
             continue
         t = norm(_ptext(b))
-        if t.startswith("2.2") and "建筑物概况" in t:
-            head = i
-            break
-    if head is None:
-        return False, "未定位到 2.2 建筑物概况 标题"
-    texts, j = [], head + 1
-    while j < len(blocks) and not blocks[j].startswith("<w:tbl"):
-        texts.append(_ptext(blocks[j]))
-        j += 1
-    if j >= len(blocks):
-        return False, "2.2 之后未找到建筑表"
-    region = norm("".join(texts))
+        if start is None:
+            if t.startswith("2.2") and "建筑物概况" in t:
+                start = i
+            continue
+        if (t.startswith("2.3") or re.match(r"^(第\d+章|附录)", t)
+                or style.lower().startswith("heading")):
+            return blocks[start + 1:i]
+    return blocks[start + 1:] if start is not None else []
+
+
+def ch2_22_structure_ok(doc_xml: str):
+    """2.2 三段式结构（2026-10-13 改写）。
+
+    参考口径 = 参考报告《日照市岚山区人民医院能源审计报告》2.2 的三段式
+    （文字区 → 图区 → 表区），据此本检查只看两件事：
+      ① 文字区含「建筑面积」（逐栋段必填项，读者不看表即可核对）
+      ② 建筑基本信息表 ≥1 张，且表号连续（表2.1、表2.2…），表号数 = 表数
+    已废止的旧口径：要求「全院合计」独立成段（D 形态没有这句）。
+    分级 P1：只报告，不阻断装配。
+    """
+    region = ch2_22_region(doc_xml)
+    if not region:
+        return False, "未定位到 2.2 建筑物概况 区间"
+    texts = norm("".join(_ptext(b) for b in region))
     miss = []
-    if "全院合计" not in region:
-        miss.append("缺面积汇总句（未含「全院合计」）")
-    if "建筑面积" not in region:
+    if "建筑面积" not in texts:
         miss.append("逐栋段缺必填项「建筑面积」")
+    nums = []
+    for b in region:
+        m = re.match(r"表2\.(\d+)", norm(_ptext(b)))
+        if m:
+            nums.append(int(m.group(1)))
+    tables = sum(1 for b in region
+                 if b.startswith("<w:tbl") and "建筑物名称" in _ptext(b)[:60])
+    if tables == 0:
+        miss.append("区间内没有建筑基本信息表")
+    if nums and tables and len(nums) != tables:
+        miss.append("表题 %d 条 ≠ 建筑表 %d 张" % (len(nums), tables))
+    if nums != list(range(1, len(nums) + 1)):
+        miss.append("表号不连续：%s" % nums)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
+def ch2_22_photos_ok(doc_xml: str):
+    """2.2 图区一致性（2026-10-13 新增，P1 只告警）。
+
+    专抓两类只在成品里才看得出的问题：
+      ① 图注段数 ≠ 内嵌图片数——装配对"清单缺条目"只打 WARN，图注照写进正文、
+         图不出现，报告可以一路绿灯交付；
+      ② 图注编号不连续（应自 图2.2 起连号；图2.1 属 2.1 节，不计入本区间）。
+    """
+    region = ch2_22_region(doc_xml)
+    if not region:
+        return False, "未定位到 2.2 建筑物概况 区间"
+    nums, imgs = [], 0
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        m = re.match(r"图2\.(\d+)", norm(_ptext(b)))
+        if m:
+            nums.append(int(m.group(1)))
+        if ("<w:drawing" in b) or ("<w:pict" in b):
+            imgs += 1
+    if not nums and imgs == 0:
+        return True, ""
+    miss = []
+    if len(nums) != imgs:
+        miss.append("图注 %d 条 ≠ 图片 %d 张（清单缺条目时装配只打 WARN，图不会出现）"
+                    % (len(nums), imgs))
+    if nums and nums != list(range(2, 2 + len(nums))):
+        miss.append("图注编号不连续：%s（应自 图2.2 起连号）" % nums)
     if miss:
         return False, "；".join(miss)
     return True, ""
@@ -420,6 +481,7 @@ def run(docx: str, pdf: str = None):
     ch5_n = ch5_narrative_count(doc)
     c531_ok, c531_why = ch5_531_leadin_ok(doc)
     c222_ok, c222_why = ch2_22_structure_ok(doc)
+    c222p_ok, c222p_why = ch2_22_photos_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -456,8 +518,10 @@ def run(docx: str, pdf: str = None):
         "ch5_narrative": ch5_n >= 15,
         # 5.3.1 表格前结构（定义段/式中/引表句/注唯一）——P1，不阻断
         "ch5_531_leadin": c531_ok,
-        # 2.2 表前结构（全院合计 + 逐栋建筑面积）——P1，不阻断
+        # 2.2 三段式结构（逐栋段含建筑面积 + 表数/表号）——P1，不阻断
         "ch2_22_structure": c222_ok,
+        # 2.2 图区一致性（图注数 = 图片数、编号连续）——P1，不阻断
+        "ch2_22_photos": c222p_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -504,6 +568,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_531_leadin"] = c531_why
     if not c222_ok:
         details["ch2_22_structure"] = c222_why
+    if not c222p_ok:
+        details["ch2_22_photos"] = c222p_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

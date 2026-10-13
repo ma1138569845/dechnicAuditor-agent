@@ -437,10 +437,15 @@ class ImageItem:
     """项目照片（带分类，供报告章节路由与照片完整性校验）
 
     category 取 PHOTO_CATEGORIES 之一；空字符串表示未分类（兼容旧数据，报告兜底进第2章）。
+    building_name：采集**行归属**（2026-10-13 新增）。建筑外观照填所属建筑名
+    （来源 ts_institution_build.build_name，实测一栋一行、无共用组），供 2.2 逐栋配图
+    自动归属；其余分类留空。不要用 caption 存归属——仿写链路
+    （report_generator._add_image_with_caption）会把 caption 逐字当图注写进 docx。
     """
     path: str                          # 图片文件路径（本地绝对路径）
     category: str = ""                 # 照片分类（PHOTO_CATEGORIES）
     caption: str = ""                  # 图注（可选，报告内展示用）
+    building_name: str = ""            # 行归属：建筑外观照=所属建筑名，其余留空
 
 
 # ============================================================
