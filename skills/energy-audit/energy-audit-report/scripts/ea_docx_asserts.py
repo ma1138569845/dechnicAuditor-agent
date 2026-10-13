@@ -32,6 +32,8 @@
                       （2026-10-13 新增；第3章照片是硬要求，漏写图注行会静默无图；P1 只告警不阻断）
     ch4_structure     第4章小节结构：4.1/4.2/4.3 三节齐全、无 4.4、4.3 标题为「能源资源统计成效及问题」
                       （2026-10-13 新增；原「4.3 统计情况」已废止合并；P1 只告警不阻断）
+    ch5_52_layout     5.2 版面：含图能源节① 首段有设备/系统描述 ② 两张图注不相邻
+                      ③ 图注后接「由图…分析」句（2026-10-13 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -53,7 +55,7 @@ MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
-                  "ch4_structure"}
+                  "ch4_structure", "ch5_52_layout"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -389,6 +391,88 @@ def ch4_structure_ok(doc_xml: str, heading_ids=None):
     return True, ""
 
 
+def ch5_52_layout_ok(doc_xml: str, heading_ids=None):
+    """第5章 5.2 版面（2026-10-13 新增，P1 只告警）。
+
+    背景：5.2 的"四段两图、图文交替"以前只写在规则里、没有任何检查——实测四份报告里
+    三份照做、岚山区人民医院那份把段1+段2、段3+段4 各压成一段（4 段变 2 段），
+    于是**设备列举丢失、两张图注相邻**，却能一路绿灯交付。
+
+    检查（只对**含图的能源节**生效；5.2.4 其他用能无图不查）：
+      ① 首段须含设备/系统描述（设备/系统/台/套/机组/锅炉 任一），防"只写数值"；
+      ② 两张图注不得相邻（图注行之间必须夹着正文段）；
+      ③ 图注之后紧邻的正文段须以"由图5.X分析"开头。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+
+    def _is_head(b):
+        if not b.startswith("<w:p"):
+            return False
+        if heading_ids is not None:
+            return _pstyle(b) in heading_ids
+        return not _pstyle(b).lower().startswith("toc")
+
+    start = end = None
+    for i, b in enumerate(region):
+        if not _is_head(b):
+            continue
+        t = norm(_ptext(b))
+        if start is None and re.match(r"^5\.2", t):
+            start = i
+        elif start is not None and re.match(r"^5\.3", t):
+            end = i
+            break
+    if start is None:
+        return False, "未定位到 5.2 小节"
+    seg = region[start + 1:(end if end is not None else len(region))]
+
+    sub_blocks, cur_title, cur_items = [], "(未命名小节)", []
+    for b in seg:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        if _is_head(b) and re.match(r"^5\.2\.\d", t):
+            sub_blocks.append((cur_title, cur_items))
+            cur_title, cur_items = t, []
+            continue
+        if not t:
+            continue          # 空文本段（图片段本身无文字）不参与"图注是否相邻"的判断
+        cur_items.append(("fig" if re.match(r"^图5\.\d", t) else "p", t))
+    sub_blocks.append((cur_title, cur_items))
+
+    # 段1 的"设备/系统描述"关键词（含用热节的"供热/供暖/热源"等，避免误报）
+    DEV_WORDS = ("设备", "系统", "机组", "锅炉", "空调", "照明", "水泵", "供水", "给水",
+                 "供热", "供暖", "热源", "冷源", "配电", "车辆", "灶")
+    miss = []
+    for title, items in sub_blocks:
+        if "费用" in title:                # 费用节固定最后（表5.1 + 各年饼图），不适用本检查
+            continue
+        if not any(k == "fig" for k, _t in items):
+            continue                       # 无图节（其他用能）不查
+        first = next((t for k, t in items if k == "p" and t), "")
+        if not any(w in first for w in DEV_WORDS):
+            miss.append("%s：首段缺设备/系统描述" % title)
+        for i in range(1, len(items)):
+            if items[i][0] == "fig" and items[i - 1][0] == "fig":
+                miss.append("%s：两张图注相邻（%s / %s）"
+                            % (title, items[i - 1][1][:16], items[i][1][:16]))
+                break
+        # 只查**第一个**图注之后：规范要求"段2 以「由图5.X分析」开头"
+        # （后一个图注之后是段4 归因段，样板里"综合分析，…"等写法并存，不强制由图开头）
+        for i, (k, _t) in enumerate(items):
+            if k != "fig":
+                continue
+            nxt = next((t for k2, t in items[i + 1:] if k2 == "p" and t), "")
+            if nxt and not nxt.startswith("由图"):
+                miss.append("%s：首个图注后未接“由图…分析”句（实际“%s”）" % (title, nxt[:16]))
+            break
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
@@ -610,6 +694,7 @@ def run(docx: str, pdf: str = None):
     c222p_ok, c222p_why = ch2_22_photos_ok(doc)
     c3p_ok, c3p_why = ch3_photos_ok(doc)
     c4_ok, c4_why = ch4_structure_ok(doc, _heading_style_ids(z))
+    c52_ok, c52_why = ch5_52_layout_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -654,6 +739,8 @@ def run(docx: str, pdf: str = None):
         "ch3_photos": c3p_ok,
         # 第4章小节结构（4.1/4.2/4.3 三节、无 4.4）——P1，不阻断
         "ch4_structure": c4_ok,
+        # 5.2 版面（设备列举 + 图注不相邻 + 图注后接分析句）——P1，不阻断
+        "ch5_52_layout": c52_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -706,6 +793,8 @@ def run(docx: str, pdf: str = None):
         details["ch3_photos"] = c3p_why
     if not c4_ok:
         details["ch4_structure"] = c4_why
+    if not c52_ok:
+        details["ch5_52_layout"] = c52_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
