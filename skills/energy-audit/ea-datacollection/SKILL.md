@@ -99,6 +99,13 @@ result = collect_from_pg(project_name)
 - **ts_institution_energy_main**：元数据 + 年度总量。关键字段：`year`、`data_type`（代码实际：1=能耗/2=费用/3=供冷（采集侧不映射）/4=供热能耗/5=交通能耗/7=供热费用/8=交通费用）、`energy_code`/`energy_name`、`energy_unit`、`total_value`（年度合计）、`real_value`(单位实际用能量/费用金额)、`standard_coal_coefficient`（折标系数）、`granularity`（记录粒度：1=月/2=双月/3=季度/4=半年）
 - **ts_institution_energy_data**：周期明细。`main_id` 外键关联主表，`period_code` 与粒度对应（`'01'`=单月、`'01~02'`=双月、`'01~03'`=季度、`'01~06'`=半年），`energy_value` 为该周期总量
 
+**数据异常登记（2026-10-13 接入，供第5章 5.2 写异常说明）**：
+
+- 主表 `ts_institution_energy_main.anomaly_status`：**0 无异常 / 1 存在异常 / 2 异常已修改**；
+- 关联表 `ts_institution_energy_exception`（`main_id` → 主表 `id`）：`tittle`（形如"同比增长率36.74%,是否存在特殊原因导致"）、`value`（率值）、`is_special`（0 否 / 1 是）、`exception_desc`（**原因描述**）、`status`、`exception_time`（**年**如"2023年" / **月**如"5月"，月份需配主表 `year`）；
+- 取数口径（用户定）：**不按 anomaly_status 过滤**，只要 `is_special=1` 且 `exception_desc` 非空即取；`status` 不要求（实测命中记录基本是 status=2 的主表行，全库 =1 仅 18 条）；
+- 落盘：`pg_query.get_energy_exceptions()` → `pg_collector._attach_energy_anomalies()` **按 (year, 期间, 能源) 去重**（实测有仅差标点的重复记录，保留描述较长者）→ `data.json` 的 `energy_yearly[].anomalies`（含 `desc` 原文与 `desc_no_year`）。
+
 采集逻辑（`pg_query.py` 的 `PgDataQuery.get_institution_energy`）：
 
 ```sql

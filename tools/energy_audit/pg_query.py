@@ -240,6 +240,42 @@ class PgDataQuery:
         rows = self.get_institution_project(audited_name=project_name)
         return rows[0] if rows else None
 
+    def get_energy_exceptions(self, customer_id: int = None) -> List[Dict]:
+        """平台登记的能耗数据异常：ts_institution_energy_main + ts_institution_energy_exception。
+
+        `main.anomaly_status`：0 无异常 / 1 存在异常 / 2 异常已修改（用户 2026-10-13 确认）。
+
+        取数口径（2026-10-13 用户定）：
+          · **不按 anomaly_status 过滤**——实测命中的记录基本都是 2（异常已修改），
+            全库 =1 的仅 18 条；只看"有没有人登记过特殊原因"更有意义；
+          · 取 `is_special = 1`（存在特殊原因）**且** `exception_desc` 非空；
+          · `status` 不要求；异常表自身无 deleted/version_code 列，故不做版本过滤。
+
+        返回每行：year / energy_name / anomaly_status / main_id / exception_time /
+                  value / tittle / exception_desc
+        （**不去重**——去重由调用方按 (year, exception_time, energy_name) 处理，
+         因为实测存在仅差标点的重复记录）
+        """
+        query = """
+            SELECT m.year, m.energy_name, m.anomaly_status, m.id AS main_id,
+                   e.exception_time, e.value, e.tittle, e.exception_desc
+              FROM ts_institution_energy_exception e
+              JOIN ts_institution_energy_main m ON m.id = e.main_id
+             WHERE (m.deleted IS NULL OR m.deleted = 0)
+               AND COALESCE(e.is_special, 0) = 1
+               AND e.exception_desc IS NOT NULL
+               AND e.exception_desc <> ''
+        """
+        params: list = []
+        if customer_id:
+            query += " AND m.customer_id = %s"
+            params.append(customer_id)
+        query += " ORDER BY m.year, e.exception_time, m.energy_name"
+        try:
+            return self._execute(query, tuple(params))
+        except Exception:  # noqa: BLE001 —— 表缺失/权限问题不得阻塞采集
+            return []
+
     def get_commission_unit(self, commission_id: int) -> Dict | None:
         """按 ts_institution_project.commission_id 取委托单位（2026-09-29 接线）。
 

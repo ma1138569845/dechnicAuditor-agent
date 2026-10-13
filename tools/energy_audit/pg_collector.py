@@ -19,6 +19,7 @@ from tools.energy_audit._paths import PROJECT_ROOT  # noqa: F401
 
 from tools.energy_audit.project_data import (
     AuditProject, ProjectBase, BuildingInfo, EnergyYearly, EnergyMonthly,
+    EnergyAnomaly,
     Equipment, MeteringInfo, ManagementInfo, EnergySaving, SharedOfficeUnit,
     TeamMember, CoopMember, ImageItem,
     save_project, SourceResolver, first_non_empty_source,
@@ -755,6 +756,13 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     if energy_yearly:
         result['found']['energy_yearly'] = energy_yearly
 
+    # ---- 3b. 平台登记的数据异常（2026-10-13 接入；供第5章 5.2 写"异常说明"）----
+    # 口径：只看 is_special=1 且 exception_desc 非空（**不按 anomaly_status 过滤**——
+    # 实测命中记录基本是 2=异常已修改，全库 =1 仅 18 条）；表缺失/权限问题不阻塞采集。
+    _anomalies = pg.get_energy_exceptions(customer_id=customer_id)
+    if _anomalies:
+        result['found']['energy_anomalies'] = _anomalies
+
     # ---- 4. 设备数据 ----
     equipment = pg.get_formatted_equipment(customer_id=customer_id)
     if equipment:
@@ -1147,6 +1155,10 @@ def build_and_save_project(
     elif _photo_id_map:
         print("[datacollection v2] 照片未采集：file base_url 未配置或附件下载失败，缺失项由 photo_manager 检查提示")
 
+    # 年度能耗 + 平台登记异常（2026-10-13：异常挂到 EnergyYearly.anomalies，供 5.2 写异常说明）
+    _yearly = _merge_energy(pg_energy, excel_data.get('energy_yearly', []))
+    _attach_energy_anomalies(_yearly, result.get('found', {}).get('energy_anomalies', []) or [])
+
     proj = AuditProject(
         base=ProjectBase(
             name=f"{project_name}能源审计",
@@ -1318,9 +1330,8 @@ def build_and_save_project(
                                    ('default', '')),
         ),
         buildings=_merge_buildings(pg_buildings, excel_data.get('buildings', [])),
-        energy_yearly=_merge_energy(pg_energy, excel_data.get('energy_yearly', [])),
-        energy_monthly=_expand_energy_monthly(
-            _merge_energy(pg_energy, excel_data.get('energy_yearly', []))),
+        energy_yearly=_yearly,
+        energy_monthly=_expand_energy_monthly(_yearly),
         equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
@@ -1473,6 +1484,71 @@ def _dataclass_from_dict(cls, data: dict):
     """只取 dataclass 已声明字段，忽略 PG/Excel 多出来的列。"""
     allowed = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in data.items() if k in allowed})
+
+
+def _build_energy_anomaly(row: dict) -> EnergyAnomaly:
+    """平台异常记录 → EnergyAnomaly（含"去掉句首年份"的备用描述）。"""
+    period = str(row.get('exception_time') or '').strip()
+    desc = str(row.get('exception_desc') or '').strip()
+    title = str(row.get('tittle') or '')
+    direction = 'down' if '下降率' in title else ('up' if '上升率' in title else '')
+    try:
+        rate = float(row.get('value')) if row.get('value') is not None else None
+    except (TypeError, ValueError):
+        rate = None
+    return EnergyAnomaly(
+        period=period,
+        period_type='month' if '月' in period else ('year' if '年' in period else ''),
+        energy_name=str(row.get('energy_name') or '').strip(),
+        rate_value=rate,
+        direction=direction,
+        title=title,
+        desc=desc,
+        # 边界①（2026-10-13 用户定 B 方案）：去掉句首"YYYY年"前缀，报告侧前句已有年份时取用
+        desc_no_year=re.sub(r'^\d{4}\s*年\s*', '', desc),
+        anomaly_status=int(row.get('anomaly_status') or 0),
+    )
+
+
+def _attach_energy_anomalies(yearly_list: List[EnergyYearly], rows: List[dict]) -> int:
+    """把平台登记的异常挂到对应年份的 `EnergyYearly.anomalies`（就地修改），返回落盘条数。
+
+    去重键 = (year, period, energy_name)：实测存在**仅差标点**的重复记录，
+    保留描述**较长**的那条（通常带句号、更完整）。
+    打印清单便于人工核对（不做断言）。
+    """
+    if not rows:
+        return 0
+    best: Dict[tuple, EnergyAnomaly] = {}
+    for r in rows:
+        a = _build_energy_anomaly(r)
+        year = int(r.get('year') or 0)
+        if not year or not a.desc:
+            continue
+        key = (year, a.period, a.energy_name)
+        cur = best.get(key)
+        if cur is None or len(a.desc) > len(cur.desc):
+            best[key] = a
+    dropped = len([r for r in rows if r.get('exception_desc')]) - len(best)
+    by_year: Dict[int, List[EnergyAnomaly]] = {}
+    for (year, _p, _e), a in best.items():
+        by_year.setdefault(year, []).append(a)
+    total = 0
+    for ey in yearly_list:
+        items = by_year.get(int(ey.year or 0)) or []
+        if items:
+            # 年异常在前、月异常在后；同类型按期间排序
+            ey.anomalies = sorted(items, key=lambda x: (x.period_type != 'year', x.period))
+            total += len(items)
+    if total:
+        n_year = sum(1 for a in best.values() if a.period_type == 'year')
+        print(f"[datacollection v2] 平台登记异常 {total} 条（年际 {n_year} / 逐月 {total - n_year}）"
+              + (f"，去重掉 {dropped} 条" if dropped > 0 else ""))
+        for (year, period, energy), a in sorted(best.items()):
+            arrow = '下降' if a.direction == 'down' else ('上升' if a.direction == 'up' else '变化')
+            rate = f"{a.rate_value:g}%" if a.rate_value is not None else ""
+            print(f"      · {year}年 {period} {energy} 同比{arrow}{rate} → {a.desc_no_year}")
+    return total
 
 
 def _merge_equipment(*sources: List[dict]) -> List[Equipment]:

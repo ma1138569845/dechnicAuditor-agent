@@ -66,6 +66,7 @@ conn.autocommit = True  # 必须！否则单条查询报错会 abort 整个事�
 | 建筑 | ts_institution_build（build_name/build_area/围护结构/冷热源） | customer_id |
 | 能耗年度 | ts_institution_energy（value1..12 月度；data_type 1=实物 2=费用） | customer_id |
 | 能耗主数据 | ts_institution_energy_main（折标系数/is_alone/总量；data_type：1=实物量 2=费用 3=供冷 4=供热能耗 5=交通能耗 7=供热费用 8=交通费用） | customer_id |
+| 数据异常登记 | ts_institution_energy_exception（`main_id`→能耗主表；`is_special` 是否特殊原因 / `exception_desc` 原因描述 / `exception_time` 年或月 / `tittle`+`value` 同比率）。**2026-10-13 接入第5章 5.2 异常说明**：口径 `is_special=1 且 exception_desc 非空`，不按 `anomaly_status`（0 无异常/1 存在异常/2 异常已修改）过滤 → 落 `energy_yearly[].anomalies` | main_id |
 | 计量表具 | ts_institution_energy_meter（电/水表数量、分项计量、计量深度） | customer_id |
 | 节能管理 | ts_institution_energy_saving（制度/奖项/改造记录） | customer_id |
 | 场景/人数 | ts_institution_scene。**用能人数四要素（2026-09-22 接线）**：`work_staff` 在岗员工 / `logistics_staff` 编外人员 / `clinic_num` **门诊人数** / `bed_num` 床位数 → 落 `base.work_staff`·`logistics_staff`·`clinic_num`·`beds_count`；**医疗机构用能人数 = 四者之和**（`pg_collector._pg_people_count`），其他机构类型仍取 `work_staff`。`flow_staff`（流动人员数量）已采集但**不计入**当前口径。**供暖口径 heat_pay_type/heat_price/measurement_price/heat_area/heat_day → 落 data.json 的 `metering.heat_*`**（2026-09-21 接线）；⚠️ heat_area/heat_day 常为 NULL | customer_id |

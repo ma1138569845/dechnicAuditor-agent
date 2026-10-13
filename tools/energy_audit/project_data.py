@@ -192,6 +192,29 @@ class BuildingInfo:
 
 
 @dataclass
+class EnergyAnomaly:
+    """平台登记的能耗数据异常（2026-10-13 接入）。
+
+    来源：`ts_institution_energy_main.anomaly_status`（0 无异常 / 1 存在异常 / 2 异常已修改）
+          + `ts_institution_energy_exception`（is_special=1 且 exception_desc 非空）。
+    口径：只在 `is_special=1 且 desc 非空` 时落盘；`anomaly_status` 一并带出供参考，
+          **不参与过滤**（实测命中记录基本是 2，=1 全库仅 18 条）。
+    用途（用户 2026-10-13 定）：报告 5.2 的**异常说明**——
+          `period_type == "year"` → 年际段后另起一段；`"month"` → 逐月段后另起一行；
+          **只作异常说明，不算归因**（不突破「归因下沉三律」）。
+    """
+    period: str = ""            # exception_time 原文，如 "2023年" / "5月"
+    period_type: str = ""       # "year" | "month"（按 period 是否含"月"判定）
+    energy_name: str = ""       # 能源名（如 "电能" / "天然气" / "热力" / "汽油"）
+    rate_value: Optional[float] = None   # 同比增长率数值（如 36.74，表示 36.74%）
+    direction: str = ""         # "up" / "down"（取自 tittle 的"同比上升/下降率"）
+    title: str = ""             # tittle 原文
+    desc: str = ""              # exception_desc 原文（照录）
+    desc_no_year: str = ""      # 去掉句首"YYYY年"前缀的版本（供报告侧优先取用，边界①）
+    anomaly_status: int = 0     # 主表 anomaly_status（参考用）
+
+
+@dataclass
 class EnergyYearly:
     """年度能耗数据（含月度明细，可选）
 
@@ -235,6 +258,8 @@ class EnergyYearly:
     coefficients: Dict[str, float] = field(default_factory=dict)
     # 各能源类型折标煤系数来源，例如 'PG' / 'Config' / 'Excel' / 'default'
     coefficient_sources: Dict[str, str] = field(default_factory=dict)
+    # 平台登记的当年异常（2026-10-13 接入；期间为年份或月份，见 EnergyAnomaly）
+    anomalies: List[EnergyAnomaly] = field(default_factory=list)
 
 
 @dataclass
