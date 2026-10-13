@@ -1157,7 +1157,8 @@ def build_and_save_project(
 
     # 年度能耗 + 平台登记异常（2026-10-13：异常挂到 EnergyYearly.anomalies，供 5.2 写异常说明）
     _yearly = _merge_energy(pg_energy, excel_data.get('energy_yearly', []))
-    _attach_energy_anomalies(_yearly, result.get('found', {}).get('energy_anomalies', []) or [])
+    # 注意：本函数里的采集结果变量名是 pg_result（不是 result）——2026-10-13 修 NameError
+    _attach_energy_anomalies(_yearly, pg_result.get('found', {}).get('energy_anomalies', []) or [])
 
     proj = AuditProject(
         base=ProjectBase(
@@ -1491,7 +1492,9 @@ def _build_energy_anomaly(row: dict) -> EnergyAnomaly:
     period = str(row.get('exception_time') or '').strip()
     desc = str(row.get('exception_desc') or '').strip()
     title = str(row.get('tittle') or '')
-    direction = 'down' if '下降率' in title else ('up' if '上升率' in title else '')
+    # tittle 实测两种形态："同比增长率36.74%,是否存在特殊原因导致" / "同比下降率39.00%,…"
+    # （2026-10-13 修正：原先只判"上升率"，漏了"增长率" → 方向全空）
+    direction = 'down' if '下降' in title else ('up' if '增长' in title or '上升' in title else '')
     try:
         rate = float(row.get('value')) if row.get('value') is not None else None
     except (TypeError, ValueError):
@@ -1546,8 +1549,10 @@ def _attach_energy_anomalies(yearly_list: List[EnergyYearly], rows: List[dict]) 
               + (f"，去重掉 {dropped} 条" if dropped > 0 else ""))
         for (year, period, energy), a in sorted(best.items()):
             arrow = '下降' if a.direction == 'down' else ('上升' if a.direction == 'up' else '变化')
-            rate = f"{a.rate_value:g}%" if a.rate_value is not None else ""
-            print(f"      · {year}年 {period} {energy} 同比{arrow}{rate} → {a.desc_no_year}")
+            rate = f"{a.rate_value:.2f}%" if a.rate_value is not None else ""
+            # 年粒度时 period 本身已是"2023年"，不再重复年份
+            when = period if a.period_type == 'year' else f"{year}年{period}"
+            print(f"      · {when} {energy} 同比{arrow}{rate} → {a.desc_no_year}")
     return total
 
 
