@@ -505,6 +505,37 @@ def test_area_missing_is_p1():
     assert v3.check_area_consistency({}, 10000.0)[0].code == "V3.CROSS.AREA_MISSING"
 
 
+def test_area_consistency_unit_areas_whitelist():
+    """2026-10-13 岚山形态：2.2 逐栋段「总建筑面积{area}m²」+ 总面积共存，不报。"""
+    areas = {
+        2: [20549.7, 15677.0, 9109.32, 7977.0, 5100.85, 2687.0, 2365.0, 63465.91],
+        8: [63465.91],
+    }
+    findings = v3.check_area_consistency(
+        areas, 63465.91, 0.0,
+        unit_areas=[20549.74, 15677.0, 9109.32, 7977.0, 5100.85, 2687.0, 2365.0],
+    )
+    assert findings == []
+
+
+def test_area_consistency_illegal_value_still_p0_with_units():
+    """逐栋白名单不放行真错误值：既非章级口径也非任一逐栋面积 → 仍 P0。"""
+    findings = v3.check_area_consistency(
+        {2: [20549.74, 63465.91, 50000.0]}, 63465.91, 0.0, unit_areas=[20549.74, 15677.0]
+    )
+    assert [f.code for f in findings] == ["V3.CROSS.AREA_VS_SOURCE"]
+    assert findings[0].severity == SEV_P0
+
+
+def test_area_consistency_units_only_no_chapter_level_is_missing():
+    """只写逐栋、无总面积陈述 → 仍报 MISSING（P1），防白名单把口径检查放空。"""
+    findings = v3.check_area_consistency(
+        {2: [20549.74, 2365.0]}, 63465.91, 0.0, unit_areas=[20549.74, 2365.0]
+    )
+    assert [f.code for f in findings] == ["V3.CROSS.AREA_MISSING"]
+    assert findings[0].severity == SEV_P1
+
+
 def test_check_chapters_missing_is_p0():
     blocks = [_block(f"第{n}章 标题", n) for n in range(1, 8)]
     codes = [f.code for f in v3.check_chapters(blocks)]

@@ -200,10 +200,18 @@ def extract_areas(blocks: Sequence[Block]) -> Dict[int, List[float]]:
 
 
 def check_area_consistency(
-    areas: Dict[int, List[float]], truth_area: float, garage_area: float = 0.0
+    areas: Dict[int, List[float]],
+    truth_area: float,
+    garage_area: float = 0.0,
+    unit_areas: Optional[Sequence[float]] = None,
 ) -> List[Finding]:
     """D8 口径（2026-09-20）：全文允许两种面积口径——非指标章 = base.building_area；
-    第5章指标分母 = 建筑面积扣除地下车库。两者之差视为合法，其余按容差判。"""
+    第5章指标分母 = 建筑面积扣除地下车库。两者之差视为合法，其余按容差判。
+
+    逐栋白名单（2026-10-13）：2.2 三段式收口后，逐栋段照参考版写「{楼名}总建筑
+    面积{area}m²」，与 `_RE_AREA` 同形。近似任一逐栋面积（`buildings[].area`，
+    经 `unit_areas` 传入）的陈述视为**合法分栋陈述**，不参与章级口径判定；
+    既不近似章级口径、也不近似任何逐栋面积的陈述仍按 P0 报。"""
     findings: List[Finding] = []
     flat = [(ch, v) for ch, values in areas.items() for v in values if v > 0]
     if not flat:
@@ -221,50 +229,73 @@ def check_area_consistency(
     effective_area = (
         truth_area - garage_area if garage_area > 0 and truth_area > garage_area else truth_area
     )
+    units = [u for u in (unit_areas or []) if u and u > 0]
+
+    def _close(value: float, target: float) -> bool:
+        return target > 0 and abs(value - target) / target * 100.0 <= AREA_TOLERANCE_PCT
+
     values = [v for _, v in flat]
     low, high = min(values), max(values)
-    allowed_gap = low * AREA_TOLERANCE_PCT / 100.0 + (truth_area - effective_area)
-    if low > 0 and (high - low) > allowed_gap:
-        detail = "; ".join(f"第{ch}章 {fmt_num(v)} m²" for ch, v in sorted(flat))
-        findings.append(
-            Finding(
-                code="V3.CROSS.AREA_MISMATCH",
-                category="跨章一致性",
-                severity=SEV_P0,
-                title=f"各章建筑面积不一致（极差 {(high - low) / low * 100.0:.2f}%，超出允许 {allowed_gap:.0f} m²）",
-                detail=detail,
-                location="跨章",
-                expected="非指标章 = base.building_area；第5章指标分母 = 建筑面积扣除地下车库（D8）",
-                actual=f"{fmt_num(low)} ~ {fmt_num(high)} m²",
-                suggestion="统一口径重新生成受影响章节（车库扣除仅适用于第5章 5.3.1/5.3.2 指标分母说明）",
-            )
-        )
 
     if truth_area > 0:
-        for chapter, value in sorted(flat):
-            dev_source = abs(value - truth_area) / truth_area * 100.0
-            dev_effective = (
-                abs(value - effective_area) / effective_area * 100.0
-                if effective_area > 0 else float("inf")
+        chapter_level = [
+            (ch, v) for ch, v in flat if _close(v, truth_area) or _close(v, effective_area)
+        ]
+        illegal = [
+            (ch, v)
+            for ch, v in flat
+            if not _close(v, truth_area)
+            and not _close(v, effective_area)
+            and not any(_close(v, u) for u in units)
+        ]
+        if illegal:
+            chapter, value = sorted(illegal)[0]  # 同一偏差不重复报，定位一处即可
+            expected_desc = (
+                f"{fmt_num(truth_area)} m²（或扣除地下车库后 {fmt_num(effective_area)} m²，D8）"
+                if effective_area < truth_area else f"{fmt_num(truth_area)} m²（data.json）"
             )
-            if min(dev_source, dev_effective) > AREA_TOLERANCE_PCT:
-                expected_desc = (
-                    f"{fmt_num(truth_area)} m²（或扣除地下车库后 {fmt_num(effective_area)} m²，D8）"
-                    if effective_area < truth_area else f"{fmt_num(truth_area)} m²（data.json）"
+            findings.append(
+                Finding(
+                    code="V3.CROSS.AREA_VS_SOURCE",
+                    category="跨章一致性",
+                    severity=SEV_P0,
+                    title=f"第{chapter}章建筑面积与项目数据不符",
+                    location=f"第{chapter}章",
+                    expected=expected_desc,
+                    actual=f"{fmt_num(value)} m²",
+                    suggestion="修正报告数据源绑定，勿在文本中硬写面积",
                 )
-                findings.append(
-                    Finding(
-                        code="V3.CROSS.AREA_VS_SOURCE",
-                        category="跨章一致性",
-                        severity=SEV_P0,
-                        title=f"第{chapter}章建筑面积与项目数据不符",
-                        location=f"第{chapter}章",
-                        expected=expected_desc,
-                        actual=f"{fmt_num(value)} m²",
-                        suggestion="修正报告数据源绑定，勿在文本中硬写面积",
-                    )
+            )
+        elif not chapter_level:
+            # 全部陈述都近似逐栋面积、无任何总面积口径 → 视同"未检出总面积陈述"
+            findings.append(
+                Finding(
+                    code="V3.CROSS.AREA_MISSING",
+                    category="跨章一致性",
+                    severity=SEV_P1,
+                    title="全文未检出总面积陈述（仅逐栋面积）",
+                    location="第2章 / 第5章",
+                    suggestion="在第2章建筑概况与第5章指标计算说明中写明总建筑面积",
                 )
-                break  # 同一偏差不重复报，定位一处即可
+            )
+    else:
+        # 无 data.json 参照值（truth_area=0）时退化：仍按原极差法判定
+        allowed_gap = low * AREA_TOLERANCE_PCT / 100.0
+        if low > 0 and (high - low) > allowed_gap:
+            detail = "; ".join(f"第{ch}章 {fmt_num(v)} m²" for ch, v in sorted(flat))
+            findings.append(
+                Finding(
+                    code="V3.CROSS.AREA_MISMATCH",
+                    category="跨章一致性",
+                    severity=SEV_P0,
+                    title=f"各章建筑面积不一致（极差 {(high - low) / low * 100.0:.2f}%，超出允许 {allowed_gap:.0f} m²）",
+                    detail=detail,
+                    location="跨章",
+                    expected="非指标章 = base.building_area；第5章指标分母 = 建筑面积扣除地下车库（D8）",
+                    actual=f"{fmt_num(low)} ~ {fmt_num(high)} m²",
+                    suggestion="统一口径重新生成受影响章节（车库扣除仅适用于第5章 5.3.1/5.3.2 指标分母说明）",
+                )
+            )
     return findings
 
 
@@ -1041,11 +1072,9 @@ def run(
     raw = read_json(project_data_path(project))
     base = (raw or {}).get("base") or {}
     truth_area = safe_float(base.get("building_area"))
-    garage_area = sum(
-        safe_float(b.get("garage_area"))
-        for b in ((raw or {}).get("buildings") or [])
-        if isinstance(b, dict)
-    )
+    buildings = [b for b in ((raw or {}).get("buildings") or []) if isinstance(b, dict)]
+    garage_area = sum(safe_float(b.get("garage_area")) for b in buildings)
+    unit_areas = [safe_float(b.get("area")) for b in buildings]
     years = sorted(
         int(safe_float(row.get("year")))
         for row in ((raw or {}).get("energy_yearly") or [])
@@ -1063,7 +1092,7 @@ def run(
     # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）
     findings += check_attribution_layering(project)
     findings += check_building_tables(blocks)
-    findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area)
+    findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area, unit_areas)
     findings += check_energy_consistency(blocks)
     if years:
         findings += check_year_coverage(blocks, years)
