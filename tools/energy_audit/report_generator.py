@@ -49,8 +49,9 @@ CHAPTER_STRUCTURES = {
         ("第4章", "能源资源计量及统计状况", [
             ("4.1", "能源资源计量体系"),
             ("4.2", "计量器具配备及管理"),
-            ("4.3", "能源资源统计情况"),
-            ("4.4", "能源资源统计成效及问题"),
+            # 2026-10-13 收口：第4章只三节（原「4.3 统计情况」已废止并入 4.3 成效及问题；
+            # 依据参考报告《日照市岚山区人民医院能源审计报告》4.1/4.2/4.3）
+            ("4.3", "能源资源统计成效及问题"),
         ]),
         ("第5章", "能源资源消费/消耗指标分析", [
             ("5.1", "能源资源消费/消耗概况"),
@@ -1170,8 +1171,9 @@ class ReportGenerator:
                 'images': _chapter_imgs('计量器具', prefix='图4'),
                 'section_4_1': f"计量体系按GB/T29149-2012划分为三级计量。⚠️ 请说明具体计量分级和监测系统建设情况。" if not project.metering.has_monitoring_system else f"计量体系按GB/T29149-2012划分为三级计量。",
                 'section_4_2': f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块。⚠️ 请确认具体数量和型号。" if not project.metering.electric_meters else f"电表{project.metering.electric_meters}块、水表{project.metering.water_meters}块、气表{project.metering.gas_meters}块。",
-                'section_4_3': '⚠️ 请提供数据采集方式和统计制度说明。来源：被审计单位调研表。',
-                'section_4_4': '⚠️ 请提供统计工作的成效和存在的问题。来源：现场调研和用户访谈。',
+                # 2026-10-13 收口：4.3=统计成效及问题（原 4.3 统计情况 + 4.4 成效及问题合并）
+                'section_4_3': '⚠️ 请提供统计工作的成效和存在的问题（数据采集方式与统计制度说明'
+                               '并入本节）。来源：被审计单位调研表 + 现场调研和用户访谈。',
             },
             'chapter5': {
                 'text': '',

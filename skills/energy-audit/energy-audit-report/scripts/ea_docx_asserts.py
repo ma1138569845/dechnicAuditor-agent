@@ -30,6 +30,8 @@
                       （2026-10-13 新增，专抓"清单缺条目 ⇒ 图注在、图不在"；P1 只告警不阻断）
     ch3_photos        第3章图区一致性：图注段数 = 内嵌图片数，且图注编号自 图3.1 起连续
                       （2026-10-13 新增；第3章照片是硬要求，漏写图注行会静默无图；P1 只告警不阻断）
+    ch4_structure     第4章小节结构：4.1/4.2/4.3 三节齐全、无 4.4、4.3 标题为「能源资源统计成效及问题」
+                      （2026-10-13 新增；原「4.3 统计情况」已废止合并；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -50,7 +52,8 @@ from lxml import etree
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
-P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos"}
+P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
+                  "ch4_structure"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -324,6 +327,68 @@ def ch3_photos_ok(doc_xml: str):
     return True, ""
 
 
+def _heading_style_ids(z) -> set:
+    """从 styles.xml 取「样式名以 Heading 开头」的 styleId 集合。
+
+    注意：段落里 `w:pStyle w:val` 存的是 **styleId**（本项目实测是数字如 "21"），
+    不是样式名 "Heading 2"——所以必须回查 styles.xml 的 id→name 映射。
+    """
+    ids = set()
+    try:
+        s = z.read("word/styles.xml").decode("utf-8", "ignore")
+    except Exception:  # noqa: BLE001
+        return ids
+    for m in re.finditer(r"<w:style\b.*?</w:style>", s, re.S):
+        blk = m.group(0)
+        sid = re.search(r'w:styleId="([^"]*)"', blk)
+        name = re.search(r'<w:name w:val="([^"]*)"', blk)
+        if sid and name and name.group(1).lower().startswith("heading"):
+            ids.add(sid.group(1))
+    return ids
+
+
+def ch4_structure_ok(doc_xml: str, heading_ids=None):
+    """第4章小节结构（2026-10-13 新增，P1 只告警）。
+
+    第4章**只三节**：4.1 能源资源计量体系 / 4.2 计量器具配备及管理 /
+    **4.3 能源资源统计成效及问题**（依据参考报告《日照市岚山区人民医院能源审计报告》）。
+    检查三件事：
+      ① 4.1 / 4.2 / 4.3 三个小节标题都在；
+      ② **不得出现已废止的 4.4**（原「4.3 统计情况 + 4.4 成效及问题」两节已合并）；
+      ③ 4.3 标题须是「能源资源统计成效及问题」（不是「统计情况」）。
+    """
+    region = _chapter_region(doc_xml, 4)
+    if not region:
+        return False, "未定位到 第4章 区间"
+    titles = {}
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        style = _pstyle(b)
+        if heading_ids is not None:
+            if style not in heading_ids:             # 只认标题样式（styles.xml 映射后的 id）
+                continue
+        elif style.lower().startswith("toc"):
+            continue                                  # 无 styles 映射时：至少排除目录条目
+        t = norm(_ptext(b))
+        m = re.match(r"^(4\.\d)\s*(.*)$", t)
+        if m and len(t) <= 24:
+            titles.setdefault(m.group(1), m.group(2))
+    if not titles:
+        return False, "第4章区间内未识别到 4.x 小节标题"
+    miss = []
+    for k in ("4.1", "4.2", "4.3"):
+        if k not in titles:
+            miss.append("缺小节 %s" % k)
+    if "4.4" in titles:
+        miss.append("出现已废止的 4.4 节（第4章应只有三节）")
+    if "4.3" in titles and "统计成效" not in titles["4.3"]:
+        miss.append("4.3 标题应为「能源资源统计成效及问题」，实际「%s」" % titles["4.3"])
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
@@ -544,6 +609,7 @@ def run(docx: str, pdf: str = None):
     c222_ok, c222_why = ch2_22_structure_ok(doc)
     c222p_ok, c222p_why = ch2_22_photos_ok(doc)
     c3p_ok, c3p_why = ch3_photos_ok(doc)
+    c4_ok, c4_why = ch4_structure_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -586,6 +652,8 @@ def run(docx: str, pdf: str = None):
         "ch2_22_photos": c222p_ok,
         # 第3章图区一致性（图注数 = 图片数、编号连续）——P1，不阻断
         "ch3_photos": c3p_ok,
+        # 第4章小节结构（4.1/4.2/4.3 三节、无 4.4）——P1，不阻断
+        "ch4_structure": c4_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -636,6 +704,8 @@ def run(docx: str, pdf: str = None):
         details["ch2_22_photos"] = c222p_why
     if not c3p_ok:
         details["ch3_photos"] = c3p_why
+    if not c4_ok:
+        details["ch4_structure"] = c4_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

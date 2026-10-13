@@ -128,7 +128,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 | 卡1 | 第1章 | `references/chapter-guides-1-4.md` | 模板替换式（占位符→实际值，1.1~1.6），落 `chapter_md/ch1.md` |
 | 卡1 | 第2章 | `references/chapter-guides-1-4.md` | LLM 生成 + 建筑参数表/图片，落 `chapter_md/ch2.md` |
 | 卡1 | 第3章 | `references/chapter-guides-1-4.md` | LLM 生成（制度/痛点/成效），落 `chapter_md/ch3.md` |
-| 卡1 | 第4章 | `references/chapter-guides-1-4.md` | LLM 生成（4.1 固定文字/4.2 计量），落 `chapter_md/ch4.md` |
+| 卡1 | 第4章 | `references/chapter-guides-1-4.md` | LLM 生成（4.1 固定文字 / 4.2 计量配备+表4.1+图4.1 / 4.3 统计成效及问题），落 `chapter_md/ch4.md`；**只三节，无 4.4** |
 | 卡2 | 第5章 | `ea-calculation`（caliber 产出 chapter5.md + 图表；装配稿 `chapter_md/ch5_import.md` 由 `prepare_chapter_md.py` 就位，见 `ea-calculation/SKILL.md`） | **在装配稿上补写分析叙述段后落 md（不导入 docx），数值禁重算**（5.2 四段式 / 5.3 定义段+结论评价段 / 5.4 规则段+逐品种推导，按 chapter5-templates.md）；计算与写作口径见 `ea-calculation/references/chapter5-spec.md` + `chapter5-templates.md`（author 已装配该技能供只读引用，**禁止运行其 scripts/ 重算任何数值**） |
 | 卡2 | 第6章 | `references/chapter-guides-6-8.md` | LLM 生成（分系统详述），落 `chapter_md/ch6.md` |
 | 卡2 | 第7章 | `references/chapter-guides-6-8.md` | LLM 生成（问题-措施映射），落 `chapter_md/ch7.md` |
@@ -210,7 +210,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 ## 关键规则（红线）
 
 1. **第6章结构（R7 口径）**：6.1 主要用能系统运行分析（6.1.1~6.1.6 分系统，按实际用能系统动态生成）+ 6.2 主要用能设备统计（表6.1）+ 6.3 用能系统运行评价，结构参考 `references/chapter-guides-6-8.md` 与 `references/chapter-guides-6-8.md`；6.2 用水/6.3 用热/6.5 室内环境检测三节不写（室内环境归附录4）。
-2. **第4章 4.2/4.3 独立计量、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
+2. **第4章 4.2 计量配备判定、4.3 统计成效及问题、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
 3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-techniques.md`。
    **图表规范（2026-09-20 定；照片类 2026-10-13 补）**：每张表必须有 `表X.Y 标题` 行（章内连号、独占一行、紧邻表格上方；附录用 `附表X-Y`）；每张图必须有 `图X.Y 说明（单位：xx）` 图注并与 `report_images.json` 的 caption 逐字一致——**缺表题会被 V3 记 P2**。**照片类图注不写"（单位：xx）"、编号一律用点号**：2.1 写 `图2.1 {单位简称}单位整体外观`，2.2 图区写 `图2.N {楼名}总体外观`，第3章写 `图3.N {照片说明}`（管理文件截图放 3.2 末、荣誉证书放 3.3 末，图注须与照片内容相符）；照片副本与清单条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 归置（副本落 `<项目>/data/images/`，清单写相对路径），author **只写图注行**，不手工复制照片、不手写清单条目。
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
