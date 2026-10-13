@@ -49,6 +49,44 @@ BUILDING_CAT = "建筑外观"
 OVERALL_CAT = "单位整体外观"
 IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 MANAGED_PREFIX = "图2."
+# python-docx 可直接嵌入的格式（真实格式，不看扩展名）
+EMBEDDABLE = {"png": ".png", "jpeg": ".jpg", "gif": ".gif", "bmp": ".bmp", "tiff": ".tif"}
+"""实测（2026-10-13 岚山区人民医院）：平台附件里存在**扩展名骗人**的图片——
+`建筑外观_急诊楼.png`/`建筑外观_行政后勤楼.png` 真实格式是 WebP，python-docx 抛
+`UnrecognizedImageError` 直接让整个装配失败。故本脚本按**真实格式**落盘，非可嵌入
+格式一律转成 PNG（有 Pillow 时），保证清单里的文件装配链一定吃得下。"""
+
+
+def probe_format(path: str):
+    """返回 (真实格式名, 可直接嵌入?)；无 Pillow 时按扩展名乐观处理。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return os.path.splitext(path)[1].lstrip(".").lower(), True
+    try:
+        with Image.open(path) as im:
+            fmt = (im.format or "").lower()
+    except Exception:  # noqa: BLE001
+        return os.path.splitext(path)[1].lstrip(".").lower(), True
+    return (fmt, fmt in EMBEDDABLE)
+
+
+def save_as_png(src: str, dst: str):
+    from PIL import Image
+    with Image.open(src) as im:
+        if im.mode in ("RGBA", "LA", "P"):
+            im.convert("RGBA").save(dst, "PNG")
+        else:
+            im.convert("RGB").save(dst, "PNG")
+
+
+def _is_png(path: str) -> bool:
+    """文件是否能按 PNG 打开（判断转换产物是否已就绪）。"""
+    try:
+        fmt, _ = probe_format(path)
+        return fmt == "png"
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def projects_root() -> str:
@@ -122,27 +160,50 @@ def place(project_dir: str, src: str, stem: str, force: bool, copy_cache: dict, 
 
     注意：不同用途即使内容相同也各落一份——实测出现过"单位整体外观"与"门诊楼
     建筑外观"在平台里注册成同一张图，若跨用途复用文件名，图注与文件名会串义。
+    扩展名按**真实格式**给（见 probe_format），非可嵌入格式转 PNG。
     """
-    ext = os.path.splitext(src)[1].lower() or ".png"
-    if ext not in IMG_EXT:
-        say(f"  ⚠️ 跳过非常规图片扩展名：{src}")
+    src_ext = os.path.splitext(src)[1].lower()
+    real_fmt, embeddable = probe_format(src)
+    ext = EMBEDDABLE.get(real_fmt) if embeddable else ".png"
+    if src_ext not in IMG_EXT and real_fmt not in EMBEDDABLE:
+        say(f"  ⚠️ 跳过非常规图片：{os.path.basename(src)}（真实格式 {real_fmt or '未知'}）")
         return ""
+    if not embeddable:
+        say(f"  ↻ 格式转换: {os.path.basename(src)} 真实格式 {real_fmt} → PNG（装配链不吃 WebP）")
     digest = sha1(src)
-    cache_key = (safe_name(stem), digest)
+    cache_key = (safe_name(stem), digest, ext)
     if cache_key in copy_cache:
         return copy_cache[cache_key]
     img_dir = os.path.join(project_dir, "data", "images")
     os.makedirs(img_dir, exist_ok=True)
     dst = os.path.join(img_dir, f"{cache_key[0]}{ext}")
     n = 2
-    while os.path.isfile(dst) and sha1(dst) != digest:
-        if force:
-            break
-        dst = os.path.join(img_dir, f"{cache_key[0]}_{n}{ext}")
-        n += 1
-    if not os.path.isfile(dst) or sha1(dst) != digest:
-        shutil.copy2(src, dst)
-        say(f"  + 复制照片: {os.path.basename(dst)}")
+    if embeddable:
+        while os.path.isfile(dst) and sha1(dst) != digest:
+            if force:
+                break
+            dst = os.path.join(img_dir, f"{cache_key[0]}_{n}{ext}")
+            n += 1
+        need_write = (not os.path.isfile(dst)) or sha1(dst) != digest
+    else:
+        # 转换分支：目标必须是"真 PNG"，用能否按 PNG 打开判定，**不能**与源哈希比对
+        # （转换后的字节必然与源不同，拿源指纹比对会误判成"已存在、无需写"）。
+        dst_ok = os.path.isfile(dst) and _is_png(dst)
+        need_write = force or not dst_ok
+    if need_write:
+        if embeddable:
+            shutil.copy2(src, dst)
+            say(f"  + 复制照片: {os.path.basename(dst)}")
+        else:
+            try:
+                save_as_png(src, dst)
+                if not _is_png(dst):
+                    say(f"  ⚠️ 转换结果不是 PNG，已跳过: {os.path.basename(dst)}")
+                    return ""
+                say(f"  + 复制照片（已转 PNG）: {os.path.basename(dst)}")
+            except Exception as exc:  # noqa: BLE001
+                say(f"  ⚠️ 格式转换失败 {os.path.basename(src)}: {exc}")
+                return ""
     rel = os.path.relpath(dst, project_dir).replace(os.sep, "/")
     copy_cache[cache_key] = rel
     return rel
