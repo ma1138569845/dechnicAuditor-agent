@@ -296,9 +296,11 @@ def apply_to_md(md_path: str, blocks: list, info: dict) -> str:
     if s is None:
         raise SystemExit("[错误] md 里找不到 '### 5.2.1' 小节")
     e = next((i for i in range(s + 1, len(lines)) if re.match(r"^#{2,3} ", lines[i].strip())), len(lines))
-    cap = next((i for i in range(s, e) if re.match(r"^图5\.\d", lines[i].strip())), None)
-    if cap is None:
-        raise SystemExit("[错误] 5.2.1 内找不到逐月图注行（图5.Y）")
+    # 取**最后一个**图注行（＝逐月图 图5.Y）；第一个是总量图（图5.X），不能用
+    caps = [i for i in range(s, e) if re.match(r"^图5\.\d", lines[i].strip())]
+    if len(caps) < 2:
+        raise SystemExit("[错误] 5.2.1 内图注行不足 2 条（应有 总量图 与 逐月图）")
+    cap = caps[-1]
     # 图注之后到小节末 = 段4 + ⑤ + ⑥ 的所在区；整段重建
     new_lines = [""] + blocks
     out = lines[:cap + 1] + new_lines + lines[e:]
