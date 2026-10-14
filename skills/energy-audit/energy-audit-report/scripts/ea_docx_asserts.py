@@ -34,6 +34,8 @@
                       （2026-10-13 新增；原「4.3 统计情况」已废止合并；P1 只告警不阻断）
     ch5_52_layout     5.2 版面：含图能源节① 首段有设备/系统描述 ② 两张图注不相邻
                       ③ 图注后接「由图…分析」句（2026-10-13 新增；P1 只告警不阻断）
+    ch5_52_monthly    5.2.1 逐月段归因：写了「用电量较大月份」就必须有原因句
+                      （2026-10-14 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -55,7 +57,7 @@ MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
-                  "ch4_structure", "ch5_52_layout"}
+                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -473,6 +475,42 @@ def ch5_52_layout_ok(doc_xml: str, heading_ids=None):
     return True, ""
 
 
+def ch5_52_monthly_ok(doc_xml: str, heading_ids=None):
+    """5.2.1 逐月段归因（2026-10-14 新增，P1 只告警）。
+
+    判定表（chapter5-templates.md 5.2 节）要求：有“月份首句”时必须给出原因句。
+    检查：5.2.1 区间内含「用电量较大月份」时，区间内须命中归因关键词之一——
+    「结合制冷空调形式分析」/「冬季以」/「热源为」/「虽然…供暖」/「部分房间使用分体空调供暖」/
+    「其他供暖形式设备」；否则视为“只有月份、没有原因”。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    start = end = None
+    for i, b in enumerate(region):
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        if heading_ids is not None and _pstyle(b) not in heading_ids:
+            continue
+        if start is None and re.match(r"^5\.2\.1", t):
+            start = i
+        elif start is not None and re.match(r"^5\.2\.2", t):
+            end = i
+            break
+    if start is None:
+        return True, ""                      # 无 5.2.1（如水/气单能源项目）→ 不检查
+    seg = region[start + 1:(end if end is not None else len(region))]
+    text = "".join(_ptext(b) for b in seg)
+    if "用电量较大月份" not in norm(text):
+        return True, ""                      # 没写月份首句 → 不检查
+    keys = ("结合制冷空调形式分析", "冬季以", "热源为", "虽然是市政供暖",
+            "部分房间使用分体空调供暖", "其他供暖形式设备")
+    if any(k in text for k in keys):
+        return True, ""
+    return False, "5.2.1 写了“用电量较大月份”但缺少原因句（判定表要求供冷句/供热句至少其一）"
+
+
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
@@ -695,6 +733,7 @@ def run(docx: str, pdf: str = None):
     c3p_ok, c3p_why = ch3_photos_ok(doc)
     c4_ok, c4_why = ch4_structure_ok(doc, _heading_style_ids(z))
     c52_ok, c52_why = ch5_52_layout_ok(doc, _heading_style_ids(z))
+    c52m_ok, c52m_why = ch5_52_monthly_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -741,6 +780,8 @@ def run(docx: str, pdf: str = None):
         "ch4_structure": c4_ok,
         # 5.2 版面（设备列举 + 图注不相邻 + 图注后接分析句）——P1，不阻断
         "ch5_52_layout": c52_ok,
+        # 5.2.1 逐月段归因（月份首句须配原因句）——P1，不阻断
+        "ch5_52_monthly": c52m_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -795,6 +836,8 @@ def run(docx: str, pdf: str = None):
         details["ch4_structure"] = c4_why
     if not c52_ok:
         details["ch5_52_layout"] = c52_why
+    if not c52m_ok:
+        details["ch5_52_monthly"] = c52m_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

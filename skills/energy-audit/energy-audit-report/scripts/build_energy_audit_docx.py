@@ -60,6 +60,9 @@ from docx.shared import Cm, Pt, RGBColor
 SONG = "宋体"
 TNR = "Times New Roman"
 HEAD_COLOR = RGBColor(0x1A, 0x1A, 0x1A)  # 与终稿标题色一致
+RED_NOTE_COLOR = RGBColor(0xC0, 0x00, 0x00)  # 5.2 逐月段“异常原因请核实”红字注（2026-10-14）
+# 红字注识别：以“注：”开头且含“异常原因请核实”（其他“注：”保持黑色）
+RED_NOTE_RE = re.compile(r"^注：.*异常原因请核实")
 W_NS_DECL = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 BULLET_CHAR = "\uf06c"  # Wingdings 实心圆点（对齐 45 页终稿）
 
@@ -452,7 +455,7 @@ def _replace_with_retry(src: str, dst: str, attempts: int = 5) -> None:
 
 # ---------------------------------------------------------------- T2 章节渲染
 
-def _body(doc, text):
+def _body(doc, text, color=None):
     """正文自然段：两端对齐、1.5 行距、首行缩进 2 字符（firstLineChars=200）。"""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -463,14 +466,14 @@ def _body(doc, text):
     ind = ppr.find(qn("w:ind"))
     if ind is not None:
         ind.set(qn("w:firstLineChars"), "200")
-    _add_rich(p, text, 12)
+    _add_rich(p, text, 12, color)
     return p
 
 
 _SUBSCRIPT_RE = re.compile(r"_\{([^{}]*)\}")
 
 
-def _runs_with_subscript(p, text, size, bold):
+def _runs_with_subscript(p, text, size, bold, color=None):
     """段内 `_{...}` → Word 下标（2026-10-09 新增，供 5.3 指标符号段用）。
 
     例：`E_{jrcn}——单位建筑面积非供暖能耗，kgce/（m²·a）；` → E 正体 + jrcn 下标 + 破折号文本。
@@ -479,24 +482,24 @@ def _runs_with_subscript(p, text, size, bold):
     pos = 0
     for m in _SUBSCRIPT_RE.finditer(text):
         if m.start() > pos:
-            set_font(p.add_run(text[pos:m.start()]), size, bold)
+            set_font(p.add_run(text[pos:m.start()]), size, bold, color)
         run = p.add_run(m.group(1))
-        set_font(run, size, bold)
+        set_font(run, size, bold, color)
         run.font.subscript = True
         pos = m.end()
     if pos < len(text):
-        set_font(p.add_run(text[pos:]), size, bold)
+        set_font(p.add_run(text[pos:]), size, bold, color)
 
 
-def _add_rich(p, text, size=12):
+def _add_rich(p, text, size=12, color=None):
     """按 **…** 拆分内联加粗；段内 `_{...}` 转 Word 下标。"""
     for seg in re.split(r"(\*\*.+?\*\*)", text):
         if not seg:
             continue
         if seg.startswith("**") and seg.endswith("**") and len(seg) > 4:
-            _runs_with_subscript(p, seg[2:-2], size, True)
+            _runs_with_subscript(p, seg[2:-2], size, True, color)
         else:
-            _runs_with_subscript(p, seg, size, False)
+            _runs_with_subscript(p, seg, size, False, color)
 
 
 def _heading(doc, text, level):
@@ -674,7 +677,11 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif line.startswith("- "):
             _bullet(doc, line[2:].strip())
         elif line.startswith("> "):
-            _body(doc, line[2:].strip())
+            _quoted = line[2:].strip()
+            if RED_NOTE_RE.match(_quoted):
+                _body(doc, _quoted, color=RED_NOTE_COLOR)
+            else:
+                _body(doc, _quoted)
         elif line.startswith("|"):
             rows = []
             while True:
@@ -720,7 +727,10 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif appendix and listing:
             _plain_line(doc, line)
         else:
-            _body(doc, line)
+            if RED_NOTE_RE.match(line):
+                _body(doc, line, color=RED_NOTE_COLOR)
+            else:
+                _body(doc, line)
 
 
 def _render_chapters(doc, project_dir, ctx):
