@@ -1499,8 +1499,8 @@ export interface LocalCatalogModel {
   native_context_label: string
   recommended: boolean
   /** Why the resolver picked this entry (recommended rows only):
-   *  product-default | best-quality-resident | speed-gated-quality | fastest-resident |
-   *  least-painful-spilled. Renders as the Recommended badge's tooltip. */
+   *  product-default | best-quality-resident | speed-gated-quality.
+   *  Renders as the Recommended badge's tooltip. */
   recommended_reason?: string | null
   downloaded: boolean
   downloaded_model_id?: string | null
@@ -1601,6 +1601,8 @@ export interface BackendUpdateCheckResponse {
   current_version: string
   behind: number | null
   update_available: boolean
+  /** A stable release this build already contains: applying it moves back. */
+  rollback_to?: null | string
   can_apply: boolean
   update_command: string | null
   message: string | null
