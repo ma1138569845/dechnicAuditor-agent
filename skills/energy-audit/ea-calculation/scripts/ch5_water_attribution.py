@@ -423,7 +423,8 @@ def build_paragraph2(subject: str, totals: list, fig_tot: str):
     rates = []
     for (py, pv), (cy, cv) in zip(totals, totals[1:]):
         rates.append((cv - pv) / pv if pv else 0)
-    trend = ("整体波动不大" if all(abs(r) < 0.05 for r in rates)
+    # 阈值与 5.2.1 口径一致：各年变幅都在 ±10% 以内 → "整体波动不大"（岚山电量 ±7.5% 即用此说法）
+    trend = ("整体波动不大" if all(abs(r) < 0.10 for r in rates)
              else ("整体呈逐年上升趋势" if all(r > 0 for r in rates)
                    else ("整体呈逐年下降趋势" if all(r < 0 for r in rates)
                          else "整体呈波动变化")))
