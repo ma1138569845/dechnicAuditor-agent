@@ -105,6 +105,79 @@ def _looks_like_test(*values) -> bool:
     return False
 
 
+_WATER_PLACEHOLDERS = {'无', '暂无', '没有', '未知', '不涉及', '无此项', '/', '-', '—', '0'}
+
+
+def _water_field_ok(value) -> bool:
+    """附属用水登记字段是否有信息量（2026-10-15 新增）。
+
+    背景：绿化/其他/道路冲洗三张表实测大量占位行——`water_system='无'`、
+    `irrigation_source='暂无'`、`water_type='1'`（纯数字码）、`other_desc='测试'`。
+    照单全收会让 5.2.2 段1 写出"道路冲洗用水"这类**单位并不存在**的用水项。
+
+    判据：去掉首尾空白后，非空、不在占位词表内、且不是纯数字/纯标点。
+    """
+    s = str(value or '').strip()
+    if not s or s in _WATER_PLACEHOLDERS:
+        return False
+    if s.isdigit():
+        return False
+    return any(ch.isalnum() or '\u4e00' <= ch <= '\u9fff' for ch in s)
+
+
+def collect_water_aux(pg, customer_id, result: Dict[str, Any]) -> None:
+    """附属用水登记（绿化 / 其他 / 道路冲洗）→ result['found']['water_aux']。
+
+    2026-10-15 接入：这是 5.2.2 段1「用水构成句」的唯一依据。此前这三张表在这条链上
+    **没有任何读取方**（全仓 grep 零命中），于是"绿化灌溉用水"只能由写作层自由发挥——
+    实测岚山医院在 ts_institution_water_greening 确有登记（全部浇灌 / 市政自来水），
+    但 data.json 里没有字段，报告里那句话既无据可查、也无法核对。
+
+    ⚠️ 落盘前过一道"有无意义"闸：这三张表存在大量占位行（`water_system='无'`、
+    `irrigation_source='暂无'`、`water_type='1'` 纯数字码、`other_desc='测试'`），
+    照单全收会让 5.2.2 写出"道路冲洗用水"这类**单位并不存在**的用水项。
+    判据见 `_water_field_ok`；测试行与 solar 同口径，不落盘。
+
+    就地修改 result（found/missing），不抛异常——表缺失/权限问题不得阻塞采集链。
+    """
+    water_aux: Dict[str, Any] = {}
+    for key, label, fn in (
+        ('greening', '绿化用水', pg.get_water_greening),
+        ('other', '其他用水', pg.get_water_other),
+        ('road', '道路冲洗用水', pg.get_water_road),
+    ):
+        try:
+            rows = fn(customer_id=customer_id) or []
+        except Exception as exc:  # noqa: BLE001
+            rows = []
+            result['missing'].append(f'附属用水登记·{label}读取失败（{exc}）')
+        kept = []
+        for r in rows:
+            item = {
+                'irrigation_type': (str(r.get('irrigation_type') or '')).strip(),
+                'irrigation_source': (str(r.get('irrigation_source') or '')).strip(),
+                'water_system': (str(r.get('water_system') or '')).strip(),
+                'water_type': (str(r.get('water_type') or '')).strip(),
+                'year_water': _num(r.get('year_water'), None),
+                'desc': (str(r.get('other_desc') or '')).strip(),
+            }
+            if not any(_water_field_ok(item[k]) for k in
+                       ('irrigation_type', 'irrigation_source', 'water_system', 'water_type')):
+                continue                       # 全字段都是占位值 → 该行没有信息量
+            if _looks_like_test(item['desc'], item['irrigation_source'],
+                                item['water_system'], item['water_type']):
+                continue                       # 测试行不落（与 solar 同口径）
+            kept.append(item)
+        if kept:
+            water_aux[key] = kept
+        elif rows:
+            result['missing'].append(f'附属用水登记·{label}只有占位/测试行（需在平台重新填报）')
+    if water_aux:
+        result['found']['water_aux'] = water_aux
+    else:
+        result['missing'].append('附属用水登记（绿化/其他/道路冲洗：三表均无有效记录）')
+
+
 def _yn(v, yes='有', no='无'):
     if v is None:
         return ''
@@ -963,6 +1036,9 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
     elif not _solar_is_test:
         result['missing'].append('光伏/太阳能利用登记（ts_institution_solar 无有效记录）')
 
+    # ---- 6.6d 附属用水登记（绿化 / 其他 / 道路冲洗）----
+    collect_water_aux(pg, customer_id, result)
+
     # ---- 6.6 折标系数 ----
     standards = pg.get_energy_standards()
     if standards:
@@ -1342,6 +1418,8 @@ def build_and_save_project(
         energy_flow_trees=pg_result['found'].get('energy_flow_trees', []) or [],
         # 光伏/太阳能利用（第7章 7.1 C 类）：测试数据闸已在采集侧过掉，落到这里是有效登记
         solar=pg_result['found'].get('solar', {}) or {},
+        # 附属用水登记（5.2.2 段1 用水构成句；2026-10-15 接入）
+        water_aux=pg_result['found'].get('water_aux', {}) or {},
         # meter 表数据按 data_type 回填表数（4.2 表数来源；Excel 同名键可覆盖）
         metering=_merge_metering(_fill_meter_counts(pg_metering, pg_result['found'].get('energy_meter', [])),
                                  excel_data.get('metering', {})),

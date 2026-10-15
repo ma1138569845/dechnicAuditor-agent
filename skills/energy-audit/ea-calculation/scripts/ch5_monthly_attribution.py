@@ -257,6 +257,14 @@ def build_sentences(data: dict, details: list, warns: list):
         for a in (ey.get("anomalies") or []):
             if a.get("period_type") != "month":
                 continue
+            # ★2026-10-15 能源名闸：本节是**电力**节，只允许电的月异常进来。
+            # 此前不过滤能源名——平台若登记"水/天然气"的月异常，会被写成"…用电量同比…"。
+            # （实测全库能源名有 '电'/'电能' 两种写法，故用包含匹配而非等值。）
+            _en = str(a.get("energy_name") or "").strip()
+            if _en and "电" not in _en:
+                warns.append(f"{ey.get('year')}年{a.get('period')}{_en}异常未写入 5.2.1"
+                             f"（能源名不含「电」）→ 应写进对应品种小节")
+                continue
             title = a.get("title") or ""
             direction = "下降" if "下降" in title else "上升"
             rate = a.get("rate_value")

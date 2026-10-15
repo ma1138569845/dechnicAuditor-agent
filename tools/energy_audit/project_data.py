@@ -499,6 +499,13 @@ class AuditProject:
     # roof_utilization_form。**表内有测试数据**，落盘前过 pg_collector 的测试数据闸，
     # 测试行不落（改记 missing），避免把"测试"写进报告结论。
     solar: Dict[str, Any] = field(default_factory=dict)
+    # 附属用水登记（第5章 5.2.2 段1「用水构成句」的唯一依据）：
+    #   {'greening': [{'irrigation_type','irrigation_source','year_water','desc'}],
+    #    'other':    [{'water_system', ...}],
+    #    'road':     [{'water_type', 'flush_cycle', ...}]}
+    # 2026-10-15 接入：源头 ts_institution_water_greening / _other / _road，
+    # 落盘前过"占位行/测试行"闸（见 pg_collector._water_field_ok）；三表无有效记录时为空 dict。
+    water_aux: Dict[str, Any] = field(default_factory=dict)
     shared_offices: List[SharedOfficeUnit] = field(default_factory=list)  # 合署办公明细
     management: ManagementInfo = field(default_factory=ManagementInfo)
     energy_saving: List[EnergySaving] = field(default_factory=list)  # 节能管理信息（ts_institution_energy_saving）

@@ -1053,6 +1053,59 @@ class PgDataQuery:
         )
         return self._execute(query, tuple(params))
 
+    # ========== 附属用水登记（绿化 / 其他 / 道路冲洗；5.2.2 段1 用水构成） ==========
+    # 2026-10-15 接入：此前这三张表在采集链里**没有任何读取方**（全仓 grep 零命中），
+    # 于是 5.2.2 段1 的"用水构成"只能由写作层自由发挥——岚山实测在
+    # ts_institution_water_greening 里确有登记（灌溉形式＝全部浇灌、水源＝市政自来水），
+    # 但 data.json 里没有字段，报告里那句"绿化灌溉用水"既无据可查、也无法核对。
+    #
+    # 版本归一（两张步，与设备表同口径）：
+    #   ① 先取该客户的"获胜版本"——草稿优先（is_draft=1），无草稿时 version_code 大者优先；
+    #   ② 再取该版本下的**全部行**——同一客户可能按区域分多行登记（实测岚山绿化 14 行），
+    #      不能像 solar 那样 DISTINCT ON 折成一行，否则丢掉"全部浇灌/部分喷灌"等多形态。
+    # 表无 version_code/is_draft 列时回退全量。
+
+    def _get_water_rows(self, table: str, customer_id: int = None) -> List[Dict]:
+        """附属用水表通用取数：获胜版本下的全部行（SELECT * 避免列名硬编码）。"""
+        if not customer_id:
+            return []
+        base = (f"FROM {table} t WHERE (t.deleted IS NULL OR t.deleted = 0)"
+                f" AND t.customer_id = %s")
+        try:
+            pick = self._execute(
+                "SELECT DISTINCT ON (t.customer_id) t.version_code, t.is_draft "
+                + base
+                + " ORDER BY t.customer_id, COALESCE(t.is_draft, 0) DESC,"
+                  " t.version_code DESC NULLS LAST, t.id DESC",
+                (customer_id,))
+        except Exception:  # noqa: BLE001 —— 表无 version_code/is_draft 列
+            try:
+                self.connection.rollback()   # 防御：非 autocommit 连接下清理 aborted 事务
+            except Exception:
+                pass
+            return self._execute(f"SELECT t.* {base} ORDER BY t.id", (customer_id,))
+        if not pick:
+            return []
+        win = pick[0]
+        return self._execute(
+            f"SELECT t.* {base}"
+            " AND COALESCE(t.is_draft, 0) = %s"
+            " AND t.version_code IS NOT DISTINCT FROM %s"
+            " ORDER BY t.id",
+            (customer_id, int(win.get('is_draft') or 0), win.get('version_code')))
+
+    def get_water_greening(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_water_greening — 绿化用水登记（灌溉形式 / 灌溉水源 / 年用水量）。"""
+        return self._get_water_rows("ts_institution_water_greening", customer_id)
+
+    def get_water_other(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_water_other — 其他用水登记（用水系统 / 处理工艺 / 年用水量）。"""
+        return self._get_water_rows("ts_institution_water_other", customer_id)
+
+    def get_water_road(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_water_road — 道路冲洗用水登记（用水类型 / 冲洗周期）。"""
+        return self._get_water_rows("ts_institution_water_road", customer_id)
+
     # ========== 能源流向树（图5.1；ts_energy_flow + ts_energy_flow_level） ==========
     #
     # 平台在客户维度维护"能源流向树"：ts_energy_flow 是树清单（一棵树=一个能源品种），

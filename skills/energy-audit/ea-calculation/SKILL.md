@@ -79,6 +79,11 @@ python <skill>/scripts/caliber_agent.py <项目名> [--skip-charts] [--output-di
 python <skill>/scripts/prepare_chapter_md.py <项目名> [--force]
 # 定额取值溯源自检（标准号 + 表号锚点；exit 1 = 有缺项 → 第5章标【待核验】）
 python <skill>/scripts/verify_benchmark_sources.py <项目名>
+# 5.2 逐月段归因（段4）机械生成：电力用 ch5_monthly_attribution.py、
+# 用水用 ch5_water_attribution.py；均支持 dry-run / `--apply` 幂等写回 chapter_md/ch5_import.md
+# （用水节若来自旧骨架 md，加 `--rebuild` 整节重建；判定表见 chapter5-templates.md）
+python <skill>/scripts/ch5_monthly_attribution.py <项目名> [--apply]
+python <skill>/scripts/ch5_water_attribution.py <项目名> [--apply] [--rebuild]
 ```
 
 `prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。

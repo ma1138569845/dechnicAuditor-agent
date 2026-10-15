@@ -36,6 +36,10 @@
                       ③ 图注后接「由图…分析」句（2026-10-13 新增；P1 只告警不阻断）
     ch5_52_monthly    5.2.1 逐月段归因：写了「用电量较大月份」就必须有原因句
                       （2026-10-14 新增；P1 只告警不阻断）
+    ch5_52_water      5.2.2 用水节：① 段1 与段4 的补水项必须一致（方案A 同源）
+                       ② 异常说明段只允许出现「水」（禁跨能源串味）
+                       ③ 禁系统字眼（平台登记/系统/数据来源）
+                       （2026-10-15 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -57,7 +61,7 @@ MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
-                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly"}
+                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -511,6 +515,63 @@ def ch5_52_monthly_ok(doc_xml: str, heading_ids=None):
     return False, "5.2.1 写了“用电量较大月份”但缺少原因句（判定表要求供冷句/供热句至少其一）"
 
 
+def ch5_52_water_ok(doc_xml: str, heading_ids=None):
+    """5.2.2 用水节一致性（2026-10-15 新增，P1 只告警）。
+
+    背景：改造前 5.2.2 的段1 用水构成与段4 归因各写各的——岚山实测段1 写「空调、供暖
+    系统补水」、段4 只归因「制冷」，同一小节前后自相矛盾；异常说明段也没有能源名闸，
+    任何月异常（水/气/热力）都可能被写进用水节。
+
+    检查：
+      ① 同源：段1 与段4 提到的补水项必须一致（空调系统补水／供暖系统补水／生活热水系统补水）；
+      ② 能源闸：异常说明段（"…用水量同比…主要是…"句）只允许出现在用水节，且句中不得出现
+         电/气/热力等他类能源字样；
+      ③ 禁系统字眼：平台登记／系统／数据来源（写作层不得把 "平台登记" 写进正文）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    start = end = None
+    for i, b in enumerate(region):
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        if heading_ids is not None and _pstyle(b) not in heading_ids:
+            continue
+        if start is None and re.match(r"^5\.2\.2", t):
+            start = i
+        elif start is not None and re.match(r"^5\.2\.3", t):
+            end = i
+            break
+    if start is None:
+        return True, ""                      # 无 5.2.2（无水项目）→ 不检查
+    seg = region[start + 1:(end if end is not None else len(region))]
+    paras = [norm(_ptext(b)) for b in seg if b.startswith("<w:p")]
+    text = "".join(paras)
+
+    items = ("空调系统补水", "供暖系统补水", "生活热水系统补水")
+    # 段1 = 含"用水主要为"或"用水系统主要为"的那段；段4 区 = 剩余正文
+    lead = next((p for p in paras if "用水主要为" in p or "用水系统主要为" in p), "")
+    if not lead:
+        return False, "5.2.2 段1 缺少用水构成句（应含「…用水主要为…」）"
+    others = "".join(p for p in paras if p is not lead)
+    miss = [it for it in items if it in lead and it not in others]
+    if miss:
+        return False, ("5.2.2 段1 与段4 的补水项不一致：段1 写了 %s，段4 未出现"
+                       "（方案A 要求两处同源）" % "、".join(miss))
+    # 异常说明段只允许写水
+    for p in paras:
+        if re.search(r"用水量同比(?:上升|下降)", p):
+            bad = [w for w in ("用电量同比", "用气量同比", "用热量同比", "天然气", "汽油", "柴油")
+                   if w in p]
+            if bad:
+                return False, f"5.2.2 异常说明段串入他类能源：{'、'.join(bad)}"
+    for w in ("平台登记", "数据来源"):
+        if w in text:
+            return False, f"5.2.2 出现系统字眼「{w}」（正文禁止）"
+    return True, ""
+
+
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
@@ -734,6 +795,7 @@ def run(docx: str, pdf: str = None):
     c4_ok, c4_why = ch4_structure_ok(doc, _heading_style_ids(z))
     c52_ok, c52_why = ch5_52_layout_ok(doc, _heading_style_ids(z))
     c52m_ok, c52m_why = ch5_52_monthly_ok(doc, _heading_style_ids(z))
+    c52w_ok, c52w_why = ch5_52_water_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -782,6 +844,8 @@ def run(docx: str, pdf: str = None):
         "ch5_52_layout": c52_ok,
         # 5.2.1 逐月段归因（月份首句须配原因句）——P1，不阻断
         "ch5_52_monthly": c52m_ok,
+        # 5.2.2 用水节一致性（段1/段4 同源 + 异常段只含水 + 禁系统字眼）——P1，不阻断
+        "ch5_52_water": c52w_ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -838,6 +902,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_52_layout"] = c52_why
     if not c52m_ok:
         details["ch5_52_monthly"] = c52m_why
+    if not c52w_ok:
+        details["ch5_52_water"] = c52w_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
