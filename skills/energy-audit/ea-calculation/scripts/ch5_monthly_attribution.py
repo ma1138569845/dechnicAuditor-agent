@@ -268,7 +268,8 @@ def build_sentences(data: dict, details: list, warns: list):
             title = a.get("title") or ""
             direction = "下降" if "下降" in title else "上升"
             rate = a.get("rate_value")
-            rate_txt = f"{float(rate):.2f}%" if rate is not None else ""
+            # ★2026-10-15 数值口径：整数不带小数位、小数两位（平台登记 39.0 写成 39%）
+            rate_txt = (fmt_num(float(rate)) + "%") if rate is not None else ""
             desc = (a.get("desc_no_year") or a.get("desc") or "").strip().rstrip("。；")
             mth = re.match(r"(\d{1,2})月", str(a.get("period") or ""))
             when = f"{ey.get('year')}年{mth.group(1)}月" if mth else f"{ey.get('year')}年"

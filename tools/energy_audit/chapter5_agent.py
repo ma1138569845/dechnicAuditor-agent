@@ -43,6 +43,17 @@ _TITLE_NAME = {
     'heat': '热', 'diesel': '油', 'gasoline': '油',
 }
 
+# 数值口径（2026-10-15 用户定）：整数不带小数位，小数保留两位；禁千分位。
+# 5.2 段1 的"逐年精确数值一句"由 author 从 **数据参考** 行抄录，此前一律 `:.2f`
+# → 报告里出现 `1127220.00 kWh`、`5090273.00 kWh` 这类"整数带无意义小数位"。
+def _fmt_qty(v) -> str:
+    try:
+        f = float(v or 0)
+    except (TypeError, ValueError):
+        return str(v or "")
+    return f"{f:.0f}" if abs(f - round(f)) < 1e-6 else f"{f:.2f}"
+
+
 # 原始 energy_code → indicators 标准 key 的映射
 def _normalize_energy_code(code: str) -> str:
     code = str(code or '').strip().lower()
@@ -336,7 +347,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
 
         # 逐年总量（写作参考数据行，正式报告 5.2 无表，author 转文字）
         vals_txt = "；".join(
-            f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):.2f} {c['unit']}"
+            f"{str(y)[:4]}年{c['name']}量 {_fmt_qty(en.get(y, {}).get(code, {}).get('total', 0))} {c['unit']}"
             for y in years)
         md += f"**数据参考**：{vals_txt}\n\n"
 
@@ -349,9 +360,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 monthly_ok = True
             monthly_rows.append((m + [0] * 12)[:12])
         if monthly_ok:
-            fmt = '.2f' if 'm³' in c['unit'] else '.0f'
             for y, m in zip(years, monthly_rows):
-                m_txt = " / ".join(f"{i + 1}月 {float(v or 0):{fmt}}" for i, v in enumerate(m))
+                m_txt = " / ".join(f"{i + 1}月 {_fmt_qty(v)}" for i, v in enumerate(m))
                 md += f"**逐月参考**：{str(y)[:4]}年 {m_txt}\n"
             md += "\n"
 
@@ -374,7 +384,7 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         for code in minor_codes:
             c = _coeff_info(code)
             vals_txt = "；".join(
-                f"{str(y)[:4]}年{c['name']}量 {en.get(y, {}).get(code, {}).get('total', 0):.2f} {c['unit']}"
+                f"{str(y)[:4]}年{c['name']}量 {_fmt_qty(en.get(y, {}).get(code, {}).get('total', 0))} {c['unit']}"
                 for y in years)
             md += f"- {c['name']}：{vals_txt}\n"
         md += "\n"

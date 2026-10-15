@@ -90,19 +90,19 @@ def resolve_project_dir(arg: str) -> str:
 
 
 def fmt_num(v) -> str:
-    """数值格式：整数不带小数点，非整数保留一位（全文禁千分位）。"""
+    """数值格式（2026-10-15 用户定）：整数不带小数位，小数保留两位；全文禁千分位。"""
     try:
         f = float(v)
     except (TypeError, ValueError):
         return str(v or "")
-    return f"{f:.0f}" if abs(f - round(f)) < 1e-6 else f"{f:.1f}"
+    return f"{f:.0f}" if abs(f - round(f)) < 1e-6 else f"{f:.2f}"
 
 
 def pct_text(value: float, base: float) -> str:
     """(单月 ÷ 当年月均 − 1) 的百分比文本，如 29.6%。"""
     if not base:
         return ""
-    return f"{(value / base - 1) * 100:.1f}%"
+    return fmt_num((value / base - 1) * 100) + "%"
 
 
 def clean(v) -> str:
@@ -243,19 +243,21 @@ def build_blocks(unit, details, makeup, aux_items, fig_mth, anomalies):
     # ① 高峰点名（逐年）
     hit_years = [d for d in details if d["hits"]]
     if hit_years:
-        parts = []
+        # ★2026-10-15 用户定 A 案：括号内只承载单位，禁用「月份（数值…）」形态。
+        # 反例（禁用）：医院用水量较大月份为2022年7月（17622m³）和8月（16724m³）。
+        # 正例：医院2022年7月和8月用水量分别为17622 m³、16724 m³，较当年月均分别高出…。
+        segs = []
         for d in hit_years:
             ms = months_text([m for m, _ in d["hits"]])
+            vals = "、".join(fmt_num(v) for _, v in d["hits"])
+            pcts = "、".join(pct_text(v, d["base"]) for _, v in d["hits"])
             if len(d["hits"]) == 1:
-                _m, _v = d["hits"][0]
-                parts.append(f"{d['year']}年{ms}（{fmt_num(_v)} m³，"
-                             f"较当年月均高出{pct_text(_v, d['base'])}）")
+                segs.append(f"{d['year']}年{ms}用水量为{vals} m³，"
+                            f"较当年月均高出{pcts}")
             else:
-                vals = "、".join(fmt_num(v) for _, v in d["hits"])
-                pcts = "、".join(pct_text(v, d["base"]) for _, v in d["hits"])
-                parts.append(f"{d['year']}年{ms}（分别为{vals} m³，"
-                             f"较当年月均分别高出{pcts}）")
-        blocks.append(f"由图5.{fig_mth}分析，{unit}用水量较大月份为{'；'.join(parts)}。")
+                segs.append(f"{d['year']}年{ms}用水量分别为{vals} m³，"
+                            f"较当年月均分别高出{pcts}")
+        blocks.append(f"由图5.{fig_mth}分析，{unit}" + "；".join(segs) + "。")
         calm = [d for d in details if not d["hits"]]
         if calm:
             yrs = "、".join(f"{d['year']}年" for d in calm)
@@ -315,7 +317,7 @@ def pick_anomalies(data: dict):
             title = a.get("title") or ""
             direction = "下降" if "下降" in title else "上升"
             rate = a.get("rate_value")
-            rate_txt = f"{float(rate):.2f}%" if rate is not None else ""
+            rate_txt = (fmt_num(float(rate)) + "%") if rate is not None else ""
             desc = (a.get("desc_no_year") or a.get("desc") or "").strip().rstrip("。；")
             if not desc:
                 continue
@@ -429,7 +431,7 @@ def build_paragraph2(subject: str, totals: list, fig_tot: str):
     for (py, pv), (cy, cv), r in zip(totals, totals[1:], rates):
         word, tone = ("增加", "升幅") if cv >= pv else ("减少", "降幅")
         parts.append(f"{cy}年用水量较{py}年{word}{fmt_num(abs(cv - pv))} m³，"
-                     f"{tone}为{abs(r) * 100:.1f}%")
+                     f"{tone}为{fmt_num(abs(r) * 100)}%")
         if abs(r) > 0.15:
             abnormal.append(f"其中{cy}年用水量变化幅度超过15%，属于异常波动，"
                             f"建议进一步核实该年度用水异常原因。")

@@ -40,6 +40,9 @@
                        ② 异常说明段只允许出现「水」（禁跨能源串味）
                        ③ 禁系统字眼（平台登记/系统/数据来源）
                        （2026-10-15 新增；P1 只告警不阻断）
+    num_style         正文数值与括号规范：① 禁「月份（数值）」形态 ② 禁设备名后括号塞台数/
+                       参数 ③ 整数不带小数位（17622 不写 17622.00）④ 禁千分位
+                       （2026-10-15 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -61,7 +64,8 @@ MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
 FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
-                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water"}
+                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
+                  "num_style"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -515,6 +519,54 @@ def ch5_52_monthly_ok(doc_xml: str, heading_ids=None):
     return False, "5.2.1 写了“用电量较大月份”但缺少原因句（判定表要求供冷句/供热句至少其一）"
 
 
+def _narrative_paras(doc_xml: str):
+    """正文叙述段（跳过表格、目录、图注里的"（单位：…）"由调用方自行处理）。"""
+    out = []
+    for b in re.finditer(r"<w:p[ >].*?</w:p>", doc_xml, flags=re.S):
+        blk = b.group(0)
+        t = norm(_ptext(blk))
+        if t:
+            out.append(t)
+    return out
+
+
+NUM_STYLE_BANS = (
+    ("月份后括号数值", re.compile(r"\d{1,2}月\s*（\s*[\d一二三四五六七八九十]"),
+     "写成「{年}{月}用水量/用电量为{值}，较…高出{X}%」，数值与百分比都进正文"),
+    ("设备名后括号台数/参数", re.compile(r"（[^）]{0,30}\d+\s*(?:台|套|个|组)[^）]{0,30}）"),
+     "改写成分句：「…其中{设备}N台，供{区域}使用，运行时间为…」"),
+    ("整数带无意义小数位", re.compile(r"(?<![\d.])\d{2,}\.0+(?![\d])"),
+     "整数不带小数位（17622 不写 17622.00；5090273 不写 5090273.00）"),
+    ("千分位分隔符", re.compile(r"\d{1,3}(?:,\d{3})+"),
+     "全文禁千分位（写 1762200，不写 1,762,200）"),
+)
+
+
+def num_style_ok(doc_xml: str):
+    """正文数值与括号规范（2026-10-15 用户定，P1 只告警）。
+
+    背景：用户判定两类写法"非常不规范"——① 「月份（数值）」（岚山用水/用气节实测）；
+    ② 设备名后括号塞台数/区域/运行时间（"燃气蒸汽锅炉（2台，供手术室区域，运行时间7:00-18:00）"、
+    "分体空调（格力，50台，1.06kW/台）"）。另定数值口径：整数不带小数位、小数两位、禁千分位。
+
+    允许的括号：单位括号（全角）、标准编号括号、图注「（单位：…）」——这三类不匹配上面的形态。
+    只扫**叙述段**（表格另由 5.3 表结构断言管，指标值行本就要求两位小数）。
+    """
+    hits = []
+    for t in _narrative_paras(doc_xml):
+        if re.match(r"^图5\.\d", t) or re.match(r"^表\d", t):
+            continue                      # 图注/表题行："（单位：kWh）"是允许形态
+        for label, pat, fix in NUM_STYLE_BANS:
+            m = pat.search(t)
+            if m:
+                s = max(0, m.start() - 16)
+                hits.append(f"{label}：「…{t[s:m.end() + 16]}…」→ {fix}")
+                break
+    if hits:
+        return False, "；".join(hits[:3]) + (f"（共 {len(hits)} 处）" if len(hits) > 3 else "")
+    return True, ""
+
+
 def ch5_52_water_ok(doc_xml: str, heading_ids=None):
     """5.2.2 用水节一致性（2026-10-15 新增，P1 只告警）。
 
@@ -796,6 +848,7 @@ def run(docx: str, pdf: str = None):
     c52_ok, c52_why = ch5_52_layout_ok(doc, _heading_style_ids(z))
     c52m_ok, c52m_why = ch5_52_monthly_ok(doc, _heading_style_ids(z))
     c52w_ok, c52w_why = ch5_52_water_ok(doc, _heading_style_ids(z))
+    numok, num_why = num_style_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -846,6 +899,8 @@ def run(docx: str, pdf: str = None):
         "ch5_52_monthly": c52m_ok,
         # 5.2.2 用水节一致性（段1/段4 同源 + 异常段只含水 + 禁系统字眼）——P1，不阻断
         "ch5_52_water": c52w_ok,
+        # 正文数值与括号规范（禁月份括号数值 / 禁设备括号参数 / 整数不带小数位 / 禁千分位）——P1，不阻断
+        "num_style": numok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -904,6 +959,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_52_monthly"] = c52m_why
     if not c52w_ok:
         details["ch5_52_water"] = c52w_why
+    if not numok:
+        details["num_style"] = num_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
