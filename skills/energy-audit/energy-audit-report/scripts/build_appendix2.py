@@ -131,7 +131,10 @@ def build_year_table(year: dict, idx: int, report: list) -> tuple[str, list]:
     if has_gas:
         total.append(money(ann["gas"]))
     lines.append("| " + " | ".join(total) + " |")
-    return "\n".join(lines) + "\n", residuals
+    # 数值口径（2026-10-16）：整数不带小数位、小数两位（rules.md《3b》）。
+    # 附录2 逐月/合计单元格此前一律 .2f → 出现 8985.00 这类写法；这里统一剥零小数尾巴。
+    out = re.sub(r"(?<![\d.])(\d+)\.0+(?![\d])", r"\1", "\n".join(lines))
+    return out + "\n", residuals
 
 
 def split_apx2(md: str) -> tuple[int, int] | None:

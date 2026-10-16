@@ -9,7 +9,7 @@
   备用路径 = load_from_db 直查 ts_institution_energy_main/data（dt 旧分类 1=能耗,2=费用,3=供冷,4=供热,5=交通；仅 CLI 调试用）
 """
 
-import argparse, json, math, os, sys
+import argparse, json, math, os, re, sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -52,6 +52,15 @@ def _fmt_qty(v) -> str:
     except (TypeError, ValueError):
         return str(v or "")
     return f"{f:.0f}" if abs(f - round(f)) < 1e-6 else f"{f:.2f}"
+
+
+def _strip_trailing_zeros(text: str) -> str:
+    """把"整数带零小数尾巴"的写法统一成整数：5090273.00 → 5090273（含表格单元格）。
+
+    只剥全零小数（`.00`/`.0`/`.000`），真小数（163107.70、23.07、73.10）原样保留；
+    千分位不在本函数处理（另有禁千分位口径）。
+    """
+    return re.sub(r"(?<![\d.])(\d+)\.0+(?![\d])", r"\1", text or "")
 
 
 # 原始 energy_code → indicators 标准 key 的映射
@@ -786,7 +795,11 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     else:
         md += "（费用数据待用户提供）\n\n"
 
-    return md
+    # 数值口径统一（2026-10-16）：5.3/5.4 各表的 `.2f` 会把整数写成 `5090273.00`，
+    # 与"整数不带小数位、小数两位、禁千分位"（rules.md《3b》）冲突。
+    # 这里在输出前统一剥掉整数的零小数尾巴（真小数如 163107.70 / 23.07 原样保留），
+    # 比逐个改 50 处 f-string 更稳、也不会漏。
+    return _strip_trailing_zeros(md)
 
 
 # ============================================================
