@@ -403,8 +403,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         # 单位元（万元×10000）；油费=汽油费+柴油费；任一年>0 的列才显示（无 0 值列）
         cost_cols = [
             ('electricity', '电费'),
-            ('heat', '供暖费'),
             ('water', '水费'),
+            ('heat', '供暖费'),
             (('gasoline', 'diesel'), '油费'),
             ('natural_gas', '燃气费'),
         ]
@@ -427,8 +427,10 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                         for c in codes_l)
                 vals.append(v)
                 total += v
-            md += f"| {y4}年 |" + "".join(f" {v*10000:.2f} |" for v in vals) \
-                  + f" {total*10000:.2f} |\n"
+            # 数值口径（2026-10-15/16）：整数不带小数位、小数两位（此前一律 :.2f
+            # → 表里出现 599756.00 这类"整数带无意义小数位"）
+            md += f"| {y4}年 |" + "".join(f" {_fmt_qty(v * 10000)} |" for v in vals) \
+                  + f" {_fmt_qty(total * 10000)} |\n"
         md += "\n"
         # 能源费用占比饼图（每年一张，连号，与正式报告一致）
         pie_no = fig_no

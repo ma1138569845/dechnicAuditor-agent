@@ -43,6 +43,9 @@
     num_style         正文数值与括号规范：① 禁「月份（数值）」形态 ② 禁设备名后括号塞台数/
                        参数 ③ 整数不带小数位（17622 不写 17622.00）④ 禁千分位
                        （2026-10-15 新增；P1 只告警不阻断）
+    ch5_t51           表5.1 形态：① 首列斜线表头（w:tl2br + 两段文本）② 列序 电费/水费/
+                       供暖费/油费/燃气费 ③ 数值整数不带小数位
+                       （2026-10-16 新增，对齐莘县/淄博样板；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -65,7 +68,7 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
-                  "num_style"}
+                  "num_style", "ch5_t51"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -542,6 +545,42 @@ NUM_STYLE_BANS = (
 )
 
 
+def ch5_t51_ok(doc_xml: str):
+    """表5.1 形态（2026-10-16 新增，P1 只告警）。
+
+    口径对齐莘县/淄博样板（用户 2026-10-16 定）：
+      ① 首列表头＝**斜线表头**——单元格内两段文本 + `w:tl2br` 对角线（装配器由 md 的
+         `X\\Y` 形态自动渲染；此前生成器写 `类型\\时间` 却按普通单元格渲染，成品里是一格
+         带反斜杠的怪文本）；
+      ② 列序固定 电费 / **水费 / 供暖费** / 油费 / 燃气费（样板把水费排在供暖费前）；
+      ③ 数值口径：整数不带小数位（此前生成器一律 `:.2f` → `599756.00`）。
+    找不到表5.1（费用全空项目）时视为通过。
+    """
+    for m in re.finditer(r"<w:tbl>.*?</w:tbl>", doc_xml, flags=re.S):
+        seg = m.group(0)
+        if "电费" not in seg or "合计" not in seg:
+            continue
+        rows = re.findall(r"<w:tr[ >].*?</w:tr>", seg, flags=re.S)
+        if not rows:
+            continue
+        cells = re.findall(r"<w:tc>.*?</w:tc>", rows[0], flags=re.S)
+        labels = [re.sub(r"<[^>]+>", "", c) for c in cells]
+        if "w:tl2br" not in cells[0] or len(re.findall(r"<w:p[ >]", cells[0])) < 2:
+            return False, ("表5.1 首列表头不是斜线表头（缺 w:tl2br 对角线或两段文本）"
+                           "——检查装配器 _diag_header_cell 与 md 里的 `类型\\时间`")
+        want = ("电费", "水费", "供暖费", "油费", "燃气费")
+        idx = [next((i for i, l in enumerate(labels) if w in l), None) for w in want]
+        idx = [i for i in idx if i is not None]
+        if idx != sorted(idx):
+            return False, f"表5.1 列序不符（应为 电费/水费/供暖费/油费/燃气费）：{labels}"
+        body = "".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", "".join(rows[1:])))
+        bad = re.findall(r"\d+\.0+\b", body)
+        if bad:
+            return False, f"表5.1 出现整数带小数位：{bad[:3]}（应写 {bad[0].split('.')[0]}）"
+        return True, ""
+    return True, ""
+
+
 def num_style_ok(doc_xml: str):
     """正文数值与括号规范（2026-10-15 用户定，P1 只告警）。
 
@@ -857,6 +896,7 @@ def run(docx: str, pdf: str = None):
     c52m_ok, c52m_why = ch5_52_monthly_ok(doc, _heading_style_ids(z))
     c52w_ok, c52w_why = ch5_52_water_ok(doc, _heading_style_ids(z))
     numok, num_why = num_style_ok(doc)
+    t51ok, t51_why = ch5_t51_ok(doc)
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -909,6 +949,8 @@ def run(docx: str, pdf: str = None):
         "ch5_52_water": c52w_ok,
         # 正文数值与括号规范（禁月份括号数值 / 禁设备括号参数 / 整数不带小数位 / 禁千分位）——P1，不阻断
         "num_style": numok,
+        # 表5.1 形态（斜线表头 + 列序 + 数值口径）——P1，不阻断
+        "ch5_t51": t51ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -969,6 +1011,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_52_water"] = c52w_why
     if not numok:
         details["num_style"] = num_why
+    if not t51ok:
+        details["ch5_t51"] = t51_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

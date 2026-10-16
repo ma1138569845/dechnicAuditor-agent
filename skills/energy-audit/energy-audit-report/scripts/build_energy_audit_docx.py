@@ -146,6 +146,45 @@ def _add_toc_field(paragraph):
     set_font(run, 12)
 
 
+DIAG_CELL_RE = re.compile(r"^(?P<row>[^\\|]{1,6})\\(?P<col>[^\\|]{1,6})$")
+
+
+def _diag_header_cell(cell, top_text: str, bottom_text: str):
+    """把表头首格渲染成斜线表头（对齐莘县样板 表5.1 的「类型\\时间」）。
+
+    样板实测（word/document.xml）：单元格 `tcBorders` 内含
+    `<w:tl2br w:val="single" w:sz="8"/>`（左上→右下对角线），格内**两段文本**：
+    第 1 段「类型」居中加粗，第 2 段「时间」默认对齐加粗，均宋体 12pt。
+    """
+    # 第 1 段：复用 python-docx 建表时生成的空段
+    p1 = cell.paragraphs[0]
+    p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    pf1 = p1.paragraph_format
+    pf1.space_before = Pt(0)
+    pf1.space_after = Pt(0)
+    pf1.line_spacing = 1.0
+    set_font(p1.add_run(top_text), 12, True)
+
+    # 第 2 段（默认左对齐，与样板一致）
+    p2 = cell.add_paragraph()
+    pf2 = p2.paragraph_format
+    pf2.space_before = Pt(0)
+    pf2.space_after = Pt(0)
+    pf2.line_spacing = 1.0
+    set_font(p2.add_run(bottom_text), 12, True)
+
+    # 对角线（tcBorders 在 CT_TcPr 里的位置须在 w:vAlign 之前，故 addprevious）
+    tcPr = cell._tc.get_or_add_tcPr()
+    borders = parse_xml(
+        '<w:tcBorders xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:tl2br w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders>')
+    valign = tcPr.find(qn("w:vAlign"))
+    if valign is not None:
+        valign.addprevious(borders)
+    else:
+        tcPr.append(borders)
+
+
 def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_cm=1.01):
     """通用表格：12pt 居中、垂直居中、行高 1.01cm，首行加粗（对齐 45 页终稿）。
 
@@ -168,13 +207,19 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
             if equal_width_cm:
                 cell.width = Cm(equal_width_cm)
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            txt = data[ci] if ci < len(data) else ""
+            if bold_first_row and ri == 0 and ci == 0:
+                m_diag = DIAG_CELL_RE.match(txt.strip())
+                if m_diag:                      # 「类型\时间」→ 斜线表头（2026-10-16）
+                    _diag_header_cell(cell, m_diag.group("row"), m_diag.group("col"))
+                    continue
             p = cell.paragraphs[0]
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             pf = p.paragraph_format
             pf.space_before = Pt(0)
             pf.space_after = Pt(0)
             pf.line_spacing = 1.0
-            set_font(p.add_run(data[ci] if ci < len(data) else ""), 12, bool(bold_first_row and ri == 0))
+            set_font(p.add_run(txt), 12, bool(bold_first_row and ri == 0))
     return t
 
 
