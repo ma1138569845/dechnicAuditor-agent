@@ -653,7 +653,9 @@ def ch5_525_fee_ok(doc_xml: str, heading_ids=None):
     m_fig = re.search(r"能源费用占比如图5\.(\d+)所示", text)
     if not m_fig:
         miss.append("缺段末引图句（「…{最新年}年能源费用占比如图5.X所示」）")
-    elif not re.search(r"图5\.%s\b" % m_fig.group(1), doc_xml):
+    # ⚠️ 只能在**小节段落文本**里找图注：Word 保存会把「图5.10」拆到多个 run，
+    #    直接搜原始 XML 会漏（2026-10-16 实测：装配件通过、经 Word 收尾的交付件误报）
+    elif not any(re.match(r"^图5\.%s(?:\s|$)" % m_fig.group(1), p.strip()) for p in paras):
         miss.append(f"引图句指到 图5.{m_fig.group(1)}，但报告里没有该图注（饼图与引用对不上）")
     if miss:
         return False, "；".join(miss[:4])
