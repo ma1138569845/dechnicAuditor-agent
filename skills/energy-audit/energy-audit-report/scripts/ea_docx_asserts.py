@@ -563,13 +563,14 @@ def ch5_energy_leadin_ok(doc_xml: str, heading_ids=None):
     for b in region:
         if not b.startswith("<w:p"):
             continue
-        t = norm(_ptext(b))
+        raw = _ptext(b)                       # 注意：norm() 会删掉全部空白，
+        t = norm(raw)                         # 空格类检查必须用原文 raw，否则必误报
         if re.match(r"^5\.2\.\d", t) or not t:
             continue
         if "全年用" in t or "年全年用" in t:                 # 段1 的数值句
             if "根据所提供能耗账单及缴费发票统计分析" not in t:
-                bad_quote.append(t[:40])
-            for m in re.finditer(r"\d\s*(?:kWh|m³|GJ|kg|t)\b", t):
+                bad_quote.append(raw.strip()[:40])
+            for m in re.finditer(r"\d\s*(?:kWh|m³|GJ|kg|t)\b", raw):
                 if " " not in m.group(0):
                     bad_space.append(m.group(0))
     if bad_quote:
