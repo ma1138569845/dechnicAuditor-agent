@@ -63,6 +63,10 @@ HEAD_COLOR = RGBColor(0x1A, 0x1A, 0x1A)  # 与终稿标题色一致
 RED_NOTE_COLOR = RGBColor(0xC0, 0x00, 0x00)  # 5.2 逐月段“异常原因请核实”红字注（2026-10-14）
 # 红字注识别：以“注：”开头且含“异常原因请核实”（其他“注：”保持黑色）
 RED_NOTE_RE = re.compile(r"^注：.*异常原因请核实")
+# 正文占位标记（2026-10-16 用户定）：含【待核实】/【待补充】/【待核验】/【待确认】的**句子**
+# 一律渲染成红字（与 5.2.1 的"注：…异常原因请核实"红注同一色 C00000，但作用于句子级）。
+# 背景：实测岚山"热力数据待补录核实【待核实】"这类话混在长段落里，黑字不易被审核人抓到。
+VERIFY_MARK_RE = re.compile(r"【待(?:核实|补充|核验|确认)】")
 W_NS_DECL = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 BULLET_CHAR = "\uf06c"  # Wingdings 实心圆点（对齐 45 页终稿）
 
@@ -500,6 +504,19 @@ def _replace_with_retry(src: str, dst: str, attempts: int = 5) -> None:
 
 # ---------------------------------------------------------------- T2 章节渲染
 
+def _split_by_verify(text: str):
+    """按句切分并把「含占位标记的句子」标出来：返回 [(片段, 是否红字), ...]。
+
+    切分点＝句号/分号（分隔符归属前一句）；只有整段含标记时才需要调用。
+    """
+    out = []
+    for seg in re.split(r"(?<=[。；])", text):
+        if not seg:
+            continue
+        out.append((seg, bool(VERIFY_MARK_RE.search(seg))))
+    return out
+
+
 def _body(doc, text, color=None):
     """正文自然段：两端对齐、1.5 行距、首行缩进 2 字符（firstLineChars=200）。"""
     p = doc.add_paragraph()
@@ -511,7 +528,11 @@ def _body(doc, text, color=None):
     ind = ppr.find(qn("w:ind"))
     if ind is not None:
         ind.set(qn("w:firstLineChars"), "200")
-    _add_rich(p, text, 12, color)
+    if color is None and VERIFY_MARK_RE.search(text):
+        for seg, is_mark in _split_by_verify(text):      # 句级红字（2026-10-16）
+            _add_rich(p, seg, 12, RED_NOTE_COLOR if is_mark else None)
+    else:
+        _add_rich(p, text, 12, color)
     return p
 
 
