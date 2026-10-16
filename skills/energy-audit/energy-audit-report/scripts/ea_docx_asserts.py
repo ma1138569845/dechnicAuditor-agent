@@ -552,7 +552,7 @@ NUM_STYLE_BANS = (
     # 「其中电费占比最高（2024年377.05万元，占71.1%）」。排除标准号与「（单位：…）」。
     ("括号承载统计数值", re.compile(
         r"（(?![^）]*（单位：)(?![^）]*(?:DB|GB|JGJ|CJJ)[/T])"
-        r"[^）]{0,40}?\d+(?:\.\d+)?\s*(?:%|万元|元|kWh|m³|GJ)[^）]{0,40}?）"),
+        r"[^）]{0,40}?\d+(?:\.\d+)?\s*(?:万元|元|kWh|m³|GJ)(?![a-zA-Z])[^）]{0,40}?）"),
      "把括号拆成正文分句：「…其中电费占比最高，2024年电费为X万元，占当年总额的Y%」"),
     ("整数带无意义小数位", re.compile(r"(?<![\d.])\d{2,}\.0+(?![\d])"),
      "整数不带小数位（17622 不写 17622.00；5090273 不写 5090273.00）"),
@@ -603,7 +603,7 @@ def ch5_525_fee_ok(doc_xml: str, heading_ids=None):
     本检查按 `chapter5-spec.md`《费用结论段（固定句式）》的五要素逐条核：
       ① 引表句：「…能源费用主要包括…各项能源费用统计见表5.1」，且引语统一；
       ② 整体定性句：含四档词之一（与段2 同一套）；
-      ③ 逐年句：`…能源费用较YYYY年…率为X%`，且**条数 ≥ 表5.1 年数 − 1**；
+    ③ 逐年句：`…能源费用较YYYY年…率/幅为X%`，且**条数 ≥ 表5.1 年数 − 1**；
       ④ 段末引图句：`…能源费用占比如图5.X所示`，且该图号在小节内有对应图注；
       ⑤ 括号承载统计数值 → 由 `num_style` 管（见 NUM_STYLE_BANS）。
     """
@@ -642,12 +642,13 @@ def ch5_525_fee_ok(doc_xml: str, heading_ids=None):
     if not yearly:
         miss.append("缺逐年句（「…能源费用较{上年}年增加/下降X万元，增减率为X%」）")
     else:
-        no_rate = [s for s in yearly if not re.search(r"率为[\d.]+%", s)]
+        # 「增长率为X%」与「降幅为X%」都要认（实测写作层两种写法混用；只认"率为"会误报）
+        no_rate = [s for s in yearly if not re.search(r"(?:率|幅)为[\d.]+%", s)]
         if no_rate:
             miss.append(f"逐年句缺增减率：{no_rate[0][:24]}…")
-        if rows_minus_header and len(yearly) < rows_minus_header:
-            miss.append(f"逐年句少写：表5.1 有 {rows_minus_header} 个年度，应写 {rows_minus_header - 1} 句，"
-                        f"实际 {len(yearly)} 句")
+        if rows_minus_header and len(yearly) < rows_minus_header - 1:
+            miss.append(f"逐年句少写：表5.1 有 {rows_minus_header} 个年度，"
+                        f"应写 {rows_minus_header - 1} 句，实际 {len(yearly)} 句")
     # ④ 引图句 + 图号对得上
     m_fig = re.search(r"能源费用占比如图5\.(\d+)所示", text)
     if not m_fig:
