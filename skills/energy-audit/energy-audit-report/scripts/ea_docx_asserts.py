@@ -601,13 +601,21 @@ def ch5_52_water_ok(doc_xml: str, heading_ids=None):
     paras = [norm(_ptext(b)) for b in seg if b.startswith("<w:p")]
     text = "".join(paras)
 
-    items = ("空调系统补水", "供暖系统补水", "生活热水系统补水")
+    # 补水项 → 段4 的可接受说法（段4 是归因句，不会原样重复"XX系统补水"这四个字：
+    # 实测正例「夏季用水量偏高与空调系统冷却塔及管路补水…有关」「供暖季用水量偏高与生活热水系统
+    # 用量增加有关」——若做字面全等匹配会把这两句判成"段4 没写"，是误报）
+    item_markers = {
+        "空调系统补水": ("空调系统", "冷却塔", "管路补水"),
+        "供暖系统补水": ("供暖系统", "供暖季"),
+        "生活热水系统补水": ("生活热水系统",),
+    }
     # 段1 = 含"用水主要为"或"用水系统主要为"的那段；段4 区 = 剩余正文
     lead = next((p for p in paras if "用水主要为" in p or "用水系统主要为" in p), "")
     if not lead:
         return False, "5.2.2 段1 缺少用水构成句（应含「…用水主要为…」）"
     others = "".join(p for p in paras if p is not lead)
-    miss = [it for it in items if it in lead and it not in others]
+    miss = [it for it, marks in item_markers.items()
+            if it in lead and not any(m in others for m in marks)]
     if miss:
         return False, ("5.2.2 段1 与段4 的补水项不一致：段1 写了 %s，段4 未出现"
                        "（方案A 要求两处同源）" % "、".join(miss))
