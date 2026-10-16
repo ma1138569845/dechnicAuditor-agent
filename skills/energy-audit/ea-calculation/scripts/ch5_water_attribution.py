@@ -408,6 +408,26 @@ def build_lead_line(orig_line: str, items: list, supply: str) -> str:
     return prefix + body + rest
 
 
+def classify_trend(rates):
+    """年际趋势词（2026-10-16 用户定四档；对比值＝**最大年变化率绝对值**）。
+
+    ① 方向优先：全增 → 整体呈逐年上升趋势；全减 → 整体呈逐年下降趋势（不问幅度）。
+    ② 非单调序列按幅度：≤5% 基本稳定 / 5%~10% 波动不大 / 10%~15% 出现一定波动 / >15% 波动较大。
+    """
+    if rates and all(r > 0 for r in rates):
+        return "整体呈逐年上升趋势"
+    if rates and all(r < 0 for r in rates):
+        return "整体呈逐年下降趋势"
+    m = max((abs(r) for r in rates), default=0.0) * 100
+    if m <= 5:
+        return "基本稳定"
+    if m <= 10:
+        return "波动不大"
+    if m <= 15:
+        return "出现一定波动"
+    return "波动较大"
+
+
 def yearly_totals(data: dict):
     """[(year, 年用水量)]，按年份升序；只取有值的年。"""
     out = []
@@ -427,11 +447,7 @@ def build_paragraph2(subject: str, totals: list, fig_tot: str):
     rates = []
     for (py, pv), (cy, cv) in zip(totals, totals[1:]):
         rates.append((cv - pv) / pv if pv else 0)
-    # 阈值与 5.2.1 口径一致：各年变幅都在 ±10% 以内 → "整体波动不大"（岚山电量 ±7.5% 即用此说法）
-    trend = ("整体波动不大" if all(abs(r) < 0.10 for r in rates)
-             else ("整体呈逐年上升趋势" if all(r > 0 for r in rates)
-                   else ("整体呈逐年下降趋势" if all(r < 0 for r in rates)
-                         else "整体呈波动变化")))
+    trend = classify_trend(rates)          # 四档口径：最大年变化率 + 方向优先（2026-10-16）
     parts, abnormal = [], []
     for (py, pv), (cy, cv), r in zip(totals, totals[1:], rates):
         word, tone = ("增加", "升幅") if cv >= pv else ("减少", "降幅")

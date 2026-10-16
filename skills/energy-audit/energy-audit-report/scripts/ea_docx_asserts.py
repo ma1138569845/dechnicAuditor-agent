@@ -48,6 +48,9 @@
                        （2026-10-16 新增，对齐莘县/淄博样板；P1 只告警不阻断）
     ch5_energy_leadin 5.2 各能源节段1：引语统一为「根据所提供能耗账单及缴费发票统计分析」，
                        数值与单位之间空一格（2026-10-16 新增；P1 只告警不阻断）
+    ch5_trend_word    5.2 各节段2：趋势词须与"最大年变化率"四档口径一致
+                       （方向优先；≤5% 基本稳定／≤10% 波动不大／≤15% 出现一定波动／>15% 波动较大）
+                       （2026-10-16 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -70,7 +73,7 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
-                  "num_style", "ch5_t51", "ch5_energy_leadin"}
+                  "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -547,6 +550,89 @@ NUM_STYLE_BANS = (
 )
 
 
+# 趋势词四档（chapter5-spec.md《段2详细规范·2.1》，2026-10-16 用户定）
+TREND_CLASSES = {
+    "up": ("逐年上升", "逐年增长", "逐年持续增长", "呈上升趋势", "呈逐年上升趋势"),
+    "down": ("逐年下降", "逐年递减", "逐年降低", "逐年持续下降", "呈下降趋势", "呈逐年下降趋势"),
+    "big": ("波动较大", "出现较大波动"),          # 注意顺序：先判"波动较大"，再判"波动不大"
+    "small": ("出现一定波动", "小幅波动", "有一定波动"),
+    "noswing": ("波动不大", "变化不大"),
+    "stable": ("基本稳定", "基本持平", "保持稳定"),
+}
+RATE_RE = re.compile(r"(增长|上升|降低|下降|升|降)幅?为\s*([\d.]+)\s*%")
+
+
+def _trend_expected(rates):
+    """按口径算趋势类：全增→up、全减→down，否则按最大绝对值（≤5/≤10/≤15/>15）。"""
+    if rates and all(r > 0 for r in rates):
+        return "up"
+    if rates and all(r < 0 for r in rates):
+        return "down"
+    m = max((abs(r) for r in rates), default=0.0)
+    if m <= 5:
+        return "stable"
+    if m <= 10:
+        return "noswing"
+    if m <= 15:
+        return "small"
+    return "big"
+
+
+def ch5_trend_word_ok(doc_xml: str, heading_ids=None):
+    """5.2 各能源节段2 的趋势词与逐年率必须对得上（2026-10-16 新增，P1 只告警）。
+
+    口径（用户 2026-10-16 定）：对比值＝**逐年同比变化率里绝对值最大的那个**；
+    方向优先（全增=逐年上升、全减=逐年下降），非单调才按 ≤5%/≤10%/≤15%/>15% 分档。
+    做法：对每个 5.2.x 节，取总量图注后的第一段（段2），从文里解析"增长率X%／降幅Y%"，
+    算出应有的趋势类，再与文中的趋势词比对；两者不一致即告警（防"最大 12% 却写基本稳定"）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    # 按 H3 切段
+    subs, cur = {}, None
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        if heading_ids is not None and _pstyle(b) not in heading_ids:
+            continue
+        m = re.match(r"^(5\.2\.\d+)", t)
+        if m:
+            cur = m.group(1)
+            subs[cur] = []
+            continue
+        if cur:
+            subs[cur].append(_ptext(b))
+    bad = []
+    for sec, paras in subs.items():
+        cap = next((i for i, p in enumerate(paras) if re.match(r"^\s*图5\.\d", p.strip())), None)
+        if cap is None or cap + 1 >= len(paras):
+            continue
+        p2 = paras[cap + 1]
+        rates = []
+        for mm in RATE_RE.finditer(p2):
+            sign = 1 if mm.group(1) in ("增长", "上升", "升") else -1
+            rates.append(sign * float(mm.group(2)))
+        if not rates:
+            continue
+        exp = _trend_expected(rates)
+        found = None
+        for cls, words in TREND_CLASSES.items():
+            if any(w in p2 for w in words):
+                found = cls
+                break
+        if found is None:
+            bad.append(f"{sec} 段2 缺趋势词（该写 {exp}，逐年率 "
+                       + "、".join(f"{r:+.2f}%" for r in rates) + "）")
+        elif found != exp:
+            bad.append(f"{sec} 段2 趋势词与最大变化率不符：文中={found}，应={exp}"
+                       f"（逐年率 " + "、".join(f"{r:+.2f}%" for r in rates) + "）")
+    if bad:
+        return False, "；".join(bad[:3]) + (f"（共 {len(bad)} 处）" if len(bad) > 3 else "")
+    return True, ""
+
+
 def ch5_energy_leadin_ok(doc_xml: str, heading_ids=None):
     """5.2 各能源节段1 的引语与单位空格（2026-10-16 新增，P1 只告警）。
 
@@ -934,6 +1020,7 @@ def run(docx: str, pdf: str = None):
     numok, num_why = num_style_ok(doc)
     t51ok, t51_why = ch5_t51_ok(doc)
     leadok, lead_why = ch5_energy_leadin_ok(doc, _heading_style_ids(z))
+    trendok, trend_why = ch5_trend_word_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -990,6 +1077,8 @@ def run(docx: str, pdf: str = None):
         "ch5_t51": t51ok,
         # 5.2 各能源节段1 引语与单位空格——P1，不阻断
         "ch5_energy_leadin": leadok,
+        # 5.2 各能源节段2 趋势词与最大年变化率一致——P1，不阻断
+        "ch5_trend_word": trendok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1054,6 +1143,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_t51"] = t51_why
     if not leadok:
         details["ch5_energy_leadin"] = lead_why
+    if not trendok:
+        details["ch5_trend_word"] = trend_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
