@@ -290,19 +290,23 @@ def build_blocks(unit, details, makeup, aux_items, fig_mth, anomalies):
     # ④ 收尾句
     blocks.append(f"{unit}逐月用水量变化符合单位用水及季节性用水变化规律。")
 
+    # ①②③④ 合并成一段（2026-10-16 用户定：四块各占一段会在成品里读成四条并列短句）；
+    # ⑤ 月异常说明段、⑥ 红色注各自独立成段
+    out = ["".join(blocks)]
+
     # ⑤ 平台异常说明段（月粒度，合并一段）
     month_notes = []
     for a in anomalies["month"]:
         month_notes.append(a)
     if month_notes:
-        blocks.append("；".join(month_notes) + "。")
+        out.append("；".join(month_notes) + "。")
 
     # ⑥ 红色注（强异常待核实，固定在最后）
     for d in details:
         for mm, v in d["red"]:
-            blocks.append(f"注：{d['year']}年{mm}月用水量为{fmt_num(v)}m³"
-                          f"明显高于当年月均，异常原因请核实。")
-    return blocks, warns
+            out.append(f"注：{d['year']}年{mm}月用水量为{fmt_num(v)}m³"
+                       f"明显高于当年月均，异常原因请核实。")
+    return out, warns
 
 
 def pick_anomalies(data: dict):

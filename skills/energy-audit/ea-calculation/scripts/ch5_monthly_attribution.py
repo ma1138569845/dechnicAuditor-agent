@@ -181,7 +181,10 @@ def build_sentences(data: dict, details: list, warns: list):
     city, heat_form, heat_abs, heat_raw = detect_heating(data)
     pump, split, dev_names = detect_devices(data)
 
-    blocks = []
+    # ★2026-10-16 用户定：段4 的①②③④（月份首句/供冷句/供热句/收尾句）**合并成一段**；
+    # ⑤ 月异常说明段、⑥ 红色注各自独立成段。此前四块各占一段，成品里读成四条并列短句。
+    p4 = []
+    blocks = p4
     # ① 月份首句
     if cool_txt or heat_txt:
         body = []
@@ -251,6 +254,9 @@ def build_sentences(data: dict, details: list, warns: list):
     # ④ 收尾句
     blocks.append(f"{unit}逐月用电量变化符合单位用能变化以及季节性用能变化规律。")
 
+    # ①②③④ 合并成一段（2026-10-16 用户定）；其后两块各自独立成段
+    out = ["".join(blocks)]
+
     # ⑤ 平台异常说明段（月粒度，合并一段）
     month_notes = []
     for ey in sorted(data.get("energy_yearly") or [], key=lambda x: x.get("year") or 0):
@@ -277,12 +283,12 @@ def build_sentences(data: dict, details: list, warns: list):
                                 f"{when}用电量同比{direction}{rate_txt}，主要是{desc}"))
     if month_notes:
         month_notes.sort()
-        blocks.append("；".join(x[2] for x in month_notes) + "。")
+        out.append("；".join(x[2] for x in month_notes) + "。")
 
     # ⑥ 红色注（过渡季待核实，仅最后一块）
     for year, ms, vals in shoulder_hits:
         for mm, v in zip(ms, vals):
-            blocks.append(f"注：{year}年{mm}月用电量为{fmt_num(v)}kWh明显高于过渡季基准，异常原因请核实。")
+            out.append(f"注：{year}年{mm}月用电量为{fmt_num(v)}kWh明显高于过渡季基准，异常原因请核实。")
 
     info = {
         "unit": unit, "yearly": details, "cool_months": cool_m, "heat_months": heat_m,
@@ -291,7 +297,7 @@ def build_sentences(data: dict, details: list, warns: list):
         "city_heating": city, "heat_form": heat_form, "heat_absorption": heat_abs,
         "pump": pump, "split_ac": split, "device_evidence": dev_names,
     }
-    return blocks, info, warns
+    return out, info, warns
 
 
 # ---------------------------------------------------------------- md 写回
