@@ -32,7 +32,9 @@
     arguments={"ranges": [{"begin": 下标起点, "end": 下标终点}], "vertical_align": "subscript"})
   ```
 - 下标范围定位：先 `doc_find`（`text="Egn——"` 等含下标符号+破折号串）拿 begin/end，下标部分 = begin+1 .. end-2（去掉主体首字符与"——"）。多匹配时按 `related_text` 上下文区分。
-- **下标清单**（第5章全部）：Ejrcn→jrcn、Egn→gn、Ejt→jt、Eja→ja、ED→D、Er→r、Vuc→uc、Vk→k、Np→p、Egnm→gnm、Mgn→gn（高校 Vu/Nu、Ws/Ns、医院 Vz/Ni、场馆 Vui/Nc 同理：变量名主体之外的全小写部分设下标）。**政务服务中心自 2026-09-29 走 Vuc/Np（机关式7）**，不再用 Vui/Nc。
+- **下标清单**（第5章全部，2026-10-16 按标准原文校正）：**Ejfgn→jfgn**、Egn→gn、Ejt→jt、**Ejd→jd**、ED→D、Er→r、Vuc→uc、Vk→k、Np→p、**Ejngn→jngn**、Mgn→gn（高校 Vu/Nu、Ws/Ns、医院 Vz/Ni、场馆 Vui/Nc 同理：变量名主体之外的全小写部分设下标）。**政务服务中心自 2026-09-29 走 Vuc/Np（机关式7）**，不再用 Vui/Nc。
+  ⚠️ 旧写法 **Ejrcn / Eja / Egnm 已废止**（非标准符号，来源是省直参考报告正文）；标准符号见
+  `ea-calculation/references/chapter5-templates.md`《符号口径》段，机械校验 `ch5_std_symbol`。
 - 验证：渲染 PDF 后按 y 坐标比对——下标字符 y0 应比同行正文低约 4-5pt（fitz `search_for` 拿 rect），不得只凭"操作成功"下结论。
 
 ### doc_insert_math 调用方式

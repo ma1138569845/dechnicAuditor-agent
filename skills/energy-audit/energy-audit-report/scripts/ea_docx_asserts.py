@@ -54,6 +54,9 @@
     ch5_525_fee       5.2 费用节五要素：引表句+引语统一／整体定性句（四档词）／逐年句带增减率且
                        条数 ≥ 表5.1 年数−1／段末引图句且图号对得上饼图图注
                        （2026-10-16 新增；P1 只告警不阻断）
+    ch5_std_symbol    5.3 各节公式符号须与标准原文一致（Ejfgn／Ejd／Er／Ejngn，禁旧符号
+                       Ejrcn／Eja／Egnm），式中措辞须写「单位为…」
+                       （2026-10-16 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -77,7 +80,7 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
-                  "ch5_525_fee"}
+                  "ch5_525_fee", "ch5_std_symbol"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -595,6 +598,59 @@ FEE_TREND_WORDS = ("基本稳定", "波动不大", "出现一定波动", "波动
                    "整体呈逐年上升趋势", "整体呈逐年下降趋势")
 
 
+STD_SYMBOLS = {
+    # 5.3.x → (标准符号 [须出现], 旧符号 [不得出现])
+    # 标准原文：DB37/T 2672/2673-2019 §6.2 Ejfgn、§6.3 Ejngn、§6.4 Er、§6.5 Ejd
+    "5.3.1": ("Ejfgn", ("Ejrcn", "jrcn")),
+    "5.3.2": ("Ejd", ("Eja",)),
+    "5.3.3": ("Er", ()),
+    "5.3.5": ("Ejngn", ("Egnm",)),
+}
+
+
+def ch5_std_symbol_ok(doc_xml: str, heading_ids=None):
+    """5.3 各节公式符号须与标准原文一致（2026-10-16 新增，P1 只告警）。
+
+    背景：包内长期沿用 Ejrcn / Eja / Egnm，且 `chapter5-templates.md` 还把标准在用的
+    Ejd/ED 误标为"旧符号已废弃"。实测标准原文（DB37/T 2672/2673-2019 §6）为
+    Ejfgn / Ejngn / Er / Ejd，莘县样板也是 jfgn 一脉；Ejrcn/Eja 来自省直参考报告正文。
+    检查：① 5.3.x 各节（含公式 OMML 内文本）须出现标准符号；
+          ② 不得出现旧符号；③ 式中各项须用标准措辞「单位为…」。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    subs, cur = {}, None
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        is_head = heading_ids is None or _pstyle(b) in heading_ids
+        m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+        if m:
+            cur = m.group(1)
+            subs[cur] = []
+            continue
+        if cur:
+            # 公式符号在 OMML 的 m:t 里，必须一起取
+            subs[cur].append(_ptext(b) + "".join(re.findall(r"<m:t[^>]*>([^<]*)</m:t>", b)))
+    bad = []
+    for sec, (must, ban) in STD_SYMBOLS.items():
+        txt = "".join(subs.get(sec) or [])
+        if not txt:
+            continue
+        if must not in txt:
+            bad.append(f"{sec} 未用标准符号 {must}")
+        hit = [b for b in ban if b in txt]
+        if hit:
+            bad.append(f"{sec} 出现旧符号 {hit[0]}（标准为 {must}）")
+        if sec in ("5.3.1", "5.3.2", "5.3.3", "5.3.5") and txt.count("单位为") < 2:
+            bad.append(f"{sec} 式中措辞未按标准（应写「单位为…，单位」）")
+    if bad:
+        return False, "；".join(bad[:4])
+    return True, ""
+
+
 def ch5_525_fee_ok(doc_xml: str, heading_ids=None):
     """5.2 费用节（能源资源费用分析）五要素（2026-10-16 新增，P1 只告警）。
 
@@ -1110,6 +1166,7 @@ def run(docx: str, pdf: str = None):
     leadok, lead_why = ch5_energy_leadin_ok(doc, _heading_style_ids(z))
     trendok, trend_why = ch5_trend_word_ok(doc, _heading_style_ids(z))
     feeok, fee_why = ch5_525_fee_ok(doc, _heading_style_ids(z))
+    symok, sym_why = ch5_std_symbol_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1170,6 +1227,8 @@ def run(docx: str, pdf: str = None):
         "ch5_trend_word": trendok,
         # 5.2 费用节五要素（引表句/定性句/逐年句/引图句）——P1，不阻断
         "ch5_525_fee": feeok,
+        # 5.3 各节符号与标准一致（Ejfgn/Ejd/Er/Ejngn；禁旧符号）——P1，不阻断
+        "ch5_std_symbol": symok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1238,6 +1297,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_trend_word"] = trend_why
     if not feeok:
         details["ch5_525_fee"] = fee_why
+    if not symok:
+        details["ch5_std_symbol"] = sym_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
