@@ -559,7 +559,9 @@ TREND_CLASSES = {
     "noswing": ("波动不大", "变化不大"),
     "stable": ("基本稳定", "基本持平", "保持稳定"),
 }
-RATE_RE = re.compile(r"(增长|上升|降低|下降|升|降)幅?为\s*([\d.]+)\s*%")
+# 逐年率写法实测有多种："增长率为2.7%" / "降幅为7.5%" / "增幅19.71%" / "降低率5.72%"
+RATE_RE = re.compile(r"(增长|增加|上升|升|降低|减少|下降|降)(?:率|幅)?为?\s*([\d.]+)\s*%")
+_UP_WORDS = ("增长", "增加", "上升", "升")
 
 
 def _trend_expected(rates):
@@ -590,29 +592,33 @@ def ch5_trend_word_ok(doc_xml: str, heading_ids=None):
     if not region:
         return False, "未定位到 第5章 区间"
     # 按 H3 切段
-    subs, cur = {}, None
+    subs, heads, cur = {}, {}, None
     for b in region:
         if not b.startswith("<w:p"):
             continue
         t = norm(_ptext(b))
-        if heading_ids is not None and _pstyle(b) not in heading_ids:
-            continue
-        m = re.match(r"^(5\.2\.\d+)", t)
+        is_head = heading_ids is None or _pstyle(b) in heading_ids
+        # ⚠️ 只把"标题样式"的段落当作节起点，**正文段落必须照收**——否则逐节扫描会全部跳过、
+        #    断言变成静默通过（2026-10-16 实测踩过）
+        m = re.match(r"^(5\.2\.\d+)", t) if is_head else None
         if m:
             cur = m.group(1)
             subs[cur] = []
+            heads[cur] = t
             continue
         if cur:
             subs[cur].append(_ptext(b))
     bad = []
     for sec, paras in subs.items():
+        if not paras or "费用" in heads.get(sec, ""):
+            continue                      # 费用节（5.2.5）另有三层口径，本断言不查
         cap = next((i for i, p in enumerate(paras) if re.match(r"^\s*图5\.\d", p.strip())), None)
         if cap is None or cap + 1 >= len(paras):
             continue
         p2 = paras[cap + 1]
         rates = []
         for mm in RATE_RE.finditer(p2):
-            sign = 1 if mm.group(1) in ("增长", "上升", "升") else -1
+            sign = 1 if mm.group(1) in _UP_WORDS else -1
             rates.append(sign * float(mm.group(2)))
         if not rates:
             continue
