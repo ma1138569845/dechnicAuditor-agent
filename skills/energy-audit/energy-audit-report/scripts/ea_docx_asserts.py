@@ -46,6 +46,8 @@
     ch5_t51           表5.1 形态：① 首列斜线表头（w:tl2br + 两段文本）② 列序 电费/水费/
                        供暖费/油费/燃气费 ③ 数值整数不带小数位
                        （2026-10-16 新增，对齐莘县/淄博样板；P1 只告警不阻断）
+    ch5_energy_leadin 5.2 各能源节段1：引语统一为「根据所提供能耗账单及缴费发票统计分析」，
+                       数值与单位之间空一格（2026-10-16 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -68,7 +70,7 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
-                  "num_style", "ch5_t51"}
+                  "num_style", "ch5_t51", "ch5_energy_leadin"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -545,6 +547,39 @@ NUM_STYLE_BANS = (
 )
 
 
+def ch5_energy_leadin_ok(doc_xml: str, heading_ids=None):
+    """5.2 各能源节段1 的引语与单位空格（2026-10-16 新增，P1 只告警）。
+
+    背景：段1 的"逐年数值一句"由写作层写，引语各节不统一——实测岚山 5.2.1 写
+    「根据能耗账单及缴费发票统计分析」、5.2.3 写「根据统计数据」，同一章两种说法。
+    统一口径（rules.md《3b》与 chapter5-spec 段① 模板）：
+      · 引语一律「根据所提供能耗账单及缴费发票统计分析，」；
+      · 数值与单位之间空一格（`57207 m³`，不写 `57207m³`）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    bad_quote, bad_space = [], []
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        if re.match(r"^5\.2\.\d", t) or not t:
+            continue
+        if "全年用" in t or "年全年用" in t:                 # 段1 的数值句
+            if "根据所提供能耗账单及缴费发票统计分析" not in t:
+                bad_quote.append(t[:40])
+            for m in re.finditer(r"\d\s*(?:kWh|m³|GJ|kg|t)\b", t):
+                if " " not in m.group(0):
+                    bad_space.append(m.group(0))
+    if bad_quote:
+        return False, ("段1 引语未统一（应为「根据所提供能耗账单及缴费发票统计分析」）："
+                       + "；".join(bad_quote[:2]))
+    if bad_space:
+        return False, f"数值与单位之间缺空格：{'、'.join(sorted(set(bad_space))[:3])}"
+    return True, ""
+
+
 def ch5_t51_ok(doc_xml: str):
     """表5.1 形态（2026-10-16 新增，P1 只告警）。
 
@@ -897,6 +932,7 @@ def run(docx: str, pdf: str = None):
     c52w_ok, c52w_why = ch5_52_water_ok(doc, _heading_style_ids(z))
     numok, num_why = num_style_ok(doc)
     t51ok, t51_why = ch5_t51_ok(doc)
+    leadok, lead_why = ch5_energy_leadin_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -951,6 +987,8 @@ def run(docx: str, pdf: str = None):
         "num_style": numok,
         # 表5.1 形态（斜线表头 + 列序 + 数值口径）——P1，不阻断
         "ch5_t51": t51ok,
+        # 5.2 各能源节段1 引语与单位空格——P1，不阻断
+        "ch5_energy_leadin": leadok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1013,6 +1051,8 @@ def run(docx: str, pdf: str = None):
         details["num_style"] = num_why
     if not t51ok:
         details["ch5_t51"] = t51_why
+    if not leadok:
+        details["ch5_energy_leadin"] = lead_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

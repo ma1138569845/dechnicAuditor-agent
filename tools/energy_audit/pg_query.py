@@ -653,6 +653,18 @@ class PgDataQuery:
         if 'is_metering' in record:
             metering = PgDataQuery._flag_cn(record.get('is_metering'))
 
+        # 燃气用途判据（2026-10-16 接入，供 5.2.3 用气节段1 设备描述判定）：
+        #   has_gas_use     特殊设备表（厨房/食堂）是否使用燃气（1/0；实测岚山无厨房行）
+        #   year_gas_value  蒸汽表：该设备年耗气量（m³）
+        #   gas_value / fuel_value  冷热源表：耗气量 / 耗油量（直燃机、燃油锅炉）
+        # 口径（用户 2026-10-16 定）：**设备存在即写进用气节**，耗气量只用于判断当年度是否运行
+        # ——不做"耗气量>0"的并列必要条件，否则"有设备没耗气"（停用/闲置/未分项计量）这类
+        # 审计发现点会被抹掉。空值语义：None=未登记，0=明确为 0（两者必须分开）。
+        gas_use = {}
+        for gk in ('has_gas_use', 'year_gas_value', 'gas_value', 'fuel_value'):
+            if gk in record:
+                gas_use[gk] = record.get(gk)
+
         # 图片列（各设备分表命名不一：device_img/system_img/fan_img/tower_img/
         # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）
         img_ids = []
@@ -681,6 +693,8 @@ class PgDataQuery:
             if record.get('metering_ratio') else '',
             'independent_metering_time': str(record['metering_time']).strip()
             if record.get('metering_time') else '',
+            # 燃气用途判据（只有对应表有该列时才出现，未登记列不落键）
+            **gas_use,
         }
 
     def get_formatted_equipment(self, customer_id: int = None, category: str = None) -> List[Dict]:

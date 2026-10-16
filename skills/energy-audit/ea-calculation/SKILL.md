@@ -84,6 +84,9 @@ python <skill>/scripts/verify_benchmark_sources.py <项目名>
 # （用水节若来自旧骨架 md，加 `--rebuild` 整节重建；判定表见 chapter5-templates.md）
 python <skill>/scripts/ch5_monthly_attribution.py <项目名> [--apply]
 python <skill>/scripts/ch5_water_attribution.py <项目名> [--apply] [--rebuild]
+# 5.2.3 用气节段1 设备描述（台账判定：厨房 has_gas_use／流向树 + 燃气锅炉·机组；
+# 顺带统一引语与数值-单位空格）
+python <skill>/scripts/ch5_gas_attribution.py <项目名> [--apply]
 ```
 
 `prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。

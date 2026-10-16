@@ -293,6 +293,14 @@ class Equipment:
     #   2026-09-28 接入：**0=明确登记定频（机会成立）、空=未登记（不得断言）**，两者必须分开。
     control_mode: str = ""             # 调节方式 — adjust_type（如"人工调节"）或 is_adjust 折算
     #   来源同上；支撑第7章 7.1 C 类「控制方式落后」。
+    # 燃气用途判据（2026-10-16 接入，5.2.3 用气节段1 设备描述的唯一依据）：
+    #   has_gas_use     特殊设备表（厨房/食堂）是否使用燃气：1 有 / 0 无 / None 未登记
+    #   year_gas_value  蒸汽表：该设备年耗气量 m³      gas_value / fuel_value  冷热源表：耗气/耗油
+    # 口径：**设备存在即写**，耗气量只用于判断当年度是否运行（None=未登记 与 0=明确为 0 必须分开）
+    has_gas_use: Optional[int] = None
+    year_gas_value: Optional[float] = None
+    gas_value: Optional[float] = None
+    fuel_value: Optional[float] = None
 
 
 @dataclass
