@@ -51,6 +51,9 @@
     ch5_trend_word    5.2 各节段2：趋势词须与"最大年变化率"四档口径一致
                        （方向优先；≤5% 基本稳定／≤10% 波动不大／≤15% 出现一定波动／>15% 波动较大）
                        （2026-10-16 新增；P1 只告警不阻断）
+    ch5_525_fee       5.2 费用节五要素：引表句+引语统一／整体定性句（四档词）／逐年句带增减率且
+                       条数 ≥ 表5.1 年数−1／段末引图句且图号对得上饼图图注
+                       （2026-10-16 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -73,7 +76,8 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
-                  "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word"}
+                  "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
+                  "ch5_525_fee"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -543,6 +547,13 @@ NUM_STYLE_BANS = (
      "写成「{年}{月}用水量/用电量为{值}，较…高出{X}%」，数值与百分比都进正文"),
     ("设备名后括号台数/参数", re.compile(r"（[^）]{0,30}\d+\s*(?:台|套|个|组)[^）]{0,30}）"),
      "改写成分句：「…其中{设备}N台，供{区域}使用，运行时间为…」"),
+    # ★2026-10-16 补盲区：正文括号里塞统计数值（金额/占比/用量）也属违规——《3b》规定
+    # 正文括号只允许三类（单位 / 标准编号 / 图注「（单位：…）」）。实测漏网形态：
+    # 「其中电费占比最高（2024年377.05万元，占71.1%）」。排除标准号与「（单位：…）」。
+    ("括号承载统计数值", re.compile(
+        r"（(?![^）]*（单位：)(?![^）]*(?:DB|GB|JGJ|CJJ)[/T])"
+        r"[^）]{0,40}?\d+(?:\.\d+)?\s*(?:%|万元|元|kWh|m³|GJ)[^）]{0,40}?）"),
+     "把括号拆成正文分句：「…其中电费占比最高，2024年电费为X万元，占当年总额的Y%」"),
     ("整数带无意义小数位", re.compile(r"(?<![\d.])\d{2,}\.0+(?![\d])"),
      "整数不带小数位（17622 不写 17622.00；5090273 不写 5090273.00）"),
     ("千分位分隔符", re.compile(r"\d{1,3}(?:,\d{3})+"),
@@ -578,6 +589,74 @@ def _trend_expected(rates):
     if m <= 15:
         return "small"
     return "big"
+
+
+FEE_TREND_WORDS = ("基本稳定", "波动不大", "出现一定波动", "波动较大",
+                   "整体呈逐年上升趋势", "整体呈逐年下降趋势")
+
+
+def ch5_525_fee_ok(doc_xml: str, heading_ids=None):
+    """5.2 费用节（能源资源费用分析）五要素（2026-10-16 新增，P1 只告警）。
+
+    背景：费用节此前是**唯一无断言覆盖**的小节——实测岚山成品缺"整体定性句"、逐年句少一年
+    且无增减率、段末没有引图句（三张饼图正文一次都没引用），却能一路绿灯交付。
+    本检查按 `chapter5-spec.md`《费用结论段（固定句式）》的五要素逐条核：
+      ① 引表句：「…能源费用主要包括…各项能源费用统计见表5.1」，且引语统一；
+      ② 整体定性句：含四档词之一（与段2 同一套）；
+      ③ 逐年句：`…能源费用较YYYY年…率为X%`，且**条数 ≥ 表5.1 年数 − 1**；
+      ④ 段末引图句：`…能源费用占比如图5.X所示`，且该图号在小节内有对应图注；
+      ⑤ 括号承载统计数值 → 由 `num_style` 管（见 NUM_STYLE_BANS）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    # 收集 5.2.5 小节（标题含"费用"）的正文段 + 表5.1 数据行数
+    paras, rows_minus_header, cur = [], None, False
+    for i, b in enumerate(region):
+        if b.startswith("<w:p"):
+            t = norm(_ptext(b))
+            is_head = heading_ids is None or _pstyle(b) in heading_ids
+            if is_head and re.match(r"^5\.2\.\d", t):
+                cur = bool(re.match(r"^5\.2\.\d", t)) and "费用" in t
+                continue
+            if cur and t:
+                paras.append(_ptext(b))
+        elif b.startswith("<w:tbl") and cur:
+            tr = re.findall(r"<w:tr[ >].*?</w:tr>", b, flags=re.S)
+            if tr and re.search(r"电费", tr[0]):
+                rows_minus_header = len(tr) - 1
+    if not paras:
+        return True, ""                      # 无费用节（费用全空项目）→ 不检查
+    text = "".join(paras)
+    miss = []
+    # ① 引表句 + 引语统一
+    if "能源费用主要包括" not in text or not re.search(r"各项能源费用统计见表5\.\d", text):
+        miss.append("缺引表句（应为「…能源费用主要包括…，X1年-X3年各项能源费用统计见表5.1」）")
+    if "根据所提供能耗账单及缴费发票统计分析" not in text:
+        miss.append("引语未统一（应为「根据所提供能耗账单及缴费发票统计分析」）")
+    # ② 整体定性句
+    if not any(w in text for w in FEE_TREND_WORDS):
+        miss.append("缺整体定性句（四档词之一：" + "/".join(FEE_TREND_WORDS[:4]) + "）")
+    # ③ 逐年句条数 + 带增减率
+    yearly = re.findall(r"能源费用较\d{4}年[^。；]{0,40}", text)
+    if not yearly:
+        miss.append("缺逐年句（「…能源费用较{上年}年增加/下降X万元，增减率为X%」）")
+    else:
+        no_rate = [s for s in yearly if not re.search(r"率为[\d.]+%", s)]
+        if no_rate:
+            miss.append(f"逐年句缺增减率：{no_rate[0][:24]}…")
+        if rows_minus_header and len(yearly) < rows_minus_header:
+            miss.append(f"逐年句少写：表5.1 有 {rows_minus_header} 个年度，应写 {rows_minus_header - 1} 句，"
+                        f"实际 {len(yearly)} 句")
+    # ④ 引图句 + 图号对得上
+    m_fig = re.search(r"能源费用占比如图5\.(\d+)所示", text)
+    if not m_fig:
+        miss.append("缺段末引图句（「…{最新年}年能源费用占比如图5.X所示」）")
+    elif not re.search(r"图5\.%s\b" % m_fig.group(1), doc_xml):
+        miss.append(f"引图句指到 图5.{m_fig.group(1)}，但报告里没有该图注（饼图与引用对不上）")
+    if miss:
+        return False, "；".join(miss[:4])
+    return True, ""
 
 
 def ch5_trend_word_ok(doc_xml: str, heading_ids=None):
@@ -1027,6 +1106,7 @@ def run(docx: str, pdf: str = None):
     t51ok, t51_why = ch5_t51_ok(doc)
     leadok, lead_why = ch5_energy_leadin_ok(doc, _heading_style_ids(z))
     trendok, trend_why = ch5_trend_word_ok(doc, _heading_style_ids(z))
+    feeok, fee_why = ch5_525_fee_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1085,6 +1165,8 @@ def run(docx: str, pdf: str = None):
         "ch5_energy_leadin": leadok,
         # 5.2 各能源节段2 趋势词与最大年变化率一致——P1，不阻断
         "ch5_trend_word": trendok,
+        # 5.2 费用节五要素（引表句/定性句/逐年句/引图句）——P1，不阻断
+        "ch5_525_fee": feeok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1151,6 +1233,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_energy_leadin"] = lead_why
     if not trendok:
         details["ch5_trend_word"] = trend_why
+    if not feeok:
+        details["ch5_525_fee"] = fee_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
