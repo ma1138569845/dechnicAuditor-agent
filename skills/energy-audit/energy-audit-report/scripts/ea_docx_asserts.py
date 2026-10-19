@@ -66,6 +66,8 @@
     ch5_53_removal    5.3 剔除项：① 表5.2/表5.3 的「建筑面积」行须逐年同源（分母同一份值）
                        ② 表格内不得出现「剔除/扣除/扣减」行（只进后台计算，不进表格）
                        （2026-10-19 新增；P1 只告警不阻断）
+    ch5_533_people    5.3.3 用能人数说明：医疗项目须有标准定义句 + 「平均用能人数」结果句，
+                       禁四要素括号明细（明细归 2.1）（2026-10-19 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -94,7 +96,7 @@ P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_ph
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
                   "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note",
-                  "ch5_53_removal"}
+                  "ch5_53_removal", "ch5_533_people"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -698,6 +700,46 @@ def ch5_53_removal_ok(doc_xml: str, heading_ids=None):
                    % ("/".join(a1), "/".join(a2)))
     if bad:
         return False, "；".join(bad[:4])
+    return True, ""
+
+
+def ch5_533_people_ok(doc_xml: str, heading_ids=None):
+    """5.3.3 用能人数说明段（2026-10-19 新增，P1 只告警）。
+
+    口径（用户 2026-10-19 定，按定额标准句式）：
+      ① 医疗项目须有「医疗机构用能人数包括在岗在编的人员、各类编外工作人员、门诊人数、床位数」定义句；
+      ② 结果句须写「平均用能人数」（`clinic_num`＝日均门诊人次）；
+      ③ 禁止四要素括号明细（"（在岗职工…、床位…张）"量纲混用，明细归 2.1）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    paras, cur = [], None
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        is_head = heading_ids is None or _pstyle(b) in heading_ids
+        m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+        if m:
+            cur = m.group(1)
+            continue
+        if cur == "5.3.3":
+            paras.append(t)
+    if not paras:
+        return True, ""                      # 无 5.3.3（不生成人均指标）→ 不检查
+    text = "".join(paras)
+    if "医疗机构" not in text:
+        return True, ""                      # 非医疗项目 → 不检查
+    bad = []
+    if "用能人数包括" not in text:
+        bad.append("5.3.3 缺用能人数构成定义句（「医疗机构用能人数包括…」）")
+    if "平均用能人数" not in text:
+        bad.append("5.3.3 未写「平均用能人数」（clinic_num 为日均门诊人次）")
+    if re.search(r"[（(]\s*在岗", text):
+        bad.append("5.3.3 出现四要素括号明细（量纲混用，明细归 2.1）")
+    if bad:
+        return False, "；".join(bad)
     return True, ""
 
 
@@ -1330,6 +1372,7 @@ def run(docx: str, pdf: str = None):
     conclok, concl_why = ch5_53_conclusion_ok(doc, _heading_style_ids(z))
     n532ok, n532_why = ch5_532_note_ok(doc, _heading_style_ids(z))
     remok, rem_why = ch5_53_removal_ok(doc, _heading_style_ids(z))
+    pplok, ppl_why = ch5_533_people_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1398,6 +1441,8 @@ def run(docx: str, pdf: str = None):
         "ch5_532_note": n532ok,
         # 5.3 剔除项（两表面积同源 + 表格不出现扣减行）——P1，不阻断
         "ch5_53_removal": remok,
+        # 5.3.3 用能人数说明（标准句 + 平均用能人数 + 禁四要素括号）——P1，不阻断
+        "ch5_533_people": pplok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1474,6 +1519,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_532_note"] = n532_why
     if not remok:
         details["ch5_53_removal"] = rem_why
+    if not pplok:
+        details["ch5_533_people"] = ppl_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
