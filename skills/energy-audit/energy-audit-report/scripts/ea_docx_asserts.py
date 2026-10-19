@@ -78,7 +78,11 @@ import zipfile
 from lxml import etree
 
 MARKERS = ["写作参考", "数据参考", "逐月参考", "[FORMULA"]
-FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
+# 公式压平检测（2026-10-19 同步标准符号）：新符号 + 旧符号都留，两代写法被压平都能抓到。
+# 背景：公式对象一旦被压平成纯文本，会变成 "Ejfgn=E−Egn−EjtM" 这类字符串（分式结构丢失）；
+# 只按旧符号（Ejrcn/Eja/Egnm）检索时，改名后的公式压平将**静默通过**。
+FLAT_FORMULAS = ["Ejfgn=E", "Ejd=ED", "Er=EP", "Vuc=Vk", "Ejngn=Egn",
+                 "Ejrcn=E", "Eja=ED", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",

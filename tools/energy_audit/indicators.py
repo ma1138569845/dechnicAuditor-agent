@@ -861,7 +861,7 @@ class YearlyEnergyData:
     def non_heating_energy_kgce(self) -> float:
         """非供暖能耗 kgce（等效电系数 0.31，仅计算电耗）——【旧口径，已废弃于指标计算】
 
-        2026-09-05 口径统一：单位面积非供暖能耗公式 Ejrcn=(E−Egn−Ejt)/M 为全口径
+        2026-09-05 口径统一：单位面积非供暖能耗公式 Ejfgn=(E−Egn−Ejt)/M 为全口径
         （综合−供暖−交通），指标计算改用 non_heating_energy_tce；本属性仅作
         历史兼容保留，禁止再用于指标计算。
         """
@@ -909,7 +909,7 @@ def calc_unit_area_non_heating_energy(
     """
     单位建筑面积非供暖能耗
 
-    公式: Ejrcn = (E - Egn - Ejt) / M
+    公式: Ejfgn = (E - Egn - Ejt) / M   （符号按 DB37/T 2673-2019 §6.2；旧 Ejrcn 已废止 2026-10-16）
     式中:
       E    = 综合能耗 (kgce/a)
       Egn  = 供暖能耗 (kgce/a)
@@ -937,7 +937,7 @@ def calc_unit_area_non_heating_energy(
         'total_energy_tce': data.total_energy_tce,
         'heating_energy_tce': data.heating_energy_tce,
         'transportation_energy_tce': data.transportation_energy_tce,
-        'formula': 'Ejrcn = (E - Egn - Ejt) / M',
+        'formula': 'Ejfgn = (E - Egn - Ejt) / M',
     }
 
 
@@ -972,7 +972,7 @@ def calc_unit_area_electricity(
     """
     常规用能系统单位建筑面积电耗（定额取内置默认）
 
-    公式: Eja = (E_total_elec - E_heating_elec) / M
+    公式: Ejd = E_D / M   （E_D＝电量总和；符号按 DB37/T 2673-2019 §6.5；旧 Eja 已废止 2026-10-16）
     式中:
       E_total_elec  = 年总用电量 (kWh)
       E_heating_elec = 供暖用电量 (kWh)

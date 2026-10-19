@@ -544,7 +544,7 @@ _SUBSCRIPT_RE = re.compile(r"_\{([^{}]*)\}")
 def _runs_with_subscript(p, text, size, bold, color=None):
     """段内 `_{...}` → Word 下标（2026-10-09 新增，供 5.3 指标符号段用）。
 
-    例：`E_{jrcn}——单位建筑面积非供暖能耗，kgce/（m²·a）；` → E 正体 + jrcn 下标 + 破折号文本。
+    例：`E_{jfgn}——单位建筑面积非供暖能耗，kgce/（m²·a）；` → E 正体 + jfgn 下标 + 破折号文本。
     只认带花括号的形式（`_{…}`），避免误伤正文里普通的英文下划线（如 chapter_md）。
     """
     pos = 0

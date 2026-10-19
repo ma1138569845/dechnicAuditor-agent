@@ -302,7 +302,7 @@ pPr.append(outlineLvl)
 4. **正文修复**：正文自然段 `doc_modify_paragraph`（`alignment`=两端对齐、`line_spacing_rule`+`line_spacing`=1.5 倍）
 5. **首行缩进**：仍走 officecli 批处理（`docx-techniques.md`，firstLineChars=200），不在此链内
 
-**⚠️ 公式段禁区（2026-09-16 实测）**：修复链的批量文字属性操作（`doc_update_text_property`）**必须跳过含数学公式的段落**——对含 `<m:oMath>` 的段落做文字属性/格式批处理，save 落盘时公式会被压平为纯文本（分式结构丢失：`E_jrcn=(E−Egn−Ejt)/M` → 纯文本「Ejrcn=E−Egn−EjtM」）。恢复方式：从同版式参考 docx 移植原生 `<m:oMath>` 元素（python-docx 手术式替换，禁止手写 OMML），或对该段重插 `doc_insert_math`；修复后不得再让任何文字属性操作覆盖该段。正文分段分类时请显式排除公式段。
+**⚠️ 公式段禁区（2026-09-16 实测）**：修复链的批量文字属性操作（`doc_update_text_property`）**必须跳过含数学公式的段落**——对含 `<m:oMath>` 的段落做文字属性/格式批处理，save 落盘时公式会被压平为纯文本（分式结构丢失：`E_jfgn=(E−Egn−Ejt)/M` → 纯文本「Ejfgn=E−Egn−EjtM」）。恢复方式：从同版式参考 docx 移植原生 `<m:oMath>` 元素（python-docx 手术式替换，禁止手写 OMML），或对该段重插 `doc_insert_math`；修复后不得再让任何文字属性操作覆盖该段。正文分段分类时请显式排除公式段。
 
 #### 11.3 验收
 

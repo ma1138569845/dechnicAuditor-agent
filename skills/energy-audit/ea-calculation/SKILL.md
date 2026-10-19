@@ -122,7 +122,7 @@ proj = load_project(unit_name)
 
 | # | 指标 | 函数 | 说明 |
 |---|------|------|------|
-| 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | Ejrcn=(综合−供暖−交通)/面积，全口径 |
+| 1 | 单位建筑面积非供暖能耗 | `calc_unit_area_non_heating_energy()` | **Ejfgn**=(综合−供暖−交通)/面积，全口径 |
 | 2 | 常规用能系统单位建筑面积电耗 | `calc_unit_area_electricity()` | (总电−供暖电)/面积 |
 | 3 | 人均综合能耗 | `calc_per_capita_energy()` | 用能人数（**采集侧已按口径落 `base.people_count`**）= 在岗 + 编外 + 门诊人数 + 床位数，仅医疗机构求和；四要素字段名 `base.work_staff/logistics_staff/clinic_num/beds_count`。严格式（含床位占用比例、年门诊/365）见 `standards-values.md`《医院用能人数计算规则》 |
 | 4 | 取水指标（医院=单位开放床日用水量 / 机关教育**政务**=人均取水量 / 场馆=单位建筑面积年取水量） | `calc_water_indicator(data, institution_type, bed_count, building_area, sub_type)` | 按机构类型分派口径；旧名 calc_per_capita_water 已弃用；医院缺 bed_count 返回 error 占位（不降级人均）；场馆图书馆/博物馆按 4452 面积定额对标；**政务服务中心自 2026-09-29 改走机关人均口径**（4452 表2"机关"行，通用 25 / 先进 10 m³/(人·a)）→ 见 `standards-values.md` 同名条目与决策 7 |
@@ -133,8 +133,8 @@ proj = load_project(unit_name)
 ### 关键公式
 
 ```
-非供暖能耗:  Ejrcn = (E − Egn − Ejt) / M                  kgce/(m²·a)（E综合、Egn供暖、Ejt交通）
-常规电耗:    Eja   = (总电 − 供暖电) / 面积             kWh/(m²·a)
+ 非供暖能耗:  Ejfgn = (E − Egn − Ejt) / M                  kgce/(m²·a)（E综合、Egn供暖、Ejt交通）
+ 常规电耗:    Ejd    = E_D / M                             kWh/(m²·a)（E_D＝电量总和；供暖电耗有登记才扣，无登记按 0）
 人均能耗:    Er    = 综合能耗 × 1000 / 用能人数          kgce/(人·a)
 取水指标（DB37/T 4452-2021，按机构类型）:
   机关:      Vuc   = 年机关取水量 / 机关人数              m³/(人·a)（式7）
