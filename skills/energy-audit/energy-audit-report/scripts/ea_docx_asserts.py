@@ -60,6 +60,9 @@
     ch5_53_conclusion 5.3 各指标表后结论段＝纯事实句：须含「分别为…」数值句、禁判词与建议
                        （节能空间/须整改/成效/压力/幅度约…）、跨档不得用「均」
                        （2026-10-19 新增，形态基准＝莘县样板；P1 只告警不阻断）
+    ch5_532_note      5.3.2 标准注：医疗项目须有 DB37/T 2673-2019 §3.7 的注（含照明插座/空调/
+                       电梯/水泵/通风机，不含特殊用能系统用电），且位置在「式中」之后；
+                       党政/教育/政务标准无此注，不检查（2026-10-19 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -87,7 +90,7 @@ FLAT_FORMULAS = ["Ejfgn=E", "Ejd=ED", "Er=EP", "Vuc=Vk", "Ejngn=Egn",
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
-                  "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion"}
+                  "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -607,6 +610,45 @@ FEE_TREND_WORDS = ("基本稳定", "波动不大", "出现一定波动", "波动
 
 # 5.3 结论段禁词（2026-10-19 用户定：纯事实句，判词与建议归第7章）
 CONCL_BANNED = ("节能空间", "须重点说明", "整改", "成效", "压力", "潜力", "幅度约", "短板", "差距", "建议")
+
+
+def ch5_532_note_ok(doc_xml: str, heading_ids=None):
+    """5.3.2 标准注（2026-10-19 新增，P1 只告警）。
+
+    口径：DB37/T 2673-2019 §3.7 有注——「注：医疗机构常规用能系统电耗包括照明插座用电、
+    空调用电、电梯用电、水泵用电、通风机用电等。不包括特殊用能系统中的用电。」
+    党政 2672 / 教育 2671 / 政务 3781 的同类条款**无注**，故只在医疗项目检查。
+    位置：必须在「式中」之后（写作层易把它贴到节首）。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    subs, cur = {}, None
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        t = norm(_ptext(b))
+        is_head = heading_ids is None or _pstyle(b) in heading_ids
+        m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+        if m:
+            cur = m.group(1)
+            subs[cur] = []
+            continue
+        if cur:
+            subs[cur].append(_ptext(b))
+    paras = subs.get("5.3.2") or []
+    if not paras:
+        return True, ""                      # 无 5.3.2（项目无电耗指标）→ 不检查
+    text = "".join(paras)
+    if "医疗机构常规用能系统" not in text:
+        return True, ""                      # 非医疗项目（2672/2671/3781 无此注）→ 不检查
+    key = "注：医疗机构常规用能系统电耗包括照明插座用电"
+    if key not in text:
+        return False, "5.3.2 缺标准注（DB37/T 2673-2019 §3.7：说明含哪些用电、不含特殊用能系统用电）"
+    i_note, i_sz = text.find(key), text.find("式中")
+    if i_sz >= 0 and i_note < i_sz:
+        return False, "5.3.2 标准注位置错（应在「式中」之后、引表句之前）"
+    return True, ""
 
 
 def ch5_53_conclusion_ok(doc_xml: str, heading_ids=None):
@@ -1236,6 +1278,7 @@ def run(docx: str, pdf: str = None):
     feeok, fee_why = ch5_525_fee_ok(doc, _heading_style_ids(z))
     symok, sym_why = ch5_std_symbol_ok(doc, _heading_style_ids(z))
     conclok, concl_why = ch5_53_conclusion_ok(doc, _heading_style_ids(z))
+    n532ok, n532_why = ch5_532_note_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1300,6 +1343,8 @@ def run(docx: str, pdf: str = None):
         "ch5_std_symbol": symok,
         # 5.3 各指标表后结论段＝纯事实句（禁判词/建议；跨档不得用「均」）——P1，不阻断
         "ch5_53_conclusion": conclok,
+        # 5.3.2 标准注（仅医疗；位置须在「式中」之后）——P1，不阻断
+        "ch5_532_note": n532ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1372,6 +1417,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_std_symbol"] = sym_why
     if not conclok:
         details["ch5_53_conclusion"] = concl_why
+    if not n532ok:
+        details["ch5_532_note"] = n532_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
