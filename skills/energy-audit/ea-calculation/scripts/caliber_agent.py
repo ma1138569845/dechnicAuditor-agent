@@ -104,6 +104,9 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
     # 地下车库面积：建筑表 garage_area 聚合（D8：5.3.1/5.3.2 分母 = 建筑面积 − 车库面积）
     garage_area = sum(float(getattr(b, 'garage_area', 0) or 0)
                       for b in getattr(proj, 'buildings', []) or [])
+    # 特殊设备（独立计量 + 有当年电量）→ {年: {'kwh','area'}}（2026-10-19，与 chapter5_agent 同口径）
+    from tools.energy_audit.indicators import special_energy_map
+    special_map = special_energy_map(getattr(proj, 'equipment', []) or [])
     data_list = []
     for ey in proj.energy_yearly:
         year = getattr(ey, 'year', 0)
@@ -128,6 +131,11 @@ def extract_yearly_data(proj: AuditProject) -> List[YearlyEnergyData]:
             petrol_cost_wan=float(getattr(ey, 'petrol_cost_wan', 0) or 0),
             # D8 地下车库面积（分母剔除；缺失=0）
             garage_area=garage_area,
+            # 5.3 剔除项（2026-10-19，与 chapter5_agent 同口径）
+            transportation_electricity_kwh=float(getattr(ey, 'transport_electricity_kwh', 0) or 0),
+            construction_electricity_kwh=float(getattr(ey, 'construction_electricity_kwh', 0) or 0),
+            special_electricity_kwh=float((special_map.get(int(year)) or {}).get('kwh') or 0),
+            special_area_m2=float((special_map.get(int(year)) or {}).get('area') or 0),
         )
         data_list.append(d)
     return sorted(data_list, key=lambda x: x.year)

@@ -23,6 +23,7 @@ from tools.energy_audit.indicators import (
     calc_unit_area_non_heating_energy,
     calc_unit_area_electricity,
     calc_per_capita_energy,
+    special_energy_map,
     calc_water_indicator,
     calc_baseline,
     institution_category_to_type,
@@ -225,6 +226,14 @@ def _convert_to_yearly_energy_data(energy_data: dict, config: dict,
             'building_area': float(area),
             'people_count': float(people),
         }
+        # 5.3 剔除项（2026-10-19）：特殊设备（独立计量+有当年电量）、施工项目用电、交通电
+        _sp = (config.get('_special_map') or {}).get(int(y)) or {}
+        kwargs['special_electricity_kwh'] = float(_sp.get('kwh') or 0)
+        kwargs['special_area_m2'] = float(_sp.get('area') or 0)
+        kwargs['construction_electricity_kwh'] = float(
+            (config.get('_construction_map') or {}).get(int(y)) or 0)
+        kwargs['transportation_electricity_kwh'] = float(
+            (config.get('_transport_elec_map') or {}).get(int(y)) or 0)
         for code, info in y_data.items():
             std = _normalize_energy_code(code)
             val = float(info.get('total', 0) or 0)
@@ -456,6 +465,18 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     # 统一转换为 YearlyEnergyData 并计算指标
     institution_type = institution_category_to_type(config.get('institution_category', ''))
     bed_count = config.get('beds_count', 0) or 0
+    # 5.3 剔除项（2026-10-19）：特殊设备（独立计量+有当年电量）/ 施工项目用电 / 交通电
+    config['_special_map'] = special_energy_map(data.get('equipment') or [])
+    config['_construction_map'] = {
+        int(ey.get('year')): float(ey.get('construction_electricity_kwh') or 0)
+        for ey in (data.get('energy_yearly') or [])
+        if float(ey.get('construction_electricity_kwh') or 0) > 0
+    }
+    config['_transport_elec_map'] = {
+        int(ey.get('year')): float(ey.get('transport_electricity_kwh') or 0)
+        for ey in (data.get('energy_yearly') or [])
+        if float(ey.get('transport_electricity_kwh') or 0) > 0
+    }
     yd_list = _convert_to_yearly_energy_data(en, config, co)
 
     # 二级维度查询串（2026-09-20）：分档/等级·气候区/场馆类型·省市档；表2 用「·供暖类型」。

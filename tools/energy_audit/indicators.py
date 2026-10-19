@@ -31,6 +31,52 @@ from tools.energy_audit.project_data import is_valid_coefficient
 logger = logging.getLogger(__name__)
 
 
+def special_energy_map(equipment) -> Dict[int, Dict[str, float]]:
+    """特殊设备（独立计量且登记了当年电量）→ {年: {'kwh': 合计, 'area': 配套面积合计}}。
+
+    口径（2026-10-19 用户定，见 chapter5-spec.md《5.3 剔除项》）：
+      · 只认 `category == '特殊设备'` 且 `independent_metering == '有'`（平台 is_metering=1）；
+      · `year_electric_value` 为 `[{"time":"YYYY-..","value":kWh}]`，按 time 的年份归年；
+        time 为空 / value 为空 → 该格不计（视同未登记）；
+      · 面积取 `match_area`，**按类别各算一份并累加**（如数据中心 500 + 医疗设备 500 = 1000），
+        且只在该类有当年电量时才累加（面积随电量走）。
+
+    入参兼容 dict（data.json）与 dataclass（project_data.Equipment）。
+    """
+    def _g(obj, key, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    out: Dict[int, Dict[str, float]] = {}
+    for e in equipment or []:
+        if str(_g(e, 'category', '') or '').strip() != '特殊设备':
+            continue
+        if str(_g(e, 'independent_metering', '') or '').strip() != '有':
+            continue
+        vals = _g(e, 'year_electric_value') or []
+        if isinstance(vals, str):
+            try:
+                vals = json.loads(vals)
+            except Exception:  # noqa: BLE001
+                vals = []
+        area = float(_g(e, 'match_area', 0) or 0)
+        for it in (vals if isinstance(vals, list) else []):
+            if not isinstance(it, dict):
+                continue
+            tm, v = str(it.get('time') or ''), it.get('value')
+            if len(tm) < 4 or v in (None, ''):
+                continue
+            try:
+                year, kwh = int(tm[:4]), float(v)
+            except (TypeError, ValueError):
+                continue
+            slot = out.setdefault(year, {'kwh': 0.0, 'area': 0.0})
+            slot['kwh'] += kwh
+            slot['area'] += area
+    return out
+
+
 # ============================================================
 # 折标系数
 # ============================================================
@@ -823,6 +869,15 @@ class YearlyEnergyData:
     building_area: float = 0      # 建筑面积 m²
     garage_area: float = 0        # 地下车库面积 m²（D8：5.3.1/5.3.2 分母剔除）
     people_count: float = 0       # 用能人数
+    # 5.3 三个指标的剔除项（2026-10-19 接入，口径见 chapter5-spec.md《5.3 剔除项》）：
+    #   transportation_electricity_kwh —— 交通能耗中的电（dt=5 且能源=电；5.3.2 扣）
+    #   construction_electricity_kwh   —— 本年新建施工项目用电（5.3.1/5.3.2/5.3.3 均扣）
+    #   special_electricity_kwh        —— 特殊设备用电（独立计量且有当年电量；三个指标均扣）
+    #   special_area_m2                —— 特殊设备配套面积（**仅当该类扣得掉电量时**才进分母）
+    transportation_electricity_kwh: float = 0
+    construction_electricity_kwh: float = 0
+    special_electricity_kwh: float = 0
+    special_area_m2: float = 0
     # 费用
     electricity_cost_wan: float = 0
     water_cost_wan: float = 0
@@ -921,13 +976,21 @@ def calc_unit_area_non_heating_energy(
           heating_energy_tce, transportation_energy_tce, formula}；
     建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
-    area = data.building_area - float(getattr(data, 'garage_area', 0) or 0) - exclude_special_area
+    # ★2026-10-19 用户定：特殊设备面积**只在扣得掉该类电量时才扣**（面积随电量走）；
+    # 否则会出现"分子没减、分母变小"，指标反而被抬高。
+    _sp_kwh = float(getattr(data, 'special_electricity_kwh', 0) or 0)
+    _sp_area = float(getattr(data, 'special_area_m2', 0) or 0) if _sp_kwh > 0 else 0.0
+    area = (data.building_area - float(getattr(data, 'garage_area', 0) or 0)
+            - exclude_special_area - _sp_area)
     if area <= 0:
         return {'kgce_per_m2': 0, 'non_heating_kgce': 0, 'building_area_m2': 0,
                 'total_energy_tce': 0, 'heating_energy_tce': 0,
                 'transportation_energy_tce': 0, 'error': '建筑面积无效'}
 
-    non_heat_kgce = round(data.non_heating_energy_tce * 1000, 4)  # tce→kgce，全口径（2026-09-05）
+    # 扣特殊设备用电 + 本年新建施工项目用电（均为电，折标同电力系数）
+    _ded_kwh = _sp_kwh + float(getattr(data, 'construction_electricity_kwh', 0) or 0)
+    _ded_kgce = _ded_kwh * data.get_coefficient('electricity')
+    non_heat_kgce = round(data.non_heating_energy_tce * 1000 - _ded_kgce, 4)  # tce→kgce
     kgce_per_m2 = round(non_heat_kgce / area, 2)
 
     return {
@@ -985,12 +1048,23 @@ def calc_unit_area_electricity(
     返回 {kwh_per_m2, total_electricity_kwh, building_area_m2, benchmark}；
     建筑面积无效时返回同结构全 0 + error 字段，供上层安全降级。
     """
-    area = data.building_area - float(getattr(data, 'garage_area', 0) or 0) - exclude_special_area
+    # 分母：车库 + 特殊设备面积（仅当扣得掉该类电量时）
+    _sp_kwh = float(getattr(data, 'special_electricity_kwh', 0) or 0)
+    _sp_area = float(getattr(data, 'special_area_m2', 0) or 0) if _sp_kwh > 0 else 0.0
+    area = (data.building_area - float(getattr(data, 'garage_area', 0) or 0)
+            - exclude_special_area - _sp_area)
     if area <= 0:
         return {'kwh_per_m2': 0, 'total_electricity_kwh': 0, 'building_area_m2': 0,
                 'benchmark': None, 'error': '建筑面积无效'}
 
-    non_heat_elec = data.non_heating_electricity_kwh
+    # 分子：总电 − 供暖电耗 − 交通电 − 特殊设备电 − 施工项目电（2026-10-19 用户定）
+    non_heat_elec = (
+        data.electricity_kwh
+        - float(getattr(data, 'heating_energy_kwh', 0) or 0)
+        - float(getattr(data, 'transportation_electricity_kwh', 0) or 0)
+        - _sp_kwh
+        - float(getattr(data, 'construction_electricity_kwh', 0) or 0)
+    )
     kwh_per_m2 = round(non_heat_elec / area, 2)
 
     # 三级兜底对标
@@ -1092,6 +1166,11 @@ def calc_per_capita_energy(
         data.transportation_petrol_kg * data.get_coefficient('gasoline') +
         data.transportation_diesel_kg * data.get_coefficient('diesel')
     )
+    # ★2026-10-19 用户定：人均综合能耗只扣特殊设备用电 + 施工项目用电（电量折标），
+    # **不扣用能人数**（平台暂无"特殊设备对应用能人数"字段）。
+    _ded_kwh = (float(getattr(data, 'special_electricity_kwh', 0) or 0)
+                + float(getattr(data, 'construction_electricity_kwh', 0) or 0))
+    kgce_total = round(kgce_total - _ded_kwh * data.get_coefficient('electricity'), 4)
     per_person = round(kgce_total / data.people_count, 2)
 
     # 三级兜底对标
