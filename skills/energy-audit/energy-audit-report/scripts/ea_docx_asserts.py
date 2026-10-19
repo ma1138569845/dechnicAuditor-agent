@@ -57,6 +57,9 @@
     ch5_std_symbol    5.3 各节公式符号须与标准原文一致（Ejfgn／Ejd／Er／Ejngn，禁旧符号
                        Ejrcn／Eja／Egnm），式中措辞须写「单位为…」
                        （2026-10-16 新增；P1 只告警不阻断）
+    ch5_53_conclusion 5.3 各指标表后结论段＝纯事实句：须含「分别为…」数值句、禁判词与建议
+                       （节能空间/须整改/成效/压力/幅度约…）、跨档不得用「均」
+                       （2026-10-19 新增，形态基准＝莘县样板；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -80,7 +83,7 @@ FLAT_FORMULAS = ["Ejrcn=E", "Eja=ED", "Er=EP", "Vuc=Vk", "Egnm=Egn"]
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
-                  "ch5_525_fee", "ch5_std_symbol"}
+                  "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -596,6 +599,67 @@ def _trend_expected(rates):
 
 FEE_TREND_WORDS = ("基本稳定", "波动不大", "出现一定波动", "波动较大",
                    "整体呈逐年上升趋势", "整体呈逐年下降趋势")
+
+
+# 5.3 结论段禁词（2026-10-19 用户定：纯事实句，判词与建议归第7章）
+CONCL_BANNED = ("节能空间", "须重点说明", "整改", "成效", "压力", "潜力", "幅度约", "短板", "差距", "建议")
+
+
+def ch5_53_conclusion_ok(doc_xml: str, heading_ids=None):
+    """5.3 各指标表后结论段＝纯事实句（2026-10-19 新增，P1 只告警）。
+
+    口径（形态基准＝莘县样板四节，均为一句话）：
+      ① 表后必须有一句「…分别为v1、v2、v3…」的数值句；
+      ② 禁判词与建议（节能空间／须重点说明／整改／成效／压力／潜力／幅度约／短板／差距／建议）
+         —— 判词与整改建议归第7章，构成分析归第6章；
+      ③ 三年同档才可用「均」：表内「评价结果」行若逐年不同，结论段出现「均」即告警。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    bad = []
+    cur = None
+    for i, b in enumerate(region):
+        if b.startswith("<w:p"):
+            t = norm(_ptext(b))
+            is_head = heading_ids is None or _pstyle(b) in heading_ids
+            m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+            if m:
+                cur = m.group(1)
+            continue
+        if not b.startswith("<w:tbl") or not cur:
+            continue
+        # 表后第一段非空正文 = 结论段
+        concl = ""
+        for b2 in region[i + 1:]:
+            if not b2.startswith("<w:p"):
+                break
+            t2 = _ptext(b2).strip()
+            if t2:
+                concl = t2
+                break
+        if not concl:
+            bad.append(f"{cur} 表后缺结论段")
+            continue
+        if "分别为" not in concl:
+            bad.append(f"{cur} 结论段缺「分别为…」数值句")
+        hit = [w for w in CONCL_BANNED if w in concl]
+        if hit:
+            bad.append(f"{cur} 结论段出现判词「{hit[0]}」（纯事实句不得写判词/建议）")
+        # 「均」只在同档时允许
+        trs = re.findall(r"<w:tr[ >].*?</w:tr>", b, flags=re.S)
+        evals = None
+        for tr in trs:
+            cells = re.findall(r"<w:tc>.*?</w:tc>", tr, flags=re.S)
+            if cells and "评价结果" in norm(re.sub(r"<[^>]+>", "", cells[0])):
+                evals = [norm(re.sub(r"<[^>]+>", "", c)) for c in cells[1:]]
+                break
+        if evals and len(set(evals)) > 1 and "均" in concl and re.search(r"均(高于|低于)", concl):
+            bad.append(f"{cur} 评价结果逐年不同（{'/'.join(evals)}），结论段不得用「均」")
+        cur = None
+    if bad:
+        return False, "；".join(bad[:4]) + (f"（共 {len(bad)} 处）" if len(bad) > 4 else "")
+    return True, ""
 
 
 STD_SYMBOLS = {
@@ -1167,6 +1231,7 @@ def run(docx: str, pdf: str = None):
     trendok, trend_why = ch5_trend_word_ok(doc, _heading_style_ids(z))
     feeok, fee_why = ch5_525_fee_ok(doc, _heading_style_ids(z))
     symok, sym_why = ch5_std_symbol_ok(doc, _heading_style_ids(z))
+    conclok, concl_why = ch5_53_conclusion_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1229,6 +1294,8 @@ def run(docx: str, pdf: str = None):
         "ch5_525_fee": feeok,
         # 5.3 各节符号与标准一致（Ejfgn/Ejd/Er/Ejngn；禁旧符号）——P1，不阻断
         "ch5_std_symbol": symok,
+        # 5.3 各指标表后结论段＝纯事实句（禁判词/建议；跨档不得用「均」）——P1，不阻断
+        "ch5_53_conclusion": conclok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1299,6 +1366,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_525_fee"] = fee_why
     if not symok:
         details["ch5_std_symbol"] = sym_why
+    if not conclok:
+        details["ch5_53_conclusion"] = concl_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
