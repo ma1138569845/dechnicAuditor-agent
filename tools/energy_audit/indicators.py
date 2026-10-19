@@ -61,6 +61,7 @@ def special_energy_map(equipment) -> Dict[int, Dict[str, float]]:
             except Exception:  # noqa: BLE001
                 vals = []
         area = float(_g(e, 'match_area', 0) or 0)
+        per_year: Dict[int, float] = {}
         for it in (vals if isinstance(vals, list) else []):
             if not isinstance(it, dict):
                 continue
@@ -71,9 +72,13 @@ def special_energy_map(equipment) -> Dict[int, Dict[str, float]]:
                 year, kwh = int(tm[:4]), float(v)
             except (TypeError, ValueError):
                 continue
+            per_year[year] = per_year.get(year, 0.0) + kwh
+        # 面积按「设备类别 × 年份」各记一次：同一年有多条电量登记时不能重复累加面积
+        for year, kwh in per_year.items():
             slot = out.setdefault(year, {'kwh': 0.0, 'area': 0.0})
             slot['kwh'] += kwh
-            slot['area'] += area
+            if kwh > 0:
+                slot['area'] += area
     return out
 
 
