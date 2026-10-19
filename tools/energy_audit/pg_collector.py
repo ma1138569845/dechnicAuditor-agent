@@ -819,6 +819,11 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
                 yearly_map[year][field] = round(total * 1000, 2)
             elif dt == 5 and field == 'diesel_kg':
                 yearly_map[year][field] = round(total * 1000, 2)
+            elif dt == 5 and field == 'electricity_kwh':
+                # ★2026-10-19：交通能耗中的「电」（data_type=5 且能源=电）。
+                # 用户口径：5.3.2 常规用能系统单位建筑面积电耗须扣除这部分（如充电桩用电）。
+                # 实测全库暂无此类记录（交通只有汽油），字段建好、将来登记即生效。
+                yearly_map[year]['transport_electricity_kwh'] = total
 
     energy_yearly = []
     for year in sorted(yearly_map.keys()):
@@ -919,6 +924,22 @@ def _collect_from_pg_impl(pg: PgDataQuery, project_name: str) -> Dict[str, Any]:
             'heat_day': _int(scene.get('heat_day'), 0) or None,
         }
         result['found']['metering'] = metering
+        # ---- 4a. 本年新建施工项目用电（2026-10-19 接入；5.3 三个指标均需剔除）----
+        # 口径（用户定）：scene 按年多版本，has_construction=1 时取 construction_elec_qty；
+        # 某年未登记 → 该年 0。落盘到 energy_yearly[].construction_electricity_kwh。
+        _cons_map: Dict[int, float] = {}
+        for _s in (scenes or []):
+            _y = _int(_s.get('year'))
+            if not _y or _int(_s.get('has_construction')) != 1:
+                continue
+            _q = _num(_s.get('construction_elec_qty'), None)
+            if _q is not None:
+                _cons_map[_y] = float(_q)
+        for _yd in (result['found'].get('energy_yearly') or []):
+            _yd['construction_electricity_kwh'] = _cons_map.get(_int(_yd.get('year')), 0.0)
+        if _cons_map:
+            print("[datacollection v2] 本年新建施工项目用电（按年）：%s"
+                  % "、".join(f"{y}:{v:g}kWh" for y, v in sorted(_cons_map.items())))
         # 用能人数分项（2026-09-22 新增）：平台已把「用能人数」的口径要素拆成列——
         #   在岗员工数量 work_staff / 编外人员数量 logistics_staff /
         #   门诊人数 clinic_num / 床位数 bed_num（另有流动人员数量 flow_staff，本口径不计入）

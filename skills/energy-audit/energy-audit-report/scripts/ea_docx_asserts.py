@@ -63,6 +63,9 @@
     ch5_532_note      5.3.2 标准注：医疗项目须有 DB37/T 2673-2019 §3.7 的注（含照明插座/空调/
                        电梯/水泵/通风机，不含特殊用能系统用电），且位置在「式中」之后；
                        党政/教育/政务标准无此注，不检查（2026-10-19 新增；P1 只告警不阻断）
+    ch5_53_removal    5.3 剔除项：① 表5.2/表5.3 的「建筑面积」行须逐年同源（分母同一份值）
+                       ② 表格内不得出现「剔除/扣除/扣减」行（只进后台计算，不进表格）
+                       （2026-10-19 新增；P1 只告警不阻断）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -90,7 +93,8 @@ FLAT_FORMULAS = ["Ejfgn=E", "Ejd=ED", "Er=EP", "Vuc=Vk", "Ejngn=Egn",
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
-                  "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note"}
+                  "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note",
+                  "ch5_53_removal"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -648,6 +652,52 @@ def ch5_532_note_ok(doc_xml: str, heading_ids=None):
     i_note, i_sz = text.find(key), text.find("式中")
     if i_sz >= 0 and i_note < i_sz:
         return False, "5.3.2 标准注位置错（应在「式中」之后、引表句之前）"
+    return True, ""
+
+
+REMOVAL_ROW_KEYS = ("剔除", "扣除", "扣减")
+
+
+def ch5_53_removal_ok(doc_xml: str, heading_ids=None):
+    """5.3 剔除项（2026-10-19 新增，P1 只告警）。
+
+    口径（用户 2026-10-19 定）：特殊设备用电／本年新建施工用电／交通电／地下车库面积
+    只在后台参与计算，**表格里不得出现扣减行**；且 5.3.1 与 5.3.2 的「建筑面积」行
+    必须同源（逐年逐值相等，分母同一份值）。
+    文档层只能查这两件事；分子是否真扣由 indicators 单测覆盖。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    bad, areas, cur = [], {}, None
+    for b in region:
+        if b.startswith("<w:p"):
+            t = norm(_ptext(b))
+            is_head = heading_ids is None or _pstyle(b) in heading_ids
+            m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+            if m:
+                cur = m.group(1)
+            continue
+        if not b.startswith("<w:tbl") or not cur:
+            continue
+        for tr in re.findall(r"<w:tr[ >].*?</w:tr>", b, flags=re.S):
+            cells = [norm(re.sub(r"<[^>]+>", "", c))
+                     for c in re.findall(r"<w:tc>.*?</w:tc>", tr, flags=re.S)]
+            if not cells:
+                continue
+            label = cells[0]
+            if any(k in label for k in REMOVAL_ROW_KEYS):
+                bad.append(f"{cur} 表格出现扣减行「{label}」（剔除项只进后台计算）")
+            # 只认「建筑面积（m²）」这一行；「单位建筑面积…」是指标行，不是分母
+            if (label.startswith("建筑面积") and "单位" not in label
+                    and cur in ("5.3.1", "5.3.2")):
+                areas[cur] = cells[1:]
+    a1, a2 = areas.get("5.3.1"), areas.get("5.3.2")
+    if a1 and a2 and a1 != a2:
+        bad.append("5.3.1 与 5.3.2 的建筑面积行不同源（%s vs %s）"
+                   % ("/".join(a1), "/".join(a2)))
+    if bad:
+        return False, "；".join(bad[:4])
     return True, ""
 
 
@@ -1279,6 +1329,7 @@ def run(docx: str, pdf: str = None):
     symok, sym_why = ch5_std_symbol_ok(doc, _heading_style_ids(z))
     conclok, concl_why = ch5_53_conclusion_ok(doc, _heading_style_ids(z))
     n532ok, n532_why = ch5_532_note_ok(doc, _heading_style_ids(z))
+    remok, rem_why = ch5_53_removal_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1345,6 +1396,8 @@ def run(docx: str, pdf: str = None):
         "ch5_53_conclusion": conclok,
         # 5.3.2 标准注（仅医疗；位置须在「式中」之后）——P1，不阻断
         "ch5_532_note": n532ok,
+        # 5.3 剔除项（两表面积同源 + 表格不出现扣减行）——P1，不阻断
+        "ch5_53_removal": remok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1419,6 +1472,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_53_conclusion"] = concl_why
     if not n532ok:
         details["ch5_532_note"] = n532_why
+    if not remok:
+        details["ch5_53_removal"] = rem_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:

@@ -228,6 +228,14 @@ class EnergyYearly:
     natural_gas_m3: float = 0
     heating_energy_kwh: float = 0  # 供暖电耗 kWh（供暖循环泵/风机，dt=4 挂电记录；须从总电量剔除）
     heating_energy_heat_gj: float = 0
+    # 5.3 三个指标的剔除项（2026-10-19 接入）：
+    #   transport_electricity_kwh —— 交通能耗中的电（dt=5 且能源=电；5.3.2 须扣）
+    #   construction_electricity_kwh —— 本年新建施工项目用电（scene.has_construction=1 时取）
+    #   special_electricity_kwh / special_area_m2 —— 特殊设备（独立计量且有当年电量）的用电与配套面积
+    transport_electricity_kwh: float = 0
+    construction_electricity_kwh: float = 0
+    special_electricity_kwh: float = 0
+    special_area_m2: float = 0
     petrol_kg: float = 0
     diesel_kg: float = 0
     electricity_cost_wan: float = 0
@@ -301,6 +309,13 @@ class Equipment:
     year_gas_value: Optional[float] = None
     gas_value: Optional[float] = None
     fuel_value: Optional[float] = None
+    # 特殊用能设备（ts_institution_device_special）剔除判据（2026-10-19 接入，5.3.1/5.3.2/5.3.3）：
+    #   is_metering 已映射为 independent_metering（有/无）；
+    #   year_electric=1 表示登记了年用电量，year_electric_value 为 [{"time":"YYYY-..","value":kWh}, …]；
+    #   match_area 为该类设备的配套面积（扣面积时用；只在扣得掉电量时才扣）。
+    year_electric: Optional[int] = None
+    year_electric_value: Any = None
+    match_area: Optional[float] = None
 
 
 @dataclass

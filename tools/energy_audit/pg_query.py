@@ -664,6 +664,13 @@ class PgDataQuery:
         for gk in ('has_gas_use', 'year_gas_value', 'gas_value', 'fuel_value'):
             if gk in record:
                 gas_use[gk] = record.get(gk)
+        # 特殊用能剔除判据（2026-10-19 接入，5.3.1/5.3.2 的扣电量与扣面积）：
+        #   year_electric=1 + year_electric_value=[{"time":"YYYY-…","value":kWh}] → 有当年电量
+        #   match_area → 该类设备配套面积（只在扣得掉电量时才参与分母）
+        special_use = {}
+        for sk in ('year_electric', 'year_electric_value', 'match_area'):
+            if sk in record:
+                special_use[sk] = record.get(sk)
 
         # 图片列（各设备分表命名不一：device_img/system_img/fan_img/tower_img/
         # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）
@@ -695,6 +702,8 @@ class PgDataQuery:
             if record.get('metering_time') else '',
             # 燃气用途判据（只有对应表有该列时才出现，未登记列不落键）
             **gas_use,
+            # 特殊用能剔除判据（同上，仅 device_special 表有）
+            **special_use,
         }
 
     def get_formatted_equipment(self, customer_id: int = None, category: str = None) -> List[Dict]:
