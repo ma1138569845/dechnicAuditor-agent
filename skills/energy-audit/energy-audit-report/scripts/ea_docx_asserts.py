@@ -796,6 +796,12 @@ def ch5_534_water_ok(doc_xml: str, heading_ids=None):
         bad.append("5.3.4 单位须写「L/（床·日）」")
     if re.search(r"L/床·d", joined):
         bad.append("5.3.4 出现旧写法「L/床·d」")
+    if "第i日的实际开放床日数" not in text:
+        bad.append("5.3.4 式中缺标准变量 N_i（「第 i 日的实际开放床日数」）")
+    if "单位换算系数" in text:
+        bad.append("5.3.4 式中不得单列「10³——单位换算系数」（标准未列）")
+    if re.search(r"Σ\s*N", text):
+        bad.append("5.3.4 不得把 ΣN_i 当变量定义（求和已在公式中表达）")
     omml = "".join(re.findall(r"<m:oMath[ >].*?</m:oMath>", "".join(raw), flags=re.S))
     nary = re.findall(r"<m:nary>.*?</m:nary>", omml, flags=re.S)
     if not any("365" in re.sub(r"<[^>]+>", "", n) for n in nary):
