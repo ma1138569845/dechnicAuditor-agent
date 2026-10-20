@@ -667,8 +667,8 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                     "年用水总量（m³）": [],
                     "全年实际开放床日数（床·日）": [],
                     "单位开放床日用水量（L/（床·日））": [],
-                    "定额标准通用值（L/（床·日））": [],
                     "定额标准先进值（L/（床·日））": [],
+                    "定额标准通用值（L/（床·日））": [],
                     "评价结果": [],
                 }
                 for yd in yd_list:
@@ -718,8 +718,9 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                        f"{title}指标如表5.{table_no}所示：\n\n")
                 md += f"**表5.{table_no} {title}**\n\n"
                 table_no += 1
-                # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
-                cols_w = {"取水量（m³）": [], "用能人数": [], f"{title}（m³/（人·a））": [], "定额标准通用值（m³/（人·a））": [], "定额标准先进值（m³/（人·a））": [], "评价结果": []}
+                # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为先进值/通用值（引导值无）
+                # 2026-10-20 用户定：先进值在前、通用值在后（与 4452 表2 列序、莘县样板一致）
+                cols_w = {"取水量（m³）": [], "用能人数": [], f"{title}（m³/（人·a））": [], "定额标准先进值（m³/（人·a））": [], "定额标准通用值（m³/（人·a））": [], "评价结果": []}
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type=institution_type,
                                              sub_type=st_water)

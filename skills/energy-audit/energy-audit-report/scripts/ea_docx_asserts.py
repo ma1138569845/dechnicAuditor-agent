@@ -786,6 +786,10 @@ def ch5_534_water_ok(doc_xml: str, heading_ids=None):
         bad.append("5.3.4 表缺「全年实际开放床日数（床·日）」行（无法复算指标）")
     if not any(l.startswith("年用水总量") for l in labels):
         bad.append("5.3.4 表首行应改为「年用水总量（m³）」（对齐 W_z）")
+    i_adv = next((i for i, l in enumerate(labels) if "先进值" in l), None)
+    i_gen = next((i for i, l in enumerate(labels) if "通用值" in l), None)
+    if i_adv is not None and i_gen is not None and i_adv > i_gen:
+        bad.append("5.3.4 定额行序错：先进值应在通用值之前")
     joined = text + "".join(cells_all)
     if "L/（床·日）" not in joined:
         bad.append("5.3.4 单位须写「L/（床·日）」")
