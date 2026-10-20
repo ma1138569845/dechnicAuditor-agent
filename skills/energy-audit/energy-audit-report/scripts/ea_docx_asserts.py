@@ -756,7 +756,7 @@ def ch5_534_water_ok(doc_xml: str, heading_ids=None):
     region = _chapter_region(doc_xml, 5)
     if not region:
         return False, "未定位到 第5章 区间"
-    paras, tbl, cur = [], None, None
+    paras, raw, tbl, cur = [], [], None, None
     for b in region:
         if b.startswith("<w:p"):
             t = norm(_ptext(b))
@@ -767,6 +767,7 @@ def ch5_534_water_ok(doc_xml: str, heading_ids=None):
                 continue
             if cur == "5.3.4":
                 paras.append(t)
+                raw.append(b)
         elif b.startswith("<w:tbl") and cur == "5.3.4" and tbl is None:
             tbl = b
     text = "".join(paras)
@@ -795,6 +796,10 @@ def ch5_534_water_ok(doc_xml: str, heading_ids=None):
         bad.append("5.3.4 单位须写「L/（床·日）」")
     if re.search(r"L/床·d", joined):
         bad.append("5.3.4 出现旧写法「L/床·d」")
+    omml = "".join(re.findall(r"<m:oMath[ >].*?</m:oMath>", "".join(raw), flags=re.S))
+    nary = re.findall(r"<m:nary>.*?</m:nary>", omml, flags=re.S)
+    if not any("365" in re.sub(r"<[^>]+>", "", n) for n in nary):
+        bad.append("5.3.4 公式分母应为 Σ(i=1→365) N_i（缺求和上下限）")
     if bad:
         return False, "；".join(bad)
     return True, ""
