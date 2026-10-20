@@ -660,15 +660,27 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += f"**表5.{table_no} 单位开放床日用水量**\n\n"
                 table_no += 1
                 # 转置布局（指标项为行、年份为列，2026-09-06）；水对标行为通用值/先进值（引导值无）
-                cols_bed = {"取水量（m³）": [], "床位数": [], "单位开放床日用水量（L/床·d）": [], "定额标准通用值（L/（床·d））": [], "定额标准先进值（L/（床·d））": [], "评价结果": []}
+                # 2026-10-20 用户定：行名与 4452 式(5) 的变量对齐（W_z / ΣN_i / V_z），
+                # 补「全年实际开放床日数（床·日）」行，读者可直接用表内两行复算指标；
+                # 单位统一为标准写法 L/（床·日）。
+                cols_bed = {
+                    "年用水总量（m³）": [],
+                    "全年实际开放床日数（床·日）": [],
+                    "单位开放床日用水量（L/（床·日））": [],
+                    "定额标准通用值（L/（床·日））": [],
+                    "定额标准先进值（L/（床·日））": [],
+                    "评价结果": [],
+                }
                 for yd in yd_list:
                     r = calc_water_indicator(yd, institution_type='medical',
                                              bed_count=bed_count, sub_type=st_water)
-                    cols_bed["取水量（m³）"].append(f"{r['total_water_m3']:.2f}")
-                    cols_bed["床位数"].append(f"{bed_count}")
-                    cols_bed["单位开放床日用水量（L/床·d）"].append(f"{r['L_per_bed_day']:.2f}")
-                    cols_bed["定额标准通用值（L/（床·d））"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
-                    cols_bed["定额标准先进值（L/（床·d））"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
+                    _w = float(r['total_water_m3'] or 0)
+                    cols_bed["年用水总量（m³）"].append(
+                        f"{_w:.0f}" if _w.is_integer() else f"{_w:.2f}")
+                    cols_bed["全年实际开放床日数（床·日）"].append(f"{int(bed_count) * 365}")
+                    cols_bed["单位开放床日用水量（L/（床·日））"].append(f"{r['L_per_bed_day']:.2f}")
+                    cols_bed["定额标准通用值（L/（床·日））"].append(f"{r['benchmark'].get('约束值', ''):.2f}")
+                    cols_bed["定额标准先进值（L/（床·日））"].append(f"{r['benchmark'].get('基准值', ''):.2f}")
                     cols_bed["评价结果"].append(str(r['benchmark']['评价结果']))
                 md += "| 统计周期 | " + " | ".join(f"{y}年" for y in years) + " |\n"
                 md += "|------|" + "|".join(["------"]*len(years)) + "|\n"

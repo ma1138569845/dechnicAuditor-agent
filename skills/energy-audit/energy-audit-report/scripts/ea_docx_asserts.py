@@ -68,6 +68,8 @@
                        （2026-10-19 新增；P1 只告警不阻断）
     ch5_533_people    5.3.3 用能人数说明：医疗项目须有标准定义句 + 「平均用能人数」结果句，
                        禁四要素括号明细（明细归 2.1）（2026-10-19 新增；P1 只告警不阻断）
+    ch5_534_water     5.3.4 单位开放床日用水量表：须有「全年实际开放床日数（床·日）」行、
+                       首行用「年用水总量」、单位写 L/（床·日）（2026-10-20 新增；P1 只告警）
     --pdf 时另加 2 项:
     pdf_prebody_clean 正文前页面无页眉文字、无页脚数字
     pdf_footer_seq    正文页脚数字序列连续（从 1 起）
@@ -96,7 +98,7 @@ P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_ph
                   "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
                   "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note",
-                  "ch5_53_removal", "ch5_533_people"}
+                  "ch5_53_removal", "ch5_533_people", "ch5_534_water"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -743,6 +745,57 @@ def ch5_533_people_ok(doc_xml: str, heading_ids=None):
     return True, ""
 
 
+def ch5_534_water_ok(doc_xml: str, heading_ids=None):
+    """5.3.4 单位开放床日用水量表（2026-10-20 新增，P1 只告警）。
+
+    口径（用户 2026-10-20 定，对齐 DB37/T 4452-2021 式(5)）：
+      ① 表内须有「全年实际开放床日数（床·日）」行，读者可用表内两行复算指标；
+      ② 行名用「年用水总量」（W_z 口径），不再用「取水量」；
+      ③ 单位统一写 `L/（床·日）`，禁止 `L/床·d`。
+    """
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    paras, tbl, cur = [], None, None
+    for b in region:
+        if b.startswith("<w:p"):
+            t = norm(_ptext(b))
+            is_head = heading_ids is None or _pstyle(b) in heading_ids
+            m = re.match(r"^(5\.3\.\d+)", t) if is_head else None
+            if m:
+                cur = m.group(1)
+                continue
+            if cur == "5.3.4":
+                paras.append(t)
+        elif b.startswith("<w:tbl") and cur == "5.3.4" and tbl is None:
+            tbl = b
+    text = "".join(paras)
+    if "单位开放床日用水量" not in text:
+        return True, ""                      # 非医疗取水口径 → 不检查
+    if not tbl:
+        return False, "5.3.4 缺计算表"
+    labels, cells_all = [], []
+    for tr in re.findall(r"<w:tr[ >].*?</w:tr>", tbl, flags=re.S):
+        cells = [norm(re.sub(r"<[^>]+>", "", c))
+                 for c in re.findall(r"<w:tc>.*?</w:tc>", tr, flags=re.S)]
+        if cells:
+            labels.append(cells[0])
+            cells_all.extend(cells)
+    bad = []
+    if not any("全年实际开放床日数" in l for l in labels):
+        bad.append("5.3.4 表缺「全年实际开放床日数（床·日）」行（无法复算指标）")
+    if not any(l.startswith("年用水总量") for l in labels):
+        bad.append("5.3.4 表首行应改为「年用水总量（m³）」（对齐 W_z）")
+    joined = text + "".join(cells_all)
+    if "L/（床·日）" not in joined:
+        bad.append("5.3.4 单位须写「L/（床·日）」")
+    if re.search(r"L/床·d", joined):
+        bad.append("5.3.4 出现旧写法「L/床·d」")
+    if bad:
+        return False, "；".join(bad)
+    return True, ""
+
+
 def ch5_53_conclusion_ok(doc_xml: str, heading_ids=None):
     """5.3 各指标表后结论段＝纯事实句（2026-10-19 新增，P1 只告警）。
 
@@ -1373,6 +1426,7 @@ def run(docx: str, pdf: str = None):
     n532ok, n532_why = ch5_532_note_ok(doc, _heading_style_ids(z))
     remok, rem_why = ch5_53_removal_ok(doc, _heading_style_ids(z))
     pplok, ppl_why = ch5_533_people_ok(doc, _heading_style_ids(z))
+    w534ok, w534_why = ch5_534_water_ok(doc, _heading_style_ids(z))
     bldg_cols = building_tables_info(doc)
     i = tn.find("目录")
     self_ref = False
@@ -1443,6 +1497,8 @@ def run(docx: str, pdf: str = None):
         "ch5_53_removal": remok,
         # 5.3.3 用能人数说明（标准句 + 平均用能人数 + 禁四要素括号）——P1，不阻断
         "ch5_533_people": pplok,
+        # 5.3.4 用水表（床·日行 + 年用水总量 + L/（床·日））——P1，不阻断
+        "ch5_534_water": w534ok,
         "apx2_landscape": _apx2_landscape_ok(sect_detail),
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
@@ -1521,6 +1577,8 @@ def run(docx: str, pdf: str = None):
         details["ch5_53_removal"] = rem_why
     if not pplok:
         details["ch5_533_people"] = ppl_why
+    if not w534ok:
+        details["ch5_534_water"] = w534_why
     if not checks["prebody_clean"]:
         why = []
         if pre_map["footer"]:
