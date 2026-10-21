@@ -617,27 +617,156 @@ def check_province_rules(blocks: Sequence[Block]) -> List[Finding]:
     ]
 
 
-def check_chapter6_h3(blocks: Sequence[Block]) -> List[Finding]:
-    count = sum(
-        1
-        for block in blocks
-        if block.kind == "p" and block.chapter == 6 and RE_H3.match(block.text)
-    )
-    if count >= MIN_CHAPTER6_H3:
-        return []
-    return [
-        Finding(
-            code="V3.STRUCT.CHAPTER6_H3",
-            category="章节完整性",
-            severity=SEV_P1,
-            title=f"第6章动态三级标题不足（{count} 个）",
-            detail="第6章应按实际用能系统（空调/照明/电梯/热水/变配电…）动态展开 H3",
-            location="第6章",
-            expected=f"≥ {MIN_CHAPTER6_H3} 个 6.x.y 小节",
-            actual=f"{count} 个",
-            suggestion="按设备清单 category 动态生成系统小节",
-        )
+CH6_TITLE = "第6章 主要能源资源利用系统分析"
+CH6_SECTION_KEYS = (
+    "用电系统运行分析", "用水系统运行分析", "用热系统运行分析",
+    "用燃气系统运行分析", "其他用能系统运行分析", "室内环境检测",
+)
+CH6_BANNED_WORDS = (
+    "建议", "改造", "优化空间", "浪费风险",
+    "未登记", "待平台补录", "平台登记", "系统数据",
+)
+RE_CH6_SECTION = re.compile(r"^6\.(\d+)\s*")
+RE_CH6_SUBSECTION = re.compile(r"^[（(]\s*(\d+)\s*[）)]")
+RE_CH6_FIGURE = re.compile(r"^图6\.(\d+)")
+
+
+def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
+    """第6章结构/内容/措辞检查（2026-10-21 重构，P1 只告警）。
+
+    结构权威：`ea-authoring/references/chapter-guides-6-8.md`《第6章》。
+    检查：章标题、主干齐全与编号连续、6.1 动态小节与总述、每节三段、
+    设备表 7 列、禁词与平台语言、第5章图表引用、图注与图片数量。
+    """
+    ch6 = [b for b in blocks if b.chapter == 6]
+    if not ch6:
+        return [Finding(
+            code="V3.STRUCT.CHAPTER6_MISSING", category="章节完整性",
+            severity=SEV_P1, title="第6章缺失", location="第6章",
+            expected=CH6_TITLE, actual="未找到第6章")]
+
+    findings: List[Finding] = []
+
+    def add(code: str, title: str, detail: str = "", expected: str = "", actual: str = "") -> None:
+        findings.append(Finding(
+            code=code, category="章节完整性", severity=SEV_P1,
+            title=title, detail=detail, location="第6章",
+            expected=expected, actual=actual))
+
+    # 1. 章标题
+    title = next((b.text for b in ch6 if b.kind == "p" and b.text.startswith("第6章")), "")
+    if CH6_TITLE.replace(" ", "") not in title.replace(" ", ""):
+        add("V3.STRUCT.CHAPTER6_TITLE", "第6章标题不符",
+            f"实测：{title or '（空）'}", CH6_TITLE, title)
+
+    # 2. 主干（按名称匹配，允许编号随条件节顺延）
+    sections: List[Tuple[int, int, str]] = []
+    for i, b in enumerate(ch6):
+        if b.kind != "p":
+            continue
+        m = RE_CH6_SECTION.match(b.text)
+        if m and any(k in b.text for k in CH6_SECTION_KEYS):
+            sections.append((i, int(m.group(1)), b.text))
+
+    names = [t for _, _, t in sections]
+    if not any("用电系统运行分析" in t for t in names):
+        add("V3.STRUCT.CHAPTER6_TRUNK", "第6章缺 6.1 用电系统运行分析")
+    if not any("用水系统运行分析" in t for t in names):
+        add("V3.STRUCT.CHAPTER6_TRUNK", "第6章缺 6.2 用水系统运行分析")
+
+    nums = [n for _, n, _ in sections]
+    if nums != list(range(1, len(nums) + 1)):
+        add("V3.STRUCT.CHAPTER6_NUMBERING", "第6章主干编号不连续",
+            f"实测：{nums}", "1..N 连续", str(nums))
+
+    actual_order = [
+        next(j for j, k in enumerate(CH6_SECTION_KEYS) if k in t)
+        for _, _, t in sections
     ]
+    if actual_order != sorted(actual_order):
+        add("V3.STRUCT.CHAPTER6_ORDER", "第6章主干顺序错误",
+            "顺序应为：" + " → ".join(CH6_SECTION_KEYS), str(CH6_SECTION_KEYS),
+            str(names))
+
+    # 3. 6.1 动态小节 + 总述 + 三段式
+    idx61 = next((i for i, _, t in sections if "用电系统运行分析" in t), None)
+    if idx61 is not None:
+        end = next((i for i, _, _ in sections if i > idx61), len(ch6))
+        body = ch6[idx61 + 1:end]
+        subs = [(j, b) for j, b in enumerate(body)
+                if b.kind == "p" and RE_CH6_SUBSECTION.match(b.text)]
+        if len(subs) < MIN_CHAPTER6_H3:
+            add("V3.STRUCT.CHAPTER6_SUBSECTIONS", f"6.1 动态小节不足（{len(subs)} 个）",
+                "6.1 下应按实际系统用（1）（2）…展开", f"≥ {MIN_CHAPTER6_H3} 个",
+                f"{len(subs)} 个")
+
+        first_sub = subs[0][0] if subs else len(body)
+        overview = "".join(b.text for b in body[:first_sub]
+                           if b.kind == "p" and len(b.text.strip()) >= 8)
+        if "包括" not in overview:
+            add("V3.STRUCT.CHAPTER6_OVERVIEW", "6.1 缺系统总述句",
+                "6.1 开头须用总述句点明本章展开的用电系统，并与后续小节一一对应")
+
+        for k, (j, b) in enumerate(subs):
+            stop = subs[k + 1][0] if k + 1 < len(subs) else len(body)
+            paras = [x for x in body[j + 1:stop]
+                     if x.kind == "p" and len(x.text.strip()) >= 12
+                     and not RE_CAPTION.match(x.text)]
+            if len(paras) < 3:
+                add("V3.STRUCT.CHAPTER6_PARAS", f"{b.text} 正文段数不足",
+                    f"实测 {len(paras)} 段（构成/运行方式/特点与评价格式）", "≥3 段",
+                    f"{len(paras)} 段")
+
+    # 4. 设备清单表 7 列 + 表题
+    required_cols = ("序号", "设备名称", "品牌", "规格型号", "数量", "单台功率", "运行时间")
+    for i, b in enumerate(ch6):
+        if b.kind != "tbl":
+            continue
+        try:
+            header = "".join(c.text.strip() for c in b.obj.rows[0].cells)
+        except (AttributeError, IndexError):
+            continue
+        if "设备名称" not in header:
+            continue
+        missing = [c for c in required_cols if c not in header]
+        if missing:
+            add("V3.STRUCT.CHAPTER6_TABLE", "第6章设备表列头不符",
+                f"缺：{'、'.join(missing)}", " / ".join(required_cols), header)
+        caption = ch6[i - 1].text if i > 0 and ch6[i - 1].kind == "p" else ""
+        if "设备清单" not in caption:
+            add("V3.STRUCT.CHAPTER6_TABLE_CAPTION", "第6章设备表表题不符",
+                f"实测表题：{caption or '（空）'}", "表6.X XX系统设备清单")
+
+    # 5. 禁词 / 平台语言
+    text = "\n".join(b.text for b in ch6 if b.kind == "p")
+    hits = [w for w in CH6_BANNED_WORDS if w in text]
+    if hits:
+        add("V3.STRUCT.CHAPTER6_WORDING", "第6章出现禁用表述",
+            "命中：" + "、".join(hits),
+            "只写事实与可验证评价；禁建议类词与平台语言")
+    if re.search(r"(?:^|[，。；：、\s])([应需])(?!用|求)", text):
+        add("V3.STRUCT.CHAPTER6_WORDING", "第6章出现建议类措辞",
+            "出现「应/需」句（建议、要求类表述归第7章）")
+
+    # 6. 不得引用第5章图表
+    if re.search(r"(?:第5章\s*图|图5\.\d|详见第5章)", text):
+        add("V3.STRUCT.CHAPTER6_CH5REF", "第6章引用了第5章图表",
+            "第6章应直接写实算数值，不写「详见第5章图…」")
+
+    # 7. 图注与图片数量
+    captions = [b for b in ch6 if b.kind == "p" and RE_CH6_FIGURE.match(b.text)]
+    if captions:
+        fig_nums = [int(RE_CH6_FIGURE.match(b.text).group(1)) for b in captions]
+        if fig_nums != list(range(1, len(fig_nums) + 1)):
+            add("V3.STRUCT.CHAPTER6_FIG_NUMBER", "第6章图注编号不连续",
+                f"实测：{fig_nums}", "1..N 连续", str(fig_nums))
+    img_paras = [b for b in ch6 if b.kind == "p" and "<w:drawing" in b.obj._p.xml]
+    if len(img_paras) != len(captions):
+        add("V3.STRUCT.CHAPTER6_FIG_COUNT", "第6章图片与图注数量不一致",
+            f"图片 {len(img_paras)} 张 / 图注 {len(captions)} 条",
+            "图注数=图片数", f"{len(img_paras)}/{len(captions)}")
+
+    return findings
 
 
 def check_chapter8_summary(blocks: Sequence[Block]) -> List[Finding]:
@@ -1086,7 +1215,7 @@ def run(
     findings += check_chapters(blocks)
     findings += check_tables_and_placeholders(blocks, registry)
     findings += check_province_rules(blocks)
-    findings += check_chapter6_h3(blocks)
+    findings += check_chapter6_structure(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
     # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）
