@@ -459,6 +459,10 @@ class FakeParagraph:
     text: str = ""
     runs: tuple = ()
 
+    @property
+    def _p(self):
+        return type("FakeParagraphElement", (), {"xml": ""})()
+
 
 def _block(text: str, chapter: int) -> v3.Block:
     return v3.Block("p", 0, text, FakeParagraph(text), chapter)
@@ -572,16 +576,75 @@ def test_province_rules_count():
     assert v3.check_province_rules(too_few)[0].code == "V3.STRUCT.PROVINCE_RULES"
 
 
-def test_chapter6_h3_requirement():
-    blocks = [_block("6.1.1 空调系统", 6), _block("6.1.2 照明系统", 6)]
-    assert v3.check_chapter6_h3(blocks)[0].code == "V3.STRUCT.CHAPTER6_H3"
-    blocks.append(_block("6.1.3 电梯系统", 6))
-    assert v3.check_chapter6_h3(blocks) == []
+def test_chapter6_dynamic_subsections_requirement():
+    blocks = [
+        _block("第6章 主要能源资源利用系统分析", 6),
+        _block("6.1 用电系统运行分析", 6),
+        _block("本项目用电系统主要包括空调和照明系统。", 6),
+        _block("（1）空调系统", 6),
+        _block("（2）照明系统", 6),
+    ]
+    codes = {f.code for f in v3.check_chapter6_structure(blocks)}
+    assert "V3.STRUCT.CHAPTER6_SUBSECTIONS" in codes
 
 
-def test_chapter8_summary_table():
-    assert v3.check_chapter8_summary([_block("第8章", 8)])[0].code == "V3.STRUCT.CHAPTER8_TABLE"
-    assert v3.check_chapter8_summary([_table_block(8)]) == []
+def _chapter8_blocks(*, inline_suggestions: bool = False):
+    blocks = [
+        _block("5.3.1 指标甲", 5),
+        _block("5.3.2 指标乙", 5),
+    ]
+    blocks += [
+        _block("7.1.1 能耗监测系统", 7),
+        _block("7.1.2 空调控制落后", 7),
+        _block("7.2.1 建设能耗监测系统", 7),
+        _block("7.2.2 空调智慧管控", 7),
+        _block("7.2.3 管理与行为节能", 7),
+        _block("7.2.4 节能率分析", 7),
+        _block("第8章 审计结论", 8),
+        _block("1.指标甲分别为1、2、3。", 8),
+        _block("2.指标乙分别为4、5、6。", 8),
+        _block("本次审计共发现用能管理问题2项，提出可行性节能改造建议3条，包括：", 8),
+    ]
+    if inline_suggestions:
+        blocks.append(
+            _block("（1）建设能耗监测系统；（2）空调智慧管控；（3）管理与行为节能。", 8)
+        )
+    else:
+        blocks += [
+            _block("（1）建设能耗监测系统。", 8),
+            _block("（2）空调智慧管控。", 8),
+            _block("（3）管理与行为节能。", 8),
+        ]
+    return blocks
+
+
+def test_chapter8_summary_flat_list_and_appendix_exclusion():
+    blocks = _chapter8_blocks()
+    assert v3.check_chapter8_summary(blocks) == []
+
+    blocks += [_block("附录：", 8), _table_block(8)]
+    assert v3.check_chapter8_summary(blocks) == []
+
+
+def test_chapter8_summary_rejects_inline_suggestions():
+    findings = v3.check_chapter8_summary(_chapter8_blocks(inline_suggestions=True))
+    assert "V3.STRUCT.CHAPTER8_LIST_FORMAT" in {f.code for f in findings}
+
+
+def test_chapter8_summary_rejects_table_and_wrong_counts():
+    blocks = _chapter8_blocks()
+    title_index = next(
+        i for i, b in enumerate(blocks) if b.text == "第8章 审计结论"
+    )
+    blocks.insert(title_index + 1, _table_block(8))
+    blocks = [
+        _block("本次审计共发现用能管理问题1项，提出可行性节能改造建议3条，包括：", 8)
+        if b.text.startswith("本次审计共发现") else b
+        for b in blocks
+    ]
+    codes = {f.code for f in v3.check_chapter8_summary(blocks)}
+    assert "V3.STRUCT.CHAPTER8_TABLE" in codes
+    assert "V3.STRUCT.CHAPTER8_COUNTS" in codes
 
 
 def test_energy_consistency_cross_chapter():

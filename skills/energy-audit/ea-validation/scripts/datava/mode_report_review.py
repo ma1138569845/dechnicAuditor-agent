@@ -2,7 +2,7 @@
 
 三条主线：
     跨章数据一致性  第2章面积 vs 第5章面积、第4章能耗 vs 第5章能耗、与 data.json 对齐
-    章节完整性      1~8章齐备、1.6省级规章≥3条、第6章动态H3、第8章指标汇总表
+    章节完整性      1~8章齐备、1.6省级规章≥3条、第6章动态H3、第8章平铺结论
     格式规范        字体/字号/行距/缩进/对齐/表格行高（对齐 tools/energy_audit/format_spec.py 的 FormatSpec）
 
 产出：report_review.json + report_review.txt
@@ -874,21 +874,198 @@ def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
     return findings
 
 
+RE_APPENDIX_START = re.compile(r"^附录(?:\s*[:：]|[0-9一二三四五六七八九十]+[：:])")
+RE_PAREN_ITEM = re.compile(r"^[（(]\d+[)）]\s*\S")
+
+
 def check_chapter8_summary(blocks: Sequence[Block]) -> List[Finding]:
-    if chapter_tables(blocks, 8) >= 1:
-        return []
-    return [
-        Finding(
-            code="V3.STRUCT.CHAPTER8_TABLE",
+    """检查第8章是否为平铺结论，并与第5/7章条目数及名称联动。
+
+    第8章按三份外部样板采用平铺结构：无 8.x 分节、无表格；建议清单每项
+    独立成段。条数不能手写拍脑袋：指标数取第5章 5.3.x，问题数取第7章
+    7.1.x，建议数取第7章 7.2.x 中除“节能率分析”以外的各节。
+    """
+    title_index = next(
+        (
+            i for i, b in enumerate(blocks)
+            if b.kind == "p"
+            and b.chapter == 8
+            and b.text.startswith("第8章")
+            and not re.search(r"\t\d+$", b.text)
+        ),
+        None,
+    )
+    if title_index is None:
+        return [Finding(
+            code="V3.STRUCT.CHAPTER8_TITLE",
             category="章节完整性",
             severity=SEV_P1,
-            title="第8章缺指标汇总表",
+            title="第8章缺失",
             location="第8章",
-            expected="≥ 1 张汇总表",
-            actual="0 张",
-            suggestion="补第8章指标汇总表（各年指标 + 对标结论）",
+            expected="第8章 审计结论",
+            actual="未找到第8章",
+        )]
+
+    end = len(blocks)
+    for i in range(title_index + 1, len(blocks)):
+        block = blocks[i]
+        if block.kind == "p" and RE_APPENDIX_START.match(block.text):
+            end = i
+            break
+    ch8 = blocks[title_index:end]
+    findings: List[Finding] = []
+
+    def add(code: str, title: str, detail: str = "",
+            expected: str = "", actual: str = "") -> None:
+        findings.append(Finding(
+            code=code,
+            category="章节完整性",
+            severity=SEV_P1,
+            title=title,
+            detail=detail,
+            location="第8章",
+            expected=expected,
+            actual=actual,
+        ))
+
+    chapter_title = ch8[0].text.strip()
+    if chapter_title != "第8章 审计结论":
+        add(
+            "V3.STRUCT.CHAPTER8_TITLE",
+            "第8章标题不符",
+            f"实测：{chapter_title}",
+            "第8章 审计结论（不带“与建议”）",
+            chapter_title,
         )
+
+    section_headings = [
+        b.text for b in ch8
+        if b.kind == "p" and re.match(r"^8\.\d+(?:\.\d+)?\s", b.text)
     ]
+    if section_headings:
+        add(
+            "V3.STRUCT.CHAPTER8_SECTION",
+            "第8章出现 8.x 分节",
+            "；".join(section_headings[:5]),
+            "平铺式，无 8.x 分节",
+            f"{len(section_headings)} 个分节标题",
+        )
+
+    table_count = sum(1 for b in ch8 if b.kind == "tbl")
+    if table_count:
+        add(
+            "V3.STRUCT.CHAPTER8_TABLE",
+            "第8章出现正文表格",
+            expected="无表格（附录表格不计入第8章）",
+            actual=f"{table_count} 张",
+        )
+
+    expected_indicators = sum(
+        1 for b in blocks
+        if b.kind == "p"
+        and b.chapter == 5
+        and re.match(r"^5\.3\.\d+\s", b.text)
+        and not re.search(r"\t\d+$", b.text)
+    )
+    indicator_items = [
+        b.text for b in ch8[1:]
+        if b.kind == "p"
+        and re.match(r"^\d+[.．、]\s*\S", b.text)
+        and "分别为" in b.text
+    ]
+    if expected_indicators and len(indicator_items) != expected_indicators:
+        add(
+            "V3.STRUCT.CHAPTER8_INDICATORS",
+            "第8章指标条数与第5章不一致",
+            f"第5章 5.3.x {expected_indicators} 项 / 第8章逐条 {len(indicator_items)} 项",
+            "逐项写全，每项独立成段",
+            f"{len(indicator_items)} 项",
+        )
+
+    ch7 = [
+        b for b in blocks
+        if b.kind == "p"
+        and b.chapter == 7
+        and not re.search(r"\t\d+$", b.text)
+    ]
+    problem_titles = [
+        b.text for b in ch7 if re.match(r"^7\.1\.\d+\s", b.text)
+    ]
+    recommendation_titles = [
+        b.text for b in ch7 if re.match(r"^7\.2\.\d+\s", b.text)
+    ]
+    recommendation_titles = [
+        t for t in recommendation_titles if "节能率分析" not in t
+    ]
+
+    chapter8_text = "\n".join(b.text for b in ch8 if b.kind == "p")
+    problem_match = re.search(r"发现用能管理问题\s*(\d+)\s*项", chapter8_text)
+    suggestion_match = re.search(
+        r"提出[^。；\n]{0,20}建议(?:共计)?\s*(\d+)\s*条",
+        chapter8_text,
+    )
+    count_errors: List[str] = []
+    if problem_titles:
+        if not problem_match:
+            count_errors.append(f"未写问题数量（应为{len(problem_titles)}项）")
+        elif int(problem_match.group(1)) != len(problem_titles):
+            count_errors.append(
+                f"问题数写{problem_match.group(1)}项（应为{len(problem_titles)}项）"
+            )
+    if recommendation_titles:
+        if not suggestion_match:
+            count_errors.append(f"未写建议数量（应为{len(recommendation_titles)}条）")
+        elif int(suggestion_match.group(1)) != len(recommendation_titles):
+            count_errors.append(
+                f"建议数写{suggestion_match.group(1)}条（应为{len(recommendation_titles)}条）"
+            )
+    if count_errors:
+        add(
+            "V3.STRUCT.CHAPTER8_COUNTS",
+            "第8章问题/建议计数与第7章不一致",
+            "；".join(count_errors),
+            "问题数=7.1.x；建议数=7.2.x 除“节能率分析”外各节",
+        )
+
+    suggestion_items = [
+        b.text.strip() for b in ch8[1:]
+        if b.kind == "p" and RE_PAREN_ITEM.match(b.text.strip())
+    ]
+    if recommendation_titles:
+        if len(suggestion_items) != len(recommendation_titles):
+            add(
+                "V3.STRUCT.CHAPTER8_LIST_FORMAT",
+                "第8章建议清单未逐项分行",
+                f"建议项段落 {len(suggestion_items)} 个 / 应分开 {len(recommendation_titles)} 项",
+                "每条建议各占一个独立段落，不把多条用分号挤在同一段",
+                f"{len(suggestion_items)} 段",
+            )
+        elif any(
+            len(re.findall(r"[（(]\d+[)）]", item)) > 1
+            for item in suggestion_items
+        ):
+            add(
+                "V3.STRUCT.CHAPTER8_LIST_FORMAT",
+                "第8章建议清单存在合并段落",
+                "同一段中出现多个建议编号",
+                "每条建议各占一个独立段落",
+            )
+
+        expected_names = [
+            re.sub(r"^7\.2\.\d+\s*", "", t).strip()
+            for t in recommendation_titles
+        ]
+        if len(suggestion_items) == len(expected_names):
+            for item, expected_name in zip(suggestion_items, expected_names):
+                if expected_name not in item:
+                    add(
+                        "V3.STRUCT.CHAPTER8_ITEM_TITLE",
+                        "第8章建议名称与第7章不一致",
+                        f"实测：{item[:60]}",
+                        expected_name,
+                    )
+
+    return findings
 
 
 def check_tables_and_placeholders(
