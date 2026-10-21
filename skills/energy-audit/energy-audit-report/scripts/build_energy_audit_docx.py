@@ -208,6 +208,12 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
     for ri, data in enumerate(rows):
         row = t.rows[ri]
         row.height = Cm(row_height_cm)
+        # 2026-10-21：表头跨页重复 + 单行不跨页；小表（≤8 行）整表保持在同一页
+        trPr = row._tr.get_or_add_trPr()
+        if ri == 0:
+            trPr.append(OxmlElement("w:tblHeader"))
+        trPr.append(OxmlElement("w:cantSplit"))
+        keep_together = len(rows) <= 8
         for ci in range(n_cols):
             cell = row.cells[ci]
             if equal_width_cm:
@@ -225,6 +231,8 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
             pf.space_before = Pt(0)
             pf.space_after = Pt(0)
             pf.line_spacing = 1.0
+            if keep_together and ri < len(rows) - 1:
+                pf.keep_with_next = True
             set_font(p.add_run(txt), 12, bool(bold_first_row and ri == 0))
     return t
 
@@ -773,11 +781,13 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif "[FORMULA" in line:
             _render_formula_line(doc, line, omml)
         elif line.startswith("**表") and line.endswith("**"):
-            _para(doc, line[2:-2].strip(), size=12, bold=True,
-                  align=WD_ALIGN_PARAGRAPH.CENTER)
+            p_cap = _para(doc, line[2:-2].strip(), size=12, bold=True,
+                          align=WD_ALIGN_PARAGRAPH.CENTER)
+            p_cap.paragraph_format.keep_with_next = True
         elif re.match(r"^表\d+\s*[.\-–—]\s*\d+", line):
             # 裸表题（无 ** 包裹）：2026-09-20 新增，避免表题被当正文（两端对齐）导致 V3 P2
-            _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+            p_cap = _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+            p_cap.paragraph_format.keep_with_next = True
         elif appendix and re.match(r"^附表\d", line):
             # 附录2 内每张附表另起一页（2026-09-28）：横向页可用高 15.9cm，
             # 配合 0.8cm 行高，14 行 + 表题可整表放一页，避免"12月/合计行"被拆到次页。

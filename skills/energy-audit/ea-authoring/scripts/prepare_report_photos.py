@@ -64,11 +64,31 @@ CH6_DEVICE_CATS = {"制冷设备", "照明设备", "办公设备", "其他用电
 # 图注关键词 → 设备照片分类（文件名对不上时的兜底）
 CH6_CAT_HINTS = (
     (("照明", "灯"), "照明设备"),
-    (("办公", "电脑", "打印机"), "办公设备"),
-    (("信息机房", "机房", "服务器"), "信息机房"),
+    (("办公", "电脑", "打印"), "办公设备"),
+    (("信息机房", "机房", "服务器", "数据中心"), "信息机房"),
+    (("医疗", "X射线", "CT", "摄影"), "信息机房"),
     (("空调", "冷水", "冷却塔", "热泵"), "制冷设备"),
     (("电梯", "水泵", "开水器", "热水"), "其他用电设备"),
 )
+# 图注关键词 → 文件名关键词（用于同义词匹配，禁止按分类乱抓）
+CH6_KEYWORDS = (
+    ("冷水机组", ("冷水机组",)),
+    ("空调", ("空调",)),
+    ("水泵", ("水泵",)),
+    ("冷却塔", ("冷却塔",)),
+    ("平板灯", ("平板灯",)),
+    ("吸顶灯", ("吸顶灯",)),
+    ("灯管", ("灯管",)),
+    ("荧光灯", ("荧光灯",)),
+    ("筒灯", ("筒灯",)),
+    ("电脑", ("电脑",)),
+    ("打印", ("打印",)),
+    ("热泵", ("热泵",)),
+    ("热水器", ("热水器",)),
+    ("医疗", ("X光", "CT", "医疗")),
+    ("数据中心", ("机房", "数据中心")),
+)
+CH6_GARBAGE_STEMS = {"image", "店铺"}
 # 第3章：来源 → 图注关键词（照 chapter-guides-1-4.md「图片路由」节）
 CH3_RULES = (
     ("award", "荣誉证书", ("荣誉", "奖", "证书", "称号", "授牌")),
@@ -190,19 +210,36 @@ def pick_ch6_photo(desc: str, images, used: set):
         return ""
     pool = [(im, str(im.get("path") or "")) for im in images
             if (im.get("category") or "") in CH6_DEVICE_CATS]
-    for im, p in pool:                                  # ① 主干完全相同
-        stem = re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
-        if stem == key and p not in used and os.path.isfile(p):
-            return p
-    for im, p in pool:                                  # ② 互相包含
-        stem = re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
-        if stem and (key in stem or stem in key) and p not in used and os.path.isfile(p):
-            return p
-    for keys, cat in CH6_CAT_HINTS:                     # ③ 图注关键词 → 分类兜底
-        if any(k in key for k in keys):
-            for im, p in pool:
-                if (im.get("category") or "") == cat and p not in used and os.path.isfile(p):
-                    return p
+    def _first(match, allow_used=False):
+        for im, p in pool:
+            stem = _stem(p)
+            if stem in CH6_GARBAGE_STEMS or stem.startswith("微信图片"):
+                continue
+            if not match(im, p):
+                continue
+            if not os.path.isfile(p):
+                continue
+            if allow_used or p not in used:
+                return p
+        return ""
+
+    def _stem(p):
+        return re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
+
+    for allow_used in (False, True):                    # ① 主干完全相同（先未用，后允许复用）
+        hit = _first(lambda im, p: _stem(p) == key, allow_used)
+        if hit:
+            return hit
+    for allow_used in (False, True):                    # ② 互相包含
+        hit = _first(lambda im, p: _stem(p) and (key in _stem(p) or _stem(p) in key), allow_used)
+        if hit:
+            return hit
+    for cap_kw, img_kws in CH6_KEYWORDS:                # ③ 同义词关键词（不做分类兜底）
+        if cap_kw in key:
+            for allow_used in (False, True):
+                hit = _first(lambda im, p, ks=img_kws: any(k in _stem(p) for k in ks), allow_used)
+                if hit:
+                    return hit
     return ""
 
 

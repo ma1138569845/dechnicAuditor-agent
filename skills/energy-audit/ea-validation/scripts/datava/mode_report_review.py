@@ -623,7 +623,7 @@ CH6_SECTION_KEYS = (
     "用燃气系统运行分析", "其他用能系统运行分析", "室内环境检测",
 )
 CH6_BANNED_WORDS = (
-    "建议", "改造", "优化空间", "浪费风险",
+    "建议", "优化空间", "浪费风险",
     "未登记", "待平台补录", "平台登记", "系统数据",
 )
 RE_CH6_SECTION = re.compile(r"^6\.(\d+)\s*")
@@ -638,7 +638,9 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
     检查：章标题、主干齐全与编号连续、6.1 动态小节与总述、每节三段、
     设备表 7 列、禁词与平台语言、第5章图表引用、图注与图片数量。
     """
-    ch6 = [b for b in blocks if b.chapter == 6]
+    # 目录条目会继承"第6章"的 chapter 标记（形如「6.1 …\t41」），必须先剔除
+    ch6 = [b for b in blocks
+           if b.chapter == 6 and not (b.kind == "p" and re.search(r"\t\d+$", b.text))]
     if not ch6:
         return [Finding(
             code="V3.STRUCT.CHAPTER6_MISSING", category="章节完整性",
@@ -747,6 +749,9 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
     if re.search(r"(?:^|[，。；：、\s])([应需])(?!用|求)", text):
         add("V3.STRUCT.CHAPTER6_WORDING", "第6章出现建议类措辞",
             "出现「应/需」句（建议、要求类表述归第7章）")
+    if re.search(r"(?:建议|应|需|可)\s*改造", text):
+        add("V3.STRUCT.CHAPTER6_WORDING", "第6章出现建议性改造措辞",
+            "「建议改造/应改造/需改造」归第7章；已完成的节能改造可如实陈述")
 
     # 6. 不得引用第5章图表
     if re.search(r"(?:第5章\s*图|图5\.\d|详见第5章)", text):
