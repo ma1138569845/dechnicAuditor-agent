@@ -671,6 +671,13 @@ class PgDataQuery:
         for sk in ('year_electric', 'year_electric_value', 'match_area'):
             if sk in record:
                 special_use[sk] = record.get(sk)
+        # 第6章用水判定（2026-10-21 接入）：
+        #   config —— 动力设备配置情况（生活水泵：生活水箱 / 无负压生活水系统）
+        #   device_air_id / device_air_name —— 其他设备（空调系统补水装置）对应的冷热源
+        water_use = {}
+        for wk in ('config', 'device_air_id', 'device_air_name'):
+            if record.get(wk) not in (None, ''):
+                water_use[wk] = str(record.get(wk)).strip()
 
         # 图片列（各设备分表命名不一：device_img/system_img/fan_img/tower_img/
         # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）
@@ -704,6 +711,8 @@ class PgDataQuery:
             **gas_use,
             # 特殊用能剔除判据（同上，仅 device_special 表有）
             **special_use,
+            # 第6章用水判定（生活水泵配置 / 补水装置对应冷热源）
+            **water_use,
         }
 
     def get_formatted_equipment(self, customer_id: int = None, category: str = None) -> List[Dict]:

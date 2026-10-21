@@ -53,12 +53,22 @@ import re
 import shutil
 import sys
 
-CAP_RE = re.compile(r"^图([23])\.(\d+)\s*(.+?)\s*$")
+CAP_RE = re.compile(r"^图([236])\.(\d+)\s*(.+?)\s*$")
 BUILDING_CAT = "建筑外观"
 OVERALL_CAT = "单位整体外观"
 IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 # 本脚本负责重建的图注前缀（其余条目原样保留）
-MANAGED_PREFIXES = ("图2.", "图3.")
+MANAGED_PREFIXES = ("图2.", "图3.", "图6.")
+# 第6章：设备照片池（建筑外观/计量器具不参与设备配图）
+CH6_DEVICE_CATS = {"制冷设备", "照明设备", "办公设备", "其他用电设备", "信息机房"}
+# 图注关键词 → 设备照片分类（文件名对不上时的兜底）
+CH6_CAT_HINTS = (
+    (("照明", "灯"), "照明设备"),
+    (("办公", "电脑", "打印机"), "办公设备"),
+    (("信息机房", "机房", "服务器"), "信息机房"),
+    (("空调", "冷水", "冷却塔", "热泵"), "制冷设备"),
+    (("电梯", "水泵", "开水器", "热水"), "其他用电设备"),
+)
 # 第3章：来源 → 图注关键词（照 chapter-guides-1-4.md「图片路由」节）
 CH3_RULES = (
     ("award", "荣誉证书", ("荣誉", "奖", "证书", "称号", "授牌")),
@@ -168,6 +178,34 @@ def pick_ch3_photo(desc: str, pools: dict, used: set):
     return "", ""
 
 
+def pick_ch6_photo(desc: str, images, used: set):
+    """第6章设备照：图注（设备名）→ 设备照片池按文件名匹配。
+
+    规则（2026-10-21）：每个合并后的设备表行 1 张图，图注=设备名；
+    优先文件名主干与图注完全相同，其次互相包含；只用设备类照片，
+    建筑外观/计量器具不参与。
+    """
+    key = re.sub(r"\s+", "", desc or "")
+    if not key:
+        return ""
+    pool = [(im, str(im.get("path") or "")) for im in images
+            if (im.get("category") or "") in CH6_DEVICE_CATS]
+    for im, p in pool:                                  # ① 主干完全相同
+        stem = re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
+        if stem == key and p not in used and os.path.isfile(p):
+            return p
+    for im, p in pool:                                  # ② 互相包含
+        stem = re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
+        if stem and (key in stem or stem in key) and p not in used and os.path.isfile(p):
+            return p
+    for keys, cat in CH6_CAT_HINTS:                     # ③ 图注关键词 → 分类兜底
+        if any(k in key for k in keys):
+            for im, p in pool:
+                if (im.get("category") or "") == cat and p not in used and os.path.isfile(p):
+                    return p
+    return ""
+
+
 def match_building(desc: str, buildings):
     """从图注说明里找建筑名（最长优先，避免"门诊楼"命中"门诊病房综合楼"的部分串）。"""
     for name in sorted([b for b in buildings if b], key=len, reverse=True):
@@ -251,7 +289,7 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="报告照片归置器（第2章建筑外观照 / 第3章管理文件·荣誉证书）")
+    ap = argparse.ArgumentParser(description="报告照片归置器（第2章建筑外观照 / 第3章管理文件·荣誉证书 / 第6章设备照）")
     ap.add_argument("project", help="项目名（~/projects/energy-audit/<项目名>）或项目目录")
     ap.add_argument("--force", action="store_true", help="同名不同内容时覆盖既有副本/清单")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不复制、不写清单")
@@ -269,6 +307,7 @@ def main(argv=None) -> int:
     data_path = os.path.join(pdir, "data.json")
     md2_path = os.path.join(pdir, "chapter_md", "ch2.md")
     md3_path = os.path.join(pdir, "chapter_md", "ch3.md")
+    md6_path = os.path.join(pdir, "chapter_md", "ch6.md")
     for need in (data_path, md2_path):
         if not os.path.isfile(need):
             print(f"[错误] 缺少输入: {need}")
@@ -283,20 +322,22 @@ def main(argv=None) -> int:
 
     caps2 = parse_captions(md2_path, "2")
     caps3 = parse_captions(md3_path, "3") if os.path.isfile(md3_path) else []
-    if not caps2 and not caps3:
-        print(f"[错误] {md2_path} / {md3_path} 里都没有 '图2.x' / '图3.x' 图注行——"
+    caps6 = parse_captions(md6_path, "6") if os.path.isfile(md6_path) else []
+    if not caps2 and not caps3 and not caps6:
+        print(f"[错误] {md2_path} / {md3_path} / {md6_path} 里都没有 '图2.x' / '图3.x' / '图6.x' 图注行——"
               f"图注行是编号唯一来源，请先把它写进 md")
         return 1
 
     say(f"[项目] {pdir}")
     say(f"[输入] 建筑 {len(buildings)} 栋；照片 {len(images)} 条；"
-        f"图注 第2章 {len(caps2)} 条 / 第3章 {len(caps3)} 条")
+        f"图注 第2章 {len(caps2)} 条 / 第3章 {len(caps3)} 条 / 第6章 {len(caps6)} 条")
 
     photo_entries = []
     copy_cache = {}
     warnings = []
     used_sources = set()
     used3 = set()
+    used6 = set()
 
     for num, caption, desc in caps2:
         if num == 1:
@@ -364,6 +405,27 @@ def main(argv=None) -> int:
         rel = place(pdir, src, stem, args.force, copy_cache, say)
         if rel:
             photo_entries.append({"caption": caption, "src": rel})
+
+    # ---- 第6章：设备照片（图注=设备名；每个合并后的设备表行 1 张）----
+    if caps6:
+        say(f"[第6章] 图注 {len(caps6)} 条，设备照片池按文件名匹配")
+    for num, caption, desc in caps6:
+        src = pick_ch6_photo(desc, images, used6)
+        if not src:
+            warnings.append(f"{caption}：第6章未找到与设备名匹配的照片"
+                            f"（可用分类：{'、'.join(sorted(CH6_DEVICE_CATS))}）")
+            continue
+        used6.add(src)
+        stem = f"设备_{desc}"
+        if args.dry_run:
+            say(f"  · {caption}  <=  {src}")
+            photo_entries.append({"caption": caption,
+                                  "src": f"data/images/{safe_name(stem)}"})
+            continue
+        rel = place(pdir, src, stem, args.force, copy_cache, say)
+        if rel:
+            photo_entries.append({"caption": caption, "src": rel})
+
     if pool_total and not caps3:
         warnings.append(f"第3章有 {pool_total} 张可用照片（管理文件 "
                         f"{len(pools['management'])} / 荣誉证书 {len(pools['award'])}），"
@@ -372,7 +434,7 @@ def main(argv=None) -> int:
 
     man_path = os.path.join(pdir, "report_images.json")
     if args.dry_run:
-        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2/3章照片条目，未落盘")
+        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2/3/6章照片条目，未落盘")
     else:
         man = read_json(man_path, {"images": []})
         if not isinstance(man, dict):
@@ -386,7 +448,7 @@ def main(argv=None) -> int:
             shutil.copy2(man_path, man_path + ".bak")
         with open(man_path, "w", encoding="utf-8") as f:
             json.dump(man, f, ensure_ascii=False, indent=2)
-        say(f"[清单] {os.path.basename(man_path)}：重建第2章条目 {len(photo_entries)} 条"
+        say(f"[清单] {os.path.basename(man_path)}：重建第2/3/6章条目 {len(photo_entries)} 条"
             f"（替换旧条目 {dropped} 条，保留其他条目 {len(kept)} 条）")
 
     if warnings:
@@ -394,7 +456,7 @@ def main(argv=None) -> int:
         for w in warnings:
             print(f"  · {w}")
         return 2
-    say("\n[完成] 第2章照片已归置（无告警）")
+    say("\n[完成] 第2/3/6章照片已归置（无告警）")
     return 0
 
 

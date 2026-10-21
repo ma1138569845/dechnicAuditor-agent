@@ -292,6 +292,12 @@ class Equipment:
     usage_years: str = ""              # 使用年限
     location: str = ""                 # 所在位置
     remark: str = ""                   # 设备备注信息
+    # 第6章用水判定（2026-10-21 接入）：
+    #   config —— 动力设备「配置情况」（生活水泵：生活水箱 / 无负压生活水系统）
+    #   device_air_id / device_air_name —— 其他设备（空调系统补水装置）对应的冷热源
+    config: str = ""
+    device_air_id: str = ""
+    device_air_name: str = ""
     independent_metering: str = ""     # 独立计量 — is_metering（有/无/空=该表无此字段或未填）
     independent_metering_desc: str = ""  # 独立计量情况 — metering_desc
     independent_metering_ratio: str = ""  # 独立计量比例 — metering_ratio

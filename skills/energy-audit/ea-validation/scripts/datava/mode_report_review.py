@@ -710,7 +710,7 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
         for k, (j, b) in enumerate(subs):
             stop = subs[k + 1][0] if k + 1 < len(subs) else len(body)
             paras = [x for x in body[j + 1:stop]
-                     if x.kind == "p" and len(x.text.strip()) >= 12
+                     if x.kind == "p" and len(x.text.strip()) >= 5
                      and not RE_CAPTION.match(x.text)]
             if len(paras) < 3:
                 add("V3.STRUCT.CHAPTER6_PARAS", f"{b.text} 正文段数不足",
