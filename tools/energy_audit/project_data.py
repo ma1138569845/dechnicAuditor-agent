@@ -334,6 +334,14 @@ class MeteringInfo:
     water_meters: int = 0              # 水表数量
     gas_meters: int = 0                # 气表数量
     heat_meters: int = 0               # 热量表数量
+    # 第7章 7.1.1 用水分支（2026-10-21 接入）：
+    #   water_measured_depth —— 水表计量深度（仅总表/楼栋/楼层/科室…）
+    #   water_kitchen_metering —— 厨房用水是否单独计量（energy_meter.kitchen_water）
+    water_measured_depth: str = ""
+    water_kitchen_metering: Optional[bool] = None
+    # 电表分项计量按年份留档：{year: {meter_count, sub_metering, scenario}}
+    # 审计期最后一年与最新年份可能不同，写作端按审计期取，禁静默二选一。
+    electric_metering_by_year: Dict[str, Any] = field(default_factory=dict)
     independent_light_socket: bool = False   # 照明和插座用电独立计量
     independent_power: bool = False          # 动力用电独立计量
     independent_aircon: bool = False         # 空调用电独立计量

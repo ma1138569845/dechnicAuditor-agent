@@ -159,6 +159,9 @@ def collect_water_aux(pg, customer_id, result: Dict[str, Any]) -> None:
                 'water_system': (str(r.get('water_system') or '')).strip(),
                 'water_type': (str(r.get('water_type') or '')).strip(),
                 'year_water': _num(r.get('year_water'), None),
+                'year_water_value': r.get('year_water_value'),
+                # 单独计量（0/1；None=未登记）——7.1.1 厨房/空调供暖/灌溉分项判定
+                'is_metering': r.get('is_metering'),
                 'desc': (str(r.get('other_desc') or '')).strip(),
             }
             if not any(_water_field_ok(item[k]) for k in
@@ -1686,6 +1689,21 @@ def _fill_meter_counts(metering: dict, energy_meter: List[dict]) -> dict:
             m.setdefault('electric_meters', mc)
         elif dt == 2 and mc:
             m.setdefault('water_meters', mc)
+        if dt == 2:
+            # 7.1.1 用水分支：计量深度 + 厨房用水单独计量
+            if rec.get('measured_depth'):
+                m['water_measured_depth'] = str(rec.get('measured_depth')).strip()
+            if rec.get('kitchen_water') is not None:
+                m['water_kitchen_metering'] = bool(_int(rec.get('kitchen_water')))
+        elif dt == 1:
+            # 电表分项计量按年份留档（审计期最后一年 != 最新年份时必须显式选择）
+            y = str(rec.get('statistical_year') or '')
+            by_year = m.setdefault('electric_metering_by_year', {})
+            by_year[y] = {
+                'meter_count': mc,
+                'sub_metering': str(rec.get('sub_metering') or '').strip(),
+                'scenario': str(rec.get('other_metering_scenario') or '').strip(),
+            }
     return m
 
 

@@ -244,6 +244,9 @@
 数据：`metering.electric_meters`、`independent_aircon / independent_light_socket / independent_power / independent_special`、
 `equipment[].independent_metering`（主要用能设备独立计量“有/无”）、`metering.ledger_text`（电表台账）。
 
+> 分项计量状态按年份留档于 `metering.electric_metering_by_year`（`sub_metering` / `scenario`）。
+> 取**审计期最后一年**的状态；不同年份记录冲突时写【待核实】，不得静默二选一。
+
 主要用能设备范围：冷热源设备、供暖空调输配设备、医疗设备、生活水泵、单独照明、信息机房、厨房设备。
 
 | 分支 | 条件 | 固定表述 |
@@ -261,7 +264,13 @@
 
 #### 2.2 用水
 
-数据：`metering.water_meters`、楼栋水表覆盖率、楼层/科室计量、厨房/供暖空调/灌溉用水是否单独计量。
+数据：
+
+- `energy_meter`（`data_type=2` 水表）：`meter_count`、`measured_depth`（仅总表/楼栋/楼层/科室…）、
+  `kitchen_water`（厨房用水单独计量 0/1）、`year_water_value`；
+- `water_aux.greening[].is_metering`（灌溉是否单独计量）；
+- `water_aux.other[].water_system` + `is_metering`（空调/供暖补水等其他特殊用水系统是否单独计量）；
+- `water_aux.road`（道路冲洗，无单独计量字段时只写事实）。
 
 | 分支 | 条件 | 固定表述 |
 |---|---|---|
