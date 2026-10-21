@@ -774,6 +774,106 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
     return findings
 
 
+CH7_CLASSIFICATION_BAD = ("数据异常", "指标超标", "用能系统及设备问题", "计量与统计问题")
+CH7_PLATFORM_BAD = ("未登记", "待平台补录", "平台登记", "系统数据")
+
+
+def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
+    """第7章结构（2026-10-21 样板口径，P1 只告警）。
+
+    结构：7.1 用能系统现状分析（7.1.1 能耗监测系统 + 7.1.2… 问题卡片）；
+    7.2 节能潜力分析及建议（与 7.1 一一对应 + 管理与行为节能 + 节能率分析）。
+    """
+    ch7 = [b for b in blocks
+           if b.chapter == 7 and not (b.kind == "p" and re.search(r"\t\d+$", b.text))]
+    if not ch7:
+        return [Finding(
+            code="V3.STRUCT.CHAPTER7_MISSING", category="章节完整性",
+            severity=SEV_P1, title="第7章缺失", location="第7章",
+            expected="第7章 节能效果与节能潜力分析", actual="未找到第7章")]
+
+    findings: List[Finding] = []
+
+    def add(code: str, title: str, detail: str = "", expected: str = "", actual: str = "") -> None:
+        findings.append(Finding(
+            code=code, category="章节完整性", severity=SEV_P1,
+            title=title, detail=detail, location="第7章",
+            expected=expected, actual=actual))
+
+    title = next((b.text for b in ch7 if b.kind == "p" and b.text.startswith("第7章")), "")
+    if "节能效果与节能潜力分析" not in title.replace(" ", ""):
+        add("V3.STRUCT.CHAPTER7_TITLE", "第7章标题不符",
+            f"实测：{title or '（空）'}", "第7章 节能效果与节能潜力分析", title)
+
+    h71 = next((i for i, b in enumerate(ch7)
+                if b.kind == "p" and re.match(r"^7\.1\s", b.text)), None)
+    if h71 is None or "用能系统现状分析" not in ch7[h71].text:
+        add("V3.STRUCT.CHAPTER7_71", "7.1 标题不符",
+            "应为「7.1 用能系统现状分析」")
+
+    subs71 = [(i, b.text) for i, b in enumerate(ch7)
+              if b.kind == "p" and re.match(r"^7\.1\.\d+\s", b.text)]
+    if not subs71:
+        add("V3.STRUCT.CHAPTER7_SUBS", "7.1 未按问题卡片分节",
+            "应使用 7.1.1、7.1.2… 一题一节")
+    else:
+        if "能耗监测" not in subs71[0][1]:
+            add("V3.STRUCT.CHAPTER7_711", "7.1.1 不是能耗监测系统",
+                f"实测：{subs71[0][1]}", "7.1.1 能耗监测系统（固定第一节）")
+        if not 3 <= len(subs71) <= 8:
+            add("V3.STRUCT.CHAPTER7_SUBCOUNT", f"7.1 问题卡片数量异常（{len(subs71)} 节）",
+                "典型 3～8 节，按实际问题取", "3～8 节", f"{len(subs71)} 节")
+        for _, t in subs71:
+            hit = [w for w in CH7_CLASSIFICATION_BAD if w in t]
+            if hit:
+                add("V3.STRUCT.CHAPTER7_CLASSNAME", "7.1.x 使用了分类名",
+                    f"{t}（命中：{hit[0]}）", "标题写具体问题名")
+
+        # 7.1.1 须覆盖用电/用水/用燃气/用热
+        start = subs71[0][0]
+        end = subs71[1][0] if len(subs71) > 1 else len(ch7)
+        body = "".join(b.text for b in ch7[start + 1:end] if b.kind == "p")
+        cover_keys = {
+            "用电": ("用电",),
+            "用水": ("用水",),
+            "用燃气": ("燃气",),
+            "用热": ("用热", "供暖", "供热量", "热量计量"),
+        }
+        missing = [k for k, keys in cover_keys.items()
+                   if not any(x in body for x in keys)]
+        if missing:
+            add("V3.STRUCT.CHAPTER7_711_COVER", "7.1.1 未覆盖四类计量",
+                "缺：" + "、".join(missing), "用电、用水、用燃气、用热四类")
+
+    h72 = next((i for i, b in enumerate(ch7)
+                if b.kind == "p" and re.match(r"^7\.2\s", b.text)), None)
+    if h72 is None or "节能潜力分析及建议" not in ch7[h72].text:
+        add("V3.STRUCT.CHAPTER7_72", "7.2 标题不符",
+            "应为「7.2 节能潜力分析及建议」")
+
+    subs72 = [(i, b.text) for i, b in enumerate(ch7)
+              if b.kind == "p" and re.match(r"^7\.2\.\d+\s", b.text)]
+    if subs71 and len(subs72) != len(subs71) + 2:
+        add("V3.STRUCT.CHAPTER7_MAP", "7.2 建议数量与 7.1 不对应",
+            f"7.1.x {len(subs71)} 节 / 7.2.x {len(subs72)} 节",
+            "7.2 = 7.1 + 管理与行为节能 + 节能率分析",
+            f"{len(subs72)} 节")
+    if subs72:
+        tail = [t for _, t in subs72[-2:]]
+        if "管理与行为节能" not in tail[0] or "节能率分析" not in tail[1]:
+            add("V3.STRUCT.CHAPTER7_TAIL", "7.2 末尾两节不符",
+                f"实测末两节：{tail}", "管理与行为节能 → 节能率分析")
+
+    text = "\n".join(b.text for b in ch7 if b.kind == "p")
+    hits = [w for w in CH7_PLATFORM_BAD if w in text]
+    if hits:
+        add("V3.STRUCT.CHAPTER7_PLATFORM", "第7章出现平台语言",
+            "命中：" + "、".join(hits),
+            "改用「现场未获取到」「资料未提供」「待进一步核实」")
+
+    return findings
+
+
 def check_chapter8_summary(blocks: Sequence[Block]) -> List[Finding]:
     if chapter_tables(blocks, 8) >= 1:
         return []
@@ -1221,6 +1321,7 @@ def run(
     findings += check_tables_and_placeholders(blocks, registry)
     findings += check_province_rules(blocks)
     findings += check_chapter6_structure(blocks)
+    findings += check_chapter7_structure(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
     # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）

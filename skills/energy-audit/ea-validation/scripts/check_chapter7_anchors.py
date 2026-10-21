@@ -2,7 +2,7 @@
 """第7章「依据锚点」机械闸（2026-09-29 用户定，决策 3-A）。
 
 检查三件事（前两项是硬闸，后两项只提示）：
-  ① 标题零条文：7.1 标题句（`（N）` 后首句）与 7.2 的 `7.2.N` 小标题，
+  ① 标题零条文：7.1.x 小标题（一题一节）与 7.2 的 `7.2.N` 小标题，
      不得出现标准号（GB / DB37 / 《 / 》）或括注 `（`。
   ② 引用形态：正文禁止括注式（`（出自` / `（详见` / `（来源` / `（引自`）与泛引
      （`依据相关标准`）；引了标准就必须给**条文号**（`第X.X.X条`）。
@@ -44,11 +44,23 @@ def load(project: str) -> Path:
 
 
 def split_items(text: str) -> list[tuple[str, str, str]]:
-    """返回 [(编号, 标题句, 正文)]；7.1 段内以 `（N）` 开头。"""
+    """返回 [(编号, 标题句, 正文)]。
+
+    2026-10-21 起优先解析 `### 7.1.N 标题`（一题一节）；
+    旧版平铺 `（N）标题` 结构仅作兼容回退。
+    """
     if "## 7.1" not in text:
         return []
     seg = text.split("## 7.1", 1)[1]
     seg = seg.split("## 7.2", 1)[0] if "## 7.2" in seg else seg
+    heads = list(re.finditer(r'^###\s*(7\.1\.\d+)\s*(.+)$', seg, re.M))
+    if heads:
+        out = []
+        for i, m in enumerate(heads):
+            body = seg[m.end(): heads[i + 1].start() if i + 1 < len(heads) else len(seg)]
+            out.append((m.group(1), m.group(2).strip(), body.strip()))
+        return out
+    # 旧版兼容：平铺（N）
     out = []
     for m in re.finditer(r'（(\d+)）([^\n]+)', seg):
         body = m.group(2)
