@@ -651,6 +651,20 @@ author 想进一步扩展时，可用下面的引言段句式与编号列表（�
 - 照片副本与清单条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 归置
   （副本落 `<项目>/data/images/`，清单写相对路径 `data/images/xxx.png`），
   author **只写图注行**，不手工复制照片、不手写清单条目
+- **荣誉证书绑定（2026-10-22 收口）**：脚本先按
+  `energy_saving.award_name + statistical_year + award_certificate(file_id)`
+  建立“证书名称—年份—附件—本地路径”唯一绑定；只有名称及年份能唯一确定时才配图。
+  同一名称存在多年度证书而图注未写年份、或通用图注对应多张证书时，脚本停止配图并告警，
+  **不得按文件顺序猜第一张**。因此荣誉图注应写成
+  `图3.N 节水型单位奖牌（2024年）` 这类可唯一定位的说明。
+- **视觉复核（第二层，不替代数据库绑定）**：候选证书由 `deepseek-flash` 核对图片中的
+  证书标题和受奖单位。`pass` 放行；`review` 保留候选并提示人工复核；`mismatch`
+  只表示“视觉读数与数据库描述不一致”，**默认仍保留数据库确定性候选并告警**，
+  因为平台可能故意把综合荣誉名归并到一张具体奖项证书上；`unverified`
+  （无 `DEEPSEEK_API_KEY`、网络失败或接口异常）同样保留候选并提示。
+  只有显式使用 `prepare_report_photos.py --certificate-policy strict` 时，
+  `mismatch` 才从清单中排除。核验结果缓存在 `<项目>/photo_vision_checks.json`，
+  键绑定图片哈希、预期标题、受奖单位、模型及提示词版本。
 - ⚠️ 旧写法 `图3-1`（短横）**已废**：装配链识别图注的正则是 `^图\d+\.\d+`，
   短横会被当正文渲染 → 图永远出不来
 

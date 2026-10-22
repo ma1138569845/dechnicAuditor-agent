@@ -17,8 +17,10 @@
     `proj.images[]` 的 `建筑外观` + `building_name`）；
   - **第3章**：图 3.1…（管理文件截图 / 荣誉证书，来源
     `es.management_file_images` / `es.award_certificate_images`）；选图规则 =
-    文件名主干命中图注 → 关键词判池（荣誉/奖/证书 → 荣誉证书；制度/文件/标识/
-    管理/规定/措施/截图 → 管理文件）→ 按池顺序兜底。
+    数据库证书名称 + 年份 + 附件 ID 结构化绑定，名称/年份唯一匹配才配图；
+    多候选时停止并告警，不再按池顺序猜测。荣誉候选再由 DeepSeek
+    `deepseek-flash` 复核证书标题和受奖单位；默认视觉冲突仅告警并保留
+    数据库确定性候选，`--certificate-policy strict` 才排除冲突图片。
   - **第4章**：图 4.1…（计量器具照片，来源 `proj.images[]` 的 `计量器具`）；
     按 `energy_meter[].device_img` + `data_type` 识别电表/水表/燃气表/热表，
     无台账映射时按文件名兜底；附件 ID 与文件路径双重去重。通用图注
@@ -46,6 +48,7 @@
 产物:
     <项目>/data/images/<规范化文件名>         照片副本（清单引用的就是它）
     <项目>/report_images.json                 第2/3/4/6章照片条目重建（写前留 .bak）
+    <项目>/photo_vision_checks.json            第3章荣誉证书视觉核验缓存与核验记录
 
 约定（对应 2026-10-13 五项决策）:
     - 副本目录统一 `data/images/`，清单 src 写相对路径 `data/images/xxx.png`；
@@ -64,6 +67,49 @@ import os
 import re
 import shutil
 import sys
+from pathlib import Path
+
+
+def _load_photo_contract():
+    """加载 repo 中的唯一分类契约；技能从 profile 或 repo 内运行都可用。"""
+    try:
+        from tools.energy_audit.project_data import (  # type: ignore
+            PHOTO_CATEGORIES,
+            normalize_photo_category,
+        )
+        return PHOTO_CATEGORIES, normalize_photo_category
+    except ModuleNotFoundError:
+        here = Path(__file__).resolve()
+        for parent in here.parents:
+            if (parent / "tools" / "energy_audit" / "project_data.py").is_file():
+                sys.path.insert(0, str(parent))
+                break
+        from tools.energy_audit.project_data import (  # type: ignore
+            PHOTO_CATEGORIES,
+            normalize_photo_category,
+        )
+        return PHOTO_CATEGORIES, normalize_photo_category
+
+
+PHOTO_CATEGORIES, normalize_photo_category = _load_photo_contract()
+
+
+def _load_photo_vision():
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    from photo_vision import (  # type: ignore
+        DEFAULT_MODEL,
+        normalize_claim_text,
+        verify_certificate,
+        vision_cache_key,
+    )
+    return DEFAULT_MODEL, normalize_claim_text, verify_certificate, vision_cache_key
+
+
+VISION_MODEL, _normalize_claim_text, verify_certificate, vision_cache_key = \
+    _load_photo_vision()
+VISION_CHECKS_FILENAME = "photo_vision_checks.json"
 
 CAP_RE = re.compile(r"^图([2346])\.(\d+)\s*(.+?)\s*$")
 BUILDING_CAT = "建筑外观"
@@ -88,8 +134,9 @@ CH4_TYPE_WORDS = {
 # 第6章：设备照片池（建筑外观/计量器具不参与设备配图）
 CH6_DEVICE_CATS = {
     "制冷设备", "照明设备", "办公设备", "其他用电设备",
-    "信息机房", "医疗设备", "特殊设备",
+    "信息机房", "医疗设备", "特殊设备", "变压器/配电", "水泵/水箱", "厨房设备",
 }
+assert CH6_DEVICE_CATS <= set(PHOTO_CATEGORIES)
 # 图注关键词 → 设备照片分类（文件名对不上时的兜底）
 CH6_CAT_HINTS = (
     (("照明", "灯"), "照明设备"),
@@ -97,7 +144,10 @@ CH6_CAT_HINTS = (
     (("信息机房", "机房", "服务器", "数据中心"), "信息机房"),
     (("医疗", "X射线", "CT", "摄影"), "医疗设备"),
     (("空调", "冷水", "冷却塔", "热泵"), "制冷设备"),
-    (("电梯", "水泵", "开水器", "热水"), "其他用电设备"),
+    (("变压器", "配电柜", "配电室", "开关柜"), "变压器/配电"),
+    (("水泵", "水箱"), "水泵/水箱"),
+    (("厨房", "燃气灶", "蒸柜", "消毒柜"), "厨房设备"),
+    (("电梯", "开水器", "热水器"), "其他用电设备"),
 )
 # 图注关键词 → 文件名关键词（用于同义词匹配，禁止按分类乱抓）
 CH6_KEYWORDS = (
@@ -194,6 +244,19 @@ def read_json(path: str, default):
         return json.load(f)
 
 
+def write_json(path: str, payload, *, backup: bool = True):
+    """原子写入 JSON；覆盖前留备份，供人工核查或回滚。"""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if backup and target.is_file():
+        shutil.copy2(target, target.with_name(target.name + ".bak"))
+    temp = target.with_name(target.name + ".tmp")
+    with temp.open("w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(temp, target)
+
+
 def parse_captions(md_path: str, chapter: str):
     """返回指定章的 [(图号 int, 图注全文, 说明文字)]，按 md 出现顺序。"""
     out = []
@@ -231,26 +294,167 @@ def parse_md_device_names(md_path: str) -> set:
     return names
 
 
-def pick_ch3_photo(desc: str, pools: dict, used: set):
-    """第3章选图：①文件名主干命中图注 → ②关键词判池 → ③按池顺序兜底。
+def _attachment_ids(value) -> list:
+    if isinstance(value, (list, tuple, set)):
+        raw = " ".join(str(v or "") for v in value)
+    else:
+        raw = str(value or "")
+    return re.findall(r"\d+", raw)
 
-    pools = {"management": [管理文件截图路径…], "award": [荣誉证书路径…]}
-    """
-    all_files = [(kind, p) for kind in ("management", "award") for p in pools[kind]]
-    for kind, p in all_files:
-        stem = os.path.splitext(os.path.basename(p))[0]
-        if stem and stem in desc and p not in used:
-            return p, kind
-    for kind, label, keys in CH3_RULES:
-        if any(k in desc for k in keys):
-            for p in pools[kind]:
-                if p not in used:
-                    return p, kind
-    for kind in ("management", "award"):          # 兜底：按池顺序取未用过的
-        for p in pools[kind]:
-            if p not in used:
-                return p, kind
-    return "", ""
+
+def _path_key(path: str) -> str:
+    return os.path.normcase(os.path.abspath(str(path or "")))
+
+
+def build_ch3_pools(saving, images=None):
+    """构建第3章结构化照片池，保留证书标题、年份和附件 ID。"""
+    image_by_path = {
+        _path_key(im.get("path")): im
+        for im in (images or [])
+        if im.get("path")
+    }
+    image_by_id = {
+        str(im.get("file_id") or ""): im
+        for im in (images or [])
+        if im.get("file_id")
+    }
+    pools = {"management": [], "award": []}
+    seen = set()
+
+    def add(kind, path, *, title="", year=0, file_id=""):
+        path = str(path or "").strip()
+        if not path:
+            return
+        key = (kind, _path_key(path))
+        if key in seen:
+            return
+        seen.add(key)
+        pools[kind].append({
+            "kind": kind,
+            "path": path,
+            "file_id": str(file_id or ""),
+            "title": str(title or os.path.splitext(os.path.basename(path))[0]),
+            "year": int(year or 0),
+        })
+
+    for es in saving or []:
+        year = es.get("statistical_year") or 0
+        award_title = str(es.get("award_name") or "").strip()
+        award_ids = _attachment_ids(es.get("award_certificate"))
+        award_paths = [str(p) for p in (es.get("award_certificate_images") or []) if p]
+        if not award_paths:
+            award_paths = [
+                image_by_id[fid].get("path")
+                for fid in award_ids
+                if fid in image_by_id and image_by_id[fid].get("path")
+            ]
+        for idx, path in enumerate(award_paths):
+            image = image_by_path.get(_path_key(path)) or {}
+            fid = (
+                image.get("file_id")
+                or (award_ids[idx] if idx < len(award_ids) else "")
+            )
+            add("award", path, title=award_title, year=year, file_id=fid)
+
+        management_ids = _attachment_ids(es.get("management_files"))
+        management_paths = [
+            str(p) for p in (es.get("management_file_images") or []) if p
+        ]
+        if not management_paths:
+            management_paths = [
+                image_by_id[fid].get("path")
+                for fid in management_ids
+                if fid in image_by_id and image_by_id[fid].get("path")
+            ]
+        for idx, path in enumerate(management_paths):
+            image = image_by_path.get(_path_key(path)) or {}
+            fid = (
+                image.get("file_id")
+                or (management_ids[idx] if idx < len(management_ids) else "")
+            )
+            add("management", path, file_id=fid)
+    return pools
+
+
+def _ch3_caption_kind(desc: str) -> str:
+    for kind, _label, keys in CH3_RULES:
+        if any(key in desc for key in keys):
+            return kind
+    return ""
+
+
+def _ch3_candidates(desc: str, pools: dict):
+    requested_kind = _ch3_caption_kind(desc)
+    candidates = []
+    for kind in (("management", "award") if not requested_kind else (requested_kind,)):
+        for item in pools.get(kind) or []:
+            record = (
+                dict(item)
+                if isinstance(item, dict)
+                else {
+                    "kind": kind,
+                    "path": str(item),
+                    "file_id": "",
+                    "title": os.path.splitext(os.path.basename(str(item)))[0],
+                    "year": 0,
+                }
+            )
+            record.setdefault("kind", kind)
+            candidates.append(record)
+    return candidates
+
+
+def select_ch3_candidate(desc: str, pools: dict, used: set):
+    """选图时优先精确标题/文件名；多候选且无法唯一匹配时返回 None。"""
+    candidates = _ch3_candidates(desc, pools)
+
+    desc_key = _normalize_claim_text(desc)
+    exact = []
+    for record in candidates:
+        title_key = _normalize_claim_text(record.get("title"))
+        stem_key = _normalize_claim_text(
+            os.path.splitext(os.path.basename(str(record.get("path") or "")))[0]
+        )
+        if (title_key and (title_key in desc_key or desc_key in title_key)) or \
+                (stem_key and (stem_key in desc_key or desc_key in stem_key)):
+            exact.append(record)
+
+    if exact:
+        desc_years = {int(y) for y in re.findall(r"(?:19|20)\d{2}", desc)}
+        if desc_years:
+            year_matched = [
+                record for record in exact
+                if int(record.get("year") or 0) in desc_years
+            ]
+            if year_matched:
+                exact = year_matched
+
+        unused_exact = [
+            record for record in exact
+            if str(record.get("path") or "") not in used
+        ]
+        if len(unused_exact) > 1:
+            return None
+        if unused_exact:
+            return unused_exact[0]
+        # 已有精确候选但均已使用，不回退到其他证书，避免图注与内容错位。
+        return None
+
+    unused = [
+        record for record in candidates
+        if str(record.get("path") or "") not in used
+    ]
+    if len(unused) == 1:
+        return unused[0]
+    return None
+
+
+def pick_ch3_photo(desc: str, pools: dict, used: set):
+    """返回选中记录；不会在多个证书之间按顺序猜测。"""
+    selected = select_ch3_candidate(desc, pools, used)
+    if not selected:
+        return "", "", None
+    return selected["path"], selected["kind"], selected
 
 
 def _meter_type_from_text(text: str) -> tuple:
@@ -378,7 +582,7 @@ def pick_ch6_photo(desc: str, images, used: set, equipment=None):
     if not key:
         return ""
     pool = [(im, str(im.get("path") or "")) for im in images
-            if (im.get("category") or "") in CH6_DEVICE_CATS]
+            if normalize_photo_category(im.get("category")) in CH6_DEVICE_CATS]
     by_file_id = _images_by_file_id(images)
 
     # ① 设备台账 img_ids → 采集照片 file_id。文件 ID 是稳定关联键，
@@ -446,8 +650,9 @@ def match_building(desc: str, buildings):
 
 def pick_photo(images, category: str, building: str = ""):
     """按分类（+建筑名）选一张照片；命中多个取第一个。"""
+    category = normalize_photo_category(category)
     for im in images:
-        if (im.get("category") or "") != category:
+        if normalize_photo_category(im.get("category")) != category:
             continue
         if building and (im.get("building_name") or "").strip() != building:
             continue
@@ -524,6 +729,15 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="同名不同内容时覆盖既有副本/清单")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不复制、不写清单")
     ap.add_argument("--quiet", action="store_true", help="只在告警时输出")
+    ap.add_argument(
+        "--certificate-policy",
+        choices=("review", "strict"),
+        default="review",
+        help=(
+            "荣誉证书视觉冲突处理：review=保留数据库候选并告警（默认）；"
+            "strict=排除视觉冲突图片"
+        ),
+    )
     args = ap.parse_args(argv)
 
     def say(*a):
@@ -615,7 +829,7 @@ def main(argv=None) -> int:
             photo_entries.append({"caption": caption, "src": rel})
 
     unused = [im for im in images
-              if (im.get("category") or "") == BUILDING_CAT
+              if normalize_photo_category(im.get("category")) == BUILDING_CAT
               and str(im.get("path") or "") not in used_sources]
     if unused:
         names = sorted({(im.get("building_name") or "（无名）") for im in unused})
@@ -623,24 +837,103 @@ def main(argv=None) -> int:
             f"——按现口径允许只挑代表性照片，无需处理")
 
     # ---- 第3章：管理文件截图 / 荣誉证书（来源 es.management_file_images / award_certificate_images）----
-    pools = {"management": [], "award": []}
-    for es in saving:
-        for p in (es.get("management_file_images") or []):
-            if p and os.path.isfile(p) and p not in pools["management"]:
-                pools["management"].append(p)
-        for p in (es.get("award_certificate_images") or []):
-            if p and os.path.isfile(p) and p not in pools["award"]:
-                pools["award"].append(p)
+    pools = build_ch3_pools(saving, images)
+    for kind in ("management", "award"):
+        pools[kind] = [
+            record
+            for record in pools.get(kind) or []
+            if os.path.isfile(str(record.get("path") or ""))
+        ]
     pool_total = len(pools["management"]) + len(pools["award"])
     if caps3:
         say(f"[第3章] 可用照片：管理文件 {len(pools['management'])} 张 / "
             f"荣誉证书 {len(pools['award'])} 张")
+
+    vision_checks_path = os.path.join(pdir, VISION_CHECKS_FILENAME)
+    vision_cache = read_json(
+        vision_checks_path, {"version": 1, "checks": {}}
+    )
+    if not isinstance(vision_cache, dict):
+        vision_cache = {"version": 1, "checks": {}}
+    vision_checks = vision_cache.get("checks") or {}
+    if not isinstance(vision_checks, dict):
+        vision_checks = {}
+    vision_cache_dirty = False
+    expected_recipient = (
+        base.get("unit_name") or base.get("unit_short") or unit_short
+    )
+
     for num, caption, desc in caps3:
-        src, kind = pick_ch3_photo(desc, pools, used3)
+        src, kind, record = pick_ch3_photo(desc, pools, used3)
         if not src:
-            warnings.append(f"{caption}：第3章没有可用照片（es.management_file_images / "
-                            f"award_certificate_images 均为空或已用完）")
+            unused_count = len([
+                item
+                for item in _ch3_candidates(desc, pools)
+                if str(item.get("path") or "") not in used3
+            ])
+            if unused_count > 1:
+                warnings.append(
+                    f"{caption}：有 {unused_count} 个候选，但图注无法唯一对应具体证书，"
+                    f"已停止配图；请在图注中写明证书名称及年份"
+                )
+            else:
+                warnings.append(
+                    f"{caption}：第3章没有可用照片，或没有与图注唯一匹配的证书"
+                )
             continue
+
+        if kind == "award":
+            expected_title = str(record.get("title") or desc).strip()
+            cache_key = vision_cache_key(
+                image_path=src,
+                expected_title=expected_title,
+                expected_recipient=expected_recipient,
+                model=VISION_MODEL,
+            )
+            verification = vision_checks.get(cache_key)
+            if not (
+                isinstance(verification, dict)
+                and verification.get("status") in {"pass", "review", "mismatch"}
+            ):
+                verification = verify_certificate(
+                    image_path=src,
+                    expected_title=expected_title,
+                    expected_recipient=expected_recipient,
+                    model=VISION_MODEL,
+                )
+                if verification.get("status") in {"pass", "review", "mismatch"}:
+                    vision_checks[cache_key] = {
+                        **verification,
+                        "caption": caption,
+                        "kind": kind,
+                        "file_id": str(record.get("file_id") or ""),
+                        "source_path": src,
+                        "expected_title": expected_title,
+                        "expected_recipient": expected_recipient,
+                    }
+                    vision_cache_dirty = True
+
+            status = str((verification or {}).get("status") or "unverified")
+            reason = str((verification or {}).get("reason") or "未完成视觉核验")
+            if status == "mismatch":
+                if args.certificate_policy == "strict":
+                    warnings.append(
+                        f"{caption}：视觉核验判定不匹配，严格模式已排除该证书（{reason}）"
+                    )
+                    continue
+                warnings.append(
+                    f"{caption}：视觉核验与数据库描述不一致，"
+                    f"默认保留数据库候选并建议人工复核（{reason}）"
+                )
+            if status == "review":
+                warnings.append(
+                    f"{caption}：保留数据库确定性候选，需人工复核（{reason}）"
+                )
+            elif status == "unverified":
+                warnings.append(
+                    f"{caption}：保留数据库确定性候选，视觉复核未完成（{reason}）"
+                )
+
         used3.add(src)
         prefix = "管理文件" if kind == "management" else "荣誉证书"
         stem = f"{prefix}_{os.path.splitext(os.path.basename(src))[0]}"
@@ -652,6 +945,14 @@ def main(argv=None) -> int:
         rel = place(pdir, src, stem, args.force, copy_cache, say)
         if rel:
             photo_entries.append({"caption": caption, "src": rel})
+
+    if vision_cache_dirty and not args.dry_run:
+        write_json(
+            vision_checks_path,
+            {"version": 1, "checks": vision_checks},
+            backup=True,
+        )
+        say(f"[第3章] 视觉核验结果：{os.path.basename(vision_checks_path)}")
 
     # ---- 第6章：设备照片（图注=设备名；每个合并后的设备表行 1 张）----
     if caps6:

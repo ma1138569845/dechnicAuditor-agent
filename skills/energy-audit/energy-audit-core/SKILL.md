@@ -73,7 +73,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | `version-normalization.md` | ★权威·版本归一规则（草稿优先=最新数据，禁多数投票） |
 | `report-format-spec.md` | 报告格式总规范（唯一权威全文） |
 | `conventions.md` | ★通用约定（2026-09-18 五合一）：项目粒度 + 兜底原则 + config 结构 + 审计三张表结构 + ISO 日期转换 |
-| `deployment-ops.md` | ★部署与运维（2026-09-18 三合一）：新机自检清单 + Hermes 运维（含"SOUL 改动需重启 gateway"）+ 辅助视觉模型配置（Qwen-VL） |
+| `deployment-ops.md` | ★部署与运维（2026-09-18 三合一）：新机自检清单 + Hermes 运维（含"SOUL 改动需重启 gateway"）+ 视觉模型配置（证书默认 DeepSeek V4.1-Flash，Qwen-VL 备用） |
 | `soul-purity-principle.md` | SOUL.md 编写原则（`skills/energy-audit/_soul/` 的唯一编写依据） |
 | `lessons-learned.md` | ★跨项目经验库（教训索引：现象→铁律→详见，按数据源/标准/报告/装配/协作五类，2026-09-18 建） |
 | `knowledge-base-maintenance.md` | ★知识库维护（**写侧**）：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令（knowledger 专属；editor 的巡检也引它；原 S16a「交付件入库」2026-10-10 废止） |

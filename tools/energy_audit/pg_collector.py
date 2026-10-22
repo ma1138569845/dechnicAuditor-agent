@@ -24,6 +24,7 @@ from tools.energy_audit.project_data import (
     TeamMember, CoopMember, ImageItem,
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
+    normalize_photo_category, photo_category_for_equipment,
 )
 from tools.energy_audit.indicators import compute_project_indicators, COEFFICIENT_RANGES
 from tools.energy_audit.institution_classifier import classify_institution
@@ -1224,37 +1225,15 @@ def build_and_save_project(
             for fid in parse_file_ids(_fid):
                 _period = _img.get('period_name') or _img.get('period_code') or ''
                 _photo_id_map.append((fid, '缴费发票', f"{_type_cn} {_period}".strip(), ''))
-    # 设备分表照片（_img 列）→ 第6章分系统分类（2026-09-04 补，此前正文无设备照片）
-    _DEVICE_PHOTO_CATEGORY = {
-        '空调': '制冷设备', '照明': '照明设备', '办公': '办公设备',
-        '动力': '其他用电设备', '生活热水': '其他用电设备',
-        '其他设备': '制冷设备', '输配设备': '制冷设备', '蒸汽': '制冷设备',
-        '变配电': '变压器/配电',
-        # 卫生器具（用水系统）暂不映射：DB 无照片记录，后续有需要再加'用水设备'分类
-    }
-
-    def _equipment_photo_category(eq: dict) -> str:
-        """设备分表 → 第6章照片分类。
-
-        `特殊设备` 表内同时承载数据中心和医疗设备，不能统一落到“信息机房”；
-        否则两类设备的配图会串类，且照片归置阶段无法按设备行校验覆盖率。
-        """
-        category = str(eq.get('category') or '').strip()
-        if category != '特殊设备':
-            return _DEVICE_PHOTO_CATEGORY.get(category, '')
-        text = ' '.join(str(eq.get(k) or '') for k in
-                        ('name', 'spec', 'use_type', 'location', 'remark'))
-        lowered = text.lower()
-        if any(k in text for k in ('数据中心', '信息中心', '信息机房', '机房', '服务器')) or \
-                any(k in lowered for k in ('data center', 'server room')):
-            return '信息机房'
-        if any(k in text for k in ('医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA')) or \
-                any(k in lowered for k in ('medical', 'radiology')):
-            return '医疗设备'
-        return '特殊设备'
-
     for eq in pg_result['found'].get('equipment', []) or []:
-        _cat = _equipment_photo_category(eq)
+        _cat = photo_category_for_equipment(
+            eq.get('category') or '',
+            name=eq.get('name') or '',
+            spec=eq.get('spec') or '',
+            use_type=eq.get('use_type') or '',
+            location=eq.get('location') or '',
+            remark=eq.get('remark') or '',
+        )
         if not _cat:
             continue
         for fid in (eq.get('img_ids') or []):
@@ -1266,6 +1245,11 @@ def build_and_save_project(
             for pth in download_attachment_images([att]):
                 _path_by_id[att['group_id']] = pth
         for fid, cat, cap, bname in _photo_id_map:
+            try:
+                cat = normalize_photo_category(cat, strict=True)
+            except ValueError as exc:
+                print(f"[datacollection v2] ⚠️ 跳过照片 {fid}: {exc}")
+                continue
             pth = _path_by_id.get(fid)
             if pth:
                 try:

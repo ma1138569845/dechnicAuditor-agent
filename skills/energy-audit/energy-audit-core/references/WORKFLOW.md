@@ -19,7 +19,7 @@
 | S7 | 写章 批1 | author | S2~S6 产物 + 蓝本 | 契约 → 蓝本 → 第1~4章写作 | `chapter_md/ch1~ch4.md` | 每章落盘；收工重跑契约脚本 |
 | S8 | 写章 批2 | author | 同上 | 第5章装配稿补叙述（禁重算）+ 第6/7章 | `ch5_import.md`（已就位）、`ch6.md`、`ch7.md` | 同上 |
 | S9 | 写章 批3 | author | 同上 | 第8章 + 附录 | `ch8.md`、`appendix.md` | 同上 |
-| S9.5 | 照片归置 | author | `data.json` + `chapter_md/ch2.md` + `ch3.md` + `ch4.md` + `ch6.md` | `ea-authoring/scripts/prepare_report_photos.py <项目名>` | `<项目>/data/images/*` + `report_images.json` 第2/3/4/6章条目 | exit 2（图注匹配不到照片；或第3/4章有照片却没写图注行；或有 `img_ids` 的设备缺图注）→ 先修 md 再继续；**必须早于 S10 装配**，否则图注在、图不出来 |
+| S9.5 | 照片归置 | author | `data.json` + `chapter_md/ch2.md` + `ch3.md` + `ch4.md` + `ch6.md` | `ea-authoring/scripts/prepare_report_photos.py <项目名>` | `<项目>/data/images/*` + `report_images.json` 第2/3/4/6章条目 + 第3章 `photo_vision_checks.json` | exit 2（图注匹配不到照片、证书歧义、第3/4章有照片却没写图注、或有 `img_ids` 的设备缺图注）→ 先修 md/证书绑定再继续。证书视觉 `review/mismatch/unverified` 默认只告警并保留数据库确定性候选；仅显式 `--certificate-policy strict` 才因 `mismatch` 排除。**必须早于 S10 装配**，否则图注在、图不出来 |
 | S9.6 | 第5章图表归置 | author | `chapter5_figures.json` + `chapter_md/ch5_import.md` + `charts/` | `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` | `report_images.json` 可信图5条目（含 SHA-256）+ `chapter5_figure_issues.json` + `missing_items.json` | 默认只把可信图写入清单，异常登记后继续；`--policy strict` 才 exit 2 |
 | S10 | 装配 | author | `data.json`+`chapter_md/`+`report_images.json`+`chapter5_figures.json` | `build_energy_audit_docx.py --project-dir <项目>` | `output/_script_build/<单位>能源审计报告.docx` + 装配问题清单 | 默认缺图写红色“暂缺”并继续；`--figure-policy strict` 才因第5章四链不一致 exit 2；缺章仅告警 |
 | S11 | 收尾 | author | 上一步 docx | `finalize_energy_audit_pdf.py --project-dir <项目>` | 同名 `.pdf`（刷目录+盖章） | Word COM 必须绝对路径；updateFields 自动补写 |

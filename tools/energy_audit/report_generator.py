@@ -1047,7 +1047,10 @@ class ReportGenerator:
 
     def load_from_project(self, project) -> Dict:
         """从 AuditProject 自动构建 report_data（字段溯源: project_data → 用户 → 默认）"""
-        from tools.energy_audit.project_data import AuditProject
+        from tools.energy_audit.project_data import (
+            AuditProject,
+            normalize_photo_category,
+        )
         if not isinstance(project, AuditProject):
             raise TypeError("需要 AuditProject 对象")
 
@@ -1057,14 +1060,14 @@ class ReportGenerator:
         # 未分类照片（category=''）兜底进第2章；分类照片按章节/系统分发。
         img_by_cat: Dict[str, List] = {}
         for _img in project.images:
-            _cat = getattr(_img, 'category', '') or ''
+            _cat = normalize_photo_category(getattr(_img, 'category', ''))
             img_by_cat.setdefault(_cat, []).append(_img)
 
         def _chapter_imgs(*cats: str, prefix: str = '图2') -> List[Dict]:
             """取指定分类的照片 → [{path, caption}]；caption 未填时按章节自动编号"""
             items = []
             for c in cats:
-                items.extend(img_by_cat.get(c, []))
+                items.extend(img_by_cat.get(normalize_photo_category(c), []))
             return [{'path': _i.path, 'caption': _i.caption or f'{prefix}-{idx+1}'}
                     for idx, _i in enumerate(items)]
 
@@ -1163,8 +1166,8 @@ class ReportGenerator:
                                'run_time':bg.run_time, 'storey_metrology':bg.storey_metrology,
                                'garage':bg.garage, 'garage_area':bg.garage_area}
                               for i, bg in enumerate(project.buildings)],
-                # 建筑照片：单位整体外观（图2.1）+ 分类（建筑外观/各建筑外观）+ 未分类兜底
-                'images': _chapter_imgs('单位整体外观', '建筑外观', '各建筑外观', '', prefix='图2'),
+                # 建筑照片：单位整体外观（图2.1）+ 建筑外观（building_name 区分逐栋）+ 未分类兜底
+                'images': _chapter_imgs('单位整体外观', '建筑外观', '', prefix='图2'),
             },
             'chapter3': chapter3,
             'chapter4': {
@@ -1235,8 +1238,8 @@ class ReportGenerator:
             energy_types = [k for k, v in counts.items() if v > 0]
             rd['chapter1']['energy_types'] = energy_types  # 供 chapter1 使用
 
-        # 第5章账单照片（分类：能耗账单）
-        rd['chapter5']['images'] = _chapter_imgs('能耗账单', prefix='图5')
+        # 第5章缴费发票（旧 data.json 的“能耗账单”在读取边界归一为“缴费发票”）
+        rd['chapter5']['images'] = _chapter_imgs('缴费发票', prefix='图5')
 
         # 设备 → chapter6
         if project.equipment:

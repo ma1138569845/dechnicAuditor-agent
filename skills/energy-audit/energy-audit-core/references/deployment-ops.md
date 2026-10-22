@@ -306,55 +306,60 @@ C:\Users\<user>\AppData\Local\hermes\profiles\<profile>\SOUL.md
 
 ---
 
-## 辅助视觉模型配置 Qwen-VL（原 auxiliary-vision-config；2026-09-17 由 ea-authoring 移入）
+## 视觉模型配置（DeepSeek V4.1-Flash 为主；原 auxiliary-vision-config）
 
-> **位置变更（2026-09-17）**：本文原在 `ea-authoring/references/`，因属"环境部署"能力且采集/写章/视觉核验都可能用到，
-> 已移到 `energy-audit-core/references/`（core 发布到全部 6 个 profile）。内容不变，仅修正下方 config 路径。
+> **2026-10-22 更新**：DeepSeek 已提供原生视觉输入。第3章荣誉证书复核统一使用
+> `deepseek-flash`，不再以“DeepSeek 不支持视觉”为前提。Qwen-VL 仅作为其他图片识别
+> 场景的可选备用，不参与证书的默认决策链。
 
-### 背景
+### 证书核验的不变边界
 
-能源审计中的图片识别场景（设备铭牌、仪表读数、建筑图纸）多为中文内容。DeepSeek 不支持原生视觉输入，因此需要配置辅助视觉模型。
+数据库绑定是主判据，视觉模型只是第二层复核：
 
-### 推荐方案：Qwen-VL Max（DashScope 国内端点）
+1. `prepare_report_photos.py` 先按
+   `energy_saving.award_name + statistical_year + award_certificate(file_id)`
+   建立数据库绑定。
+2. 只有证书名称及年份能唯一确定时才配图；多候选时停止配图并要求把名称/年份写进图注。
+3. 候选证书再交给 `deepseek-flash` 核对图片中的标题和受奖单位。
+4. `pass` 放行；`review`、`unverified` 保留确定性候选并提示。
+   `mismatch` 默认只说明“视觉读数与数据库描述不一致”，仍保留数据库候选并提示人工复核；
+   只有显式传入 `--certificate-policy strict` 才排除冲突图片。这样可容纳“平台用综合荣誉名
+   归并具体奖项证书”等经人工确认的故意差异。
+5. 核验结果写入 `<项目>/photo_vision_checks.json`。缓存键包含图片 SHA-256、
+   预期标题、受奖单位、模型名及提示词版本；`--dry-run` 不写缓存。
 
-```yaml
-## Windows: %LOCALAPPDATA%\hermes\config.yaml   （= C:\Users\<用户>\AppData\Local\hermes\config.yaml）
-## macOS/Linux: ~/.hermes/config.yaml
-auxiliary:
-  vision:
-    provider: alibaba          # DashScope（阿里云百炼）
-    model: qwen-vl-max         # Qwen-VL Max
-    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+### DeepSeek 配置
+
+`photo_vision.py` 从环境变量或 Hermes 本机 `.env` 读取：
+
+```text
+DEEPSEEK_API_KEY=...
 ```
 
-> 注意：Windows 上 `HERMES_HOME` 是 `%LOCALAPPDATA%\hermes`，**不是** `~/.hermes`（`C:\Users\<用户>\.hermes` 是另一个空壳目录）。
+查找顺序：
 
-### 链路对比
+1. 当前进程环境变量 `DEEPSEEK_API_KEY`
+2. `%HERMES_HOME%\.env`
+3. `%LOCALAPPDATA%\hermes\.env`
 
-| | 之前 | 现在 |
-|------|------|------|
-| 主模型 | DeepSeek（跳过） | DeepSeek（跳过） |
-| fallback | OpenRouter Gemini Flash | Qwen-VL Max（直连 DashScope） |
-| 语言 | 英文主导 | 中文原生 |
-| 铭牌/仪表 | 通用描述，不懂"COP"、"定额" | 领域理解力强 |
+默认参数：
 
-### 验证
+| 项 | 值 |
+|---|---|
+| 模型 | `deepseek-flash` |
+| 基础地址 | `https://api.deepseek.com` |
+| 接口 | `/chat/completions`（OpenAI 兼容图片消息格式） |
 
-```bash
-## 测试 Qwen-VL 视觉（需要实际图片）
-curl -X POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions \
-  -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"qwen-vl-max","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,..."}},{"type":"text","text":"描述这张图片"}]}]}'
-```
+无需在 `config.yaml` 中另建 `auxiliary.vision` 节点；证书模块直接读取
+`DEEPSEEK_API_KEY`。密钥缺失、网络失败、超时或返回无法解析时，统一降级为
+`unverified`，并保留数据库已唯一选出的候选。
 
-### 环境变量
+### 冒烟测试
 
-- `DASHSCOPE_API_KEY` — 必需，阿里云百炼 API Key
-- Key 同时用于 RAG embedding（Qwen text-embedding-v3）
+用实际证书图片执行一次单图核验，确认返回的是模型结果而非
+“未配置 API Key / 网络异常”。运行输出和 `photo_vision_checks.json` 中不得写入密钥。
 
-### Pitfalls
+### Qwen-VL 备用
 
-1. **Hermes 优先读 config.yaml**：仅设 `AUXILIARY_VISION_MODEL` 环境变量不够，会被 config 覆盖。
-2. **provider 别名**：`alibaba` = `dashscope` = `alibaba-cloud` = `qwen-dashscope`
-3. **端点**：中国用户用 `dashscope.aliyuncs.com`，国际用户用 `dashscope-intl.aliyuncs.com`
+设备铭牌、仪表读数、建筑图纸等其他视觉任务仍可按需配置 DashScope
+`qwen-vl-max`；这只是备用能力，不改变第3章证书的数据库绑定规则。

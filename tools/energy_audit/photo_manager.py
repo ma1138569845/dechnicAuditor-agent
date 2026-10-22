@@ -9,12 +9,17 @@
 
 from typing import List, Dict, Tuple
 
-# 各章节期望的照片（名称与 project_data.PHOTO_CATEGORIES 一一对应）
+from tools.energy_audit.project_data import (
+    PHOTO_CATEGORIES,
+    normalize_photo_category,
+)
+
+
+# 各章节照片需求。分类名必须来自 project_data.PHOTO_CATEGORIES。
 PHOTO_REQUIREMENTS = {
     '第2章': [
         ('单位整体外观', '被审计单位整体外观照（图2.1，紧跟2.1段落后，scene_img_id）', 'chapter2.images'),
-        ('建筑外观', '被审计单位建筑全景或主立面照片', 'chapter2.images'),
-        ('各建筑外观', '每栋建筑单独外观照（2.2 可选，缺失不阻塞）', 'chapter2.images'),
+        ('建筑外观', '被审计单位建筑全景或主立面照片；逐栋归属写入 building_name', 'chapter2.images'),
     ],
     '第3章': [
         ('管理文件/荣誉', '能源管理制度文件、节能荣誉证书等', 'chapter3.images'),
@@ -23,24 +28,39 @@ PHOTO_REQUIREMENTS = {
         ('计量器具', '电表、水表、气表等计量仪表照片', 'chapter4.images'),
     ],
     '第5章': [
-        ('缴费发票', '能源缴费发票照片（电/水/燃气/供暖，采集自 ts_institution_energy_invoice + invoice_image）', 'chapter5.images'),
+        ('缴费发票', '能源缴费发票照片（电/水/燃气/供暖）', 'chapter5.images'),
     ],
     '第6章': [
-        ('制冷设备', '冷水机组/多联机/冷却塔/水泵/换热器等（采集自设备分表 _img 列）', 'chapter6.images.cooling'),
+        ('制冷设备', '冷水机组/多联机/冷却塔/水泵/换热器等', 'chapter6.images.cooling'),
         ('照明设备', '典型照明灯具照片', 'chapter6.images.lighting'),
         ('办公设备', '电脑/打印机等办公设备照片', 'chapter6.images.office'),
-        ('其他用电设备', '电热水器/电梯等', 'chapter6.images.other_electric'),
-        ('信息机房', '服务器/机柜/精密空调等', 'chapter6.images.computer_room'),
-        ('厨房设备', '燃气灶具、消毒柜等', 'chapter6.images.kitchen'),
+        ('其他用电设备', '电热水器/电梯等', 'chapter6.images.other_energy'),
+        ('信息机房', '服务器/机柜/精密空调等', 'chapter6.images.special'),
+        ('医疗设备', 'CT/X射线等医疗专用设备', 'chapter6.images.special'),
+        ('特殊设备', '无法细分用途的特殊设备', 'chapter6.images.special'),
+        ('变压器/配电', '变压器室、配电柜等', 'chapter6.images.transformer'),
+        ('水泵/水箱', '生活水泵、消防水箱等', 'chapter6.images.water'),
+        ('厨房设备', '燃气灶具、消毒柜等', 'chapter6.images.other_energy'),
     ],
     '第7章': [
         ('节能改造示意', '改造前现状照片（可选对比）', 'chapter7.images'),
     ],
 }
 
+assert {
+    category
+    for requirements in PHOTO_REQUIREMENTS.values()
+    for category, _desc, _path_hint in requirements
+} <= set(PHOTO_CATEGORIES)
 
-# 可选照片分类：缺失不阻塞 check_photos（如 2.2 每栋建筑外观照，正式报告可无图）
-PHOTO_OPTIONAL_CATEGORIES = ('各建筑外观',)
+# 只有“总览类”照片是所有项目的硬需求。建筑/系统/设备照片取决于项目实际配置，
+# 缺失时仍列入清单提示，但不把整个照片检查判为失败。
+PHOTO_OPTIONAL_CATEGORIES = frozenset(set(PHOTO_CATEGORIES) - {
+    '单位整体外观',
+    '管理文件/荣誉',
+    '计量器具',
+    '缴费发票',
+})
 
 
 def check_photos(data) -> Tuple[bool, List[str]]:
@@ -56,10 +76,14 @@ def check_photos(data) -> Tuple[bool, List[str]]:
 
 def _check_by_category(project) -> Tuple[bool, List[str]]:
     """按照片分类校验（项目数据模型带分类照片时使用）"""
-    have = {getattr(img, 'category', '') or '' for img in project.images}
+    have = {
+        normalize_photo_category(getattr(img, 'category', ''))
+        for img in project.images
+    }
     # 第3章 管理文件/荣誉：energy_saving 附件图片（file_resolver 已下载）也算
     for es in getattr(project, 'energy_saving', None) or []:
-        if (getattr(es, 'management_file_images', None) or getattr(es, 'award_certificate_images', None)):
+        if (getattr(es, 'management_file_images', None) or
+                getattr(es, 'award_certificate_images', None)):
             have.add('管理文件/荣誉')
 
     missing = []

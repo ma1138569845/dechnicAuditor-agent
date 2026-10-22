@@ -109,7 +109,7 @@ DB 查询细节见 `energy-audit-pg-data` skill（版本机制、表结构陷阱
 3. **file id 解析缺失**：build_img/device_img 存的是 `ts_attachment.group_id`（**列名是 group_id 不是 id**，按 id 查直接 UndefinedColumn）；attach_url 为相对路径（/20260207/xxx.png），需 `get_file_base_url()` 拼 base_url
 4. **base_url 未配置**：config.yaml 的 energy_audit 段只有 database 无 file 段 → `file_resolver` 静默跳过下载（不报错）
 
-修复模式：①profile config 修 toolsets+cwd（datacollection/datava/caliber/author 四个 worker 都要查）；②skill/SOUL.md 加硬规则"采集必须走 repo 工具链，import 失败停下来报告断链，禁止手写直连脚本";③pg_collector 采集 scene_img_id/build_img/device_img → file_resolver 解析下载 → ImageItem(category=单位整体外观/建筑外观/计量器具) 写入 proj.images；④photo_manager.check_photos 按 PHOTO_CATEGORIES 校验各章照片（'各建筑外观' 为可选项，缺失不阻塞）。落地细节见 energy-audit-pg-data skill 与 repo `tools/energy_audit/photo_manager.py`。
+修复模式：①profile config 修 toolsets+cwd（datacollection/datava/caliber/author 四个 worker 都要查）；②skill/SOUL.md 加硬规则"采集必须走 repo 工具链，import 失败停下来报告断链，禁止手写直连脚本";③pg_collector 采集 scene_img_id/build_img/device_img → file_resolver 解析下载 → ImageItem(category=单位整体外观/建筑外观/计量器具) 写入 proj.images；④`photo_manager.check_photos` 以 `project_data.PHOTO_CATEGORIES` 为唯一分类契约校验各章照片。建筑外观统一用 `建筑外观` + `building_name` 表示逐栋归属，缴费发票统一用 `缴费发票`；旧数据里的 `各建筑外观`、`能耗账单` 只在读取边界自动归一。落地细节见 energy-audit-pg-data skill 与 repo `tools/energy_audit/photo_manager.py`。
 
 ## 基本信息三张表【待补充】根因链（烟台法院实证 2026-09）
 

@@ -17,16 +17,16 @@ from pathlib import Path
 
 
 # ============================================================
-# 照片分类（名称与 photo_manager.PHOTO_REQUIREMENTS 一一对应）
-# 数据采集 agent 写入 project.images 时按此分类标注，报告按分类路由到各章节。
+# 照片分类（单一权威契约）
+# 采集器、photo_manager、照片归置器和报告生成器都只使用这里的规范名；
+# 旧 data.json 的别名在读取边界统一归一，避免同一概念在链路中换名。
 # ============================================================
 PHOTO_CATEGORIES = (
     '单位整体外观',   # 第2章 2.1 段落后紧跟（ts_institution_scene.scene_img_id，图2.1）
-    '建筑外观',      # 第2章 被审计单位建筑全景或主立面照片
-    '各建筑外观',    # 第2章 每栋建筑单独外观照
+    '建筑外观',      # 第2章 建筑全景/主立面照；逐栋归属写入 building_name
     '管理文件/荣誉',  # 第3章 能源管理制度文件、节能荣誉证书
     '计量器具',      # 第4章 电表、水表、气表等计量仪表照片
-    '能耗账单',      # 第5章 电费、水费、燃气费账单示例
+    '缴费发票',      # 第5章 电费、水费、燃气费等缴费发票示例
     '制冷设备',      # 第6章 冷水机组/多联机外机/分体空调等
     '照明设备',      # 第6章 典型照明灯具照片
     '办公设备',      # 第6章 电脑、打印机等办公设备
@@ -39,6 +39,71 @@ PHOTO_CATEGORIES = (
     '厨房设备',      # 第6章 厨房设备
     '节能改造示意',  # 第7章 改造前现状照片（可选对比）
 )
+
+# 旧版 data.json 只做读取兼容；新采集和新报告一律写规范名。
+LEGACY_PHOTO_CATEGORY_ALIASES = {
+    '能耗账单': '缴费发票',
+    '各建筑外观': '建筑外观',
+}
+
+
+def normalize_photo_category(value: Any, *, strict: bool = False) -> str:
+    """把旧分类归一为规范名。
+
+    strict=False 用于读取旧项目：未知分类原样保留，避免静默丢数据。
+    strict=True 用于采集/归置写入口：未知分类直接报错，防止脏口径继续扩散。
+    """
+    category = str(value or '').strip()
+    category = LEGACY_PHOTO_CATEGORY_ALIASES.get(category, category)
+    if strict and category and category not in PHOTO_CATEGORIES:
+        raise ValueError(f"未知照片分类: {category!r}；合法分类: {PHOTO_CATEGORIES}")
+    return category
+
+
+def photo_category_for_equipment(
+    category: str,
+    *,
+    name: str = '',
+    spec: str = '',
+    use_type: str = '',
+    location: str = '',
+    remark: str = '',
+) -> str:
+    """设备台账分类 → 第6章照片分类（数据库字段到报告路由的唯一映射）。"""
+    category = str(category or '').strip()
+    if category in PHOTO_CATEGORIES and category != '特殊设备':
+        return category
+
+    direct = {
+        '空调': '制冷设备',
+        '照明': '照明设备',
+        '办公': '办公设备',
+        '厨房': '厨房设备',
+        '生活热水': '其他用电设备',
+        '其他设备': '制冷设备',
+        '输配设备': '制冷设备',
+        '蒸汽': '制冷设备',
+        '变配电': '变压器/配电',
+    }
+    if category != '特殊设备' and category != '动力':
+        return direct.get(category, '')
+
+    text = ' '.join(str(v or '') for v in
+                    (name, spec, use_type, location, remark))
+    lowered = text.lower()
+    if category == '动力':
+        if any(k in text for k in ('水泵', '水箱')):
+            return '水泵/水箱'
+        return '其他用电设备'
+
+    # “特殊设备”表同时承载数据中心和医疗设备，必须按内容细分。
+    if any(k in text for k in ('数据中心', '信息中心', '信息机房', '机房', '服务器')) or \
+            any(k in lowered for k in ('data center', 'server room')):
+        return '信息机房'
+    if any(k in text for k in ('医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA')) or \
+            any(k in lowered for k in ('medical', 'radiology')):
+        return '医疗设备'
+    return '特殊设备'
 
 
 # ============================================================
@@ -527,6 +592,9 @@ class ImageItem:
     caption: str = ""                  # 图注（可选，报告内展示用）
     building_name: str = ""            # 行归属：建筑外观照=所属建筑名，其余留空
     file_id: Optional[int] = None      # ts_attachment.group_id，设备 img_ids 的稳定关联键
+
+    def __post_init__(self):
+        self.category = normalize_photo_category(self.category)
 
 
 # ============================================================

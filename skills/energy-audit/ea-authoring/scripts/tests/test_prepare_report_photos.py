@@ -136,6 +136,159 @@ class PrepareReportPhotosCh4Tests(unittest.TestCase):
             ))
 
 
+class PrepareReportPhotosCh3VisionTests(unittest.TestCase):
+    def make_project(self, root: Path):
+        (root / "chapter_md").mkdir(parents=True)
+        (root / "chapter_md" / "ch2.md").write_text("# 第2章\n", encoding="utf-8")
+        (root / "chapter_md" / "ch3.md").write_text(
+            "# 第3章\n\n图3.1 节水型单位奖牌\n", encoding="utf-8"
+        )
+        certificate = root / "节水型单位.png"
+        certificate.write_bytes(PNG)
+        data = {
+            "base": {
+                "unit_name": "测试单位",
+                "unit_short": "测试单位",
+            },
+            "images": [{
+                "path": str(certificate),
+                "file_id": 2002,
+                "category": "管理文件/荣誉",
+            }],
+            "energy_saving": [{
+                "statistical_year": 2024,
+                "award_name": "节水型单位",
+                "award_certificate": "2002",
+                "award_certificate_images": [str(certificate)],
+            }],
+        }
+        (root / "data.json").write_text(
+            json.dumps(data, ensure_ascii=False), encoding="utf-8"
+        )
+        (root / "report_images.json").write_text(
+            json.dumps({"images": []}, ensure_ascii=False), encoding="utf-8"
+        )
+        return certificate
+
+    def test_visual_mismatch_excludes_wrong_certificate_in_strict_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_project(root)
+            with mock.patch.object(
+                PHOTOS,
+                "verify_certificate",
+                create=True,
+                return_value={
+                    "status": "mismatch",
+                    "reason": "证书标题不一致",
+                    "model": "deepseek-flash",
+                },
+            ):
+                rc = PHOTOS.main([
+                    str(root), "--quiet", "--certificate-policy", "strict"
+                ])
+            self.assertEqual(rc, 2)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )
+            self.assertFalse(any(
+                item["caption"].startswith("图3.")
+                for item in manifest.get("images", [])
+            ))
+
+    def test_visual_mismatch_is_retained_by_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_project(root)
+            with mock.patch.object(
+                PHOTOS,
+                "verify_certificate",
+                return_value={
+                    "status": "mismatch",
+                    "reason": "证书标题不一致",
+                    "model": "deepseek-flash",
+                },
+            ):
+                rc = PHOTOS.main([str(root), "--quiet"])
+            self.assertEqual(rc, 2)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(any(
+                item["caption"].startswith("图3.")
+                for item in manifest.get("images", [])
+            ))
+
+    def test_visual_unverified_keeps_deterministic_candidate(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_project(root)
+            with mock.patch.object(
+                PHOTOS,
+                "verify_certificate",
+                create=True,
+                return_value={
+                    "status": "unverified",
+                    "reason": "未配置 DEEPSEEK_API_KEY",
+                    "model": "deepseek-flash",
+                },
+            ):
+                rc = PHOTOS.main([str(root), "--quiet"])
+            self.assertEqual(rc, 2)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(any(
+                item["caption"].startswith("图3.")
+                for item in manifest.get("images", [])
+            ))
+
+    def test_visual_pass_is_cached_and_reused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_project(root)
+            verdict = {
+                "status": "pass",
+                "reason": "证书标题和受奖单位与数据一致",
+                "model": "deepseek-flash",
+            }
+            with mock.patch.object(
+                PHOTOS,
+                "verify_certificate",
+                return_value=verdict,
+            ) as verify:
+                self.assertEqual(PHOTOS.main([str(root), "--quiet"]), 0)
+                self.assertEqual(PHOTOS.main([str(root), "--quiet"]), 0)
+            self.assertEqual(verify.call_count, 1)
+            checks = json.loads(
+                (root / "photo_vision_checks.json").read_text(encoding="utf-8")
+            )["checks"]
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(next(iter(checks.values()))["status"], "pass")
+
+    def test_visual_review_keeps_candidate_but_returns_warning(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.make_project(root)
+            with mock.patch.object(
+                PHOTOS,
+                "verify_certificate",
+                return_value={
+                    "status": "review",
+                    "reason": "视觉识别置信度不足（0.6）",
+                    "model": "deepseek-flash",
+                },
+            ):
+                self.assertEqual(PHOTOS.main([str(root), "--quiet"]), 2)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(any(
+                item["caption"].startswith("图3.")
+                for item in manifest.get("images", [])
+            ))
+
+
 class Ch4PhotoAssertTests(unittest.TestCase):
     @staticmethod
     def para(text="", image=False):
