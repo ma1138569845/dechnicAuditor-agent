@@ -862,12 +862,25 @@ def test_chapter5_figures_accept_one_image_before_each_caption():
     assert v3.check_chapter5_figures(blocks) == []
 
 
-def test_chapter5_figures_missing_image_is_p0():
+def test_chapter5_figures_missing_image_is_nonblocking_p1():
     blocks = [_block("图5.1 能源资源流向图", 5)]
     findings = v3.check_chapter5_figures(blocks)
     assert findings
-    assert findings[0].severity == SEV_P0
+    assert findings[0].severity == SEV_P1
     assert findings[0].code == "V3.STRUCT.CHAPTER5_FIG_COUNT"
+
+
+def test_chapter5_figures_visible_placeholder_is_accepted_with_p1():
+    blocks = [
+        _block(
+            "图5.1 能源资源流向图（暂缺：未取得可用的本次图表）",
+            5,
+        )
+    ]
+    findings = v3.check_chapter5_figures(blocks)
+    assert len(findings) == 1
+    assert findings[0].severity == SEV_P1
+    assert findings[0].code == "V3.STRUCT.CHAPTER5_FIG_PLACEHOLDER"
 
 
 def test_area_billing_rejects_heat_meter_defect_wording():

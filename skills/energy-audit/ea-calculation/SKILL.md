@@ -92,8 +92,9 @@ python <skill>/scripts/ch5_gas_attribution.py <项目名> [--apply]
 `prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。
 
 第5章图表不再由 caliber 二次重复生成。`generate()` 一次性生成 PNG 和
-`chapter5_figures.json`；任一预期图失败即删除旧清单并报错。`--skip-charts`
-只供诊断，使用既有清单，不产生新的可装配批次。
+`chapter5_figures.json`；单个预期图失败时该条目写
+`status=missing` + `reason`，其余图继续生成，装配阶段显示可见“暂缺”。
+`--skip-charts` 只供诊断，使用既有清单，不产生新的可装配批次。
 
 环境变量 `HERMES_AGENT_HOME` 指定含 `tools/energy_audit` 的项目根（缺省按 `_paths.py` 三级降级自动解析）。
 
@@ -280,7 +281,7 @@ md = generate(config, str(out_dir / 'chapter5.md'))
 | chapter5.md | 第5章完整 Markdown |
 | indicators_report.txt | 可读指标报告 |
 | charts/*.png | 能源流向图 / 总量柱状图 / 逐月分组柱状图 / 费用饼图 |
-| chapter5_figures.json | 本次生成批次的图号、图注、文件、类型、能源编码、SHA-256；装配唯一真值 |
+| chapter5_figures.json | 本次生成批次的图号、图注、类型、能源编码；可信图附文件、SHA-256 和 `status=available`，失败图附 `status=missing` + `reason`；装配唯一真值 |
 
 indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，author装配报告时引用它。
 
@@ -321,7 +322,7 @@ indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，aut
 - **数据不存在**：`load_project` 返回 None → 报错退出（exit 1），提示先运行 DataCollection
 - **无年度能耗数据**：标记 `⚠️无数据`，不崩溃
 - **DB 连接超时**：折标系数/定额自动降级到 Layer 2/3，不中断计算
-- **图表生成失败**：警告并继续，chapter5.md 与 indicators.json 照常产出
+- **图表生成失败**：失败图在 `chapter5_figures.json` 标 `status=missing`，其余图、chapter5.md 与 indicators.json 照常产出；不再因单图失败删除整批清单
 - **月度数据缺失**：逐月图表跳过，不报错
 
 ---

@@ -132,7 +132,7 @@ class PrepareChapter5FiguresTests(unittest.TestCase):
                 (project.root / "report_images.json.bak").read_bytes(), before
             )
 
-    def test_caption_mismatch_exits_two_without_rewriting_manifest(self):
+    def test_caption_mismatch_degrades_without_blocking(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as td:
             project = FigureProject(Path(td))
@@ -141,18 +141,75 @@ class PrepareChapter5FiguresTests(unittest.TestCase):
                 md.read_text(encoding="utf-8").replace("总用电量", "用电总量"),
                 encoding="utf-8",
             )
-            before = (project.root / "report_images.json").read_bytes()
-            self.assertEqual(module.main([str(project.root), "--quiet"]), 2)
+            self.assertEqual(module.main([str(project.root), "--quiet"]), 0)
+            self.assertEqual(module.main(
+                [str(project.root), "--quiet", "--policy", "strict"]
+            ), 2)
+            issues = json.loads(
+                (project.root / "chapter5_figure_issues.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(issues["issues"])
             self.assertEqual(
-                (project.root / "report_images.json").read_bytes(), before
+                [
+                    entry["caption"]
+                    for entry in project.images()
+                    if entry["caption"].startswith("图5.")
+                ],
+                [],
             )
 
-    def test_changed_chart_hash_exits_two(self):
+    def test_changed_chart_hash_degrades_without_blocking(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as td:
             project = FigureProject(Path(td))
             (project.charts / "energy_flow.png").write_bytes(PNG + b"changed")
-            self.assertEqual(module.main([str(project.root), "--quiet"]), 2)
+            self.assertEqual(module.main([str(project.root), "--quiet"]), 0)
+            ch5 = [
+                entry for entry in project.images()
+                if entry["caption"].startswith("图5.")
+            ]
+            self.assertEqual(
+                [entry["caption"] for entry in ch5],
+                ["图5.2 2022年-2024年总用电量（单位：kWh）"],
+            )
+
+    def test_manifest_missing_status_is_not_copied_to_report_images(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as td:
+            project = FigureProject(Path(td))
+            manifest_path = project.root / "chapter5_figures.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["figures"][1] = {
+                "figure_no": "5.2",
+                "caption": "图5.2 2022年-2024年总用电量（单位：kWh）",
+                "kind": "total",
+                "energy_code": "electricity",
+                "status": "missing",
+                "reason": "未取得逐月电量数据",
+                "src": "",
+                "sha256": "",
+            }
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self.assertEqual(module.main([str(project.root), "--quiet"]), 0)
+            ch5 = [
+                entry for entry in project.images()
+                if entry["caption"].startswith("图5.")
+            ]
+            self.assertEqual(
+                [entry["caption"] for entry in ch5],
+                ["图5.1 能源资源流向图"],
+            )
+            registry = json.loads(
+                (project.root / "missing_items.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(
+                any(item["label"] == "图5.2" for item in registry["items"])
+            )
 
 
 if __name__ == "__main__":

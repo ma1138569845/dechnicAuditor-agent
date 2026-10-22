@@ -141,24 +141,35 @@ class Chapter5FigureGenerationTests(unittest.TestCase):
             self.assertIn("图5.1 能源资源流向图\n", markdown)
             self.assertNotIn("![图5.1", markdown)
 
-    def test_expected_chart_failure_writes_no_manifest(self):
+    def test_expected_chart_failure_is_recorded_as_missing(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             charts = root / "charts"
             charts.mkdir()
             config = self.config(root)
-            stale = root / "chapter5_figures.json"
-            stale.write_text("{}", encoding="utf-8")
 
             with mock.patch.object(
                 self.module, "_generate_flow_diagram", side_effect=write_flow
             ), mock.patch.object(
                 self.module, "_generate_total_bar_chart", return_value=False
             ):
-                with self.assertRaises(self.module.ChartGenerationError):
-                    self.module.generate_charts(self.data(), config, str(charts))
+                manifest = self.module.generate_charts(
+                    self.data(), config, str(charts)
+                )
 
-            self.assertFalse(stale.exists())
+            self.assertTrue(manifest["figures"])
+            missing = [
+                figure for figure in manifest["figures"]
+                if figure.get("kind") == "total"
+            ]
+            self.assertTrue(missing)
+            self.assertTrue(all(f["status"] == "missing" for f in missing))
+            self.assertTrue(all("生成失败" in f["reason"] for f in missing))
+            markdown = self.module.generate_chapter5_md(
+                self.data(), config, manifest
+            )
+            for figure in missing:
+                self.assertIn(figure["caption"], markdown)
 
 
 if __name__ == "__main__":

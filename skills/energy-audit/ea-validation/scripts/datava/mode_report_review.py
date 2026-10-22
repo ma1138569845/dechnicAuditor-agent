@@ -1020,7 +1020,7 @@ def check_chapter6_structure(
 
 
 def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
-    """第5章图表硬校验：图注与图片一一对应、图号连续、无落单图片。"""
+    """第5章图表校验：缺图可用可见“暂缺”说明降级为 P1，不阻断交付。"""
     ch5 = [
         block for block in blocks
         if block.chapter == 5
@@ -1038,11 +1038,12 @@ def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
     findings: List[Finding] = []
 
     def add(code: str, title: str, detail: str,
-            expected: str, actual: str) -> None:
+            expected: str, actual: str,
+            severity: str = SEV_P0) -> None:
         findings.append(Finding(
             code=code,
             category="章节完整性",
-            severity=SEV_P0,
+            severity=severity,
             title=title,
             detail=detail,
             location="第5章",
@@ -1057,16 +1058,39 @@ def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
             "未找到任何 图5.x 图注",
             "第5章图注与图片一一对应",
             "0 条图注",
+            SEV_P1,
         )
         return findings
 
-    if len(image_blocks) != len(captions):
+    placeholder_captions = [
+        caption for caption in captions
+        if "（暂缺：" in caption.text or "（暂缺:" in caption.text
+    ]
+    if placeholder_captions:
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_PLACEHOLDER",
+            "第5章存在可见缺图占位",
+            "以下图注已用“暂缺”明确披露："
+            + "、".join(
+                re.match(r"^图5\.\d+", caption.text).group(0)
+                for caption in placeholder_captions
+            ),
+            "缺图须有可见占位，图片与图注一一对应",
+            f"暂缺 {len(placeholder_captions)} 条",
+            SEV_P1,
+        )
+
+    expected_image_count = len(captions) - len(placeholder_captions)
+    overall_count_mismatch = len(image_blocks) != expected_image_count
+    if overall_count_mismatch:
         add(
             "V3.STRUCT.CHAPTER5_FIG_COUNT",
             "第5章图片与图注数量不一致",
-            f"图片 {len(image_blocks)} 张 / 图注 {len(captions)} 条",
-            "图注数=图片数",
-            f"{len(image_blocks)}/{len(captions)}",
+            f"图片 {len(image_blocks)} 张 / 待配图图注 {expected_image_count} 条"
+            f" / 图注总数 {len(captions)} 条",
+            "有图图注数=图片数；缺图图注须有暂缺说明",
+            f"{len(image_blocks)}/{expected_image_count}",
+            SEV_P1,
         )
 
     numbers = []
@@ -1080,7 +1104,10 @@ def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
         if match:
             number = int(match.group(1))
             numbers.append(number)
-            if pending_images == 0:
+            is_placeholder = "（暂缺：" in block.text or "（暂缺:" in block.text
+            if is_placeholder:
+                pass
+            elif pending_images == 0:
                 missing.append(f"图5.{number}")
             elif pending_images > 1:
                 extra.append(f"图5.{number} 前有 {pending_images} 张图片")
@@ -1098,13 +1125,14 @@ def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
             "1..N 连续",
             str(numbers),
         )
-    if missing:
+    if missing and not overall_count_mismatch:
         add(
             "V3.STRUCT.CHAPTER5_FIG_COUNT",
             "第5章存在无图图注",
             "以下图注前没有图片：" + "、".join(missing),
-            "每一条图注前恰有 1 张图片",
+            "有图图注前恰有 1 张图片；缺图须写可见暂缺说明",
             f"缺图 {len(missing)} 条",
+            SEV_P1,
         )
     if extra:
         add(

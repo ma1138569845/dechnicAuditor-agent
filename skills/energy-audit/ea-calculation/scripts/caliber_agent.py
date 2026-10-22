@@ -605,7 +605,15 @@ def run_public_building_caliber(project_name: str, proj: AuditProject,
         figures_manifest = generate_charts(
             chart_data, config, str(chart_dir)
         )
-        print(f"  ✅ 图表: {chart_dir}")
+        available = sum(
+            1 for item in figures_manifest.get("figures", [])
+            if item.get("status") != "missing"
+        )
+        missing = sum(
+            1 for item in figures_manifest.get("figures", [])
+            if item.get("status") == "missing"
+        )
+        print(f"  ✅ 图表: {chart_dir}（可用 {available}，缺图 {missing}）")
 
     chapter5_path = out_dir / "chapter5.md"
     chapter5 = render_public_building_chapter5(

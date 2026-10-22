@@ -1184,8 +1184,9 @@ def generate_charts(data: dict, config: dict,
     - chart_{code}_monthly.png（各能源类型三年逐月分组柱，有月度数据才画）
     - cost_pie_{year}.png（各年费用占比饼图，5.2 费用节）
 
-    返回并原子写入 `chapter5_figures.json`。任一预期图失败时删除旧清单并抛
-    `ChartGenerationError`，杜绝“部分图 + 看似成功的旧清单”进入装配。
+    返回并原子写入 `chapter5_figures.json`。单张预期图失败时保留该图号与
+    图注，条目写 `status=missing` + `reason`，其余图继续生成；装配器据此写
+    可见“暂缺”，不会误用旧图或可疑图。
     """
     os.makedirs(output_dir, exist_ok=True)
     en = data.get('energy_data', {})
@@ -1222,6 +1223,17 @@ def generate_charts(data: dict, config: dict,
             "energy_code": energy_code,
             "year": str(year)[:4],
         })
+
+    def mark_missing(filename: str, reason: str):
+        for item in figures:
+            if item.get("src") == filename:
+                item.update({
+                    "status": "missing",
+                    "reason": str(reason),
+                    "src": "",
+                    "sha256": "",
+                })
+                return
 
     add_figure("energy_flow", "图5.1 能源资源流向图", "energy_flow.png")
 
@@ -1264,9 +1276,12 @@ def generate_charts(data: dict, config: dict,
 
     try:
         # 5.1 能源资源流向图
-        flow_path = _generate_flow_diagram(en, config, output_dir)
-        if not flow_path or not os.path.isfile(flow_path):
-            raise ChartGenerationError("能源资源流向图生成失败")
+        try:
+            flow_path = _generate_flow_diagram(en, config, output_dir)
+            if not flow_path or not os.path.isfile(flow_path):
+                mark_missing("energy_flow.png", "能源资源流向图生成失败")
+        except Exception as exc:  # noqa: BLE001 - 单图失败必须降级
+            mark_missing("energy_flow.png", f"能源资源流向图生成失败: {exc}")
 
         # 5.2 各能源类型：总量柱 + 逐月分组柱
         for code in major_codes:
@@ -1280,14 +1295,31 @@ def generate_charts(data: dict, config: dict,
                 monthly = info.get('monthly', [0] * 12) or []
                 series_map[y] = monthly
                 has_monthly = has_monthly or any(float(v or 0) > 0 for v in monthly)
-            if not _generate_total_bar_chart(
+            total_name = f'chart_{code}_total.png'
+            try:
+                total_ok = _generate_total_bar_chart(
                     years, totals, c['name'], c['unit'], output_dir,
-                    f'chart_{code}_total.png'):
-                raise ChartGenerationError(f"{c['name']}总量图生成失败")
-            if has_monthly and not _generate_monthly_grouped_bar(
-                    years, series_map, c['name'], c['unit'], output_dir,
-                    f'chart_{code}_monthly.png'):
-                raise ChartGenerationError(f"{c['name']}逐月图生成失败")
+                    total_name)
+            except Exception as exc:  # noqa: BLE001
+                total_ok = False
+                total_reason = f"{c['name']}总量图生成失败: {exc}"
+            else:
+                total_reason = f"{c['name']}总量图生成失败"
+            if not total_ok:
+                mark_missing(total_name, total_reason)
+            if has_monthly:
+                monthly_name = f'chart_{code}_monthly.png'
+                try:
+                    monthly_ok = _generate_monthly_grouped_bar(
+                        years, series_map, c['name'], c['unit'], output_dir,
+                        monthly_name)
+                except Exception as exc:  # noqa: BLE001
+                    monthly_ok = False
+                    monthly_reason = f"{c['name']}逐月图生成失败: {exc}"
+                else:
+                    monthly_reason = f"{c['name']}逐月图生成失败"
+                if not monthly_ok:
+                    mark_missing(monthly_name, monthly_reason)
 
         # 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）
         if cost_years:
@@ -1296,53 +1328,71 @@ def generate_charts(data: dict, config: dict,
                 matplotlib.use('Agg')
                 import matplotlib.pyplot as plt
                 setup_chart_font(plt)
-            except ImportError as exc:
-                raise ChartGenerationError("matplotlib 不可用，无法生成费用饼图") from exc
+            except Exception as exc:  # noqa: BLE001
+                for y in cost_years:
+                    mark_missing(
+                        f'cost_pie_{str(y)[:4]}.png',
+                        f"费用饼图生成失败: matplotlib 不可用或初始化失败: {exc}",
+                    )
+                cost_years = []
             for y in cost_years:
-                labels, values = [], []
-                for code, entry in (co.get(y) or {}).items():
-                    v = float(entry.get('total', 0) or 0)
-                    if v > 0:
-                        label = entry.get('name') or _coeff_info(code)['name'] + '费'
-                        labels.append(label)
-                        values.append(v)
-                fig, ax = plt.subplots(figsize=(4.6, 3.9))
-                total = sum(values) or 1.0
-                outer = [lab if 100.0 * v / total >= 5 else ''
-                         for lab, v in zip(labels, values)]
-                wedges, _t_out, _t_in = ax.pie(
-                    values, labels=outer, colors=cost_pie_colors(labels),
-                    startangle=90, counterclock=False,
-                    labeldistance=1.05, pctdistance=0.62,
-                    textprops={'fontsize': 8.5},
-                    autopct=lambda p: (f'{p:.1f}%' if p >= 5 else ''),
-                    wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'})
-                small = []
-                for i, (lab, v) in enumerate(zip(labels, values)):
-                    pct = 100.0 * v / total
-                    if pct < 5:
-                        ang = math.radians(
-                            (wedges[i].theta1 + wedges[i].theta2) / 2.0
-                        )
-                        small.append([lab, pct, ang])
-                if small:
-                    small.sort(key=lambda r: math.sin(r[2]), reverse=True)
-                    ys = [1.05 * math.sin(r[2]) for r in small]
-                    for k in range(1, len(ys)):
-                        if ys[k - 1] - ys[k] < 0.26:
-                            ys[k] = ys[k - 1] - 0.26
-                    for (lab, pct, ang), ty in zip(small, ys):
-                        tx = 1.22 if math.cos(ang) >= 0 else -1.22
-                        ax.annotate(
-                            f'{lab} {pct:.1f}%',
-                            xy=(0.9 * math.cos(ang), 0.9 * math.sin(ang)),
-                            xytext=(tx, ty), ha='left' if tx > 0 else 'right',
-                            va='center', fontsize=8, annotation_clip=False,
-                            arrowprops=dict(arrowstyle='-', lw=0.6, color='#808080'))
-                ax.set_title(chart_text(f'{str(y)[:4]}年能源费用占比'), fontsize=11)
-                fig.savefig(os.path.join(output_dir, f'cost_pie_{str(y)[:4]}.png'),
-                            dpi=150, bbox_inches='tight', facecolor='white')
-                plt.close(fig)
+                pie_name = f'cost_pie_{str(y)[:4]}.png'
+                fig = None
+                try:
+                    labels, values = [], []
+                    for code, entry in (co.get(y) or {}).items():
+                        v = float(entry.get('total', 0) or 0)
+                        if v > 0:
+                            label = entry.get('name') or _coeff_info(code)['name'] + '费'
+                            labels.append(label)
+                            values.append(v)
+                    fig, ax = plt.subplots(figsize=(4.6, 3.9))
+                    total = sum(values) or 1.0
+                    outer = [lab if 100.0 * v / total >= 5 else ''
+                             for lab, v in zip(labels, values)]
+                    wedges, _t_out, _t_in = ax.pie(
+                        values, labels=outer, colors=cost_pie_colors(labels),
+                        startangle=90, counterclock=False,
+                        labeldistance=1.05, pctdistance=0.62,
+                        textprops={'fontsize': 8.5},
+                        autopct=lambda p: (f'{p:.1f}%' if p >= 5 else ''),
+                        wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'})
+                    small = []
+                    for i, (lab, v) in enumerate(zip(labels, values)):
+                        pct = 100.0 * v / total
+                        if pct < 5:
+                            ang = math.radians(
+                                (wedges[i].theta1 + wedges[i].theta2) / 2.0
+                            )
+                            small.append([lab, pct, ang])
+                    if small:
+                        small.sort(key=lambda r: math.sin(r[2]), reverse=True)
+                        ys = [1.05 * math.sin(r[2]) for r in small]
+                        for k in range(1, len(ys)):
+                            if ys[k - 1] - ys[k] < 0.26:
+                                ys[k] = ys[k - 1] - 0.26
+                        for (lab, pct, ang), ty in zip(small, ys):
+                            tx = 1.22 if math.cos(ang) >= 0 else -1.22
+                            ax.annotate(
+                                f'{lab} {pct:.1f}%',
+                                xy=(0.9 * math.cos(ang), 0.9 * math.sin(ang)),
+                                xytext=(tx, ty),
+                                ha='left' if tx > 0 else 'right',
+                                va='center', fontsize=8,
+                                annotation_clip=False,
+                                arrowprops=dict(
+                                    arrowstyle='-', lw=0.6, color='#808080'))
+                    ax.set_title(
+                        chart_text(f'{str(y)[:4]}年能源费用占比'),
+                        fontsize=11)
+                    fig.savefig(
+                        os.path.join(output_dir, pie_name),
+                        dpi=150, bbox_inches='tight', facecolor='white')
+                except Exception as exc:  # noqa: BLE001
+                    mark_missing(pie_name, f"费用饼图生成失败: {exc}")
+                finally:
+                    if fig is not None:
+                        plt.close(fig)
     except Exception as exc:
         if os.path.exists(manifest_path):
             os.unlink(manifest_path)
@@ -1352,11 +1402,18 @@ def generate_charts(data: dict, config: dict,
 
     project_dir = os.path.dirname(manifest_path)
     for item in figures:
+        if item.get("status") == "missing":
+            continue
         path = os.path.join(output_dir, item["src"])
         if not os.path.isfile(path):
-            if os.path.exists(manifest_path):
-                os.unlink(manifest_path)
-            raise ChartGenerationError(f"预期图表不存在: {item['caption']}")
+            item.update({
+                "status": "missing",
+                "reason": f"预期图表生成失败或不存在: {item['caption']}",
+                "src": "",
+                "sha256": "",
+            })
+            continue
+        item["status"] = "available"
         item["src"] = _display_src(path, project_dir)
         item["sha256"] = _sha256_file(path)
 

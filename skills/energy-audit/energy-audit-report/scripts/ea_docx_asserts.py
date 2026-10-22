@@ -33,7 +33,8 @@
                       （2026-10-13 新增；第3章照片是硬要求，漏写图注行会静默无图；P1 只告警不阻断）
     ch4_photos        第4章计量器具照片：至少 1 条 图4.x 图注、编号连续，
                       且每条图注前至少有 1 张图（允许一注多图；P1 只告警不阻断）
-    ch5_figures       第5章图表：图注编号连续、每注前恰有 1 张图、无落单图片（硬阻断）
+    ch5_figures       第5章图表：图注编号连续；有图图注前恰有 1 张图；
+                      缺图图注须带可见“暂缺”说明；无落单图片
     ch4_structure     第4章小节结构：4.1/4.2/4.3 三节齐全、无 4.4、4.3 标题为「能源资源统计成效及问题」
                       （2026-10-13 新增；原「4.3 统计情况」已废止合并；P1 只告警不阻断）
     ch5_52_layout     5.2 版面：含图能源节① 首段有设备/系统描述 ② 两张图注不相邻
@@ -474,13 +475,14 @@ def ch4_photos_ok(doc_xml: str):
 
 
 def ch5_figures_ok(doc_xml: str):
-    """第5章图表硬一致性：每注恰一图、图号连续、无落单图片。"""
+    """第5章图表一致性：有图时一注一图；缺图须有可见“暂缺”说明。"""
     region = _chapter_region(doc_xml, 5)
     if not region:
         return False, "未定位到 第5章 区间"
     nums, missing, extra = [], [], []
     pending_imgs = 0
     total_imgs = 0
+    total_placeholders = 0
     for block in region:
         if not block.startswith("<w:p"):
             continue
@@ -489,7 +491,10 @@ def ch5_figures_ok(doc_xml: str):
         match = re.match(r"图5\.(\d+)(?=\s|$)", raw_text)
         if match:
             nums.append(int(match.group(1)))
-            if pending_imgs == 0:
+            is_placeholder = bool(re.search(r"（暂缺[：:].+）$", raw_text))
+            if is_placeholder:
+                total_placeholders += 1
+            elif pending_imgs == 0:
                 missing.append(f"图5.{match.group(1)}")
             elif pending_imgs > 1:
                 extra.append(f"图5.{match.group(1)}前 {pending_imgs} 张")
@@ -502,7 +507,7 @@ def ch5_figures_ok(doc_xml: str):
     miss = []
     if not nums:
         miss.append("第5章没有任何 图5.x 图注")
-    if nums and total_imgs == 0:
+    if nums and total_imgs == 0 and total_placeholders == 0:
         miss.append("第5章有图注但没有内嵌图片")
     if missing:
         miss.append("以下图注前没有图片：" + "、".join(missing))

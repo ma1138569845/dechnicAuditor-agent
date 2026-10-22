@@ -13,15 +13,15 @@
 | S1 | 分诊 | default | 用户诉求 | 加载 `energy-audit-routing` | 轨道判定 | ≥2 项目 → 转 editor（批量轨） |
 | S2 | 采集 | datacollection | PG / Excel / config | `tools/energy_audit/data_collection_cli.py <项目名>` | `data.json` + 采集报告 | 版本冲突必须告警；工具链 import 失败 → **停下报告断链** |
 | S3 | V1 验证 | datava | `data.json` | `data_verification_agent.py <项目名> --mode DATA_CHECK` | `validation.json`、`diagnosis_chapter7_material.txt` | exit 1 缺输入→回问用户；exit 2 P0→停 |
-| S4 | 计算 + 第5章 | caliber | `data.json`+`validation.json` | `caliber_agent.py <项目名>` | `indicators.json`、`chapter5.md`、`charts/*.png`、`chapter5_figures.json` | 图表只能生成一次；任一预期图失败即无清单；缺数据标【待补充】，不编造 |
+| S4 | 计算 + 第5章 | caliber | `data.json`+`validation.json` | `caliber_agent.py <项目名>` | `indicators.json`、`chapter5.md`、`charts/*.png`、`chapter5_figures.json` | 图表只能生成一次；单图失败在清单标 `status=missing` 并记录原因，其余图照常生成；缺数据标【待补充】，不编造 |
 | S5 | 第5章就位 | caliber | `chapter5.md` | `prepare_chapter_md.py <项目名>` | `chapter_md/ch5_import.md` | exit 2（装配稿早于计算产物）→ 人工确认后 `--force` |
 | S6 | V2 复核 | datava | `indicators.json` | `… --mode INDICATOR_REVIEW` | `indicator_review.json` | P0（如评价与数值不符）→ 停 |
 | S7 | 写章 批1 | author | S2~S6 产物 + 蓝本 | 契约 → 蓝本 → 第1~4章写作 | `chapter_md/ch1~ch4.md` | 每章落盘；收工重跑契约脚本 |
 | S8 | 写章 批2 | author | 同上 | 第5章装配稿补叙述（禁重算）+ 第6/7章 | `ch5_import.md`（已就位）、`ch6.md`、`ch7.md` | 同上 |
 | S9 | 写章 批3 | author | 同上 | 第8章 + 附录 | `ch8.md`、`appendix.md` | 同上 |
 | S9.5 | 照片归置 | author | `data.json` + `chapter_md/ch2.md` + `ch3.md` + `ch4.md` + `ch6.md` | `ea-authoring/scripts/prepare_report_photos.py <项目名>` | `<项目>/data/images/*` + `report_images.json` 第2/3/4/6章条目 | exit 2（图注匹配不到照片；或第3/4章有照片却没写图注行；或有 `img_ids` 的设备缺图注）→ 先修 md 再继续；**必须早于 S10 装配**，否则图注在、图不出来 |
-| S9.6 | 第5章图表归置 | author | `chapter5_figures.json` + `chapter_md/ch5_import.md` + `charts/` | `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` | `report_images.json` 的图5条目（含 SHA-256） | 图号、图注、文件、哈希任一不一致 → exit 2；不得手改图5清单绕过 |
-| S10 | 装配 | author | `data.json`+`chapter_md/`+`report_images.json`+`chapter5_figures.json` | `build_energy_audit_docx.py --project-dir <项目>` | `output/_script_build/<单位>能源审计报告.docx` | 第5章四链（生成清单↔装配稿图注↔图清单↔文件哈希）不一致即 exit 2；缺章仅告警 |
+| S9.6 | 第5章图表归置 | author | `chapter5_figures.json` + `chapter_md/ch5_import.md` + `charts/` | `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` | `report_images.json` 可信图5条目（含 SHA-256）+ `chapter5_figure_issues.json` + `missing_items.json` | 默认只把可信图写入清单，异常登记后继续；`--policy strict` 才 exit 2 |
+| S10 | 装配 | author | `data.json`+`chapter_md/`+`report_images.json`+`chapter5_figures.json` | `build_energy_audit_docx.py --project-dir <项目>` | `output/_script_build/<单位>能源审计报告.docx` + 装配问题清单 | 默认缺图写红色“暂缺”并继续；`--figure-policy strict` 才因第5章四链不一致 exit 2；缺章仅告警 |
 | S11 | 收尾 | author | 上一步 docx | `finalize_energy_audit_pdf.py --project-dir <项目>` | 同名 `.pdf`（刷目录+盖章） | Word COM 必须绝对路径；updateFields 自动补写 |
 | S12 | 断言 | author | docx + pdf | `ea_docx_asserts.py <docx> --pdf <pdf>` | 断言结果 | **10 项硬检查全过，失败不得报"完成"** |
 | S13 | V3 审查 | datava | 落盘的 docx | `… --mode REPORT_REVIEW --report <docx>` | `report_review.json` | P0 阻塞；直跑轨结论**必须完整展示给用户确认** |
@@ -133,7 +133,7 @@
 |---|---|
 | **写章（3 批）** | LLM 逐章写正文：批1 封面+第1~4章 / 批2 第5章装配+第6~7章 / 批3 第8章+附录；批间压缩上下文（kanban 轨内部称"3 卡"，同一件事） |
 | **装配** | `build_energy_audit_docx.py`（构建）+ `finalize_energy_audit_pdf.py`（收尾：刷目录/转 PDF/盖章） |
-| **断言** | `ea_docx_asserts.py` 的交付硬检查；其中 `ch5_figures` 硬查每注恰一图、图号连续 |
+| **断言** | `ea_docx_asserts.py` 的交付硬检查；其中 `ch5_figures` 要求有图图注一注一图，缺图图注必须带可见“暂缺”说明 |
 | **就位** | `prepare_chapter_md.py` 把 `chapter5.md` 变成装配输入 `chapter_md/ch5_import.md` |
 | **接续契约** | `prepare_writing_context.py` 生成的 `<项目>/chapter_md/_context.md`（每批开工必读） |
 | **蓝本** | **形态模板**：技能包内 `energy-audit-report/references/audit-examples.md`（法院/医院/学校三合一，静态随版本发布）。只提供**形态**，不含任何本项目事实。**不是**检索结果、不进知识库 |
