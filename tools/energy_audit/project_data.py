@@ -29,6 +29,11 @@ PHOTO_CATEGORIES = (
     '能耗账单',      # 第5章 电费、水费、燃气费账单示例
     '制冷设备',      # 第6章 冷水机组/多联机外机/分体空调等
     '照明设备',      # 第6章 典型照明灯具照片
+    '办公设备',      # 第6章 电脑、打印机等办公设备
+    '信息机房',      # 第6章 数据中心/信息机房设备
+    '医疗设备',      # 第6章 CT、X射线等医疗专用设备
+    '其他用电设备',  # 第6章 电梯、热水器等零散用电设备
+    '特殊设备',      # 旧分类兜底：无法细分用途的特殊设备
     '变压器/配电',   # 第6章 变压器室、配电柜等
     '水泵/水箱',     # 第6章 生活水泵、消防水箱等
     '厨房设备',      # 第6章 厨房设备
@@ -322,6 +327,19 @@ class Equipment:
     year_electric: Optional[int] = None
     year_electric_value: Any = None
     match_area: Optional[float] = None
+    # 变配电系统（ts_institution_device_substation + *_attached）：
+    # 主记录描述配电室运行条件，变压器等附属设备必须保留结构化明细，
+    # 不能压扁进 spec 字符串，否则设备数量、容量和安装年份会在落盘后不可恢复。
+    substation_id: Optional[int] = None
+    supply_area: str = ""
+    cross_electricity: str = ""
+    out_supply: str = ""
+    meter_config: str = ""
+    municipal_supply: str = ""
+    load_rate: str = ""
+    remaining_capacity: Any = None
+    substation_remark: str = ""
+    attachments: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -508,6 +526,7 @@ class ImageItem:
     category: str = ""                 # 照片分类（PHOTO_CATEGORIES）
     caption: str = ""                  # 图注（可选，报告内展示用）
     building_name: str = ""            # 行归属：建筑外观照=所属建筑名，其余留空
+    file_id: Optional[int] = None      # ts_attachment.group_id，设备 img_ids 的稳定关联键
 
 
 # ============================================================

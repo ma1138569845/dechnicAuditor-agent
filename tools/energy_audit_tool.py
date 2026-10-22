@@ -228,6 +228,15 @@ def _format_equipment_section(equipment: list, category: str = None) -> str:
             desc = (e.get("independent_metering_desc") or "").strip()
             desc_part = f"（{desc}）" if desc else ""
             lines.append(f"- **{name}** × {qty}{spec_part}{meter_part}{desc_part}")
+            if cat == "变配电":
+                for item in e.get("attachments") or []:
+                    lines.append(
+                        f"  - {item.get('name') or '未命名'} × "
+                        f"{item.get('quantity') or 1}，"
+                        f"单台容量 {item.get('capacity') or '—'}"
+                        f"{item.get('capacity_unit') or ''}，"
+                        f"型号 {item.get('model') or '—'}"
+                    )
         lines.append("")
     return "\n".join(lines)
 

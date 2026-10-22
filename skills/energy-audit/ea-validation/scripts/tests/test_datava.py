@@ -464,12 +464,39 @@ class FakeParagraph:
         return type("FakeParagraphElement", (), {"xml": ""})()
 
 
+@dataclass(frozen=True)
+class FakeCell:
+    text: str
+
+
+@dataclass(frozen=True)
+class FakeRow:
+    cells: tuple
+
+
+@dataclass(frozen=True)
+class FakeTable:
+    rows: tuple
+
+
 def _block(text: str, chapter: int) -> v3.Block:
     return v3.Block("p", 0, text, FakeParagraph(text), chapter)
 
 
-def _table_block(chapter: int) -> v3.Block:
-    return v3.Block("tbl", 0, "", None, chapter)
+def _table_block(
+    chapter: int,
+    header: tuple[str, ...] = (),
+    rows: tuple[tuple[str, ...], ...] = (),
+) -> v3.Block:
+    table = None
+    if header:
+        fake_rows = [FakeRow(tuple(FakeCell(text) for text in header))]
+        fake_rows += [
+            FakeRow(tuple(FakeCell(text) for text in row))
+            for row in rows
+        ]
+        table = FakeTable(tuple(fake_rows))
+    return v3.Block("tbl", 0, "", table, chapter)
 
 
 @pytest.mark.parametrize(
@@ -586,6 +613,190 @@ def test_chapter6_dynamic_subsections_requirement():
     ]
     codes = {f.code for f in v3.check_chapter6_structure(blocks)}
     assert "V3.STRUCT.CHAPTER6_SUBSECTIONS" in codes
+
+
+def test_chapter6_rejects_equipment_row_dump_in_composition_paragraph():
+    blocks = [
+        _block("第6章 主要能源资源利用系统分析", 6),
+        _block("6.1 用电系统运行分析", 6),
+        _block("本项目用电系统主要包括空调与供暖系统、照明系统和办公设备。", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block(
+            "医院冷源采用水冷冷水机组4台，其中YORK YSEZEZS45CKE/22型2台"
+            "（单台298 kW）、YMC2-S0879AA型2台（单台155 kW）；配套冷冻水泵"
+            "3台（单台30 kW）、冷却水泵3台（单台30 kW）、冷却塔2台（单台15 kW）。",
+            6,
+        ),
+        _block("冷源系统按供冷季运行，机组启停采用人工控制。", 6),
+        _block("冷源系统未单独计量，空调用电无法单独核算。", 6),
+        _block("（2）照明系统", 6),
+        _block("医院照明系统由LED灯具和传统灯具组成。", 6),
+        _block("照明设施按使用区域分时段运行。", 6),
+        _block("照明系统未单独计量，照明用电无法单独核算。", 6),
+        _block("（3）办公设备", 6),
+        _block("医院办公设备主要包括台式机和打印机。", 6),
+        _block("办公设备主要在办公时段运行。", 6),
+        _block("办公设备未单独计量，办公用电无法单独核算。", 6),
+    ]
+    codes = {f.code for f in v3.check_chapter6_structure(blocks)}
+    assert "V3.STRUCT.CHAPTER6_DEVICE_DETAIL" in codes
+
+
+def test_chapter6_accepts_equipment_summary_with_total_capacity():
+    blocks = [
+        _block("第6章 主要能源资源利用系统分析", 6),
+        _block("6.1 用电系统运行分析", 6),
+        _block("本项目用电系统主要包括空调与供暖系统、照明系统和办公设备。", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block(
+            "医院冷源采用集中式水冷冷水机组4台，总装机容量906 kW；"
+            "配套冷冻水泵、冷却水泵各3台，冷却塔2台，末端采用风机盘管。",
+            6,
+        ),
+        _block("冷源系统按供冷季运行，机组启停采用人工控制。", 6),
+        _block("冷源系统未单独计量，空调用电无法单独核算。", 6),
+        _block("（2）照明系统", 6),
+        _block("医院照明系统由LED灯具和传统灯具组成。", 6),
+        _block("照明设施按使用区域分时段运行。", 6),
+        _block("照明系统未单独计量，照明用电无法单独核算。", 6),
+        _block("（3）办公设备", 6),
+        _block("医院办公设备主要包括台式机和打印机。", 6),
+        _block("办公设备主要在办公时段运行。", 6),
+        _block("办公设备未单独计量，办公用电无法单独核算。", 6),
+    ]
+    codes = {f.code for f in v3.check_chapter6_structure(blocks)}
+    assert "V3.STRUCT.CHAPTER6_DEVICE_DETAIL" not in codes
+
+
+def test_chapter6_public_institution_accepts_substation_special_table():
+    blocks = [
+        _block("表6.5 变配电系统设备清单", 6),
+        _table_block(
+            6,
+            (
+                "序号", "设备名称", "规格型号", "形式", "数量",
+                "单台容量（kVA）", "安装时间",
+            ),
+        ),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=True)
+    }
+    assert "V3.STRUCT.CHAPTER6_TABLE" not in codes
+
+
+def test_chapter6_public_building_keeps_standard_equipment_table_columns():
+    blocks = [
+        _block("表6.3 变配电系统设备清单", 6),
+        _table_block(
+            6,
+            (
+                "序号", "设备名称", "规格型号", "形式", "数量",
+                "单台容量（kVA）", "安装时间",
+            ),
+        ),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=False)
+    }
+    assert "V3.STRUCT.CHAPTER6_TABLE" in codes
+
+
+def test_chapter6_public_institution_enforces_electrical_system_order():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("本项目用电系统主要包括空调与供暖系统、其他用电设备、"
+               "特殊用能系统和变配电系统。", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("空调系统按供冷季运行。", 6),
+        _block("（2）其他用电设备", 6),
+        _block("（3）特殊用能系统", 6),
+        _block("（4）变配电系统", 6),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=True)
+    }
+    assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" in codes
+
+
+def test_chapter6_public_building_ignores_public_institution_system_order():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("本项目用电系统主要包括空调与供暖系统、其他用电设备、"
+               "特殊用能系统和变配电系统。", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("空调系统按供冷季运行。", 6),
+        _block("（2）其他用电设备", 6),
+        _block("（3）特殊用能系统", 6),
+        _block("（4）变配电系统", 6),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=False)
+    }
+    assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" not in codes
+
+
+def test_chapter6_photo_coverage_requires_each_equipment_with_img_ids():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.9 医疗设备", 6),
+        _table_block(
+            6,
+            ("序号", "设备名称"),
+            (("1", "医疗设备"), ("2", "数据中心/信息中心")),
+        ),
+    ]
+    equipment = [
+        {"name": "医疗设备", "category": "特殊设备", "img_ids": [101]},
+        {"name": "数据中心/信息中心", "category": "特殊设备", "img_ids": [102, 103]},
+    ]
+    images = [{"file_id": 101}, {"file_id": 102}, {"file_id": 103}]
+    findings = v3.check_chapter6_structure(
+        blocks, equipment=equipment, images=images
+    )
+    coverage = [
+        f for f in findings if f.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+    assert coverage
+    assert "数据中心/信息中心" in coverage[0].detail
+    assert "医疗设备" not in coverage[0].detail
+
+
+def test_chapter6_photo_coverage_accepts_one_caption_per_special_system():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.9 医疗设备", 6),
+        _block("图6.10 数据中心/信息中心", 6),
+        _table_block(
+            6,
+            ("序号", "设备名称"),
+            (("1", "医疗设备"), ("2", "数据中心/信息中心")),
+        ),
+    ]
+    equipment = [
+        {"name": "医疗设备", "category": "特殊设备", "img_ids": [101]},
+        {"name": "数据中心/信息中心", "category": "特殊设备", "img_ids": [102]},
+    ]
+    images = [{"file_id": 101}, {"file_id": 102}]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(
+            blocks, equipment=equipment, images=images
+        )
+    }
+    assert "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE" not in codes
+
+
+def test_appendix2_wide_tables_are_exempt_from_standard_row_height():
+    blocks = [
+        _block("附表2-1 2022年建筑能耗数据统计表", 8),
+        _table_block(8, ("月份", "用电量", "用水量")),
+    ]
+    assert v3.is_appendix2_table(blocks, 1)
 
 
 def _chapter8_blocks(*, inline_suggestions: bool = False):

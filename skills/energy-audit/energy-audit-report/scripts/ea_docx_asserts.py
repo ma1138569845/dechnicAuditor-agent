@@ -84,6 +84,7 @@ import json
 import re
 import sys
 import zipfile
+from pathlib import Path
 
 from lxml import etree
 
@@ -99,6 +100,64 @@ P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_ph
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
                   "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note",
                   "ch5_53_removal", "ch5_533_people", "ch5_534_water"}
+# 公共建筑族：下列检查是公共机构专属口径，按族跳过
+PUBLIC_BUILDING_SKIP = {
+    "ch4_structure", "ch5_531_leadin", "ch5_52_layout", "ch5_52_water",
+    "ch5_t51", "ch5_energy_leadin", "ch5_trend_word", "ch5_525_fee",
+    "ch5_std_symbol", "ch5_532_note", "ch5_53_removal", "ch5_533_people",
+    "ch5_534_water", "apx2_table",
+}
+PUBLIC_BUILDING_P1 = {
+    "pb_ch2_title", "pb_ch6_structure", "pb_ch5_metrics",
+    "pb_coefficient", "pb_appendix2", "pb_no_public_institution",
+}
+P1_NONBLOCKING |= PUBLIC_BUILDING_P1
+
+
+def detect_family(docx_path: str) -> str:
+    p = Path(docx_path).resolve()
+    for parent in [p.parent, *p.parents]:
+        data_path = parent / "data.json"
+        if not data_path.is_file():
+            continue
+        try:
+            with open(data_path, encoding="utf-8") as fh:
+                raw = json.load(fh)
+            if str((raw.get("base") or {}).get("unit_type") or "") == "公共建筑":
+                return "public_building"
+        except (OSError, json.JSONDecodeError):
+            pass
+        break
+    return "public_institution"
+
+
+def public_building_checks(text: str):
+    tn = norm(text)
+    checks = {
+        "pb_ch2_title": ("第2章建筑概况" in tn and "公共机构概况" not in tn),
+        "pb_ch6_structure": all(
+            x in tn for x in ("6.1用电系统运行分析", "6.2用水系统运行分析", "6.3其他用能系统运行分析")
+        ),
+        "pb_ch5_metrics": ("5.3.1" in tn and "5.3.3" in tn
+                           and "单位建筑面积非供暖能耗" not in tn),
+        "pb_coefficient": ("0.1229" in tn and "0.31" not in tn),
+        "pb_appendix2": ("附录2" in tn and "各种能源折标准煤参考系数" in tn and "0.1229" in tn),
+        "pb_no_public_institution": ("公共机构概况" not in tn and "非供暖能耗" not in tn),
+    }
+    details = {}
+    if not checks["pb_ch2_title"]:
+        details["pb_ch2_title"] = "第2章应为「建筑概况」，且不得出现「公共机构概况」"
+    if not checks["pb_ch6_structure"]:
+        details["pb_ch6_structure"] = "第6章应为 6.1 用电 / 6.2 用水 / 6.3 其他"
+    if not checks["pb_ch5_metrics"]:
+        details["pb_ch5_metrics"] = "5.3 指标节不足，或出现公共机构「非供暖能耗」口径"
+    if not checks["pb_coefficient"]:
+        details["pb_coefficient"] = "电力折标应为 0.1229，且不得出现 0.31"
+    if not checks["pb_appendix2"]:
+        details["pb_appendix2"] = "附录2 应为折标系数表且含 0.1229"
+    if not checks["pb_no_public_institution"]:
+        details["pb_no_public_institution"] = "正文出现公共机构专属章名/指标名"
+    return checks, details
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -1408,7 +1467,9 @@ def _apx2_table_ok(sect_detail) -> bool:
     return monthly > 0
 
 
-def run(docx: str, pdf: str = None):
+def run(docx: str, pdf: str = None, family: str = "auto"):
+    if family == "auto":
+        family = detect_family(docx)
     z = zipfile.ZipFile(docx)
     znames = z.namelist()
     doc = z.read("word/document.xml").decode("utf-8", "ignore")
@@ -1608,6 +1669,14 @@ def run(docx: str, pdf: str = None):
     if not checks["footer_plain"]:
         details["footer_plain"] = "正文节页脚含破折号或缺失 PAGE 域"
 
+    if family == "public_building":
+        for key in PUBLIC_BUILDING_SKIP:
+            checks[key] = True
+            details.pop(key, None)
+        pb_checks, pb_details = public_building_checks(text)
+        checks.update(pb_checks)
+        details.update(pb_details)
+
     metrics = {
         "toc_state": toc_state,
         "oMath": len(re.findall(r"<m:oMath(?![A-Za-z])", doc)),
@@ -1686,10 +1755,12 @@ def main() -> int:
     ap.add_argument("--pdf", default=None)
     ap.add_argument("--expect", action="append", default=[], help="k=v，可重复；pages 容差 ±2")
     ap.add_argument("--json", dest="json_out", default=None)
+    ap.add_argument("--family", choices=["auto", "public_institution", "public_building"],
+                    default="auto", help="报告族；auto 从 data.json 推断")
     args = ap.parse_args()
 
     try:
-        checks, metrics, details = run(args.docx, args.pdf)
+        checks, metrics, details = run(args.docx, args.pdf, args.family)
     except Exception as exc:  # 解包失败等
         print("[FAIL] zip_ok — %s" % exc)
         if args.json_out:

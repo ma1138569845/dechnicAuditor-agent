@@ -1229,11 +1229,32 @@ def build_and_save_project(
         '空调': '制冷设备', '照明': '照明设备', '办公': '办公设备',
         '动力': '其他用电设备', '生活热水': '其他用电设备',
         '其他设备': '制冷设备', '输配设备': '制冷设备', '蒸汽': '制冷设备',
-        '特殊设备': '信息机房',
+        '变配电': '变压器/配电',
         # 卫生器具（用水系统）暂不映射：DB 无照片记录，后续有需要再加'用水设备'分类
     }
+
+    def _equipment_photo_category(eq: dict) -> str:
+        """设备分表 → 第6章照片分类。
+
+        `特殊设备` 表内同时承载数据中心和医疗设备，不能统一落到“信息机房”；
+        否则两类设备的配图会串类，且照片归置阶段无法按设备行校验覆盖率。
+        """
+        category = str(eq.get('category') or '').strip()
+        if category != '特殊设备':
+            return _DEVICE_PHOTO_CATEGORY.get(category, '')
+        text = ' '.join(str(eq.get(k) or '') for k in
+                        ('name', 'spec', 'use_type', 'location', 'remark'))
+        lowered = text.lower()
+        if any(k in text for k in ('数据中心', '信息中心', '信息机房', '机房', '服务器')) or \
+                any(k in lowered for k in ('data center', 'server room')):
+            return '信息机房'
+        if any(k in text for k in ('医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA')) or \
+                any(k in lowered for k in ('medical', 'radiology')):
+            return '医疗设备'
+        return '特殊设备'
+
     for eq in pg_result['found'].get('equipment', []) or []:
-        _cat = _DEVICE_PHOTO_CATEGORY.get(eq.get('category') or '')
+        _cat = _equipment_photo_category(eq)
         if not _cat:
             continue
         for fid in (eq.get('img_ids') or []):
@@ -1247,8 +1268,13 @@ def build_and_save_project(
         for fid, cat, cap, bname in _photo_id_map:
             pth = _path_by_id.get(fid)
             if pth:
+                try:
+                    file_id = int(fid)
+                except (TypeError, ValueError):
+                    file_id = None
                 photo_items.append(ImageItem(path=pth, category=cat,
-                                             caption=cap, building_name=bname))
+                                             caption=cap, building_name=bname,
+                                             file_id=file_id))
     if photo_items:
         _cats = sorted({im.category for im in photo_items})
         print(f"[datacollection v2] 已采集照片 {len(photo_items)} 张（{'/'.join(_cats)}）")

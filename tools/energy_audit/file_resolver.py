@@ -40,6 +40,20 @@ def _cache_dir() -> Path:
     return d
 
 
+def _cache_file_name(name: str, group_id) -> str:
+    """附件缓存名：保留原文件名语义，同时用 group_id 消除同名覆盖。
+
+    平台存在多个不同附件都叫 `image.png` 的情况。旧实现直接以原文件名落盘，
+    第二个附件会命中第一个文件的“已存在”分支，导致两个设备拿到同一张图，
+    甚至一个附件被永久丢失。
+    """
+    original = Path(str(name or group_id)).name
+    stem = Path(original).stem or str(group_id)
+    suffix = Path(original).suffix
+    stem = re.sub(r'[\\/:*?"<>|\r\n\t]+', '_', stem).strip(' ._') or str(group_id)
+    return f"{stem}_{group_id}{suffix}"
+
+
 def parse_file_ids(file_ids_str: str) -> List[int]:
     """解析逗号分隔的文件 ID 串 → 去重后的整数列表。
 
@@ -107,7 +121,7 @@ def download_attachment_images(attachments: List[Dict]) -> List[str]:
         name = att.get('name') or str(att.get('group_id', 'file'))
         if not url or not name.lower().endswith(_IMAGE_EXT):
             continue
-        target = dest / name
+        target = dest / _cache_file_name(name, att.get('group_id'))
         if target.exists() and target.stat().st_size > 0:
             paths.append(str(target))
             continue
@@ -175,7 +189,7 @@ def download_attachment_docs(attachments: List[Dict]) -> List[Dict]:
         name = att.get('name') or str(att.get('group_id', 'file'))
         if not url or not name.lower().endswith(_DOC_EXT):
             continue
-        target = dest / name
+        target = dest / _cache_file_name(name, att.get('group_id'))
         if not (target.exists() and target.stat().st_size > 0):
             try:
                 resp = requests.get(url, timeout=20)

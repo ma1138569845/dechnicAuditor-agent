@@ -43,7 +43,7 @@ if proj is None:
 | 第4章 设备独立计量 | 单台是否单独计量 | 遍历 `proj.equipment[]`：`eq.independent_metering`（`"有"` / `"无"` / `""`）/ `eq.independent_metering_desc` / `eq.independent_metering_ratio` / `eq.independent_metering_time`；`""` 表示该表无此列或未填，**不得当成「无」** |
 | 第4章 合署办公 | 是否合署、各合署单位及是否独立计量 | `proj.metering.has_shared_office`（现场表 `mode`，1是/2否）。**否不写合署句**；**是不回显「合署办公：是」**，改用 `shared_office_metering_sentence`：列表有一个独立计量为是 →「有合署办公且实现了合办公单位独立计量」；全部否 →「有合署办公，但未实现各办公单位独立计量」。明细：`proj.shared_offices[]` |
 | 第5章 能耗 | 逐年/逐月能耗、指标 | `proj.energy_yearly[]`（electricity_kwh/water_m3/...）、`proj.energy_monthly[]`、`proj.indicators`（预计算指标） |
-| 第6章 设备 | 分系统设备（品牌/型号/功率/运行时间从 `spec` 复合串解析；生活水泵配置见 `config`；补水装置对应冷热源见 `device_air_name`） | `proj.equipment[]`（category/name/spec/quantity/config/device_air_name/energy_rating/location/independent_metering） |
+| 第6章 设备 | 分系统设备（品牌/型号/功率/运行时间从 `spec` 复合串解析；生活水泵配置见 `config`；补水装置对应冷热源见 `device_air_name`） | `proj.equipment[]`（category/name/spec/quantity/**img_ids**/config/device_air_name/energy_rating/location/independent_metering） |
 | 第6章 用水构成 | 灌溉登记 | `proj.water_aux.greening[]`（灌溉方式/水源等，判定是否写“灌溉用水”） |
 | 第6章 室内环境 | 检测数据（第6章末节，按条件生成） | `proj.indoor_env.rooms[]` |
 | 第7章 问题 | 从实际字段推断 | 基于 `proj.metering` / `proj.equipment` / `proj.buildings` 推断，禁止写通用问题 |
@@ -79,7 +79,7 @@ AuditProject
 ├─ management: ManagementInfo        # 能源管理（第3章，含 LLM 提炼结果）
 ├─ energy_saving: List[EnergySaving] # 节能管理信息（按统计年）
 ├─ indoor_env: IndoorEnv
-├─ images: List[ImageItem]          # 照片列表（带 category，路由第2~7章；单位整体外观→2.1 图2.1）
+├─ images: List[ImageItem]          # 照片列表（file_id + category，路由第2~7章；单位整体外观→2.1 图2.1）
 ├─ data_sources: Dict[str,str]       # 字段→来源追溯
 └─ indicators: Dict[str,Any]         # 预计算能耗指标
 ```

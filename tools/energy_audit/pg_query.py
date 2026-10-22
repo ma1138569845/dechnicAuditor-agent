@@ -561,6 +561,140 @@ class PgDataQuery:
         """ts_institution_device_td — 输配设备（冷冻水泵/冷却塔等）。"""
         return self._get_device_by_table("ts_institution_device_td", customer_id)
 
+    @staticmethod
+    def _select_latest_device_versions(
+        rows: List[Dict],
+        key_fields: tuple[str, ...],
+    ) -> List[Dict]:
+        """按业务键选择一条设备版本；草稿优先，否则正式版本号/id 最大。
+
+        数据库查询同样做了窗口归一，这里再处理一次是为了守住采集器 API：
+        即使底层返回未归一的原始行，也不会把多个 PL 快照重复送进报告。
+        """
+        selected: Dict[tuple, Dict] = {}
+        order: List[tuple] = []
+        for row in rows:
+            key = tuple(str(row.get(k) or '').strip() for k in key_fields)
+            if key not in selected:
+                order.append(key)
+                selected[key] = row
+                continue
+            current = selected[key]
+            current_rank = (
+                1 if str(current.get('is_draft') or '0') == '1' else 0,
+                str(current.get('version_code') or ''),
+                int(current.get('id') or 0),
+            )
+            row_rank = (
+                1 if str(row.get('is_draft') or '0') == '1' else 0,
+                str(row.get('version_code') or ''),
+                int(row.get('id') or 0),
+            )
+            if row_rank > current_rank:
+                selected[key] = row
+        return [selected[key] for key in order]
+
+    def get_device_substation(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_device_substation + ts_institution_device_attached。
+
+        历史断链：附属表 `customer_id` 实测全为 NULL，不能按客户过滤；唯一可靠
+        关联键是 `attached.device_id = substation.id`。因此先选主表获胜版本，
+        再用主表 id 查附属设备，并把 `deleted=1` 与旧版本排除。
+        """
+        base = "FROM ts_institution_device_substation t WHERE t.deleted = 0"
+        params = []
+        if customer_id:
+            base += " AND t.customer_id = %s"
+            params.append(customer_id)
+        ver_sql, ver_params = self._version_where("t")
+        base += ver_sql
+        params.extend(ver_params)
+        order = (
+            self._version_order_tail("t")
+            if self.version_code
+            else (
+                " CASE WHEN t.is_draft = 1 THEN 0 ELSE 1 END,"
+                " t.version_code DESC NULLS LAST, t.id DESC"
+            )
+        )
+        main_sql = f"""
+            SELECT x.* FROM (
+                SELECT t.*, ROW_NUMBER() OVER (
+                    PARTITION BY
+                        COALESCE(NULLIF(BTRIM(t.electricity_name), ''), 'id_' || t.id::text),
+                        COALESCE(NULLIF(BTRIM(t.brand_model), ''), '')
+                    ORDER BY {order}
+                ) AS _rn
+                {base}
+            ) x WHERE _rn = 1
+            ORDER BY x.id DESC
+        """
+        main_rows = self._execute(main_sql, tuple(params))
+        for row in main_rows:
+            row.pop('_rn', None)
+        if self.version_code:
+            # 防御性 Python 过滤：fake/旧适配层若未执行 SQL 过滤，也不得把草稿
+            # 或无版本历史记录混入指定正式快照。
+            main_rows = [
+                row for row in main_rows
+                if str(row.get('is_draft') or '0') == '0'
+                and str(row.get('version_code') or '') == self.version_code
+            ]
+        else:
+            # 当前草稿代表整套最新编辑数据。岚山实测“中心配电室”草稿与旧的
+            # “1号配电室”容量构成完全相同，若仅按名称分组会重复统计同一套系统。
+            drafts = [
+                row for row in main_rows
+                if str(row.get('is_draft') or '0') == '1'
+            ]
+            if drafts:
+                main_rows = drafts
+        main_rows = self._select_latest_device_versions(
+            main_rows, ('electricity_name', 'brand_model'),
+        )
+        if not main_rows:
+            return []
+
+        main_ids = [row.get('id') for row in main_rows if row.get('id') is not None]
+        if not main_ids:
+            return main_rows
+        # 附属表实测没有 version_code/is_draft。版本边界由主表获胜记录决定，
+        # 这里只能按 device_id 归属，并以 id 处理同业务键重复。
+        attach_order = " a.id DESC"
+        attach_sql = f"""
+            SELECT y.* FROM (
+                SELECT a.*, ROW_NUMBER() OVER (
+                    PARTITION BY
+                        a.device_id,
+                        COALESCE(a.device_name, ''),
+                        COALESCE(a.capacity::text, ''),
+                        COALESCE(a.device_model, ''),
+                        COALESCE(a.type, '')
+                    ORDER BY {attach_order}
+                ) AS _rn
+                FROM ts_institution_device_attached a
+                WHERE (a.deleted IS NULL OR a.deleted = 0)
+                  AND a.device_id IN %s
+            ) y WHERE _rn = 1
+        """
+        attach_rows = self._execute(attach_sql, (tuple(main_ids),))
+        for row in attach_rows:
+            row.pop('_rn', None)
+        attach_rows = [
+            row for row in attach_rows
+            if str(row.get('deleted') or '0') != '1'
+        ]
+        attach_rows = self._select_latest_device_versions(
+            attach_rows,
+            ('device_id', 'device_name', 'capacity', 'device_model', 'type'),
+        )
+        by_device: Dict[str, List[Dict]] = {}
+        for row in attach_rows:
+            by_device.setdefault(str(row.get('device_id')), []).append(row)
+        for row in main_rows:
+            row['attachments'] = by_device.get(str(row.get('id')), [])
+        return main_rows
+
     def get_all_devices(self, customer_id: int = None) -> Dict[str, List[Dict]]:
         """一次性获取所有分类设备，返回 {category: [records]}。"""
         return {
@@ -574,6 +708,7 @@ class PgDataQuery:
             "特殊设备": self.get_device_special(customer_id),
             "蒸汽": self.get_device_steam(customer_id),
             "输配设备": self.get_device_td(customer_id),
+            "变配电": self.get_device_substation(customer_id),
         }
 
     @staticmethod
@@ -604,6 +739,8 @@ class PgDataQuery:
     @staticmethod
     def _fmt_device(record: Dict, category: str) -> Dict:
         """把单条设备原始记录格式化为设备清单字段（含独立计量，表无该列则为空）。"""
+        if category == '变配电':
+            return PgDataQuery._fmt_substation(record)
         name = record.get('device_name') or '未命名'
         quantity = 0
         for qkey in ('device_num', 'use_num', 'quantity'):
@@ -713,6 +850,122 @@ class PgDataQuery:
             **special_use,
             # 第6章用水判定（生活水泵配置 / 补水装置对应冷热源）
             **water_use,
+        }
+
+    @staticmethod
+    def _fmt_substation(record: Dict) -> Dict:
+        """变配电主记录 → 报告设备记录，并保留每台变压器的结构化明细。"""
+        def _int_or_zero(value) -> int:
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return 0
+
+        def _fmt_num(value) -> str:
+            if value in (None, ''):
+                return ''
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return str(value).strip()
+            return str(int(number)) if number.is_integer() else f"{number:g}"
+
+        def _fmt_percent(value) -> str:
+            text = str(value or '').strip()
+            if not text:
+                return ''
+            if text.endswith('%'):
+                return text
+            try:
+                number = float(text)
+            except (TypeError, ValueError):
+                return text
+            return f"{number:g}%"
+
+        def _fmt_flag(value) -> str:
+            if value in (None, ''):
+                return ''
+            try:
+                number = int(float(value))
+            except (TypeError, ValueError):
+                return str(value).strip()
+            return '是' if number == 1 else ('否' if number == 0 else str(number))
+
+        attachments = []
+        for raw in record.get('attachments') or []:
+            if not isinstance(raw, dict):
+                continue
+            capacity = raw.get('capacity')
+            attachments.append({
+                'name': str(raw.get('device_name') or '').strip(),
+                'quantity': _int_or_zero(
+                    raw.get('device_num') or raw.get('quantity') or raw.get('use_num')
+                ),
+                'capacity': _fmt_num(capacity),
+                'capacity_unit': 'kVA',
+                'type': str(raw.get('type') or '').strip(),
+                'model': str(raw.get('device_model') or raw.get('model') or '').strip(),
+                'install_time': str(raw.get('install_time') or '').strip(),
+                'params': str(raw.get('params') or '').strip(),
+                'run_time': str(raw.get('run_time') or '').strip(),
+                'power': raw.get('power'),
+            })
+
+        supply_area = record.get('electricity_area') or record.get('supply_area') or ''
+        cross_electricity = (
+            record.get('electricity_crossing') or record.get('cross_electricity') or ''
+        )
+        out_supply = (
+            _fmt_flag(record.get('other_electricity'))
+            or str(record.get('out_supply') or '').strip()
+        )
+        remaining_capacity = (
+            record.get('remain_capacity')
+            if record.get('remain_capacity') not in (None, '')
+            else record.get('remaining_capacity')
+        )
+        load_rate = _fmt_percent(record.get('load_rate'))
+
+        spec_parts = []
+        if supply_area:
+            spec_parts.append(f"供电范围:{supply_area}")
+        if record.get('meter_config'):
+            spec_parts.append(f"计量配置:{record['meter_config']}")
+        if record.get('municipal_supply'):
+            spec_parts.append(f"市政供电配置:{record['municipal_supply']}")
+        if load_rate:
+            spec_parts.append(f"日常负载率:{load_rate}")
+        if remaining_capacity not in (None, ''):
+            spec_parts.append(f"剩余容量:{_fmt_num(remaining_capacity)}kVA")
+        if cross_electricity:
+            spec_parts.append(f"交叉用电:{cross_electricity}")
+        if out_supply:
+            spec_parts.append(f"承担单位外用电:{out_supply}")
+        if record.get('other_desc'):
+            spec_parts.append(str(record['other_desc']))
+
+        return {
+            'name': str(record.get('electricity_name') or '未命名配电室').strip(),
+            'category': '变配电',
+            'spec': ' | '.join(filter(None, spec_parts)),
+            'quantity': sum(a['quantity'] for a in attachments),
+            'frequency_control': '',
+            'control_mode': '',
+            'img_ids': [],
+            'independent_metering': '',
+            'independent_metering_desc': '',
+            'independent_metering_ratio': '',
+            'independent_metering_time': '',
+            'substation_id': record.get('id'),
+            'supply_area': str(supply_area).strip(),
+            'cross_electricity': str(cross_electricity).strip(),
+            'out_supply': str(out_supply).strip(),
+            'meter_config': str(record.get('meter_config') or '').strip(),
+            'municipal_supply': str(record.get('municipal_supply') or '').strip(),
+            'load_rate': load_rate,
+            'remaining_capacity': remaining_capacity,
+            'substation_remark': str(record.get('other_desc') or '').strip(),
+            'attachments': attachments,
         }
 
     def get_formatted_equipment(self, customer_id: int = None, category: str = None) -> List[Dict]:

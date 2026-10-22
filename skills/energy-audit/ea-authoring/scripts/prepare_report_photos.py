@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""prepare_report_photos.py — 报告照片归置器（第2章建筑外观照 + 第3章管理文件/荣誉证书）
+"""prepare_report_photos.py — 报告照片归置器（第2/3/6章）
 
 背景（2026-10-13）：照片从"采集产物"到"报告图表"这一段此前**没有任何工序**——
 谁复制、放哪个目录、叫什么名、清单怎么写全靠人临场决定，于是出现三种后果：
@@ -8,17 +8,19 @@
   ② 文件名三派（平台 ID / 中文 / 英文）；
   ③ 岚山区人民医院 7 张建筑照一张没用进 2.2（归属信息在采集层被丢掉，只能人肉看图）。
 
-本脚本把这一步工序化：**md 图注行是唯一编号源**，脚本按图注里的建筑名去
-`data.json` 的照片里取对应照片，复制到 `<项目>/data/images/` 并写出
-`report_images.json` 的第2章照片条目。
+本脚本把这一步工序化：**md 图注行仍是唯一编号源**；第2章按图注里的建筑名取图，
+第6章先用 `equipment[].img_ids → images[].file_id` 精确匹配，再按文件名兜底。
 
-覆盖范围（2026-10-13 扩到第3章）：
+覆盖范围（2026-10-21 扩到设备配图覆盖率硬校验）：
   - **第2章**：图 2.1（单位整体外观）+ 图 2.2…（逐栋建筑外观照，来源
     `proj.images[]` 的 `建筑外观` + `building_name`）；
   - **第3章**：图 3.1…（管理文件截图 / 荣誉证书，来源
     `es.management_file_images` / `es.award_certificate_images`）；选图规则 =
     文件名主干命中图注 → 关键词判池（荣誉/奖/证书 → 荣誉证书；制度/文件/标识/
     管理/规定/措施/截图 → 管理文件）→ 按池顺序兜底。
+  - **第6章**：凡 `equipment[].img_ids` 非空的设备，都必须各有一条
+    `图6.N 设备名`；缺任何一条即 rc=2。特殊用能中的医疗设备与
+    数据中心/信息中心分别校验，不能用系统级一张图代替。
 
 分工：
   - 本脚本：装配**前**的三方一致（md 图注 ↔ 清单 ↔ 磁盘文件）+ 未引用照片提示；
@@ -31,7 +33,7 @@
 行为与退出码:
     0  正常（含"有照片未被引用"这类提示）
     1  输入缺失（项目目录 / data.json / chapter_md/ch2.md 任一不在）
-    2  有告警（某条图注匹配不到照片）——已能写的条目仍会写
+    2  有告警（图注匹配不到照片，或有 img_ids 的设备缺图注）——已能写的条目仍会写
 
 产物:
     <项目>/data/images/<规范化文件名>         照片副本（清单引用的就是它）
@@ -60,13 +62,16 @@ IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 # 本脚本负责重建的图注前缀（其余条目原样保留）
 MANAGED_PREFIXES = ("图2.", "图3.", "图6.")
 # 第6章：设备照片池（建筑外观/计量器具不参与设备配图）
-CH6_DEVICE_CATS = {"制冷设备", "照明设备", "办公设备", "其他用电设备", "信息机房"}
+CH6_DEVICE_CATS = {
+    "制冷设备", "照明设备", "办公设备", "其他用电设备",
+    "信息机房", "医疗设备", "特殊设备",
+}
 # 图注关键词 → 设备照片分类（文件名对不上时的兜底）
 CH6_CAT_HINTS = (
     (("照明", "灯"), "照明设备"),
     (("办公", "电脑", "打印"), "办公设备"),
     (("信息机房", "机房", "服务器", "数据中心"), "信息机房"),
-    (("医疗", "X射线", "CT", "摄影"), "信息机房"),
+    (("医疗", "X射线", "CT", "摄影"), "医疗设备"),
     (("空调", "冷水", "冷却塔", "热泵"), "制冷设备"),
     (("电梯", "水泵", "开水器", "热水"), "其他用电设备"),
 )
@@ -176,6 +181,32 @@ def parse_captions(md_path: str, chapter: str):
     return out
 
 
+def parse_md_device_names(md_path: str) -> set:
+    """从第6章 Markdown 设备表抽取“设备名称”列。
+
+    配图覆盖以报告实际列出的设备行为边界；数据库里存在但未进入设备表的条目，
+    不在本脚本强制配图。
+    """
+    names, col = set(), None
+    if not md_path or not os.path.isfile(md_path):
+        return names
+    with open(md_path, encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line.startswith("|"):
+                col = None
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if "设备名称" in cells:
+                col = cells.index("设备名称")
+                continue
+            if col is None or not cells or all(set(c) <= {"-", ":"} for c in cells):
+                continue
+            if col < len(cells) and cells[col] and cells[col] not in ("—", "-"):
+                names.add(cells[col])
+    return names
+
+
 def pick_ch3_photo(desc: str, pools: dict, used: set):
     """第3章选图：①文件名主干命中图注 → ②关键词判池 → ③按池顺序兜底。
 
@@ -198,7 +229,57 @@ def pick_ch3_photo(desc: str, pools: dict, used: set):
     return "", ""
 
 
-def pick_ch6_photo(desc: str, images, used: set):
+def _photo_name_key(text) -> str:
+    """设备名/图注归一：忽略空白、斜杠和常用分隔符。"""
+    return re.sub(
+        r"[\s/／\\、，,。.；;：:（）()\-—_]+",
+        "",
+        str(text or ""),
+    ).lower()
+
+
+def _img_ids(equipment: dict) -> list:
+    raw = equipment.get("img_ids")
+    if isinstance(raw, (list, tuple, set)):
+        return [str(v).strip() for v in raw if str(v).strip()]
+    return re.findall(r"\d+", str(raw or ""))
+
+
+def _images_by_file_id(images) -> dict:
+    out = {}
+    for im in images or []:
+        fid = str(im.get("file_id") or "").strip()
+        if fid:
+            out[fid] = im
+    return out
+
+
+def equipment_caption_gaps(equipment, captions, images=None, table_names=None) -> list:
+    """返回「有 img_ids 但第6章没有设备图注」的设备名。
+
+    这是本链路的硬校验：只检查 md 中已有图注是否都能找到图，会把
+    “设备行有附件、作者漏写图注”的整条记录静默跳过。必须从设备台账反向查。
+    """
+    caption_keys = [_photo_name_key(desc) for _, _, desc in captions]
+    available_ids = set(_images_by_file_id(images or []))
+    table_keys = [_photo_name_key(name) for name in (table_names or [])]
+    missing, seen = [], set()
+    for eq in equipment or []:
+        name = str(eq.get("name") or "").strip()
+        key = _photo_name_key(name)
+        ids = _img_ids(eq)
+        if not key or key in seen or not ids or not available_ids.intersection(ids):
+            continue
+        if table_keys and not any(key == tk or key in tk or tk in key for tk in table_keys):
+            continue
+        seen.add(key)
+        if not any(key == ck or (key and ck and (key in ck or ck in key))
+                   for ck in caption_keys):
+            missing.append(name)
+    return missing
+
+
+def pick_ch6_photo(desc: str, images, used: set, equipment=None):
     """第6章设备照：图注（设备名）→ 设备照片池按文件名匹配。
 
     规则（2026-10-21）：每个合并后的设备表行 1 张图，图注=设备名；
@@ -210,6 +291,30 @@ def pick_ch6_photo(desc: str, images, used: set):
         return ""
     pool = [(im, str(im.get("path") or "")) for im in images
             if (im.get("category") or "") in CH6_DEVICE_CATS]
+    by_file_id = _images_by_file_id(images)
+
+    # ① 设备台账 img_ids → 采集照片 file_id。文件 ID 是稳定关联键，
+    # 优先于文件名/分类猜测；平台多个附件同名时尤其必要。
+    key_desc = _photo_name_key(desc)
+    matched_eqs = []
+    for eq in equipment or []:
+        eq_key = _photo_name_key(eq.get("name"))
+        if not eq_key:
+            continue
+        if eq_key == key_desc:
+            matched_eqs.insert(0, eq)
+        elif key_desc and (eq_key in key_desc or key_desc in eq_key):
+            matched_eqs.append(eq)
+    for allow_used in (False, True):
+        for eq in matched_eqs:
+            for fid in _img_ids(eq):
+                im = by_file_id.get(fid)
+                p = str((im or {}).get("path") or "")
+                if not p or not os.path.isfile(p):
+                    continue
+                if allow_used or p not in used:
+                    return p
+
     def _first(match, allow_used=False):
         for im, p in pool:
             stem = _stem(p)
@@ -352,6 +457,7 @@ def main(argv=None) -> int:
 
     data = read_json(data_path, {})
     images = data.get("images") or []
+    equipment = data.get("equipment") or []
     buildings = [(b.get("name") or "").strip() for b in (data.get("buildings") or [])]
     base = data.get("base") or {}
     unit_short = base.get("unit_short") or base.get("unit_name") or "单位"
@@ -360,6 +466,7 @@ def main(argv=None) -> int:
     caps2 = parse_captions(md2_path, "2")
     caps3 = parse_captions(md3_path, "3") if os.path.isfile(md3_path) else []
     caps6 = parse_captions(md6_path, "6") if os.path.isfile(md6_path) else []
+    table_device_names = parse_md_device_names(md6_path)
     if not caps2 and not caps3 and not caps6:
         print(f"[错误] {md2_path} / {md3_path} / {md6_path} 里都没有 '图2.x' / '图3.x' / '图6.x' 图注行——"
               f"图注行是编号唯一来源，请先把它写进 md")
@@ -375,6 +482,15 @@ def main(argv=None) -> int:
     used_sources = set()
     used3 = set()
     used6 = set()
+    photo_gaps = equipment_caption_gaps(
+        equipment, caps6, images, table_names=table_device_names
+    )
+    if photo_gaps:
+        warnings.append(
+            "第6章设备配图覆盖不足：以下有 img_ids 的设备没有对应图注："
+            + "、".join(photo_gaps)
+            + "。请按设备名补写 `图6.N 设备名` 后重跑"
+        )
 
     for num, caption, desc in caps2:
         if num == 1:
@@ -445,9 +561,9 @@ def main(argv=None) -> int:
 
     # ---- 第6章：设备照片（图注=设备名；每个合并后的设备表行 1 张）----
     if caps6:
-        say(f"[第6章] 图注 {len(caps6)} 条，设备照片池按文件名匹配")
+        say(f"[第6章] 图注 {len(caps6)} 条，优先按设备 img_ids 匹配，文件名兜底")
     for num, caption, desc in caps6:
-        src = pick_ch6_photo(desc, images, used6)
+        src = pick_ch6_photo(desc, images, used6, equipment=equipment)
         if not src:
             warnings.append(f"{caption}：第6章未找到与设备名匹配的照片"
                             f"（可用分类：{'、'.join(sorted(CH6_DEVICE_CATS))}）")

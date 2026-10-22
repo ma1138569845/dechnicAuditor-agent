@@ -90,6 +90,16 @@ except ImportError as e:
     print(f"[Caliber] sys.path[0]: {sys.path[0]}")
     TOOLS_AVAILABLE = False
 
+# 公共建筑模块（与当前脚本同目录；仅公共建筑分支使用，不影响公共机构路径）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from public_building_indicators import compute_project as compute_public_building_indicators
+    from public_building_chapter5 import render as render_public_building_chapter5
+    PUBLIC_BUILDING_AVAILABLE = True
+except ImportError as e:
+    print(f"[Caliber] ⚠️ 公共建筑模块导入失败: {e}")
+    PUBLIC_BUILDING_AVAILABLE = False
+
 
 # ================================================================
 #  数据提取
@@ -320,6 +330,244 @@ def format_indicators_report(results: dict) -> str:
 
 
 # ================================================================
+#  公共建筑分支（浙江；不影响公共机构路径）
+# ================================================================
+
+def _is_public_building(proj: AuditProject) -> bool:
+    return str(getattr(proj.base, "unit_type", "") or "").strip() == "公共建筑"
+
+
+def _load_raw_project_data(project_name: str) -> dict:
+    p = Path(project_name)
+    data_path = (p / "data.json") if p.is_dir() else (
+        Path.home() / "projects" / "energy-audit" / project_name / "data.json"
+    )
+    if not data_path.is_file():
+        return {}
+    with open(data_path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _infer_public_subtype(base, pb: dict) -> str:
+    raw = str(pb.get("subtype") or "").strip().lower()
+    if raw in ("hotel", "饭店", "公寓", "宾馆", "酒店"):
+        return "hotel"
+    if raw in ("venue", "场馆"):
+        return "venue"
+    if raw in ("office", "办公"):
+        return "office"
+    text = f"{getattr(base, 'institution_category', '')}{getattr(base, 'specific_type', '')}"
+    if any(k in text for k in ("公寓", "饭店", "宾馆", "酒店")):
+        return "hotel"
+    if any(k in text for k in ("场馆", "图书馆", "博物馆", "体育馆", "科技馆")):
+        return "venue"
+    return "office"
+
+
+def build_public_building_spec(proj: AuditProject, raw: dict) -> dict:
+    base = proj.base
+    pb = (raw.get("public_building") or {}) if isinstance(raw, dict) else {}
+    subtype = _infer_public_subtype(base, pb)
+    area = float(getattr(base, "building_area", 0) or 0)
+    if area <= 0:
+        area = sum(float(getattr(b, "area", 0) or 0) for b in (proj.buildings or []))
+    people = float(getattr(base, "people_count", 0) or 0)
+    beds = float(getattr(base, "beds_count", 0) or 0)
+    occupancy = float(pb.get("occupancy") or 1.0)
+    people_by_year = pb.get("people_by_year") or {}
+    beds_by_year = pb.get("beds_by_year") or {}
+    occupancy_by_year = pb.get("occupancy_by_year") or {}
+    corrections_by_year = pb.get("hotel_corrections_by_year") or {}
+
+    years = []
+    for ey in sorted(getattr(proj, "energy_yearly", []) or [], key=lambda x: x.year):
+        year_key = str(ey.year)
+        years.append({
+            "year": ey.year,
+            "electricity_kwh": float(getattr(ey, "electricity_kwh", 0) or 0),
+            "water_t": float(getattr(ey, "water_m3", 0) or 0),
+            "gas_m3": float(getattr(ey, "natural_gas_m3", 0) or 0),
+            "heat_gj": float(getattr(ey, "heating_energy_heat_gj", 0) or 0),
+            "other_kgce": 0.0,
+            "people": float(people_by_year.get(year_key, people) or people),
+            "beds": float(beds_by_year.get(year_key, beds) or beds),
+            "occupancy": float(occupancy_by_year.get(year_key, occupancy) or occupancy),
+            "hotel_corrections": corrections_by_year.get(year_key) or {},
+            "electricity_cost_wan": float(getattr(ey, "electricity_cost_wan", 0) or 0),
+            "water_cost_wan": float(getattr(ey, "water_cost_wan", 0) or 0),
+            "gas_cost_wan": float(getattr(ey, "natural_gas_cost_wan", 0) or 0),
+            "heat_cost_wan": float(getattr(ey, "heating_cost_wan", 0) or 0),
+        })
+
+    return {
+        "subtype": subtype,
+        "level": pb.get("level") or "city",
+        "venue_type": pb.get("venue_type") or "culture",
+        "star": str(pb.get("star") or "3"),
+        "water_category": str(pb.get("water_category") or pb.get("star") or "3"),
+        "area_m2": area,
+        "underground_parking_spaces": float(pb.get("underground_parking_spaces") or 0),
+        "people": people,
+        "beds": beds,
+        "occupancy": occupancy,
+        "has_canteen": bool(pb.get("has_canteen")),
+        "pre2005_no_central_ac": bool(pb.get("pre2005_no_central_ac")),
+        "hotel_corrections": pb.get("hotel_corrections") or {},
+        "years": years,
+    }
+
+
+def _pb_benchmark(tiers: list, labels: list[str], standard: str,
+                  source: str, grade: str) -> dict:
+    out = {label: (tiers[i] if i < len(tiers) else None)
+           for i, label in enumerate(labels)}
+    out.update({"标准": standard, "来源": source, "评价结果": grade})
+    return out
+
+
+def build_public_building_indicators_json(proj: AuditProject, spec: dict,
+                                          results: list) -> dict:
+    latest = results[-1]
+    subtype = spec["subtype"]
+    out = {
+        "project": getattr(proj.base, "unit_name", ""),
+        "year": latest["year"],
+        "building_area": spec["area_m2"],
+        "people_count": spec["people"],
+        "institution_type": "public_building",
+        "family": "公共建筑",
+        "calculated_at": datetime.now().isoformat(),
+        "public_building": {
+            "subtype": subtype,
+            "level": spec.get("level"),
+            "venue_type": spec.get("venue_type"),
+            "star": spec.get("star"),
+            "results": results,
+        },
+    }
+
+    if subtype in ("office", "venue"):
+        standard = "DB33/T 736-2021"
+        source = "表1/表3（736）"
+        out["unit_area_non_heating_energy"] = {
+            "kgce_per_m2": latest["values"]["unit_area_energy"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["unit_area_energy"],
+                ["约束值", "基准值", "引导值"], standard, source,
+                latest["grade"]["unit_area_energy"]),
+        }
+        out["unit_area_electricity"] = {
+            "kwh_per_m2": latest["values"]["unit_area_electricity"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["unit_area_electricity"],
+                ["约束值", "基准值", "引导值"], standard, "表3（736）",
+                latest["grade"]["unit_area_electricity"]),
+        }
+        out["per_capita_energy"] = {
+            "kgce_per_person": latest["values"]["per_capita_energy"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["per_capita_energy"],
+                ["约束值", "基准值", "引导值"], standard, "表1（736）",
+                latest["grade"]["per_capita_energy"]),
+        }
+        out["per_capita_electricity"] = {
+            "kwh_per_person": latest["values"]["per_capita_electricity"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["per_capita_electricity"],
+                ["约束值", "基准值", "引导值"], standard, "表3（736）",
+                latest["grade"]["per_capita_electricity"]),
+        }
+        out["water_indicator"] = {
+            "m3_per_person": latest["values"]["unit_water"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["unit_water"],
+                ["通用值", "先进值"], "浙江省用（取）水定额（2019）", "表57",
+                latest["grade"]["unit_water"]),
+        }
+    else:
+        out["unit_energy"] = {
+            "kgce_per_m2": latest["values"]["unit_energy"],
+            "benchmark": None,
+        }
+        out["unit_comparable_energy"] = {
+            "kgce_per_m2": latest["values"]["unit_comparable_energy"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["unit_comparable_energy"],
+                ["3级（限额值）", "2级（约束值）", "1级（先进值）"],
+                "DB33/T 760-2023", "表1",
+                latest["grade"]["unit_comparable_energy"]),
+        }
+        out["water_indicator"] = {
+            "m3_per_bed": latest["values"]["water_per_bed"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["water"],
+                ["通用值", "先进值"], "浙江省用（取）水定额（2019）", "表47",
+                latest["grade"]["water"]),
+        }
+    return out
+
+
+def run_public_building_caliber(project_name: str, proj: AuditProject,
+                                skip_charts: bool = False,
+                                output_dir: Optional[str] = None) -> dict:
+    if not PUBLIC_BUILDING_AVAILABLE:
+        return {"error": "公共建筑模块不可用"}
+
+    print(f"\n{'='*60}")
+    print("📊 Caliber — 公共建筑（浙江）指标计算")
+    print(f"{'='*60}")
+    print(f"项目: {project_name}")
+
+    raw = _load_raw_project_data(project_name)
+    spec = build_public_building_spec(proj, raw)
+    results = compute_public_building_indicators(spec)
+    indicators = build_public_building_indicators_json(proj, spec, results)
+
+    out_dir = Path(output_dir) if output_dir else Path.home() / "projects" / "energy-audit" / project_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    indicators_path = out_dir / "indicators.json"
+    with open(indicators_path, "w", encoding="utf-8") as fh:
+        json.dump(indicators, fh, ensure_ascii=False, indent=2, default=str)
+
+    chapter5_path = out_dir / "chapter5.md"
+    chapter5 = render_public_building_chapter5(
+        spec, results, getattr(proj.base, "unit_name", project_name))
+    with open(chapter5_path, "w", encoding="utf-8") as fh:
+        fh.write(chapter5)
+
+    report_lines = [
+        f"项目: {indicators['project']}（{spec['subtype']}）",
+        f"年度: {indicators['year']} | 面积: {spec['area_m2']:.2f} m²",
+        "",
+    ]
+    for r in results:
+        report_lines.append(f"{r['year']}年：")
+        for key, value in r["values"].items():
+            if key in ("water_per_bed", "water_per_bed_normalized"):
+                grade_key = "water"
+            elif key == "unit_energy":
+                grade_key = None
+            else:
+                grade_key = key
+            grade = r["grade"].get(grade_key, "参考指标") if grade_key else "参考指标"
+            report_lines.append(f"  {key}: {value}  [{grade}]")
+        report_lines.append("")
+    report_path = out_dir / "indicators_report.txt"
+    with open(report_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(report_lines))
+
+    print(f"  ✅ 指标: {indicators_path}")
+    print(f"  ✅ 第5章: {chapter5_path}")
+    print("\n".join(report_lines))
+    return {
+        "indicators_path": str(indicators_path),
+        "chapter5_path": str(chapter5_path),
+        "indicators": indicators,
+    }
+
+
+# ================================================================
 #  完整流程
 # ================================================================
 
@@ -346,6 +594,15 @@ def run_caliber(
         return {"error": msg}
     print(f"  ✅ 加载成功 | 建筑: {len(getattr(proj, 'buildings', []))}栋 | "
           f"能耗: {len(getattr(proj, 'energy_yearly', []))}年")
+
+    # 公共建筑（浙江）分支：走独立指标模块，不进入山东公共机构计算链
+    if _is_public_building(proj):
+        return run_public_building_caliber(
+            project_name=project_name,
+            proj=proj,
+            skip_charts=skip_charts,
+            output_dir=output_dir,
+        )
 
     # Step 2: 提取
     print("[2/5] 🔄 提取年度能耗数据...")

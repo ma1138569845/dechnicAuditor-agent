@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime
 
@@ -29,7 +30,25 @@ INDICATOR_LABELS = [
     ("water_indicator", "取水指标（按机构类型自适应）", "见指标定义"),
 ]
 
-VALUE_KEYS = ("kgce_per_m2", "kgce_per_person", "kwh_per_m2", "value", "v", "water_value")
+VALUE_KEYS = (
+    "kgce_per_m2", "kgce_per_person", "kwh_per_m2", "kwh_per_person",
+    "m3_per_person", "m3_per_bed", "value", "v", "water_value",
+)
+
+# 公共建筑（浙江）指标标签：与公共机构 5 项不同，单独一套。
+PUBLIC_BUILDING_OFFICE_LABELS = [
+    ("unit_area_non_heating_energy", "单位建筑面积能耗", "kgce/m²"),
+    ("unit_area_electricity", "常规用能系统单位建筑面积电耗", "kWh/m²"),
+    ("per_capita_energy", "人均综合能耗", "kgce/per"),
+    ("per_capita_electricity", "人均电耗", "kWh/per"),
+    ("water_indicator", "单位用水量", "m³/(p·a)"),
+]
+
+PUBLIC_BUILDING_HOTEL_LABELS = [
+    ("unit_energy", "单位综合能耗（参考）", "kgce/m²"),
+    ("unit_comparable_energy", "单位可比综合能耗", "kgce/m²"),
+    ("water_indicator", "单位用水量", "m³/(床·年)"),
+]
 
 # 指标 → 定额标准中的期望表号（与 ea-calculation/scripts/verify_benchmark_sources.py 同一口径；
 #   两处口径若不一致，契约会误报「缺锚点」——2026-09-21 修的正是这个分叉）。
@@ -268,6 +287,59 @@ def blueprint_body(inst_type: str, category: str, limit: int):
     return head, body, truncated, ""
 
 
+def is_public_building(base: dict, ind: dict) -> bool:
+    return (
+        str((base or {}).get("unit_type") or "").strip() == "公共建筑"
+        or str((ind or {}).get("unit_type") or "").strip() == "公共建筑"
+        or str((ind or {}).get("family") or "").strip() == "公共建筑"
+    )
+
+
+def public_building_subtype(base: dict, ind: dict) -> str:
+    pb = (ind or {}).get("public_building") or {}
+    subtype = str(pb.get("subtype") or "").strip().lower()
+    if subtype in ("office", "venue", "hotel"):
+        return subtype
+    text = f"{(base or {}).get('institution_category', '')}{(base or {}).get('specific_type', '')}"
+    if any(k in text for k in ("公寓", "饭店", "宾馆", "酒店")):
+        return "hotel"
+    if any(k in text for k in ("场馆", "图书馆", "博物馆", "体育馆", "科技馆")):
+        return "venue"
+    return "office"
+
+
+def public_building_blueprint_path() -> str:
+    env = os.environ.get("EA_PUBLIC_BUILDING_BLUEPRINT")
+    if env and os.path.isfile(env):
+        return env
+    here = os.path.dirname(os.path.abspath(__file__))
+    pkg = os.path.dirname(os.path.dirname(here))
+    cand = os.path.join(
+        pkg, "energy-audit-report", "references", "families",
+        "public-building", "blueprint.md",
+    )
+    return cand if os.path.isfile(cand) else ""
+
+
+def public_building_blueprint_body(limit: int):
+    """整篇注入公共建筑蓝本（已去事实化）。"""
+    path = public_building_blueprint_path()
+    if not path:
+        return "", "", False, (
+            "⚠️ 找不到公共建筑蓝本 `families/public-building/blueprint.md`"
+            "（可用 EA_PUBLIC_BUILDING_BLUEPRINT 指定）。"
+        )
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            body = fh.read()
+    except OSError as exc:
+        return "", "", False, f"⚠️ 公共建筑蓝本读不到（{exc}）。"
+    truncated = len(body) > limit
+    if truncated:
+        body = body[:limit].rstrip() + "\n…（蓝本剩余部分已截断）"
+    return "# 公共建筑（浙江）蓝本", body.strip(), truncated, ""
+
+
 def projects_root() -> str:
     return os.environ.get("HERMES_PROJECTS_ROOT") or os.path.join(
         os.path.expanduser("~"), "projects", "energy-audit"
@@ -334,6 +406,31 @@ def diagnosis_digest(pdir: str, limit: int = 8):
     rows.sort(key=lambda r: order.get(r[1], 3))
     return rows[:limit]
 
+
+def equipment_photo_contract(data: dict) -> list:
+    """第6章设备配图硬清单：有 img_ids 的设备必须逐行出现图注。"""
+    by_file_id = {
+        str(im.get("file_id")): str(im.get("path") or "")
+        for im in (data.get("images") or [])
+        if im.get("file_id") not in (None, "")
+    }
+    rows, seen = [], set()
+    for eq in data.get("equipment") or []:
+        name = str(eq.get("name") or "").strip()
+        if not name or name in seen:
+            continue
+        raw_ids = eq.get("img_ids")
+        ids = ([str(v).strip() for v in raw_ids if str(v).strip()]
+               if isinstance(raw_ids, (list, tuple, set))
+               else re.findall(r"\d+", str(raw_ids or "")))
+        if not ids:
+            continue
+        seen.add(name)
+        paths = [by_file_id.get(fid, "") for fid in ids]
+        files = "；".join(os.path.basename(p) for p in paths if p) or "【缺本地文件】"
+        rows.append((name, str(eq.get("category") or ""), ",".join(ids), files))
+    return rows
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="生成写章接续契约 _context.md")
     ap.add_argument("project", help="项目名（对应 ~/projects/energy-audit/<项目名>/）或项目目录")
@@ -355,6 +452,8 @@ def main(argv=None) -> int:
 
     base = data.get("base") or {}
     ind = load_json(os.path.join(pdir, "indicators.json")) or {}
+    is_pb = is_public_building(base, ind)
+    pb_subtype = public_building_subtype(base, ind) if is_pb else ""
     anchors = load_std_anchors()          # ★来源锚点（定额可溯源性判定，见 resolve_anchor）
     md_dir = os.path.join(pdir, "chapter_md")
     os.makedirs(md_dir, exist_ok=True)
@@ -379,30 +478,45 @@ def main(argv=None) -> int:
         f"| 基准期 | {base.get('base_period') or '【待补充】'} | data.json → base.base_period |",
         f"| 建筑面积（m²） | {base.get('building_area') or '【待补充】'} | data.json → base.building_area |",
         f"| 用能人数 | {base.get('people_count') or '【待补充】'} | data.json → base.people_count |",
-        f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |",
+        (f"| 机构类型 | 公共建筑 / {pb_subtype} | data.json / indicators.json |"
+         if is_pb else
+         f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |"),
+        f"| 报告族 | {'公共建筑（浙江）' if is_pb else '公共机构'} | data.json → base.unit_type / indicators.json |",
         "",
         "## 二、关键数字（正文引用必须与此一致）",
         "",
     ]
 
     if ind:
+        if is_pb:
+            labels = (PUBLIC_BUILDING_HOTEL_LABELS if pb_subtype == "hotel"
+                      else PUBLIC_BUILDING_OFFICE_LABELS)
+            quota_keys = ("约束值", "基准值", "引导值", "通用值", "先进值",
+                          "3级（限额值）", "2级（约束值）", "1级（先进值）")
+        else:
+            labels = INDICATOR_LABELS
+            quota_keys = ("约束值", "基准值", "引导值")
         lines += [
             f"> 指标计算年度：{ind.get('year')}　计算时间：{ind.get('calculated_at')}",
             "",
-            "| 指标 | 值 | 定额（约束/基准/引导） | 标准与来源 | 评价结果 |",
+            "| 指标 | 值 | 定额 | 标准与来源 | 评价结果 |",
             "|---|---|---|---|---|",
         ]
-        for key, label, unit in INDICATOR_LABELS:
+        for key, label, unit in labels:
             node = ind.get(key)
             if not isinstance(node, dict):
                 continue
             value, vkey = pick_value(node)
             bench = node.get("benchmark") or {}
             quota = " / ".join(
-                str(bench.get(k)) for k in ("约束值", "基准值", "引导值") if bench.get(k) is not None
+                str(bench.get(k)) for k in quota_keys if bench.get(k) is not None
             ) or "—"
             std = bench.get("标准") or "—"
-            anchor, _anchored = resolve_anchor(key, bench, anchors)
+            if is_pb:
+                anchor = bench.get("来源") or "—"
+                _anchored = bool(bench.get("来源"))
+            else:
+                anchor, _anchored = resolve_anchor(key, bench, anchors)
             lines.append(
                 f"| {label} | {value if value is not None else '【待补充】'} {unit} | {quota} "
                 f"| {std}（来源 {bench.get('来源') or '—'}；锚点 {anchor}） | {bench.get('评价结果') or '—'} |"
@@ -474,6 +588,28 @@ def main(argv=None) -> int:
         f"| 空调与供暖控制方式 | {_cc_show} | data.json → metering.cold_control_type |",
     ]
 
+    # 第6章设备配图硬清单（2026-10-21）：图片曾因作者漏写单条图注而静默缺失，
+    # 且 V3 只比总数时仍会全绿。这里把「有 img_ids 的设备」直接摆进写作契约。
+    photo_rows = equipment_photo_contract(data)
+    lines += [
+        "",
+        "### 第6章设备配图硬清单（有 img_ids 的设备逐项必写图注）",
+        "",
+        "> 第6章每个有 `img_ids` 的设备名都必须在 md 中出现对应的 "
+        "`图6.N 设备名`；特殊用能系统中的医疗设备、数据中心/信息中心分别各写一条。"
+        "不能因为同一系统下已有另一张图就省略。",
+        "",
+    ]
+    if photo_rows:
+        lines += [
+            "| 设备名 | 分类 | img_ids | 本地文件 |",
+            "|---|---|---|---|",
+        ]
+        for name, cat, ids, files in photo_rows:
+            lines.append(f"| {name} | {cat or '—'} | {ids} | {files} |")
+    else:
+        lines.append("（无带 `img_ids` 的设备：第6章不强制设备照片。）")
+
     lines += ["", "## 三、已落盘章节（其余为待写；**禁止重复生成已存在的章**）", ""]
     order = [f"ch{i}.md" for i in range(1, 9)] + ["appendix.md"]
     found = []
@@ -537,12 +673,31 @@ def main(argv=None) -> int:
         "不可比且无从选择时直接写【待核实】。**禁止**套用《公共机构能源费用托管实施规程》的"
         "托管基准口径（本包 5.4 是节能量核定口径）。",
         "",
+    ]
+    if is_pb:
+        lines += [
+            "### 公共建筑族专属规则（本批强制）",
+            "",
+            "- 第2章章名：**建筑概况**；不得出现“公共机构概况”。",
+            "- 第6章：**6.1 用电 / 6.2 用水 / 6.3 其他**；不套公共机构 R7 的 6.1.1~6.1.6。",
+            "- 折标：电力 **0.1229**；饭店新水 **0.2571**。",
+            "- 736 按省级/市级/县级（场馆按科技馆/文化馆/博物馆）；760 按星级/建设性质。",
+            "- 可分项计量的特殊/食堂/浴室/健身按标准剔除；2005 年前无中央空调办公建筑 ×1.2。",
+            "- 写作指南：`ea-authoring/references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。",
+            "- **上文公共机构的 5.4 托管基准、7.1 C 类八方向、公共机构 8 章口径不适用于本族**；以本族指南为准。",
+            "",
+        ]
+    lines += [
         "## 五、本批蓝本（形态参照，**只学形态**）",
         "",
         "| 项 | 值 |",
         "|---|---|",
-        "| 蓝本文件 | `energy-audit-report/references/audit-examples.md` |",
-        f"| 本机构类型小节 | {blueprint_section(ind.get('institution_type'), base.get('institution_category'))} |",
+        ("| 蓝本文件 | `energy-audit-report/references/families/public-building/blueprint.md` |"
+         if is_pb else
+         "| 蓝本文件 | `energy-audit-report/references/audit-examples.md` |"),
+        (f"| 本机构类型小节 | 整篇（去事实化公共建筑蓝本） |"
+         if is_pb else
+         f"| 本机构类型小节 | {blueprint_section(ind.get('institution_type'), base.get('institution_category'))} |"),
         "| 可复用（形态 + 固定表述） | 章节骨架 / 表格习惯 / 措辞粒度；1.1 定义段、1.3 三段式、1.5 审计过程、1.6 依据清单、4.1 计量六条、5.3 指标定义等固定表述 |",
         "| **必须替换为本项目数据** | 单位名 / 地址 / 人数 / 面积 / 能耗 / 费用 / 设备 / 定额取值 / 问题与建议 |",
         "| 交付前自检 | `python <skills>/ea-validation/scripts/verify_variables_provenance.py <项目名> [--blueprint <本类成稿.md>]` |",
@@ -558,9 +713,12 @@ def main(argv=None) -> int:
     # 5.1 蓝本正文注入（2026-09-20「钩子 1」）：不再只给路径，直接把本类小节切进来——
     #     契约里只写"去读某文件"，模型不读就绕过去了；正文进契约后，读不读不再是选择。
     if not args.no_blueprint_body:
-        _head, _body, _trunc, _warn = blueprint_body(
-            ind.get("institution_type"), base.get("institution_category"),
-            args.blueprint_limit)
+        if is_pb:
+            _head, _body, _trunc, _warn = public_building_blueprint_body(args.blueprint_limit)
+        else:
+            _head, _body, _trunc, _warn = blueprint_body(
+                ind.get("institution_type"), base.get("institution_category"),
+                args.blueprint_limit)
         lines += ["### 5.1 蓝本正文（本批形态参照）", ""]
         if _warn:
             lines += [f"> {_warn}", ""]
@@ -612,7 +770,10 @@ def main(argv=None) -> int:
         "**同类成稿参考（按章取全文）**：`reference_library.search_local_references(chapter, tags)`"
         "（本地打分、离线可用；无同类型时返回空并给出 note，**不要用不相关报告充当参考**）",
         "",
-        f"- tags 至少含 `institution_category={inst_cat or '【待补充】'}`；`chapter` 取本章名（如 `第7章`）。",
+        (f"- tags 至少含 `institution_category={inst_cat or '【待补充】'}`、"
+         f"`building_subtype={pb_subtype}`；`chapter` 取本章名（如 `第7章`）。"
+         if is_pb else
+         f"- tags 至少含 `institution_category={inst_cat or '【待补充】'}`；`chapter` 取本章名（如 `第7章`）。"),
         "- 想跨库扩大召回：`energy_audit_rag_search`（多路召回 + 重排，返回带 route/rerank 可解释）。",
         "- **查依据/条文原文**（定额出自哪一条、规范怎么要求、办法怎么规定）："
         "`energy_audit_rag_search(query, kbs=\"standards\")` —— 命中定额标准库 + 技术规范库的"
@@ -657,7 +818,7 @@ def main(argv=None) -> int:
     if not args.quiet:
         print(f"[契约] 已生成/刷新：{out}")
         print(f"       已落盘章节 {len(found)} 个：" + ("、".join(n for n, _, _ in found) if found else "（无，批1）"))
-        if ind:
+        if ind and not is_pb:
             missing = [
                 label for key, label, _ in INDICATOR_LABELS
                 if isinstance(ind.get(key), dict)
@@ -667,6 +828,19 @@ def main(argv=None) -> int:
                 print(f"       ⚠️ 以下指标的定额值缺「原文锚点」（建议跑 verify_benchmark_sources.py 并补锚点）：{'、'.join(missing)}")
             else:
                 print("       ✅ 指标定额锚点齐全（缺失时按 (标准号, 表号) 在 standards-values.md 定位）")
+        elif ind and is_pb:
+            labels = (PUBLIC_BUILDING_HOTEL_LABELS if pb_subtype == "hotel"
+                      else PUBLIC_BUILDING_OFFICE_LABELS)
+            missing = [
+                label for key, label, _ in labels
+                if isinstance(ind.get(key), dict)
+                and ind[key].get("benchmark") is not None
+                and not (ind[key].get("benchmark") or {}).get("来源")
+            ]
+            if missing:
+                print(f"       ⚠️ 以下公共建筑指标缺「来源/表号」：{'、'.join(missing)}")
+            else:
+                print("       ✅ 公共建筑指标来源/表号齐全")
     return 0
 
 

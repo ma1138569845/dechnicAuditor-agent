@@ -1,5 +1,6 @@
-"""设备/场景「独立计量」字段采集：格式化、合并、场景映射。"""
+"""设备/场景采集：格式化、合并、变配电关联和场景映射。"""
 
+from dataclasses import asdict
 from unittest.mock import MagicMock
 
 from tools.energy_audit import pg_collector as pgc
@@ -66,6 +67,7 @@ def test_merge_equipment_ignores_unknown_keys():
 
 def test_get_all_devices_queries_td_table():
     q = PgDataQuery.__new__(PgDataQuery)
+    q.version_code = None
     called = []
 
     def fake(table, customer_id=None):
@@ -73,10 +75,168 @@ def test_get_all_devices_queries_td_table():
         return []
 
     q._get_device_by_table = fake
+    q.get_device_substation = lambda customer_id=None: []
     cats = q.get_all_devices(customer_id=9)
     assert 'ts_institution_device_td' in called
     assert 'ts_institution_device_light' in called
     assert '输配设备' in cats
+
+
+def _substation_query(version_code=None):
+    q = PgDataQuery.__new__(PgDataQuery)
+    q.version_code = PgDataQuery.normalize_version_code(version_code)
+    q.connection = None
+    captured = []
+    main_rows = [
+        {
+            'id': 2, 'customer_id': 9, 'electricity_name': '中心配电室',
+            'brand_model': '', 'is_draft': 1, 'version_code': None,
+            'supply_area': '医院所有区域', 'load_rate': '65%',
+        },
+        {
+            'id': 3, 'customer_id': 9, 'electricity_name': '中心配电室',
+            'brand_model': '', 'is_draft': 0, 'version_code': 'PL2026090211',
+            'supply_area': '正式版本', 'load_rate': '50%',
+        },
+        {
+            'id': 1, 'customer_id': 9, 'electricity_name': '1号配电室',
+            'brand_model': '', 'is_draft': 0, 'version_code': 'PL2026090201',
+            'supply_area': '旧范围', 'load_rate': '40%',
+        },
+        {
+            'id': 4, 'customer_id': 9, 'electricity_name': '1号配电室',
+            'brand_model': '', 'is_draft': 0, 'version_code': 'PL2026090201',
+            'supply_area': '全院', 'load_rate': '45%',
+        },
+    ]
+    attachment_rows = [
+        {
+            'id': 20, 'device_id': 2, 'customer_id': None,
+            'device_name': '变压器1', 'device_num': 4, 'capacity': 1000,
+            'type': '干式变压器', 'device_model': 'SUB11-1000/10',
+            'deleted': 0, 'is_draft': 1, 'version_code': None,
+        },
+        {
+            'id': 21, 'device_id': 2, 'customer_id': None,
+            'device_name': '2号变压器', 'device_num': 2, 'capacity': 800,
+            'type': '干式变压器', 'device_model': 'SUB11-800/10',
+            'deleted': 0, 'is_draft': 1, 'version_code': None,
+        },
+        {
+            'id': 22, 'device_id': 2, 'customer_id': None,
+            'device_name': '2号变压器', 'device_num': 2, 'capacity': 630,
+            'type': '干式变压器', 'device_model': 'SUB11-630/10',
+            'deleted': 0, 'is_draft': 1, 'version_code': None,
+        },
+        {
+            'id': 23, 'device_id': 2, 'customer_id': None,
+            'device_name': '已删除变压器', 'device_num': 1, 'capacity': 500,
+            'type': '干式变压器', 'device_model': 'DELETED',
+            'deleted': 1, 'is_draft': 1, 'version_code': None,
+        },
+        {
+            'id': 24, 'device_id': 4, 'customer_id': None,
+            'device_name': '1号变压器', 'device_num': 4, 'capacity': 1000,
+            'type': '干式变压器', 'device_model': 'SUB11-1000/10',
+            'deleted': 0, 'is_draft': 0, 'version_code': 'PL2026090211',
+        },
+    ]
+
+    def fake_execute(sql, params=None):
+        captured.append((sql, params))
+        if 'ts_institution_device_attached' in sql:
+            return attachment_rows
+        if 'ts_institution_device_substation' in sql:
+            return main_rows
+        return []
+
+    q._execute = fake_execute
+    return q, captured
+
+
+def test_substation_current_draft_supersedes_unversioned_legacy_and_links_attachments():
+    q, _ = _substation_query()
+    rooms = q.get_device_substation(customer_id=9)
+
+    assert [r['electricity_name'] for r in rooms] == ['中心配电室']
+    center = rooms[0]
+
+    assert center['id'] == 2
+    assert center['supply_area'] == '医院所有区域'
+    assert [a['capacity'] for a in center['attachments']] == [1000, 800, 630]
+
+
+def test_substation_version_lock_excludes_drafts_and_uses_selected_ids_for_attachments():
+    q, captured = _substation_query(version_code='PL2026090211')
+    q.get_device_substation(customer_id=9)
+
+    assert len(captured) == 2
+    assert 't.version_code = %s' in captured[0][0]
+    assert captured[0][1][-1] == 'PL2026090211'
+    # 附属表实测无 version_code/is_draft；版本定位只发生在主表，
+    # 附属表以已选主表 id 作为唯一归属边界。
+    assert 'a.version_code' not in captured[1][0]
+    assert captured[1][1] == (tuple([3]),)
+
+
+def test_get_all_devices_includes_substation_category():
+    q = PgDataQuery.__new__(PgDataQuery)
+    q.version_code = None
+    q._get_device_by_table = lambda table, customer_id=None: []
+    q.get_device_substation = lambda customer_id=None: [{
+        'id': 2, 'electricity_name': '中心配电室', 'attachments': [],
+    }]
+
+    cats = q.get_all_devices(customer_id=9)
+    assert cats['变配电'][0]['electricity_name'] == '中心配电室'
+
+
+def test_formatted_substation_keeps_transformer_attachments():
+    out = PgDataQuery._fmt_device({
+        'id': 2,
+        'electricity_name': '中心配电室',
+        'electricity_area': '医院所有区域',
+        'electricity_crossing': '无',
+        'other_electricity': 0,
+        'load_rate': '65.00',
+        'remain_capacity': '1000.00',
+        'attachments': [
+            {
+                'device_name': '变压器1', 'device_num': 4, 'capacity': 1000,
+                'type': '干式变压器', 'device_model': 'SUB11-1000/10',
+            },
+            {
+                'device_name': '2号变压器', 'device_num': 2, 'capacity': 800,
+                'type': '干式变压器', 'device_model': 'SUB11-800/10',
+            },
+        ],
+    }, '变配电')
+
+    assert out['name'] == '中心配电室'
+    assert out['category'] == '变配电'
+    assert out['quantity'] == 6
+    assert out['substation_id'] == 2
+    assert out['supply_area'] == '医院所有区域'
+    assert out['out_supply'] == '否'
+    assert out['remaining_capacity'] == '1000.00'
+    assert '日常负载率:65%' in out['spec']
+    assert len(out['attachments']) == 2
+
+
+def test_equipment_dataclass_persists_substation_attachments():
+    equipment = pgc._dataclass_from_dict(Equipment, {
+        'name': '中心配电室',
+        'category': '变配电',
+        'quantity': 6,
+        'substation_id': 2,
+        'attachments': [{
+            'device_name': '变压器1',
+            'device_num': 4,
+            'capacity': 1000,
+        }],
+    })
+
+    assert asdict(equipment)['attachments'][0]['capacity'] == 1000
 
 
 def test_collect_scene_independent_metering_flags():

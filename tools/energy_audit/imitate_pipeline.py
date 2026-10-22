@@ -515,6 +515,18 @@ def extract_project_facts(project: AuditProject, chapter_key: str) -> Dict[str, 
                     meter = f"，独立计量：{eq.independent_metering}" if eq.independent_metering else ""
                     desc = f"（{eq.independent_metering_desc}）" if eq.independent_metering_desc else ""
                     md.append(f"  · {eq.name}{spec} × {eq.quantity or 1}{meter}{desc}")
+                    if eq.category == "变配电" and eq.attachments:
+                        for item in eq.attachments:
+                            md.append(
+                                "    - 附属设备："
+                                f"{item.get('name') or '未命名'}"
+                                f" × {item.get('quantity') or 1}"
+                                f"，单台容量 {item.get('capacity') or '—'}"
+                                f"{item.get('capacity_unit') or ''}"
+                                f"，形式 {item.get('type') or '—'}"
+                                f"，型号 {item.get('model') or '—'}"
+                                f"，安装时间 {item.get('install_time') or '—'}"
+                            )
         else:
             md.append("设备清单：未采集")
 

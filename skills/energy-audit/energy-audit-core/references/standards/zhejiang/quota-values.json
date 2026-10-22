@@ -1,0 +1,88 @@
+{
+  "meta": {
+    "region": "浙江",
+    "family": "公共建筑",
+    "verified": "2026-10-20",
+    "human_authority": "quota-values.md",
+    "note": "本 JSON 是 quota-values.md 的机读镜像；两者必须同步修改。"
+  },
+  "coefficients": {
+    "electricity_kgce_per_kwh": 0.1229,
+    "gas_kgce_per_m3": 1.2143,
+    "lpg_kgce_per_kg": 1.7143,
+    "gasoline_kgce_per_kg": 1.4714,
+    "diesel_kgce_per_kg": 1.4571,
+    "fuel_oil_kgce_per_kg": 1.4286,
+    "heat_kgce_per_gj": 34.12,
+    "water_kgce_per_t": 0.2571
+  },
+  "db33_t_736_2021": {
+    "administrative": {
+      "unit_area_energy": {
+        "province": [12, 7.5, 5.0],
+        "city": [9.5, 6.0, 4.0],
+        "county": [8.5, 5.0, 3.5]
+      },
+      "per_capita_energy": {
+        "province": [650, 450, 270],
+        "city": [450, 230, 140],
+        "county": [350, 200, 140]
+      },
+      "unit_area_electricity": {
+        "province": [80, 45, 30],
+        "city": [70, 45, 25],
+        "county": [65, 35, 20]
+      },
+      "per_capita_electricity": {
+        "province": [2800, 1800, 1350],
+        "city": [2300, 1700, 1200],
+        "county": [2100, 1400, 1100]
+      },
+      "eeue": [2.0, 1.8, 1.5]
+    },
+    "venue": {
+      "unit_area_energy": {
+        "science": [12, 10, 7],
+        "culture": [9.0, 6.0, 4.0],
+        "museum": [12, 9, 6]
+      },
+      "per_capita_energy": {
+        "science": [280, 200, 150],
+        "culture": [250, 140, 60],
+        "museum": [220, 100, 60]
+      },
+      "unit_area_electricity": {
+        "science": [12, 10, 7],
+        "culture": [9.0, 6.0, 4.0],
+        "museum": [12, 9, 6]
+      },
+      "per_capita_electricity": {
+        "science": [280, 200, 150],
+        "culture": [250, 140, 60],
+        "museum": [220, 100, 60]
+      },
+      "eeue": [2.0, 1.8, 1.5]
+    }
+  },
+  "db33_t_760_2023": {
+    "unit_comparable_energy": {
+      "5": [33, 23, 18],
+      "4": [28, 20, 15],
+      "3": [25, 18, 12]
+    }
+  },
+  "water_2019": {
+    "national_org": {
+      "with_canteen": [38.0, 22.5],
+      "without_canteen": [21.9, 15.0]
+    },
+    "hotel": {
+      "5": [350, 216],
+      "4": [350, 216],
+      "3": [256, 146],
+      "2": [180, 110],
+      "1": [180, 110],
+      "below": [125, 70]
+    }
+  }
+}

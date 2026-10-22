@@ -54,6 +54,7 @@ MISSING_REGISTRY_FILE = "missing_items.json"
 # （format-spec 与装配脚本对图注字号表述不一致，避免制造新的矛盾）
 RE_CAPTION = re.compile(r"^(图|表|附表)\s*\d+\s*[.\-–—]\s*\d+")
 RE_TABLE_CAPTION = re.compile(r"^(表|附表)\s*\d+\s*[.\-–—]\s*\d+")
+RE_APPENDIX2_TABLE_CAPTION = re.compile(r"^附表\s*2\s*[.\-–—]\s*\d+")
 # 合法无表号的表（来源：封面三张信息表由装配脚本直写）
 CAPTIONLESS_ALLOWED = {
     "能源审计机构信息表", "能源审计组人员名单", "能源审计配合人员名单",
@@ -72,6 +73,18 @@ KIND_LABELS = {
     "body": "正文",
     "caption": "图注/表题",
 }
+
+
+def is_appendix2_table(blocks: Sequence["Block"], index: int) -> bool:
+    """判断题注为附表2-x的横向宽表；该类表按装配规则使用 0.8cm 行高。"""
+    if index <= 0:
+        return False
+    for block in reversed(blocks[:index]):
+        if block.kind == "tbl":
+            return False
+        if block.kind == "p" and block.text.strip():
+            return bool(RE_APPENDIX2_TABLE_CAPTION.match(block.text.strip()))
+    return False
 
 REQUIRED_TABLES: Tuple[str, ...] = (
     "能源审计机构信息表",
@@ -629,14 +642,113 @@ CH6_BANNED_WORDS = (
 RE_CH6_SECTION = re.compile(r"^6\.(\d+)\s*")
 RE_CH6_SUBSECTION = re.compile(r"^[（(]\s*(\d+)\s*[）)]")
 RE_CH6_FIGURE = re.compile(r"^图6\.(\d+)")
+RE_CH6_QTY_RATING = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:台|套|个)[^。；\n]{0,24}?"
+    r"\d+(?:\.\d+)?\s*(?:kW|W)(?:/(?:台|套))?"
+)
+RE_CH6_MODEL_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9])(?=[A-Z0-9/-]{5,})(?=[A-Z0-9/-]*\d)"
+    r"[A-Z][A-Z0-9/-]*[A-Z0-9](?![A-Za-z0-9])"
+)
+CH6_PUBLIC_INSTITUTION_SYSTEM_ORDER = (
+    ("空调与供暖", ("空调与供暖", "空调及供暖", "供暖空调")),
+    ("照明", ("照明",)),
+    ("办公设备", ("办公设备", "办公")),
+    ("特殊用能", ("特殊用能",)),
+    ("变配电", ("变配电",)),
+    ("其他用电设备", ("其他用电设备",)),
+)
 
 
-def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
+def _chapter6_photo_name_key(text: Any) -> str:
+    return re.sub(
+        r"[\s/／\\、，,。.；;：:（）()\-—_]+",
+        "",
+        str(text or ""),
+    ).lower()
+
+
+def _chapter6_equipment_img_ids(equipment: Dict[str, Any]) -> List[str]:
+    raw = equipment.get("img_ids")
+    if isinstance(raw, (list, tuple, set)):
+        return [str(v).strip() for v in raw if str(v).strip()]
+    return re.findall(r"\d+", str(raw or ""))
+
+
+def _chapter6_table_device_names(blocks: Sequence["Block"]) -> List[str]:
+    names = []
+    for block in blocks:
+        if block.kind != "tbl" or block.obj is None:
+            continue
+        try:
+            rows = list(block.obj.rows)
+            header = [cell.text.strip() for cell in rows[0].cells]
+        except (AttributeError, IndexError):
+            continue
+        if "设备名称" not in header:
+            continue
+        col = header.index("设备名称")
+        for row in rows[1:]:
+            try:
+                name = row.cells[col].text.strip()
+            except (AttributeError, IndexError):
+                continue
+            if name and name not in ("—", "-"):
+                names.append(name)
+    return names
+
+
+def _missing_chapter6_photo_captions(
+    captions: Sequence["Block"],
+    equipment: Optional[Sequence[Dict[str, Any]]],
+    images: Optional[Sequence[Dict[str, Any]]] = None,
+    table_device_names: Optional[Sequence[str]] = None,
+) -> List[str]:
+    """有设备附件、但第6章没有对应设备名图注的设备（按设备名去重）。"""
+    caption_keys = []
+    for block in captions:
+        match = RE_CH6_FIGURE.match(block.text)
+        if match:
+            caption_keys.append(_chapter6_photo_name_key(
+                re.sub(r"^图6\.\d+\s*", "", block.text)
+            ))
+    available_ids = {
+        str(image.get("file_id")).strip()
+        for image in (images or [])
+        if image.get("file_id") not in (None, "")
+    }
+    table_keys = [
+        _chapter6_photo_name_key(name) for name in (table_device_names or [])
+    ]
+    missing, seen = [], set()
+    for item in equipment or []:
+        name = str(item.get("name") or "").strip()
+        key = _chapter6_photo_name_key(name)
+        ids = _chapter6_equipment_img_ids(item)
+        if not key or key in seen or not ids or not available_ids.intersection(ids):
+            continue
+        if table_keys and not any(key == tk or key in tk or tk in key for tk in table_keys):
+            continue
+        seen.add(key)
+        if not any(key == ck or (key and ck and (key in ck or ck in key))
+                   for ck in caption_keys):
+            missing.append(name)
+    return missing
+
+
+def check_chapter6_structure(
+    blocks: Sequence[Block],
+    *,
+    public_institution: bool = False,
+    equipment: Optional[Sequence[Dict[str, Any]]] = None,
+    images: Optional[Sequence[Dict[str, Any]]] = None,
+) -> List[Finding]:
     """第6章结构/内容/措辞检查（2026-10-21 重构，P1 只告警）。
 
     结构权威：`ea-authoring/references/chapter-guides-6-8.md`《第6章》。
     检查：章标题、主干齐全与编号连续、6.1 动态小节与总述、每节三段、
-    设备表 7 列、禁词与平台语言、第5章图表引用、图注与图片数量。
+    公共机构分系统顺序与变配电专表、设备表列头、禁词与平台语言、
+    第5章图表引用、图注与图片数量。公共建筑继续使用通用设备表规则。
     """
     # 目录条目会继承"第6章"的 chapter 标记（形如「6.1 …\t41」），必须先剔除
     ch6 = [b for b in blocks
@@ -702,6 +814,28 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
                 "6.1 下应按实际系统用（1）（2）…展开", f"≥ {MIN_CHAPTER6_H3} 个",
                 f"{len(subs)} 个")
 
+        if public_institution and subs:
+            positions: List[Tuple[str, int]] = []
+            for sub_index, (_, sub_block) in enumerate(subs):
+                for order_index, (label, aliases) in enumerate(
+                    CH6_PUBLIC_INSTITUTION_SYSTEM_ORDER
+                ):
+                    if any(alias in sub_block.text for alias in aliases):
+                        positions.append((label, order_index))
+                        break
+            order_values = [position for _, position in positions]
+            if order_values != sorted(order_values):
+                add(
+                    "V3.STRUCT.CHAPTER6_SYSTEM_ORDER",
+                    "6.1 公共机构分系统顺序错误",
+                    "实测：" + " → ".join(label for label, _ in positions),
+                    " → ".join(
+                        label
+                        for label, _ in CH6_PUBLIC_INSTITUTION_SYSTEM_ORDER
+                    ),
+                    str([label for label, _ in positions]),
+                )
+
         first_sub = subs[0][0] if subs else len(body)
         overview = "".join(b.text for b in body[:first_sub]
                            if b.kind == "p" and len(b.text.strip()) >= 8)
@@ -718,9 +852,27 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
                 add("V3.STRUCT.CHAPTER6_PARAS", f"{b.text} 正文段数不足",
                     f"实测 {len(paras)} 段（构成/运行方式/特点与评价格式）", "≥3 段",
                     f"{len(paras)} 段")
+            for para in paras:
+                ratings = RE_CH6_QTY_RATING.findall(para.text)
+                models = RE_CH6_MODEL_TOKEN.findall(para.text)
+                if len(ratings) >= 3 or len(models) >= 2:
+                    add(
+                        "V3.STRUCT.CHAPTER6_DEVICE_DETAIL",
+                        f"{b.text} 正文重复展开设备明细",
+                        f"同一段出现 {len(ratings)} 组「数量＋单台功率」、"
+                        f"{len(models)} 个具体型号表述："
+                        f"{para.text[:100]}",
+                        "系统构成段只写设备类别、总数量、总装机容量和服务范围；"
+                        "品牌、型号、数量及单台功率统一下沉设备清单表",
+                        f"{len(ratings)} 组 / {len(models)} 个型号",
+                    )
 
     # 4. 设备清单表 7 列 + 表题
     required_cols = ("序号", "设备名称", "品牌", "规格型号", "数量", "单台功率", "运行时间")
+    substation_cols = (
+        "序号", "设备名称", "规格型号", "形式", "数量",
+        "单台容量", "安装时间",
+    )
     for i, b in enumerate(ch6):
         if b.kind != "tbl":
             continue
@@ -730,11 +882,17 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
             continue
         if "设备名称" not in header:
             continue
-        missing = [c for c in required_cols if c not in header]
+        caption = ch6[i - 1].text if i > 0 and ch6[i - 1].kind == "p" else ""
+        is_substation_table = (
+            public_institution
+            and "变配电" in caption
+            and all(c in header for c in substation_cols)
+        )
+        expected_cols = substation_cols if is_substation_table else required_cols
+        missing = [c for c in expected_cols if c not in header]
         if missing:
             add("V3.STRUCT.CHAPTER6_TABLE", "第6章设备表列头不符",
-                f"缺：{'、'.join(missing)}", " / ".join(required_cols), header)
-        caption = ch6[i - 1].text if i > 0 and ch6[i - 1].kind == "p" else ""
+                f"缺：{'、'.join(missing)}", " / ".join(expected_cols), header)
         if "设备清单" not in caption:
             add("V3.STRUCT.CHAPTER6_TABLE_CAPTION", "第6章设备表表题不符",
                 f"实测表题：{caption or '（空）'}", "表6.X XX系统设备清单")
@@ -770,6 +928,18 @@ def check_chapter6_structure(blocks: Sequence[Block]) -> List[Finding]:
         add("V3.STRUCT.CHAPTER6_FIG_COUNT", "第6章图片与图注数量不一致",
             f"图片 {len(img_paras)} 张 / 图注 {len(captions)} 条",
             "图注数=图片数", f"{len(img_paras)}/{len(captions)}")
+    missing_photo_captions = _missing_chapter6_photo_captions(
+        captions, equipment, images, _chapter6_table_device_names(ch6)
+    )
+    if missing_photo_captions:
+        add(
+            "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE",
+            "第6章设备配图覆盖不足",
+            "以下设备有 img_ids，但报告中没有 `图6.N 设备名`："
+            + "、".join(missing_photo_captions),
+            "每个有 img_ids 的设备行各写一条设备图注",
+            f"缺 {len(missing_photo_captions)} 项",
+        )
 
     return findings
 
@@ -1324,8 +1494,10 @@ def check_format(blocks: Sequence[Block]) -> List[Finding]:
 
     bad_rows = 0
     total_rows = 0
-    for block in blocks:
+    for block_index, block in enumerate(blocks):
         if block.kind != "tbl":
+            continue
+        if is_appendix2_table(blocks, block_index):
             continue
         for row in block.obj.rows:
             total_rows += 1
@@ -1497,7 +1669,12 @@ def run(
     findings += check_chapters(blocks)
     findings += check_tables_and_placeholders(blocks, registry)
     findings += check_province_rules(blocks)
-    findings += check_chapter6_structure(blocks)
+    findings += check_chapter6_structure(
+        blocks,
+        public_institution=str(base.get("unit_type", "")).strip() == "公共机构",
+        equipment=((raw or {}).get("equipment") or []),
+        images=((raw or {}).get("images") or []),
+    )
     findings += check_chapter7_structure(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
