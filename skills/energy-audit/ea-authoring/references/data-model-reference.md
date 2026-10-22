@@ -46,6 +46,7 @@ if proj is None:
 | 第6章 设备 | 分系统设备（品牌/型号/功率/运行时间从 `spec` 复合串解析；生活水泵配置见 `config`；补水装置对应冷热源见 `device_air_name`） | `proj.equipment[]`（category/name/spec/quantity/**img_ids**/config/device_air_name/energy_rating/location/independent_metering） |
 | 第6章 用水构成 | 灌溉登记 | `proj.water_aux.greening[]`（灌溉方式/水源等，判定是否写“灌溉用水”） |
 | 第6章 室内环境 | 检测数据（第6章末节，按条件生成） | `proj.indoor_env.rooms[]` |
+| 第7章 7.1.1 计量证据 | 用水、用燃气的分项计量状态 | `proj.metering.water_measured_depth` / `water_kitchen_metering`；`proj.water_aux`（绿化/其他用水的 `is_metering`）；`proj.equipment[]`（`has_gas_use` / `independent_metering` / `gas_value` / `fuel_value`）。**0=明确无、1=明确有、空=正文省略**，空值不得推断为“未计量”或“待核实” |
 | 第7章 问题 | 从实际字段推断 | 基于 `proj.metering` / `proj.equipment` / `proj.buildings` 推断，禁止写通用问题 |
 
 ## 写段落时的表述模板

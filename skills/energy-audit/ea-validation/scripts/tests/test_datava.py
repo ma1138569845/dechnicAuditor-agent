@@ -517,6 +517,13 @@ def test_extract_areas_handles_wan_unit():
     assert areas[5] == [pytest.approx(15000.0)]
 
 
+def test_extract_areas_ignores_heating_area_after_building_area_phrase():
+    blocks = [
+        _block("供暖按建筑面积计缴热费，供暖面积为 54,523.3 m²。", 6),
+    ]
+    assert v3.extract_areas(blocks) == {}
+
+
 def test_area_consistency_cross_chapter_mismatch_is_p0():
     findings = v3.check_area_consistency({2: [10000.0], 5: [12000.0]}, 0)
     assert findings[0].code == "V3.CROSS.AREA_MISMATCH"
@@ -571,6 +578,53 @@ def test_check_chapters_missing_is_p0():
     blocks = [_block(f"第{n}章 标题", n) for n in range(1, 8)]
     codes = [f.code for f in v3.check_chapters(blocks)]
     assert "V3.STRUCT.CHAPTER_MISSING" in codes
+
+
+def test_cover_consistency_accepts_complete_cover():
+    base = {
+        "unit_name": "某医院",
+        "audit_org_name": "某能源审计公司",
+        "report_date": "2026年10月",
+    }
+    blocks = [
+        _block("某医院", 0),
+        _block("能源审计报告", 0),
+        _block("某能源审计公司", 0),
+        _block("2026年10月", 0),
+    ]
+    assert v3.check_cover_consistency(blocks, base) == []
+
+
+def test_cover_consistency_missing_date_is_p0():
+    base = {
+        "unit_name": "某医院",
+        "audit_org_name": "某能源审计公司",
+        "report_date": "2026年10月",
+    }
+    blocks = [
+        _block("某医院", 0),
+        _block("能源审计报告", 0),
+        _block("某能源审计公司", 0),
+    ]
+    findings = v3.check_cover_consistency(blocks, base)
+    assert [f.code for f in findings] == ["V3.COVER.DATE_MISSING"]
+    assert findings[0].severity == SEV_P0
+
+
+def test_cover_consistency_rejects_date_mismatch():
+    base = {
+        "unit_name": "某医院",
+        "audit_org_name": "某能源审计公司",
+        "report_date": "2026年10月",
+    }
+    blocks = [
+        _block("某医院", 0),
+        _block("能源审计报告", 0),
+        _block("某能源审计公司", 0),
+        _block("2025年9月", 0),
+    ]
+    findings = v3.check_cover_consistency(blocks, base)
+    assert [f.code for f in findings] == ["V3.COVER.DATE_MISMATCH"]
 
 
 def test_check_chapters_empty_body_is_p0():
@@ -789,6 +843,149 @@ def test_chapter6_photo_coverage_accepts_one_caption_per_special_system():
         )
     }
     assert "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE" not in codes
+
+
+def test_area_billing_rejects_heat_meter_defect_wording():
+    blocks = [
+        _block("供暖按面积缴费，未安装热量计量表，供热量无法单独计量。", 6),
+        _block("供暖按面积缴费，热力实物量数据缺失。", 7),
+    ]
+    findings = v3.check_heating_billing_semantics(blocks, "按面积缴费")
+    assert len(findings) == 1
+    assert findings[0].code == "V3.STRUCT.HEATING_AREA_BILLING"
+    assert findings[0].severity == SEV_P1
+    assert "第6章" in findings[0].location and "第7章" in findings[0].location
+
+
+def test_area_billing_scans_table_cells():
+    blocks = [
+        _table_block(
+            5,
+            ("说明",),
+            (("供暖按面积缴费，热力实物量数据缺失。",),),
+        )
+    ]
+    findings = v3.check_heating_billing_semantics(blocks, "按面积缴费")
+    assert len(findings) == 1
+    assert "第5章" in findings[0].location
+
+
+def test_area_billing_accepts_billing_facts():
+    blocks = [
+        _block(
+            "供暖按建筑面积计缴热费，供暖面积63465.91 m²，"
+            "供暖费单价23.30元/m²，供暖费用147.88万元。",
+            6,
+        )
+    ]
+    assert v3.check_heating_billing_semantics(blocks, "按面积缴费") == []
+
+
+def test_metered_billing_does_not_apply_area_billing_rule():
+    blocks = [_block("供暖按热量计缴热费，供热量无法单独计量。", 6)]
+    assert v3.check_heating_billing_semantics(blocks, "按计量表缴费") == []
+
+
+def test_unknown_billing_does_not_infer_metering_defect():
+    blocks = [_block("本项目供暖未安装热量计量表，供热量无法单独计量。", 7)]
+    assert v3.check_heating_billing_semantics(blocks, "") == []
+
+
+def test_chapter7_711_rejects_empty_water_status_rewrite():
+    blocks = [
+        _block("7.1.1 能耗监测系统", 7),
+        _block(
+            "厨房用水未单独计量，现场未获取到空调供暖补水单独计量资料，"
+            "绿化灌溉用水单独计量情况待进一步核实【待核实】。",
+            7,
+        ),
+        _block("7.1.2 照明系统能效低", 7),
+    ]
+    findings = v3.check_chapter7_711_metering_semantics(blocks)
+    assert len(findings) == 1
+    assert findings[0].code == "V3.STRUCT.CHAPTER7_711_METERING_SPECULATION"
+    assert findings[0].severity == SEV_P1
+    assert "现场未获取到" in findings[0].detail
+
+
+def test_chapter7_711_rejects_empty_gas_status_rewrite():
+    blocks = [
+        _block("7.1.1 能耗监测系统", 7),
+        _block(
+            "燃气蒸汽锅炉（手术室消毒）未单独计量，"
+            "厨房炊事及供冷供热用气情况待进一步核实【待核实】。",
+            7,
+        ),
+        _block("7.1.2 空调控制落后", 7),
+    ]
+    findings = v3.check_chapter7_711_metering_semantics(blocks)
+    assert [f.code for f in findings] == [
+        "V3.STRUCT.CHAPTER7_711_METERING_SPECULATION"
+    ]
+    assert "厨房炊事及供冷供热用气" in findings[0].detail
+
+
+def test_chapter7_711_accepts_confirmed_metering_facts_only():
+    blocks = [
+        _block("7.1.1 能耗监测系统", 7),
+        _block("本项目用水计量仅安装总计量水表。", 7),
+        _block("厨房用水未单独计量。", 7),
+        _block("燃气蒸汽锅炉用于手术室消毒，未单独计量。", 7),
+        _block("7.1.2 照明系统能效低", 7),
+    ]
+    assert v3.check_chapter7_711_metering_semantics(blocks) == []
+
+
+def test_chapter7_711_scope_does_not_flag_legitimate_verify_note_elsewhere():
+    blocks = [
+        _block("7.1.1 能耗监测系统", 7),
+        _block("本项目用水计量仅安装总计量水表。", 7),
+        _block("7.1.2 照明系统能效低", 7),
+        _block("2022年4月用电量异常，异常原因请核实。", 5),
+        _block("厨房炊事用气情况待进一步核实【待核实】。", 6),
+    ]
+    assert v3.check_chapter7_711_metering_semantics(blocks) == []
+
+
+def test_chapter7_metering_classes_follow_actual_project_energy():
+    raw = {
+        "energy_yearly": [
+            {"electricity_kwh": 100, "water_m3": 10, "natural_gas_m3": 0},
+        ],
+        "metering": {"heat_meters": 0, "heat_pay_type": ""},
+        "buildings": [{"heating_source": ""}],
+        "equipment": [],
+    }
+    assert v3.chapter7_metering_classes(raw) == ("用电", "用水")
+
+    raw["equipment"] = [{"name": "燃气蒸汽锅炉", "independent_metering": "无"}]
+    raw["buildings"] = [{"heating_source": "市政供暖"}]
+    assert v3.chapter7_metering_classes(raw) == (
+        "用电", "用水", "用燃气", "用热"
+    )
+
+
+def test_chapter7_711_cover_only_requires_actual_energy_classes():
+    blocks = [
+        _block("第7章 节能效果与节能潜力分析", 7),
+        _block("7.1 用能系统现状分析", 7),
+        _block("7.1.1 能耗监测系统", 7),
+        _block("本项目用电计量仅安装总表，用水计量仅安装总表。", 7),
+        _block("7.1.2 照明系统能效低", 7),
+        _block("7.1.3 空调控制落后", 7),
+        _block("7.2 节能潜力分析及建议", 7),
+        _block("7.2.1 建设能耗监测系统", 7),
+        _block("7.2.2 照明改造", 7),
+        _block("7.2.3 空调改造", 7),
+        _block("7.2.4 管理与行为节能", 7),
+        _block("7.2.5 节能率分析", 7),
+    ]
+    codes = {
+        f.code for f in v3.check_chapter7_structure(
+            blocks, metering_classes=("用电", "用水")
+        )
+    }
+    assert "V3.STRUCT.CHAPTER7_711_COVER" not in codes
 
 
 def test_appendix2_wide_tables_are_exempt_from_standard_row_height():

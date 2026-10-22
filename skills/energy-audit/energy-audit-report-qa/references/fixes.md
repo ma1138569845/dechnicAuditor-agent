@@ -230,3 +230,43 @@
   `collect_from_pg` 返回 `found['bed_num']=260`，解析链命中 `('PG', 260)`；
   既有项目 `中医医院/data.json` 不回采（避免覆盖人工补写的 `people_count=821` 与
   `basic_situation`）。
+
+### 2026-10-21 按面积供暖不得误写为热量计量缺陷
+
+- 现象：市政集中供暖、按建筑面积缴费的项目仍被写成“未安装热量计量表、供热量无法单独计量、热力实物量数据缺失”，并可能继续进入待核实项、问题卡和整改建议。
+- 业务边界：按面积计费不要求安装热量表，也不要求取得供热量。热量表与供热量不属于该计费方式下必须取得的审计数据，不能据此判断计量缺陷。
+- 写作口径：第5章 5.2.3 和第6章 6.3 只客观说明供暖热源、供暖面积、计费单价和供暖费用；第7章 7.1.1 只说明“供暖按建筑面积计缴热费”，不评价未装表。
+- 落地链路：
+  - `ea-authoring/references/chapter-guides-6-8.md`：删除错误模板，补齐 6.3 和 7.1.1 分叉规则；
+  - `ea-calculation/references/chapter5-spec.md`：删除“热力数据缺口在后续章节交代”的残留口径；
+  - `ea-authoring/scripts/prepare_writing_context.py`：按面积缴费时把禁止错误定性直接注入写章契约；
+  - `ea-validation/scripts/datava/mode_report_review.py`：新增 `V3.STRUCT.HEATING_AREA_BILLING`（P1），扫描全文段落与表格，仅在缴费方式明确为按面积时触发；
+  - `ea-validation/scripts/tests/test_datava.py`：覆盖错误命中、正确事实、按计量缴费、缴费方式未知四种分支。
+
+### 2026-10-21 7.1.1 空计量字段不得改写为“现场未获取/待核实”
+
+- 现象：报告的 `7.1.1 能耗监测系统` 把没有计量状态证据的厨房用水、灌溉用水、空调供暖补水和燃气用途，写成“现场未获取到……单独计量资料”“……单独计量情况待进一步核实【待核实】”，并导致整段标红。
+- 根因：
+  - 章节指南同时保留了“空值省略”和“数据不足写待核实/改用现场未获取到”两套冲突口径；
+  - 写章契约没有把 `0/1/空` 三态直接摆到作者面前；
+  - V3 没有拦截 7.1.1 的推断性改写；
+  - Word 标红只按 `。；` 切句，逗号连接的事实和核实项会被整句染色。
+- 业务口径：`0=明确未单独计量`，`1=明确已单独计量`，空值=`本次无该项状态证据`。空值只省略对应用途，不推断“未计量”、不写“未获取到资料”、不生成“待核实”。只有两个证据确实冲突且已提请单位确认时，才写清矛盾并标红【待核实】。
+- 落地链路：
+  - `ea-authoring/references/chapter-guides-6-8.md`：用水、用燃气统一三态规则，删除两项无记录时固定写待核实的模板，重写第7章禁编红线；
+  - `ea-authoring/references/data-model-reference.md`：补充 7.1.1 可用字段与三态语义；
+  - `ea-authoring/scripts/prepare_writing_context.py`：每批写章契约直接列出当前项目的水/燃气计量状态和强制口径；
+  - `ea-validation/scripts/datava/mode_report_review.py`：新增 `V3.STRUCT.CHAPTER7_711_METERING_SPECULATION`（P1），只扫描 7.1.1，保留有字段支撑的“未单独计量”事实句；7.1.1 覆盖检查改为按 `data.json` 实际能源类别动态校验，不再强制无燃气/无供热的项目补写空类别；
+  - `energy-audit-report/scripts/build_energy_audit_docx.py`：标红切分扩展至中英文逗号，事实子句保持黑字；
+  - `ea-validation/scripts/tests/test_datava.py`：覆盖用水误写、燃气误写、仅明确事实、7.1.1 范围外合法待核实四种分支。
+
+### 2026-10-21 报告日期补采后为空导致封面落款消失
+
+- 现象：数据补采重写 `data.json` 后，`base.report_date` 变为空字符串，装配器按空值跳过封面日期行，封面只剩审计机构名称。
+- 根因：`pg_collector` 只从 Excel 取 `report_date`，来源为空时写入 `""`；装配器直接信任空值，且交付断言没有检查封面日期。
+- 修法：
+  - `pg_collector.py`：`report_date` 依次回落到 `audit_end`、当前年月；
+  - `build_energy_audit_docx.py`：装配时再次按 `report_date → audit_end → 当前年月` 兜底；
+  - `ea_docx_asserts.py`：新增硬检查 `cover_date_present`，封面落款缺“YYYY年M月”即阻断交付；
+  - `ea-validation/scripts/datava/mode_report_review.py`：新增 `check_cover_consistency`，将封面单位名称、报告名称、审计机构和报告日期与 `data.json` 交叉核对，缺失或不一致均为 P0；
+  - `ea-validation/scripts/tests/test_datava.py`：覆盖完整封面、缺日期、日期不一致三种分支。

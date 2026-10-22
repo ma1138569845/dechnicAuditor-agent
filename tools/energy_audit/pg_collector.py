@@ -1452,9 +1452,17 @@ def build_and_save_project(
                                 ('PG', pg_project),
                                 ('Excel', excel_data),
                                 ('default', '')),
-            report_date=sr.resolve('report_date',
-                                   ('Excel', excel_data),
-                                   ('default', '')),
+            # 报告日期不是所有项目台账都有；上游来源为空时依次落到审计结束月、
+            # 当前月，避免数据补采重写 data.json 后把封面正式日期清空。
+            report_date=(sr.resolve('report_date',
+                                    ('PG', pg_project),
+                                    ('Excel', excel_data),
+                                    ('default', ''))
+                         or sr.resolve('audit_end',
+                                       ('PG', pg_project),
+                                       ('Excel', excel_data),
+                                       ('default', ''))
+                         or datetime.now().strftime('%Y年%m月')),
         ),
         buildings=_merge_buildings(pg_buildings, excel_data.get('buildings', [])),
         energy_yearly=_yearly,

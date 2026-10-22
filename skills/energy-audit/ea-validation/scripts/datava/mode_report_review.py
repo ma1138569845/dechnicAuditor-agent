@@ -208,6 +208,10 @@ def extract_areas(blocks: Sequence[Block]) -> Dict[int, List[float]]:
             connector, value, wan = m.group(1) or "", m.group(2), m.group(3)
             if any(w in connector for w in _AREA_THRESHOLD_WORDS):
                 continue        # 条文阈值，不是本项目面积
+            if "面积" in connector:
+                # 「供暖按建筑面积计缴热费，供暖面积X m²」中的数值属于后一个
+                # 专业面积口径，不是总建筑面积；不能拿它做跨章建筑面积校验。
+                continue
             found.setdefault(block.chapter, []).append(_normalize_area(value, wan))
     return found
 
@@ -541,6 +545,77 @@ def check_year_coverage(blocks: Sequence[Block], years: Sequence[int]) -> List[F
 # ================================================================
 #  章节完整性
 # ================================================================
+
+def check_cover_consistency(
+    blocks: Sequence[Block], base: Optional[Dict[str, Any]]
+) -> List[Finding]:
+    """封面必备要素必须存在，并与 data.json 的项目身份一致。"""
+    base = base or {}
+    cover_lines = [
+        b.text.strip()
+        for b in blocks
+        if b.kind == "p" and b.chapter == 0 and b.text.strip()
+    ]
+    cover_compact = re.sub(r"\s+", "", "\n".join(cover_lines))
+    unit_name = str(base.get("unit_name") or "").strip()
+    org_name = str(
+        base.get("audit_org_name") or base.get("auditor") or ""
+    ).strip()
+    expected_date = str(
+        base.get("report_date") or base.get("audit_end") or ""
+    ).strip()
+
+    findings: List[Finding] = []
+    missing = []
+    if "能源审计报告" not in cover_compact:
+        missing.append("报告名称")
+    if unit_name and re.sub(r"\s+", "", unit_name) not in cover_compact:
+        missing.append(f"单位名称「{unit_name}」")
+    if org_name and re.sub(r"\s+", "", org_name) not in cover_compact:
+        missing.append(f"审计机构「{org_name}」")
+    if missing:
+        findings.append(
+            Finding(
+                code="V3.COVER.REQUIRED_MISSING",
+                category="封面完整性",
+                severity=SEV_P0,
+                title="封面必备要素缺失或与项目数据不一致",
+                detail="；".join(missing),
+                expected="封面包含单位名称、能源审计报告、审计机构和报告日期",
+                actual="缺失或未匹配：" + "、".join(missing),
+                suggestion="检查报告日期、单位和机构数据后重新装配封面",
+            )
+        )
+
+    found_date = re.search(r"20\d{2}年\d{1,2}月", cover_compact)
+    if not found_date:
+        findings.append(
+            Finding(
+                code="V3.COVER.DATE_MISSING",
+                category="封面完整性",
+                severity=SEV_P0,
+                title="封面落款缺报告日期",
+                expected=expected_date or "应有 YYYY年M月 报告日期",
+                actual="封面未见报告日期",
+                suggestion="补写 base.report_date；为空时由装配器回落到审计结束月或当前年月",
+            )
+        )
+    elif expected_date:
+        expected_compact = re.sub(r"\s+", "", expected_date)
+        if expected_compact not in cover_compact:
+            findings.append(
+                Finding(
+                    code="V3.COVER.DATE_MISMATCH",
+                    category="封面完整性",
+                    severity=SEV_P0,
+                    title="封面报告日期与项目数据不一致",
+                    expected=expected_date,
+                    actual=found_date.group(0),
+                    suggestion="统一 base.report_date 与封面装配结果后重新生成",
+                )
+            )
+    return findings
+
 
 def check_chapters(blocks: Sequence[Block]) -> List[Finding]:
     found: List[int] = []
@@ -946,9 +1021,81 @@ def check_chapter6_structure(
 
 CH7_CLASSIFICATION_BAD = ("数据异常", "指标超标", "用能系统及设备问题", "计量与统计问题")
 CH7_PLATFORM_BAD = ("未登记", "待平台补录", "平台登记", "系统数据")
+DEFAULT_CH7_METERING_CLASSES = ("用电", "用水", "用燃气", "用热")
+
+# 7.1.1 计量状态是 0/1/空三态：空值只能省略，不能改写成“未获取到资料”或“待核实”。
+# 这里只拦固定的推断句式，不把“燃气蒸汽锅炉未单独计量”等有字段支撑的事实句误伤。
+RE_CHAPTER7_711_SPECULATIVE_METERING = re.compile(
+    r"现场未获取到[^。；，,]{0,60}(?:单独计量|分类计量)[^。；，,]{0,40}(?:资料|情况)"
+    r"|(?:厨房用水|空调供暖补水|供暖空调用水|绿化灌溉用水)"
+    r"[^。；，,]{0,35}(?:单独计量|分类计量)?(?:情况)?待(?:进一步)?核实"
+    r"|(?:厨房炊事及供冷供热用气|厨房炊事用气|供冷供热用气|供冷供热与厨房炊事用气)"
+    r"[^。；，,]{0,30}(?:情况)?待(?:进一步)?核实"
+    r"|(?:单独计量|分类计量|分别独立计量)情况待(?:进一步)?核实"
+)
+
+# 按面积缴费时，热量表与供热量不属于必须取得的审计数据。出现下列表述说明
+# 作者把正常计费方式误判成了计量缺陷，后文还可能据此生成问题卡和整改建议。
+RE_HEATING_AREA_BILLING_DEFECT = re.compile(
+    r"(?:未安装|未设置|缺少|没有).{0,6}(?:热量(?:计量)?表|热计量表)"
+    r"|供热量(?:无法|未)(?:单独)?计量"
+    r"|(?:热力实物量|热力|供热量)(?:数据)?(?:缺失|无法取得)"
+)
 
 
-def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
+def chapter7_metering_classes(raw: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
+    """按 data.json 判断 7.1.1 实际需要覆盖的计量类别。
+
+    年度消费量、计量器具或已登记设备任一成立即认为该类别存在；原始数据缺失时
+    退回四类默认口径，供无 data.json 的独立调用保持兼容。
+    """
+    data = raw or {}
+    yearly = [row for row in (data.get("energy_yearly") or []) if isinstance(row, dict)]
+    metering = data.get("metering") or {}
+    equipment = [eq for eq in (data.get("equipment") or []) if isinstance(eq, dict)]
+    buildings = [b for b in (data.get("buildings") or []) if isinstance(b, dict)]
+    water_aux = data.get("water_aux") or {}
+
+    def positive(key: str) -> bool:
+        return any(safe_float(row.get(key)) > 0 for row in yearly)
+
+    classes: List[str] = []
+    if positive("electricity_kwh") or safe_float(metering.get("electric_meters")) > 0:
+        classes.append("用电")
+    if (
+        positive("water_m3")
+        or safe_float(metering.get("water_meters")) > 0
+        or str(metering.get("water_measured_depth") or "").strip()
+        or any(water_aux.get(key) for key in ("greening", "other", "road"))
+    ):
+        classes.append("用水")
+    gas_equipment = any(
+        any(k in f"{eq.get('name') or ''}{eq.get('category') or ''}"
+            for k in ("燃气", "锅炉", "溴化锂", "厨房", "食堂"))
+        or eq.get("has_gas_use") not in (None, "")
+        or eq.get("gas_value") not in (None, "")
+        or eq.get("fuel_value") not in (None, "")
+        for eq in equipment
+    )
+    if positive("natural_gas_m3") or safe_float(metering.get("gas_meters")) > 0 or gas_equipment:
+        classes.append("用燃气")
+    if (
+        positive("heating_energy_kwh")
+        or positive("heating_energy_heat_gj")
+        or positive("heating_cost_wan")
+        or safe_float(metering.get("heat_meters")) > 0
+        or str(metering.get("heat_pay_type") or "").strip()
+        or any(str(b.get("heating_source") or "").strip() for b in buildings)
+    ):
+        classes.append("用热")
+    return tuple(classes) or DEFAULT_CH7_METERING_CLASSES
+
+
+def check_chapter7_structure(
+    blocks: Sequence[Block],
+    *,
+    metering_classes: Optional[Sequence[str]] = None,
+) -> List[Finding]:
     """第7章结构（2026-10-21 样板口径，P1 只告警）。
 
     结构：7.1 用能系统现状分析（7.1.1 能耗监测系统 + 7.1.2… 问题卡片）；
@@ -999,7 +1146,7 @@ def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
                 add("V3.STRUCT.CHAPTER7_CLASSNAME", "7.1.x 使用了分类名",
                     f"{t}（命中：{hit[0]}）", "标题写具体问题名")
 
-        # 7.1.1 须覆盖用电/用水/用燃气/用热
+        # 7.1.1 只覆盖本项目实际存在且有证据的计量类别
         start = subs71[0][0]
         end = subs71[1][0] if len(subs71) > 1 else len(ch7)
         body = "".join(b.text for b in ch7[start + 1:end] if b.kind == "p")
@@ -1009,11 +1156,16 @@ def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
             "用燃气": ("燃气",),
             "用热": ("用热", "供暖", "供热量", "热量计量"),
         }
-        missing = [k for k, keys in cover_keys.items()
-                   if not any(x in body for x in keys)]
+        required_classes = tuple(
+            metering_classes or DEFAULT_CH7_METERING_CLASSES
+        )
+        missing = [
+            k for k in required_classes
+            if not any(x in body for x in cover_keys.get(k, ()))
+        ]
         if missing:
-            add("V3.STRUCT.CHAPTER7_711_COVER", "7.1.1 未覆盖四类计量",
-                "缺：" + "、".join(missing), "用电、用水、用燃气、用热四类")
+            add("V3.STRUCT.CHAPTER7_711_COVER", "7.1.1 未覆盖应有计量类别",
+                "缺：" + "、".join(missing), "、".join(required_classes))
 
     h72 = next((i for i, b in enumerate(ch7)
                 if b.kind == "p" and re.match(r"^7\.2\s", b.text)), None)
@@ -1039,9 +1191,134 @@ def check_chapter7_structure(blocks: Sequence[Block]) -> List[Finding]:
     if hits:
         add("V3.STRUCT.CHAPTER7_PLATFORM", "第7章出现平台语言",
             "命中：" + "、".join(hits),
-            "改用「现场未获取到」「资料未提供」「待进一步核实」")
+            "删除平台语言；字段为空时省略结论，不得替换为「现场未获取到」或「待核实」")
 
     return findings
+
+
+def check_chapter7_711_metering_semantics(blocks: Sequence[Block]) -> List[Finding]:
+    """7.1.1 空计量字段不得被改写成“未获取到/待核实”。
+
+    只扫描 7.1.1 到下一个 7.1.x（或 7.2）之间的正文。明确登记为 0 的
+    “未单独计量”是合法事实；“现场未获取到……计量资料”“……计量情况待进一步
+    核实”才是把空值反向推断成结论，记 P1。
+    """
+    ch7 = [
+        b for b in blocks
+        if b.chapter == 7 and not (b.kind == "p" and re.search(r"\t\d+$", b.text))
+    ]
+    start = next(
+        (
+            i for i, b in enumerate(ch7)
+            if b.kind == "p" and re.match(r"^7\.1\.1\s+能耗监测", b.text)
+        ),
+        None,
+    )
+    if start is None:
+        return []
+    end = next(
+        (
+            i for i in range(start + 1, len(ch7))
+            if ch7[i].kind == "p"
+            and (re.match(r"^7\.1\.\d+\s", ch7[i].text)
+                 or re.match(r"^7\.2\s", ch7[i].text))
+        ),
+        len(ch7),
+    )
+
+    hits: List[str] = []
+    for block in ch7[start + 1:end]:
+        if block.kind != "p" or not block.text:
+            continue
+        match = RE_CHAPTER7_711_SPECULATIVE_METERING.search(block.text)
+        if match:
+            hits.append(f"命中「{match.group(0)}」；原文：{block.text.strip()[:140]}")
+
+    if not hits:
+        return []
+    return [
+        Finding(
+            code="V3.STRUCT.CHAPTER7_711_METERING_SPECULATION",
+            category="写作规范",
+            severity=SEV_P1,
+            title="7.1.1 将空计量字段误写为未获取或待核实",
+            detail="；".join(hits[:6]),
+            location="第7章 7.1.1",
+            expected=(
+                "计量状态按 0=明确无、1=明确有、空=省略处理；"
+                "空值不得推断为未单独计量或待核实"
+            ),
+            actual=f"{len(hits)} 处推断性表述",
+            suggestion=(
+                "删除空字段对应的用途及计量结论；已确认的未计量事实保持黑字。"
+                "只有两个证据确实冲突并已提请单位确认时，才写清冲突内容并标红【待核实】"
+            ),
+        )
+    ]
+
+
+def check_heating_billing_semantics(
+    blocks: Sequence[Block], heat_pay_type: str
+) -> List[Finding]:
+    """按面积缴费不得被误写成热量计量缺陷。
+
+    仅在 `data.json → metering.heat_pay_type` 明确为按面积缴费时触发。
+    `heat_meters=0`、缴费方式缺失或按计量表缴费，都不能套用这条规则。
+    """
+    if "按面积" not in str(heat_pay_type or ""):
+        return []
+
+    hits: List[Tuple[int, str, str]] = []
+    for block in blocks:
+        texts: List[str] = []
+        if block.kind == "p" and block.text:
+            texts.append(block.text)
+        elif block.kind == "tbl":
+            try:
+                texts.extend(
+                    cell.text
+                    for row in block.obj.rows
+                    for cell in row.cells
+                    if cell.text
+                )
+            except (AttributeError, TypeError):
+                pass
+        for text in texts:
+            match = RE_HEATING_AREA_BILLING_DEFECT.search(text)
+            if match:
+                hits.append((block.chapter, match.group(0), text.strip()[:120]))
+
+    if not hits:
+        return []
+
+    chapters = sorted({chapter for chapter, _, _ in hits if chapter})
+    location = (
+        "、".join(f"第{chapter}章" for chapter in chapters)
+        if chapters else "全文"
+    )
+    details = [
+        f"{f'第{chapter}章：' if chapter else ''}命中「{phrase}」；原文：{text}"
+        for chapter, phrase, text in hits[:6]
+    ]
+    return [
+        Finding(
+            code="V3.STRUCT.HEATING_AREA_BILLING",
+            category="写作规范",
+            severity=SEV_P1,
+            title="按面积缴费被误写为热量计量缺陷",
+            detail="；".join(details),
+            location=location,
+            expected=(
+                "按面积缴费只客观写供暖面积、计费单价和费用；"
+                "不得写未安装热量表、供热量无法计量或热力数据缺失"
+            ),
+            actual=f"{len(hits)} 处错误定性",
+            suggestion=(
+                "删除计量缺陷、待核实和整改表述；缴费方式为按面积时，"
+                "热量表与供热量不是必须取得的审计数据"
+            ),
+        )
+    ]
 
 
 RE_APPENDIX_START = re.compile(r"^附录(?:\s*[:：]|[0-9一二三四五六七八九十]+[：:])")
@@ -1663,10 +1940,15 @@ def run(
         for row in ((raw or {}).get("energy_yearly") or [])
         if safe_float(row.get("year")) > 0
     )
+    heat_pay_type = str(
+        ((raw or {}).get("metering") or {}).get("heat_pay_type") or ""
+    ).strip()
 
     findings: List[Finding] = []
     registry = load_missing_registry(project, output_dir)
+    findings += check_cover_consistency(blocks, base)
     findings += check_chapters(blocks)
+    findings += check_heating_billing_semantics(blocks, heat_pay_type)
     findings += check_tables_and_placeholders(blocks, registry)
     findings += check_province_rules(blocks)
     findings += check_chapter6_structure(
@@ -1675,7 +1957,11 @@ def run(
         equipment=((raw or {}).get("equipment") or []),
         images=((raw or {}).get("images") or []),
     )
-    findings += check_chapter7_structure(blocks)
+    findings += check_chapter7_structure(
+        blocks,
+        metering_classes=chapter7_metering_classes(raw),
+    )
+    findings += check_chapter7_711_metering_semantics(blocks)
     findings += check_chapter8_summary(blocks)
     findings += check_ch5_narrative(blocks)
     # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）

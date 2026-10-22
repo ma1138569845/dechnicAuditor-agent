@@ -16,6 +16,7 @@
     header_no_vml     页眉无 VML 水印（禁 v:textpath）
     section_split     节数=2（前置节/正文节；2026-09-22 分节）
     prebody_clean     前置节：无页脚引用、页眉无文字、无边框（仅水印）
+    cover_date_present 封面落款含“YYYY年M月”报告日期（2026-10-21 新增）
     body_numbering    正文节含 <w:pgNumType w:start="1"/>（页码从 1 重起）
     toc_no_self_ref   目录未自收录（目录区不重复出现「目录」字样，启发式）
     no_flat_formula   无公式压平残留（已知形态清单）
@@ -1483,6 +1484,8 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
     instrs = re.findall(r"<w:instrText[^>]*>([^<]*)</w:instrText>", doc)
     text = visible_text(doc)
     tn = norm(text)
+    cover_text = text.split("能源审计机构信息表", 1)[0]
+    cover_date_ok = bool(re.search(r"20\d{2}年\d{1,2}月", cover_text))
     ch5_n = ch5_narrative_count(doc)
     c531_ok, c531_why = ch5_531_leadin_ok(doc)
     c222_ok, c222_why = ch2_22_structure_ok(doc)
@@ -1532,6 +1535,7 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         "header_no_vml": not any("v:textpath" in h for h in headers.values()),
         "section_split": len(sec_maps) >= 2,
         "prebody_clean": (not pre_map["footer"]) and ("能源审计报告" not in pre_hdr) and ("pBdr" not in pre_hdr),
+        "cover_date_present": cover_date_ok,
         "body_numbering": ("w:pgNumType" in body_map["xml"]) and ("w:start=\"1\"" in body_map["xml"]),
         "toc_no_self_ref": not self_ref,
         "no_flat_formula": not [p for p in FLAT_FORMULAS if p in text],
@@ -1666,6 +1670,8 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         details["prebody_clean"] = "；".join(why) or "未知"
     if not checks["body_numbering"]:
         details["body_numbering"] = "正文节缺 w:pgNumType start=1"
+    if not checks["cover_date_present"]:
+        details["cover_date_present"] = "封面落款缺“YYYY年M月”报告日期"
     if not checks["footer_plain"]:
         details["footer_plain"] = "正文节页脚含破折号或缺失 PAGE 域"
 

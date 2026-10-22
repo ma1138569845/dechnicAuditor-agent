@@ -48,6 +48,7 @@ import re
 import sys
 import time
 import zipfile
+from datetime import datetime
 
 from docx import Document
 from docx.enum.section import WD_SECTION, WD_ORIENT
@@ -264,6 +265,19 @@ def _build_cover(doc, unit, org, date_text):
     # （有落款日期行时实测 y=727pt，已接近可用下边界）该空段落自身溢出到次页，
     # 它带来的分页又把信息表推到第 3 页 → 第 2 页变成空白页（中医/烟台实测，山东因无日期行幸免）。
     # 改为把"另起一页"交给**下一段**（信息表首标题）的 pageBreakBefore —— 落款坐标一字不动。
+
+
+def _resolve_cover_date(base):
+    """封面日期兜底：报告日期 → 审计结束月 → 当前月。
+
+    数据补采可能在 report_date 来源缺失时把该字段重写为空。封面日期属于正式交付
+    要素，装配阶段必须再次兜底，不能因上游空值静默删除整行。
+    """
+    for key in ("report_date", "audit_end"):
+        value = str((base or {}).get(key) or "").strip()
+        if value:
+            return value
+    return datetime.now().strftime("%Y年%m月")
 
 
 def _build_info_page(doc, institution, team, coop):
@@ -517,10 +531,11 @@ def _replace_with_retry(src: str, dst: str, attempts: int = 5) -> None:
 def _split_by_verify(text: str):
     """按句切分并把「含占位标记的句子」标出来：返回 [(片段, 是否红字), ...]。
 
-    切分点＝句号/分号（分隔符归属前一句）；只有整段含标记时才需要调用。
+    切分点＝句号/分号/中英文逗号（分隔符归属前一句）；只有整段含标记时才需要调用。
+    逗号也作为边界，避免“已确认事实，……待进一步核实【待核实】”把整句都染红。
     """
     out = []
-    for seg in re.split(r"(?<=[。；])", text):
+    for seg in re.split(r"(?<=[。；，,])", text):
         if not seg:
             continue
         out.append((seg, bool(VERIFY_MARK_RE.search(seg))))
@@ -865,7 +880,7 @@ def build(project_dir, out_path=None):
     base = data.get("base", {})
     unit = base.get("unit_name") or "××单位"
     org = base.get("audit_org_name") or ""
-    date_text = base.get("report_date") or ""
+    date_text = _resolve_cover_date(base)
 
     if not out_path:
         out_path = os.path.join(project_dir, "output", "_script_build",

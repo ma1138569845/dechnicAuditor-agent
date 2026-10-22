@@ -568,6 +568,15 @@ def main(argv=None) -> int:
         for label, val, src in heat_rows:
             lines.append(f"| {label} | {val} | {src} |")
 
+    heat_pay_type = str(metering.get("heat_pay_type") or "").strip()
+    if "按面积" in heat_pay_type:
+        lines += [
+            "",
+            "> ⛔ 本项目按建筑面积计缴热费。按面积计费不要求热量表，"
+            "不得写“未安装热量表”“供热量无法单独计量”“热力实物量数据缺失”，"
+            "也不得列为问题、待核实项或整改建议；第6章 6.3 只写供暖面积、单价和费用。",
+        ]
+
     # 空调与供暖控制方式（2026-09-29 接入）：第7章 7.1「C 类机会问题」第 1 个方向的**唯一**
     # 依据是 data.json → metering.cold_control_type（采集自 ts_institution_scene）。
     # 此前它只写在契约的"C 类只开放…"那句里、不显示值，写 7.1 时看不见 → C 类整类漏写。
@@ -586,6 +595,104 @@ def main(argv=None) -> int:
         "| 项 | 值 | 来源 |",
         "|---|---|---|",
         f"| 空调与供暖控制方式 | {_cc_show} | data.json → metering.cold_control_type |",
+    ]
+
+    # 第7.1.1 计量写作证据（2026-10-21）：此前契约只把“现场未获取到/待核实”
+    # 当作缺省写法，作者看不到 0/1/空三态，遂把空字段误写成“未单独计量”。
+    def _tri_text(value) -> str:
+        if value is None or str(value).strip() in ("", "None"):
+            return "空（正文省略该项，不得推断）"
+        text = str(value).strip()
+        if text.lower() in ("0", "false", "否", "无"):
+            return f"{text}（明确无/未单独计量）"
+        if text.lower() in ("1", "true", "是", "有"):
+            return f"{text}（明确有/已单独计量）"
+        return f"{text}（按原值表述，不作二元推断）"
+
+    def _gas_use_text(value) -> str:
+        if value is None or str(value).strip() in ("", "None"):
+            return "空（正文省略该项，不得推断）"
+        text = str(value).strip()
+        if text.lower() in ("0", "false", "否", "无"):
+            return f"{text}（明确不使用燃气）"
+        if text.lower() in ("1", "true", "是", "有"):
+            return f"{text}（明确使用燃气）"
+        return f"{text}（按原值表述，不作二元推断）"
+
+    water_aux = data.get("water_aux") or {}
+    water_aux_rows = []
+    for item in water_aux.get("greening") or []:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("irrigation_type") or "绿化灌溉")
+        source = str(item.get("irrigation_source") or "").strip()
+        water_aux_rows.append(
+            (f"{label}{f'（{source}）' if source else ''}",
+             _tri_text(item.get("is_metering")))
+        )
+    for item in water_aux.get("other") or []:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("water_system") or "其他特殊用水")
+        water_aux_rows.append((label, _tri_text(item.get("is_metering"))))
+
+    gas_rows = []
+    for eq in data.get("equipment") or []:
+        if not isinstance(eq, dict):
+            continue
+        name = str(eq.get("name") or "").strip()
+        category = str(eq.get("category") or "").strip()
+        gas_related = (
+            any(k in f"{name}{category}" for k in (
+                "燃气", "锅炉", "溴化锂", "厨房", "食堂",
+            ))
+            or eq.get("has_gas_use") not in (None, "")
+            or eq.get("gas_value") not in (None, "")
+            or eq.get("fuel_value") not in (None, "")
+        )
+        if not gas_related:
+            continue
+        gas_rows.append((
+            name or "—",
+            category or "—",
+            _gas_use_text(eq.get("has_gas_use")),
+            _tri_text(eq.get("independent_metering")),
+        ))
+
+    lines += [
+        "",
+        "### 第7.1.1 计量写作证据（0/1/空三态，强制）",
+        "",
+        "> **0/否/无 = 明确未单独计量；1/是/有 = 明确已单独计量；空 = 本次无该项状态证据。**"
+        "空值只能省略该用途的计量结论，禁止改写成“未单独计量”“现场未获取到……资料”"
+        "或“待进一步核实【待核实】”。厨房用水、灌溉用水、空调供暖补水、厨房炊事用气和"
+        "供冷供热用气必须逐项独立判断，禁止合并成一句统一断言。",
+        "",
+        "| 项 | data.json 值 | 来源 |",
+        "|---|---|---|",
+        f"| 水表数量 | {metering.get('water_meters') if metering.get('water_meters') is not None else '空'} | metering.water_meters |",
+        f"| 用水计量深度 | {metering.get('water_measured_depth') or '空'} | metering.water_measured_depth |",
+        f"| 厨房用水单独计量 | {_tri_text(metering.get('water_kitchen_metering'))} | metering.water_kitchen_metering |",
+        f"| 燃气表数量 | {metering.get('gas_meters') if metering.get('gas_meters') is not None else '空'} | metering.gas_meters |",
+        f"| 供暖缴费方式 | {metering.get('heat_pay_type') or '空'} | metering.heat_pay_type |",
+    ]
+    if water_aux_rows:
+        lines += ["", "| 附属用水用途 | 单独计量状态 |", "|---|---|"]
+        for label, status in water_aux_rows:
+            lines.append(f"| {label} | {status} |")
+    if gas_rows:
+        lines += [
+            "",
+            "| 燃气相关设备 | 分类 | 是否使用燃气 | 独立计量状态 |",
+            "|---|---|---|---|",
+        ]
+        for row in gas_rows:
+            lines.append("| " + " | ".join(row) + " |")
+    lines += [
+        "",
+        "> 若字段与台账互相矛盾（例如计量计数为 0、但台账明确列有水表），先核对数据源；"
+        "只有矛盾确需单位确认时才写清“哪两个证据冲突”并标红【待核实】，不得用笼统的"
+        "“情况待进一步核实”代替判断。",
     ]
 
     # 第6章设备配图硬清单（2026-10-21）：图片曾因作者漏写单条图注而静默缺失，
