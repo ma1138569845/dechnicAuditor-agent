@@ -1019,6 +1019,104 @@ def check_chapter6_structure(
     return findings
 
 
+def check_chapter5_figures(blocks: Sequence[Block]) -> List[Finding]:
+    """第5章图表硬校验：图注与图片一一对应、图号连续、无落单图片。"""
+    ch5 = [
+        block for block in blocks
+        if block.chapter == 5
+        and not (block.kind == "p" and re.search(r"\t\d+$", block.text))
+    ]
+    captions = [
+        block for block in ch5
+        if block.kind == "p" and re.match(r"^图5\.\d+", block.text)
+    ]
+    image_blocks = [
+        block for block in ch5
+        if block.kind == "p" and block.obj is not None
+        and "<w:drawing" in block.obj._p.xml
+    ]
+    findings: List[Finding] = []
+
+    def add(code: str, title: str, detail: str,
+            expected: str, actual: str) -> None:
+        findings.append(Finding(
+            code=code,
+            category="章节完整性",
+            severity=SEV_P0,
+            title=title,
+            detail=detail,
+            location="第5章",
+            expected=expected,
+            actual=actual,
+        ))
+
+    if not captions:
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_COUNT",
+            "第5章缺少图表",
+            "未找到任何 图5.x 图注",
+            "第5章图注与图片一一对应",
+            "0 条图注",
+        )
+        return findings
+
+    if len(image_blocks) != len(captions):
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_COUNT",
+            "第5章图片与图注数量不一致",
+            f"图片 {len(image_blocks)} 张 / 图注 {len(captions)} 条",
+            "图注数=图片数",
+            f"{len(image_blocks)}/{len(captions)}",
+        )
+
+    numbers = []
+    missing, extra = [], []
+    pending_images = 0
+    for block in ch5:
+        if block.kind != "p":
+            continue
+        has_image = block.obj is not None and "<w:drawing" in block.obj._p.xml
+        match = re.match(r"^图5\.(\d+)", block.text)
+        if match:
+            number = int(match.group(1))
+            numbers.append(number)
+            if pending_images == 0:
+                missing.append(f"图5.{number}")
+            elif pending_images > 1:
+                extra.append(f"图5.{number} 前有 {pending_images} 张图片")
+            pending_images = 0
+        elif has_image:
+            pending_images += 1
+
+    if pending_images:
+        extra.append(f"末条图注后有 {pending_images} 张未配对图片")
+    if numbers != list(range(1, len(numbers) + 1)):
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_NUMBER",
+            "第5章图注编号不连续",
+            f"实测：{numbers}",
+            "1..N 连续",
+            str(numbers),
+        )
+    if missing:
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_COUNT",
+            "第5章存在无图图注",
+            "以下图注前没有图片：" + "、".join(missing),
+            "每一条图注前恰有 1 张图片",
+            f"缺图 {len(missing)} 条",
+        )
+    if extra:
+        add(
+            "V3.STRUCT.CHAPTER5_FIG_COUNT",
+            "第5章图片未与图注一一对应",
+            "；".join(extra),
+            "每一条图注前恰有 1 张图片",
+            "图片数量不匹配",
+        )
+    return findings
+
+
 CH7_CLASSIFICATION_BAD = ("数据异常", "指标超标", "用能系统及设备问题", "计量与统计问题")
 CH7_PLATFORM_BAD = ("未登记", "待平台补录", "平台登记", "系统数据")
 DEFAULT_CH7_METERING_CLASSES = ("用电", "用水", "用燃气", "用热")
@@ -1957,6 +2055,7 @@ def run(
         equipment=((raw or {}).get("equipment") or []),
         images=((raw or {}).get("images") or []),
     )
+    findings += check_chapter5_figures(blocks)
     findings += check_chapter7_structure(
         blocks,
         metering_classes=chapter7_metering_classes(raw),

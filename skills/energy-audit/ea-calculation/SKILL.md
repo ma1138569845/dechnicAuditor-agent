@@ -57,7 +57,7 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
    ↓
 4. 定额对标 resolve_benchmark（三级兜底 + DB 查询规则）
    ↓
-5. 生成第5章 Markdown + charts/*.png
+5. 生成第5章 Markdown + charts/*.png + chapter5_figures.json（单批次图清单）
    ↓
 6. 持久化 indicators.json / chapter5.md / indicators_report.txt
 ```
@@ -90,6 +90,10 @@ python <skill>/scripts/ch5_gas_attribution.py <项目名> [--apply]
 ```
 
 `prepare_chapter_md.py` 退出码：`0` 已就位/已有更新装配稿 · `1` 缺 `chapter5.md`（先跑 caliber）· `2` 装配稿早于计算产物（人工确认后 `--force`）。
+
+第5章图表不再由 caliber 二次重复生成。`generate()` 一次性生成 PNG 和
+`chapter5_figures.json`；任一预期图失败即删除旧清单并报错。`--skip-charts`
+只供诊断，使用既有清单，不产生新的可装配批次。
 
 环境变量 `HERMES_AGENT_HOME` 指定含 `tools/energy_audit` 的项目根（缺省按 `_paths.py` 三级降级自动解析）。
 
@@ -247,10 +251,10 @@ resolve_benchmark(institution_type, metric, sub_type=None, db_audit=True)
 **第5章 = 脚本渲染表格/图表 + author LLM 写叙述段**：
 
 ```python
-from tools.energy_audit.chapter5_agent import generate, generate_charts
+from tools.energy_audit.chapter5_agent import generate
 
-md = generate(config, str(out_dir / 'chapter5.md'))   # 输出 5.1~5.4 的表格/数据参考行 + 图表引用（数值零差错）
-generate_charts(data, config, str(out_dir / 'charts'))
+# 唯一入口：图表、chapter5_figures.json、chapter5.md 在同一调用内完成。
+md = generate(config, str(out_dir / 'chapter5.md'))
 ```
 
 脚本只渲染数据驱动的概括句/表格/图表（数字最密集章零差错）；**分析性叙述**（逐月趋势归因、评价结论、同比解读）由 author 按 `references/chapter5-templates.md` 撰写后装配。
@@ -276,6 +280,7 @@ generate_charts(data, config, str(out_dir / 'charts'))
 | chapter5.md | 第5章完整 Markdown |
 | indicators_report.txt | 可读指标报告 |
 | charts/*.png | 能源流向图 / 总量柱状图 / 逐月分组柱状图 / 费用饼图 |
+| chapter5_figures.json | 本次生成批次的图号、图注、文件、类型、能源编码、SHA-256；装配唯一真值 |
 
 indicators.json 是下游契约：**DataVA V2 INDICATOR_REVIEW 复核它**，author装配报告时引用它。
 

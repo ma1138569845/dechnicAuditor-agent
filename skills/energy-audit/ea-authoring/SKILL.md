@@ -160,7 +160,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
    - idx 用 `doc_get_last_operable_pos().position`（勿硬编码大数）
    - 每章 1 次调用；表格随 md 表格语法一起导入，大表可用 `doc_insert_table_by_csv`
    - 第5章用装配稿 chapter_md/ch5_import.md（author 已补写分析叙述段）直接导入
-   - 图片仍单独 `doc_insert_image` 嵌入（第2章建筑图/第6章设备照片），图注用 md 段落写入
+   - 图片仍单独 `doc_insert_image` 嵌入（第2章建筑图/第3章管理文件·荣誉证书/第4章计量器具照片/第6章设备照片），图注用 md 段落写入
    - 封面/审计信息表维持模板占位注入
 3. **格式修复链（每章导入后或每卡导入完成后统一跑）**：md 导入的默认样式 ≠ 格式规范，按序修复——操作序列与参数见 `references/docx-techniques.md`「md 导入与格式修复链」小节：
    - `doc_get_outline` 定位标题/表格 → `doc_modify_paragraph` 批量设 Heading 样式 → `doc_update_text_property` 批量设宋体/字号/加粗 → `doc_set_table_properties`/`doc_set_table_layout` 批量设表格格式
@@ -189,7 +189,8 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 
 ### 第 3 步：图表嵌入（脚本渲染，禁止 LLM 画图）
 
-第5章图表（流向图/饼图/趋势图）由 caliber 用 `chapter5_agent.py` 生成 PNG 落盘项目 `charts/` 目录，author 用 `office_edit` 嵌入对应位置（图注格式：图X.Y  说明文字（单位：xx），居中）。author 不得自绘或重算图表数据。
+第5章图表（流向图/饼图/趋势图）由 caliber 用 `chapter5_agent.py` 一次生成 PNG、图注和 `chapter5_figures.json`；主链装配器按该清单注入，author 不得自绘、重算或手写第5章 `report_images.json` 条目。author 补完 `ch5_import.md` 后、装配前必须运行
+`ea-authoring/scripts/prepare_chapter5_figures.py <项目名>`，把图5条目同步进 `report_images.json` 并写入 SHA-256。装配器遇“生成清单↔装配稿图注↔图清单↔文件哈希”任一不一致即 exit 2。
 
 ## 排版技术
 
@@ -213,7 +214,7 @@ kanban 流水线中报告环节由 author 拆 3 张串行卡完成（2026-09-05 
 1. **第6章结构（2026-10-21 重构）**：6.1 用电（（1）~（n）动态系统）/ 6.2 用水 / 6.3 用热 / 6.4 用燃气 / 6.5 其他用能 / 室内环境（按条件生成）；结构、编号、表图、禁词一律以 `references/chapter-guides-6-8.md`《第6章》为准。
 2. **第4章 4.2 计量配备判定、4.3 统计成效及问题、第7章问题必须从实际数据推断**（基于 `proj.metering` / `proj.equipment` / `proj.buildings`），禁止写虚假问题；已采集的独立计量禁止再向用户索取，只有当相关数据缺失的时候才可向用户询问。
 3. **格式规范**：H1宋体15pt居中 / H2宋体14pt / H3宋体12pt / 正文12pt宋体+TNR、1.5倍行距、两端对齐、**首行缩进2字符**。细则见 `references/docx-techniques.md`。
-   **图表规范（2026-09-20 定；照片类 2026-10-13 补）**：每张表必须有 `表X.Y 标题` 行（章内连号、独占一行、紧邻表格上方；附录用 `附表X-Y`）；每张图必须有 `图X.Y 说明（单位：xx）` 图注并与 `report_images.json` 的 caption 逐字一致——**缺表题会被 V3 记 P2**。**照片类图注不写"（单位：xx）"、编号一律用点号**：2.1 写 `图2.1 {单位简称}单位整体外观`，2.2 图区写 `图2.N {楼名}总体外观`，第3章写 `图3.N {照片说明}`（管理文件截图放 3.2 末、荣誉证书放 3.3 末，图注须与照片内容相符）；照片副本与清单条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 归置（副本落 `<项目>/data/images/`，清单写相对路径），author **只写图注行**，不手工复制照片、不手写清单条目。
+   **图表规范（2026-09-20 定；照片类 2026-10-13 补，第5章图链 2026-10-22 收口）**：每张表必须有 `表X.Y 标题` 行（章内连号、独占一行、紧邻表格上方；附录用 `附表X-Y`）；每张图必须有 `图X.Y 说明（单位：xx）` 图注并与 `report_images.json` 的 caption 逐字一致——**缺表题会被 V3 记 P2**。第5章图注只能来自 `chapter5_figures.json`，装配稿使用裸图注行（禁 `![图5...]()`），并由 `prepare_chapter5_figures.py` 重建图5清单；成品断言 `ch5_figures` 硬查每注恰一图。**照片类图注不写"（单位：xx）"、编号一律用点号**：2.1 写 `图2.1 {单位简称}单位整体外观`，2.2 图区写 `图2.N {楼名}总体外观`，第3章写 `图3.N {照片说明}`（管理文件截图放 3.2 末、荣誉证书放 3.3 末），第4章在 4.2 表4.1 后写 `图4.1 计量器具照片`（图注须与照片内容相符）；第2/3/4/6章照片副本与清单条目统一由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 归置（副本落 `<项目>/data/images/`，清单写相对路径），author **只写图注行**，不手工复制照片、不手写清单条目。
 4. **禁止用脚本生成正文**：`report_generator.py` 的正文生成（build_chapter1~8）已于 2026-09-04 退役，任何"调用脚本出正文"的做法都是错的；正文只能由 LLM 按本技能逐章写。
 5. **落盘前必须有项目名称水印**：文案用 `proj.base.unit_name`，写入各节**页眉 DrawingML**（`behindDoc=1`）。禁止 VML `textpath`。细则见 `references/docx-techniques.md`。
 6. **落盘后、加水印前必须有正文首行缩进**（office_editor 路径）：用 `office_cli_command` 只给正文自然段设 `firstLineChars=200`（可加 `firstLineIndent=24pt`）。**python-docx 禁令适用域 = office_editor 路径内**（2026-09-17 方案确认，脚本装配链自带缩进、不受此限）。禁止全角空格假装缩进，禁止给标题/表题/图注/单元格/列表缩进。细则见 `references/docx-techniques.md`。

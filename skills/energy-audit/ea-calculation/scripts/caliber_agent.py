@@ -83,7 +83,11 @@ try:
         resolve_benchmark,
         institution_category_to_type,
     )
-    from tools.energy_audit.chapter5_agent import generate as gen_chapter5, generate_charts
+    from tools.energy_audit.chapter5_agent import (
+        generate as gen_chapter5,
+        generate_charts,
+        load_chapter5_manifest,
+    )
     TOOLS_AVAILABLE = True
 except ImportError as e:
     print(f"[Caliber] ⚠️ 工具导入失败: {e}")
@@ -385,8 +389,17 @@ def build_public_building_spec(proj: AuditProject, raw: dict) -> dict:
         years.append({
             "year": ey.year,
             "electricity_kwh": float(getattr(ey, "electricity_kwh", 0) or 0),
+            "monthly_electricity_kwh": _get_monthly(
+                proj, ey.year, "monthly_electricity_kwh"
+            ),
             "water_t": float(getattr(ey, "water_m3", 0) or 0),
+            "monthly_water_m3": _get_monthly(
+                proj, ey.year, "monthly_water_m3"
+            ),
             "gas_m3": float(getattr(ey, "natural_gas_m3", 0) or 0),
+            "monthly_natural_gas_m3": _get_monthly(
+                proj, ey.year, "monthly_natural_gas_m3"
+            ),
             "heat_gj": float(getattr(ey, "heating_energy_heat_gj", 0) or 0),
             "other_kgce": 0.0,
             "people": float(people_by_year.get(year_key, people) or people),
@@ -530,9 +543,77 @@ def run_public_building_caliber(project_name: str, proj: AuditProject,
     with open(indicators_path, "w", encoding="utf-8") as fh:
         json.dump(indicators, fh, ensure_ascii=False, indent=2, default=str)
 
+    chart_dir = out_dir / "charts"
+    manifest_path = out_dir / "chapter5_figures.json"
+    config = {
+        "unit_name": getattr(proj.base, "unit_name", project_name),
+        "building_area": spec.get("area_m2", 0),
+        "people_count": spec.get("people", 0),
+        "chart_dir": str(chart_dir),
+        "chapter5_manifest_path": str(manifest_path),
+        "energy_flow_trees": list(getattr(proj, "energy_flow_trees", []) or []),
+        "equipment": [
+            {
+                "category": getattr(eq, "category", ""),
+                "name": getattr(eq, "name", ""),
+                "quantity": getattr(eq, "quantity", 0) or 0,
+            }
+            for eq in (getattr(proj, "equipment", []) or [])
+        ],
+    }
+    chart_data = {"energy_data": {}, "cost_data": {}}
+    for year in spec.get("years", []):
+        year_key = str(year["year"])
+        chart_data["energy_data"][year_key] = {
+            "electricity": {
+                "total": float(year.get("electricity_kwh") or 0),
+                "monthly": year.get("monthly_electricity_kwh") or [],
+            },
+            "water": {
+                "total": float(year.get("water_t") or 0),
+                "monthly": year.get("monthly_water_m3") or [],
+            },
+            "natural_gas": {
+                "total": float(year.get("gas_m3") or 0),
+                "monthly": year.get("monthly_natural_gas_m3") or [],
+            },
+            "heat": {
+                "total": float(year.get("heat_gj") or 0),
+                "monthly": [],
+            },
+        }
+        chart_data["cost_data"][year_key] = {
+            "electricity": {
+                "name": "电费",
+                "total": float(year.get("electricity_cost_wan") or 0),
+            },
+            "water": {
+                "name": "水费",
+                "total": float(year.get("water_cost_wan") or 0),
+            },
+            "natural_gas": {
+                "name": "燃气费",
+                "total": float(year.get("gas_cost_wan") or 0),
+            },
+            "heat": {
+                "name": "热费",
+                "total": float(year.get("heat_cost_wan") or 0),
+            },
+        }
+    figures_manifest = load_chapter5_manifest(config, str(chart_dir))
+    if not skip_charts:
+        figures_manifest = generate_charts(
+            chart_data, config, str(chart_dir)
+        )
+        print(f"  ✅ 图表: {chart_dir}")
+
     chapter5_path = out_dir / "chapter5.md"
     chapter5 = render_public_building_chapter5(
-        spec, results, getattr(proj.base, "unit_name", project_name))
+        spec,
+        results,
+        getattr(proj.base, "unit_name", project_name),
+        figures_manifest=figures_manifest,
+    )
     with open(chapter5_path, "w", encoding="utf-8") as fh:
         fh.write(chapter5)
 
@@ -706,19 +787,12 @@ def run_caliber(
                 'sub_items': {},
             },
         }
-        chapter5_md = gen_chapter5(config, str(out_dir / 'chapter5.md'))
+        chapter5_md = gen_chapter5(
+            config,
+            str(out_dir / 'chapter5.md'),
+            skip_charts=skip_charts,
+        )
         print(f"  ✅ 第5章: {len(chapter5_md)} 字符 → {out_dir / 'chapter5.md'}")
-
-        # 图表
-        if not skip_charts:
-            data = {'energy_data': energy_data_dict,
-                    'cost_data': cost_data,
-                    'heating_energy_kwh_map': heating_energy_kwh_map}
-            try:
-                generate_charts(data, config, str(out_dir / 'charts'))
-                print(f"  ✅ 图表: {out_dir / 'charts/'}")
-            except Exception as e:
-                print(f"  ⚠️ 图表生成失败: {e}")
     except Exception as e:
         print(f"  ⚠️ 第5章生成失败: {e}")
         chapter5_md = f"# 第5章\n\n⚠️ 生成失败: {e}\n"

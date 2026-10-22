@@ -31,6 +31,9 @@
                       （2026-10-13 新增，专抓"清单缺条目 ⇒ 图注在、图不在"；P1 只告警不阻断）
     ch3_photos        第3章图区一致性：图注段数 = 内嵌图片数，且图注编号自 图3.1 起连续
                       （2026-10-13 新增；第3章照片是硬要求，漏写图注行会静默无图；P1 只告警不阻断）
+    ch4_photos        第4章计量器具照片：至少 1 条 图4.x 图注、编号连续，
+                      且每条图注前至少有 1 张图（允许一注多图；P1 只告警不阻断）
+    ch5_figures       第5章图表：图注编号连续、每注前恰有 1 张图、无落单图片（硬阻断）
     ch4_structure     第4章小节结构：4.1/4.2/4.3 三节齐全、无 4.4、4.3 标题为「能源资源统计成效及问题」
                       （2026-10-13 新增；原「4.3 统计情况」已废止合并；P1 只告警不阻断）
     ch5_52_layout     5.2 版面：含图能源节① 首段有设备/系统描述 ② 两张图注不相邻
@@ -97,13 +100,13 @@ FLAT_FORMULAS = ["Ejfgn=E", "Ejd=ED", "Er=EP", "Vuc=Vk", "Ejngn=Egn",
                  "Ejrcn=E", "Eja=ED", "Egnm=Egn"]
 # P1（2026-10-08 定）：只报告/告警，不阻断装配
 P1_NONBLOCKING = {"ch5_531_leadin", "ch2_22_structure", "ch2_22_photos", "ch3_photos",
-                  "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
+                  "ch4_photos", "ch4_structure", "ch5_52_layout", "ch5_52_monthly", "ch5_52_water",
                   "num_style", "ch5_t51", "ch5_energy_leadin", "ch5_trend_word",
                   "ch5_525_fee", "ch5_std_symbol", "ch5_53_conclusion", "ch5_532_note",
                   "ch5_53_removal", "ch5_533_people", "ch5_534_water"}
 # 公共建筑族：下列检查是公共机构专属口径，按族跳过
 PUBLIC_BUILDING_SKIP = {
-    "ch4_structure", "ch5_531_leadin", "ch5_52_layout", "ch5_52_water",
+    "ch4_photos", "ch4_structure", "ch5_531_leadin", "ch5_52_layout", "ch5_52_water",
     "ch5_t51", "ch5_energy_leadin", "ch5_trend_word", "ch5_525_fee",
     "ch5_std_symbol", "ch5_532_note", "ch5_53_removal", "ch5_533_people",
     "ch5_534_water", "apx2_table",
@@ -427,6 +430,86 @@ def ch3_photos_ok(doc_xml: str):
                     % (len(nums), imgs))
     if nums and nums != list(range(1, 1 + len(nums))):
         miss.append("图注编号不连续：%s（应自 图3.1 起连号）" % nums)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
+def ch4_photos_ok(doc_xml: str):
+    """第4章计量器具照片一致性（P1 只告警）。
+
+    第4章允许一个 `图4.N 计量器具照片` 下连续放多张照片，因此不能套用
+    “图注数 = 图片数”；这里检查每条图注前至少有 1 张图，并校验编号连续。
+    """
+    region = _chapter_region(doc_xml, 4)
+    if not region:
+        return False, "未定位到 第4章 区间"
+    nums, missing, pending_imgs, total_imgs = [], [], 0, 0
+    for b in region:
+        if not b.startswith("<w:p"):
+            continue
+        has_img = ("<w:drawing" in b) or ("<w:pict" in b)
+        text = norm(_ptext(b))
+        m = re.match(r"图4\.(\d+)", text)
+        if m:
+            nums.append(int(m.group(1)))
+            if pending_imgs == 0:
+                missing.append("图4.%s" % m.group(1))
+            pending_imgs = 0
+        elif has_img:
+            pending_imgs += 1
+            total_imgs += 1
+    miss = []
+    if not nums:
+        miss.append("第4章没有任何 图4.x 计量器具照片图注")
+    if nums and total_imgs == 0:
+        miss.append("第4章有图注但没有内嵌图片")
+    if missing:
+        miss.append("以下图注前没有图片：%s" % "、".join(missing))
+    if nums and nums != list(range(1, len(nums) + 1)):
+        miss.append("图注编号不连续：%s（应自 图4.1 起连号）" % nums)
+    if miss:
+        return False, "；".join(miss)
+    return True, ""
+
+
+def ch5_figures_ok(doc_xml: str):
+    """第5章图表硬一致性：每注恰一图、图号连续、无落单图片。"""
+    region = _chapter_region(doc_xml, 5)
+    if not region:
+        return False, "未定位到 第5章 区间"
+    nums, missing, extra = [], [], []
+    pending_imgs = 0
+    total_imgs = 0
+    for block in region:
+        if not block.startswith("<w:p"):
+            continue
+        has_img = ("<w:drawing" in block) or ("<w:pict" in block)
+        raw_text = _ptext(block).strip()
+        match = re.match(r"图5\.(\d+)(?=\s|$)", raw_text)
+        if match:
+            nums.append(int(match.group(1)))
+            if pending_imgs == 0:
+                missing.append(f"图5.{match.group(1)}")
+            elif pending_imgs > 1:
+                extra.append(f"图5.{match.group(1)}前 {pending_imgs} 张")
+            pending_imgs = 0
+        elif has_img:
+            pending_imgs += 1
+            total_imgs += 1
+    if pending_imgs:
+        extra.append(f"末条图注后有 {pending_imgs} 张未配对图片")
+    miss = []
+    if not nums:
+        miss.append("第5章没有任何 图5.x 图注")
+    if nums and total_imgs == 0:
+        miss.append("第5章有图注但没有内嵌图片")
+    if missing:
+        miss.append("以下图注前没有图片：" + "、".join(missing))
+    if extra:
+        miss.append("以下图注前图片数量不是 1 张：" + "、".join(extra))
+    if nums and nums != list(range(1, len(nums) + 1)):
+        miss.append(f"图注编号不连续：{nums}（应自 图5.1 起连号）")
     if miss:
         return False, "；".join(miss)
     return True, ""
@@ -1491,6 +1574,8 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
     c222_ok, c222_why = ch2_22_structure_ok(doc)
     c222p_ok, c222p_why = ch2_22_photos_ok(doc)
     c3p_ok, c3p_why = ch3_photos_ok(doc)
+    c4p_ok, c4p_why = ch4_photos_ok(doc)
+    c5f_ok, c5f_why = ch5_figures_ok(doc)
     c4_ok, c4_why = ch4_structure_ok(doc, _heading_style_ids(z))
     c52_ok, c52_why = ch5_52_layout_ok(doc, _heading_style_ids(z))
     c52m_ok, c52m_why = ch5_52_monthly_ok(doc, _heading_style_ids(z))
@@ -1549,6 +1634,10 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         "ch2_22_photos": c222p_ok,
         # 第3章图区一致性（图注数 = 图片数、编号连续）——P1，不阻断
         "ch3_photos": c3p_ok,
+        # 第4章计量器具照片（至少 1 注、每注至少 1 图、编号连续）——P1，不阻断
+        "ch4_photos": c4p_ok,
+        # 第5章图表硬一致性（每注恰一图、编号连续）——阻断
+        "ch5_figures": c5f_ok,
         # 第4章小节结构（4.1/4.2/4.3 三节、无 4.4）——P1，不阻断
         "ch4_structure": c4_ok,
         # 5.2 版面（设备列举 + 图注不相邻 + 图注后接分析句）——P1，不阻断
@@ -1629,6 +1718,10 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         details["ch2_22_photos"] = c222p_why
     if not c3p_ok:
         details["ch3_photos"] = c3p_why
+    if not c4p_ok:
+        details["ch4_photos"] = c4p_why
+    if not c5f_ok:
+        details["ch5_figures"] = c5f_why
     if not c4_ok:
         details["ch4_structure"] = c4_why
     if not c52_ok:

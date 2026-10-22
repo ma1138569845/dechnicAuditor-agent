@@ -9,7 +9,7 @@
   备用路径 = load_from_db 直查 ts_institution_energy_main/data（dt 旧分类 1=能耗,2=费用,3=供冷,4=供热,5=交通；仅 CLI 调试用）
 """
 
-import argparse, json, math, os, re, sys
+import argparse, hashlib, json, math, os, re, sys, tempfile, uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -298,7 +298,22 @@ def _co_location_note(en: dict, year: str, codes: list, unit_name: str) -> str:
 # Markdown 生成
 # ============================================================
 
-def generate_chapter5_md(data: dict, config: dict) -> str:
+def _manifest_figure(manifest: dict | None, kind: str,
+                     energy_code: str = "", year: str = "") -> dict:
+    """按生成语义取图；图号、图注和顺序均由本次 manifest 唯一决定。"""
+    for item in (manifest or {}).get("figures", []) or []:
+        if str(item.get("kind") or "") != kind:
+            continue
+        if energy_code and str(item.get("energy_code") or "") != energy_code:
+            continue
+        if year and str(item.get("year") or "") != str(year)[:4]:
+            continue
+        return item
+    return {}
+
+
+def generate_chapter5_md(data: dict, config: dict,
+                         figures_manifest: dict | None = None) -> str:
     en = data.get('energy_data', {})
     co = data.get('cost_data', {})
     years = sorted(en.keys())
@@ -332,8 +347,11 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
     md += "、".join([_coeff_info(c)['name'] for c in all_codes])
     md += "。能源流向如图5.1所示。\n\n"
     chart_dir = config.get('chart_dir', './charts')
-    if os.path.exists(os.path.join(chart_dir, 'energy_flow.png')):
-        md += "![图5.1 能源资源流向图](charts/energy_flow.png)\n\n"
+    if figures_manifest is None:
+        figures_manifest = load_chapter5_manifest(config, chart_dir)
+    flow_fig = _manifest_figure(figures_manifest, "energy_flow")
+    if flow_fig:
+        md += f"{flow_fig['caption']}\n\n"
 
     latest_year = years[-1]
     # 2026-10-09 收口：5.1 = 一句话概述 + 图5.1，图注之后不得再有内容（见 chapter5-templates §5.1）。
@@ -383,15 +401,14 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
                 md += f"**逐月参考**：{str(y)[:4]}年 {m_txt}\n"
             md += "\n"
 
-        # 三年总量柱状图（主要类型无条件绘制）+ 逐月分组柱状图（仅有月度数据才画）
-        # 2026-09-05 口径：热无月度数据时也须画总量图，不得随 monthly_ok 一起丢弃
-        if os.path.exists(os.path.join(chart_dir, f'chart_{code}_total.png')):
-            y1, y3 = str(years[0])[:4], str(years[-1])[:4]
-            md += f"![图5.{fig_no} {y1}年-{y3}年总用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_total.png)\n\n"
+        # 图号、图注与文件由本次生成清单唯一决定；不再以“文件恰好存在”为真值。
+        total_fig = _manifest_figure(figures_manifest, "total", code)
+        if total_fig:
+            md += f"{total_fig['caption']}\n\n"
             fig_no += 1
-        if monthly_ok and os.path.exists(os.path.join(chart_dir, f'chart_{code}_monthly.png')):
-            y1, y3 = str(years[0])[:4], str(years[-1])[:4]
-            md += f"![图5.{fig_no} {y1}年-{y3}年逐月用{title_name}量（单位：{c['unit']}）](charts/chart_{code}_monthly.png)\n\n"
+        monthly_fig = _manifest_figure(figures_manifest, "monthly", code)
+        if monthly_ok and monthly_fig:
+            md += f"{monthly_fig['caption']}\n\n"
             fig_no += 1
 
     # 其他用能分析（次要能源合并小节，正式报告 5.2.4 结构）
@@ -454,9 +471,10 @@ def generate_chapter5_md(data: dict, config: dict) -> str:
         pie_no = fig_no
         for y in years:
             y4 = str(y)[:4]
-            if not os.path.exists(os.path.join(chart_dir, f'cost_pie_{y4}.png')):
+            pie_fig = _manifest_figure(figures_manifest, "cost_pie", year=y4)
+            if not pie_fig:
                 continue
-            md += f"![图5.{pie_no} {y4}年能源费用占比](charts/cost_pie_{y4}.png)\n\n"
+            md += f"{pie_fig['caption']}\n\n"
             pie_no += 1
 
     # ===== 5.3 指标（统一复用 indicators.py） =====
@@ -1023,6 +1041,80 @@ def _type_tce_3y(en: dict, years: list, code: str) -> float:
 # 主要能源小节固定顺序（对齐正式报告 5.2：电→水→气→热→油）
 _MAJOR_ORDER = ['electricity', 'water', 'natural_gas', 'heat', 'gasoline', 'diesel']
 
+CHAPTER5_MANIFEST_NAME = "chapter5_figures.json"
+CHAPTER5_MANIFEST_SCHEMA = 1
+
+
+class ChartGenerationError(RuntimeError):
+    """第5章图表未全部生成时抛出；不得留下可被装配误用的清单。"""
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _manifest_path(config: dict, output_dir: str) -> str:
+    explicit = str(config.get("chapter5_manifest_path") or "").strip()
+    if explicit:
+        return os.path.abspath(explicit)
+    return os.path.join(os.path.dirname(os.path.abspath(output_dir)),
+                        CHAPTER5_MANIFEST_NAME)
+
+
+def _display_src(path: str, project_dir: str) -> str:
+    path = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(path, project_dir)
+    except ValueError:
+        return path.replace("\\", "/")
+    if rel == ".." or rel.startswith("../") or rel.startswith("..\\"):
+        return path.replace("\\", "/")
+    return rel.replace("\\", "/")
+
+
+def _atomic_json_write(path: str, payload: dict):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".", suffix=".tmp",
+        dir=os.path.dirname(os.path.abspath(path)),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def load_chapter5_manifest(config: dict, output_dir: str) -> dict:
+    path = _manifest_path(config, output_dir)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        manifest = json.load(f)
+    return manifest if isinstance(manifest, dict) else {}
+
+
+def _known_chart_files(output_dir: str) -> list:
+    """只列出第5章生成器拥有的文件，绝不递归清理 charts/。"""
+    names = []
+    patterns = (
+        re.compile(r"^energy_flow\.png$"),
+        re.compile(r"^chart_.+_(?:total|monthly)\.png$"),
+        re.compile(r"^cost_pie_\d{4}\.png$"),
+    )
+    for name in os.listdir(output_dir):
+        if any(p.match(name) for p in patterns):
+            names.append(os.path.join(output_dir, name))
+    return names
+
 
 def _classify_energy_types(en: dict, years: list):
     """主要/次要能源分类（对齐正式报告 5.2 小节划分）：
@@ -1084,109 +1176,205 @@ def cost_pie_colors(names) -> list:
     return picked
 
 
-def generate_charts(data: dict, config: dict, output_dir: str = './charts'):
+def generate_charts(data: dict, config: dict,
+                    output_dir: str = './charts') -> dict:
     """生成第5章全部图表：
     - energy_flow.png（5.1 流向图）
     - chart_{code}_total.png（各能源类型三年总量柱，5.2）
     - chart_{code}_monthly.png（各能源类型三年逐月分组柱，有月度数据才画）
     - cost_pie_{year}.png（各年费用占比饼图，5.2 费用节）
+
+    返回并原子写入 `chapter5_figures.json`。任一预期图失败时删除旧清单并抛
+    `ChartGenerationError`，杜绝“部分图 + 看似成功的旧清单”进入装配。
     """
     os.makedirs(output_dir, exist_ok=True)
     en = data.get('energy_data', {})
     years = sorted(en.keys())
+    manifest_path = _manifest_path(config, output_dir)
+    if os.path.exists(manifest_path):
+        os.unlink(manifest_path)
+
+    # 第5章图表目录只清理本生成器拥有的命名，其他附件/图片原样保留。
+    for path in _known_chart_files(output_dir):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
     if not years:
-        return
+        manifest = {
+            "schema_version": CHAPTER5_MANIFEST_SCHEMA,
+            "batch_id": uuid.uuid4().hex,
+            "figures": [],
+        }
+        _atomic_json_write(manifest_path, manifest)
+        return manifest
 
-    # 5.1 能源资源流向图
-    _generate_flow_diagram(en, config, output_dir)
+    figures = []
 
-    # 5.2 各能源类型：总量柱 + 逐月分组柱
-    # （对齐正式报告：仅有月度抄表数据的主要类型画图，如热力无逐月数据则不画图）
+    def add_figure(kind: str, caption: str, filename: str,
+                   energy_code: str = "", year: str = ""):
+        figures.append({
+            "figure_no": f"5.{len(figures) + 1}",
+            "caption": caption,
+            "src": filename,
+            "kind": kind,
+            "energy_code": energy_code,
+            "year": str(year)[:4],
+        })
+
+    add_figure("energy_flow", "图5.1 能源资源流向图", "energy_flow.png")
+
     major_codes, _minor = _classify_energy_types(en, years)
+    y1, y3 = str(years[0])[:4], str(years[-1])[:4]
     for code in major_codes:
         c = _coeff_info(code)
-        totals = []
-        series_map = {}
-        has_monthly = False
-        for y in years:
-            info = en.get(y, {}).get(code, {})
-            total = float(info.get('total', 0) or 0)
-            totals.append(total)
-            monthly = info.get('monthly', [0] * 12) or []
-            series_map[y] = monthly
-            if any(float(v or 0) > 0 for v in monthly):
-                has_monthly = True
-        # 2026-09-05 口径：总量柱无条件生成（热无月度数据也画）；逐月分组柱仅 has_monthly 才画
-        _generate_total_bar_chart(years, totals, c['name'], c['unit'], output_dir,
-                                  f'chart_{code}_total.png')
+        title_name = _TITLE_NAME.get(_normalize_energy_code(code), c['name'])
+        add_figure(
+            "total",
+            f"图5.{len(figures) + 1} {y1}年-{y3}年总用{title_name}量（单位：{c['unit']}）",
+            f"chart_{code}_total.png",
+            energy_code=code,
+        )
+        has_monthly = any(
+            any(float(v or 0) > 0
+                for v in (en.get(y, {}).get(code, {}).get('monthly', []) or []))
+            for y in years
+        )
         if has_monthly:
-            _generate_monthly_grouped_bar(years, series_map, c['name'], c['unit'], output_dir,
-                                          f'chart_{code}_monthly.png')
+            add_figure(
+                "monthly",
+                f"图5.{len(figures) + 1} {y1}年-{y3}年逐月用{title_name}量（单位：{c['unit']}）",
+                f"chart_{code}_monthly.png",
+                energy_code=code,
+            )
 
-    # ===== 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）=====
     co = data.get('cost_data', {})
-    if co:
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
-            setup_chart_font(plt)
-        except ImportError:
-            return
-        for y in years:
-            labels, values = [], []
-            for code, entry in (co.get(y) or {}).items():
-                v = float(entry.get('total', 0) or 0)
-                if v > 0:
-                    label = entry.get('name') or _coeff_info(code)['name'] + '费'
-                    labels.append(label)
-                    values.append(v)
-            if not values:
-                continue
-            # 尺寸（2026-10-08 用户定）：6×6 → 4.6×3.9；配合装配器插图宽度 8.5cm，
-            # 使 5.2.5 首页能放下"表5.1 + 图"，不再一图独占一行/一页。
-            fig, ax = plt.subplots(figsize=(4.6, 3.9))
-            total = sum(values) or 1.0
-            outer = [lab if 100.0 * v / total >= 5 else '' for lab, v in zip(labels, values)]
-            wedges, _t_out, _t_in = ax.pie(
-                values, labels=outer, colors=cost_pie_colors(labels),
-                startangle=90, counterclock=False,
-                labeldistance=1.05, pctdistance=0.62,
-                textprops={'fontsize': 8.5},
-                autopct=lambda p: (f'{p:.1f}%' if p >= 5 else ''),
-                wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'})
-            # 小切片（<5%）：名称与百分比**合并**、用引导线拉到圈外并纵向错开，
-            # 根治相邻小扇区标签互压（实测烟台 2023「天然气费 3.0% / 水费 1.6%」重叠）。
-            small = []
-            for i, (lab, v) in enumerate(zip(labels, values)):
-                pct = 100.0 * v / total
-                if pct < 5:
-                    ang = math.radians((wedges[i].theta1 + wedges[i].theta2) / 2.0)
-                    small.append([lab, pct, ang])
-            if small:
-                small.sort(key=lambda r: math.sin(r[2]), reverse=True)
-                ys = [1.05 * math.sin(r[2]) for r in small]
-                for k in range(1, len(ys)):
-                    if ys[k - 1] - ys[k] < 0.26:
-                        ys[k] = ys[k - 1] - 0.26
-                for (lab, pct, ang), ty in zip(small, ys):
-                    tx = 1.22 if math.cos(ang) >= 0 else -1.22
-                    ax.annotate(f'{lab} {pct:.1f}%',
-                                xy=(0.9 * math.cos(ang), 0.9 * math.sin(ang)),
-                                xytext=(tx, ty), ha='left' if tx > 0 else 'right',
-                                va='center', fontsize=8, annotation_clip=False,
-                                arrowprops=dict(arrowstyle='-', lw=0.6, color='#808080'))
-            ax.set_title(chart_text(f'{y[:4]}年能源费用占比'), fontsize=11)
-            fig.savefig(os.path.join(output_dir, f'cost_pie_{y[:4]}.png'), dpi=150,
-                        bbox_inches='tight', facecolor='white')
-            plt.close(fig)
+    cost_years = []
+    for y in years:
+        if any(float((entry or {}).get('total', 0) or 0) > 0
+               for entry in (co.get(y) or {}).values()):
+            cost_years.append(y)
+            add_figure(
+                "cost_pie",
+                f"图5.{len(figures) + 1} {str(y)[:4]}年能源费用占比",
+                f"cost_pie_{str(y)[:4]}.png",
+                year=str(y),
+            )
+
+    try:
+        # 5.1 能源资源流向图
+        flow_path = _generate_flow_diagram(en, config, output_dir)
+        if not flow_path or not os.path.isfile(flow_path):
+            raise ChartGenerationError("能源资源流向图生成失败")
+
+        # 5.2 各能源类型：总量柱 + 逐月分组柱
+        for code in major_codes:
+            c = _coeff_info(code)
+            totals = []
+            series_map = {}
+            has_monthly = False
+            for y in years:
+                info = en.get(y, {}).get(code, {})
+                totals.append(float(info.get('total', 0) or 0))
+                monthly = info.get('monthly', [0] * 12) or []
+                series_map[y] = monthly
+                has_monthly = has_monthly or any(float(v or 0) > 0 for v in monthly)
+            if not _generate_total_bar_chart(
+                    years, totals, c['name'], c['unit'], output_dir,
+                    f'chart_{code}_total.png'):
+                raise ChartGenerationError(f"{c['name']}总量图生成失败")
+            if has_monthly and not _generate_monthly_grouped_bar(
+                    years, series_map, c['name'], c['unit'], output_dir,
+                    f'chart_{code}_monthly.png'):
+                raise ChartGenerationError(f"{c['name']}逐月图生成失败")
+
+        # 能源费用占比饼图（每年一张，正式报告 5.2 费用分析节）
+        if cost_years:
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                setup_chart_font(plt)
+            except ImportError as exc:
+                raise ChartGenerationError("matplotlib 不可用，无法生成费用饼图") from exc
+            for y in cost_years:
+                labels, values = [], []
+                for code, entry in (co.get(y) or {}).items():
+                    v = float(entry.get('total', 0) or 0)
+                    if v > 0:
+                        label = entry.get('name') or _coeff_info(code)['name'] + '费'
+                        labels.append(label)
+                        values.append(v)
+                fig, ax = plt.subplots(figsize=(4.6, 3.9))
+                total = sum(values) or 1.0
+                outer = [lab if 100.0 * v / total >= 5 else ''
+                         for lab, v in zip(labels, values)]
+                wedges, _t_out, _t_in = ax.pie(
+                    values, labels=outer, colors=cost_pie_colors(labels),
+                    startangle=90, counterclock=False,
+                    labeldistance=1.05, pctdistance=0.62,
+                    textprops={'fontsize': 8.5},
+                    autopct=lambda p: (f'{p:.1f}%' if p >= 5 else ''),
+                    wedgeprops={'linewidth': 0.5, 'edgecolor': 'white'})
+                small = []
+                for i, (lab, v) in enumerate(zip(labels, values)):
+                    pct = 100.0 * v / total
+                    if pct < 5:
+                        ang = math.radians(
+                            (wedges[i].theta1 + wedges[i].theta2) / 2.0
+                        )
+                        small.append([lab, pct, ang])
+                if small:
+                    small.sort(key=lambda r: math.sin(r[2]), reverse=True)
+                    ys = [1.05 * math.sin(r[2]) for r in small]
+                    for k in range(1, len(ys)):
+                        if ys[k - 1] - ys[k] < 0.26:
+                            ys[k] = ys[k - 1] - 0.26
+                    for (lab, pct, ang), ty in zip(small, ys):
+                        tx = 1.22 if math.cos(ang) >= 0 else -1.22
+                        ax.annotate(
+                            f'{lab} {pct:.1f}%',
+                            xy=(0.9 * math.cos(ang), 0.9 * math.sin(ang)),
+                            xytext=(tx, ty), ha='left' if tx > 0 else 'right',
+                            va='center', fontsize=8, annotation_clip=False,
+                            arrowprops=dict(arrowstyle='-', lw=0.6, color='#808080'))
+                ax.set_title(chart_text(f'{str(y)[:4]}年能源费用占比'), fontsize=11)
+                fig.savefig(os.path.join(output_dir, f'cost_pie_{str(y)[:4]}.png'),
+                            dpi=150, bbox_inches='tight', facecolor='white')
+                plt.close(fig)
+    except Exception as exc:
+        if os.path.exists(manifest_path):
+            os.unlink(manifest_path)
+        if isinstance(exc, ChartGenerationError):
+            raise
+        raise ChartGenerationError(f"第5章图表生成失败: {exc}") from exc
+
+    project_dir = os.path.dirname(manifest_path)
+    for item in figures:
+        path = os.path.join(output_dir, item["src"])
+        if not os.path.isfile(path):
+            if os.path.exists(manifest_path):
+                os.unlink(manifest_path)
+            raise ChartGenerationError(f"预期图表不存在: {item['caption']}")
+        item["src"] = _display_src(path, project_dir)
+        item["sha256"] = _sha256_file(path)
+
+    manifest = {
+        "schema_version": CHAPTER5_MANIFEST_SCHEMA,
+        "batch_id": uuid.uuid4().hex,
+        "figures": figures,
+    }
+    _atomic_json_write(manifest_path, manifest)
+    return manifest
 
 
 # ============================================================
 # 主流程
 # ============================================================
 
-def generate(config: dict, output_path: str = None) -> str:
+def generate(config: dict, output_path: str = None,
+             skip_charts: bool = False) -> str:
     # 加载
     if config.get('manual'):
         data = load_from_user(config)
@@ -1199,10 +1387,12 @@ def generate(config: dict, output_path: str = None) -> str:
 
     # 图表
     chart_dir = config.get('chart_dir', './charts')
-    generate_charts(data, config, chart_dir)
+    manifest = load_chapter5_manifest(config, chart_dir)
+    if not skip_charts:
+        manifest = generate_charts(data, config, chart_dir)
 
     # Markdown
-    md = generate_chapter5_md(data, config)
+    md = generate_chapter5_md(data, config, manifest)
 
     if output_path:
         with open(output_path, 'w', encoding='utf-8') as f:

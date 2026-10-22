@@ -42,6 +42,7 @@ T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页�
 交付基准: 烟台经开区法院 45 页终稿（2026-09）
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -77,8 +78,130 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ASSETS_DIR = os.path.normpath(os.path.join(_SCRIPT_DIR, "..", "assets"))
 
 CHAPTERS = tuple(f"ch{n}" for n in range(1, 9))
+CHAPTER5_MANIFEST = "chapter5_figures.json"
+CHAPTER5_CAPTION_RE = re.compile(r"^图5\.(\d+)\s+\S.+$")
 
 _THEME_ATTRS = ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme")
+
+
+class FigureBindingError(ValueError):
+    """第5章图注、生成清单、图片文件和清单条目不一致。"""
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _chapter5_captions(md_path: str) -> list:
+    captions, markdown_images = [], []
+    with open(md_path, encoding="utf-8") as f:
+        for line_no, raw in enumerate(f, 1):
+            text = raw.strip()
+            if text.startswith("![图5."):
+                markdown_images.append(f"第{line_no}行")
+            elif CHAPTER5_CAPTION_RE.match(text):
+                captions.append(text)
+    if markdown_images:
+        raise FigureBindingError(
+            "第5章装配稿含 Markdown 图片语法（"
+            + "、".join(markdown_images[:3])
+            + "），装配器不会按图片渲染；请改为裸图注行"
+        )
+    return captions
+
+
+def _validate_chapter5_figures(project_dir: str) -> dict:
+    """装配前硬校验；任何不一致都阻断 DOCX 生成。"""
+    manifest_path = os.path.join(project_dir, CHAPTER5_MANIFEST)
+    md_path = os.path.join(project_dir, "chapter_md", "ch5_import.md")
+    images_path = os.path.join(project_dir, "report_images.json")
+    if not os.path.isfile(manifest_path):
+        raise FigureBindingError(
+            f"缺第5章图表生成清单: {manifest_path}；先重跑 caliber_agent.py"
+        )
+    if not os.path.isfile(md_path):
+        raise FigureBindingError(f"缺第5章装配稿: {md_path}")
+    if not os.path.isfile(images_path):
+        raise FigureBindingError(f"缺图清单: {images_path}")
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+    figures = manifest.get("figures") if isinstance(manifest, dict) else None
+    if not isinstance(figures, list):
+        raise FigureBindingError(f"{CHAPTER5_MANIFEST} 缺 figures 数组")
+
+    with open(images_path, encoding="utf-8") as f:
+        image_doc = json.load(f)
+    images = (image_doc.get("images") or []) if isinstance(image_doc, dict) else []
+    by_caption = {}
+    for entry in images:
+        if not isinstance(entry, dict):
+            continue
+        caption = str(entry.get("caption") or "").strip()
+        if caption.startswith("图5."):
+            by_caption.setdefault(caption, []).append(entry)
+
+    captions, seen = [], set()
+    for index, figure in enumerate(figures, 1):
+        if not isinstance(figure, dict):
+            raise FigureBindingError(f"{CHAPTER5_MANIFEST} figures[{index - 1}] 不是对象")
+        figure_no = str(figure.get("figure_no") or "")
+        caption = str(figure.get("caption") or "").strip()
+        if figure_no != f"5.{index}":
+            raise FigureBindingError(
+                f"第5章图号不连续：第 {index} 条应为 5.{index}，实际 {figure_no!r}"
+            )
+        if not CHAPTER5_CAPTION_RE.match(caption) or not caption.startswith(
+                f"图5.{index} "):
+            raise FigureBindingError(
+                f"第5章图号与图注不一致：figure_no=5.{index}，caption={caption!r}"
+            )
+        if caption in seen:
+            raise FigureBindingError(f"第5章生成清单存在重复图注: {caption}")
+        seen.add(caption)
+        captions.append(caption)
+
+        src = str(figure.get("src") or "").replace("/", os.sep)
+        if not src or os.path.isabs(src):
+            raise FigureBindingError(f"{caption} 的 src 必须是项目内相对路径")
+        chart_path = os.path.abspath(os.path.join(project_dir, src))
+        try:
+            if os.path.commonpath([os.path.abspath(project_dir), chart_path]) != \
+                    os.path.abspath(project_dir):
+                raise ValueError
+        except ValueError as exc:
+            raise FigureBindingError(f"{caption} 的 src 越出项目目录: {src}") from exc
+        if not os.path.isfile(chart_path):
+            raise FigureBindingError(f"{caption} 的图文件不存在: {src}")
+        expected_hash = str(figure.get("sha256") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+            raise FigureBindingError(f"{caption} 缺有效 sha256")
+        if _sha256_file(chart_path) != expected_hash:
+            raise FigureBindingError(f"{caption} 的图文件哈希与生成清单不一致")
+
+        matches = by_caption.get(caption) or []
+        if len(matches) != 1:
+            raise FigureBindingError(
+                f"{caption} 在 report_images.json 中应恰好 1 条，实际 {len(matches)} 条"
+            )
+        entry = matches[0]
+        if str(entry.get("src") or "").replace("\\", "/") != \
+                str(figure.get("src") or "").replace("\\", "/"):
+            raise FigureBindingError(f"{caption} 的 report_images src 与 manifest 不一致")
+        if str(entry.get("sha256") or "").strip().lower() != expected_hash:
+            raise FigureBindingError(f"{caption} 的 report_images sha256 与 manifest 不一致")
+
+    md_captions = _chapter5_captions(md_path)
+    if md_captions != captions:
+        raise FigureBindingError(
+            "第5章装配稿图注与生成清单不一致："
+            f"md={md_captions}；manifest={captions}"
+        )
+    return manifest
 
 
 def _ensure_rfonts(rpr):
@@ -687,9 +810,17 @@ def _figure(doc, caption, images, project_dir):
     """图注行 → 先插清单对应的图（可多张），再插居中图注段。"""
     srcs = images.get(caption) or []
     if not srcs:
+        if caption.startswith("图5."):
+            raise FigureBindingError(f"第5章图清单缺少: {caption}")
         print(f"WARN: 图清单缺少: {caption}")
     for src in srcs:
-        _add_image_para(doc, os.path.join(project_dir, src))
+        path = os.path.join(project_dir, src)
+        if not os.path.isfile(path):
+            if caption.startswith("图5."):
+                raise FigureBindingError(f"第5章图文件不存在: {src}")
+            print(f"WARN: 图文件不存在: {path}")
+            continue
+        _add_image_para(doc, path)
     _para(doc, caption, size=12, bold=False, align=WD_ALIGN_PARAGRAPH.CENTER)
 
 
@@ -877,6 +1008,7 @@ def _info_rows(base, data):
 def build(project_dir, out_path=None):
     with open(os.path.join(project_dir, "data.json"), encoding="utf-8") as f:
         data = json.load(f)
+    _validate_chapter5_figures(project_dir)
     base = data.get("base", {})
     unit = base.get("unit_name") or "××单位"
     org = base.get("audit_org_name") or ""
@@ -917,7 +1049,11 @@ def main(argv=None):
     ap.add_argument("--project-dir", required=True, help="项目目录（含 data.json / chapter_md/）")
     ap.add_argument("--out", help="输出 docx 路径（默认 output/_script_build/）")
     a = ap.parse_args(argv)
-    out, doc = build(a.project_dir, a.out)
+    try:
+        out, doc = build(a.project_dir, a.out)
+    except FigureBindingError as exc:
+        print(f"[错误] 第5章图表强绑定校验失败：{exc}")
+        return 2
     om = len(doc.element.body.findall(".//" + qn("m:oMath")))
     print(f"OK -> {out} | paras={len(doc.paragraphs)} tables={len(doc.tables)} oMath={om}")
     return 0

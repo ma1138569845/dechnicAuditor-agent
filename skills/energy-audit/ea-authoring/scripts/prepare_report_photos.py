@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""prepare_report_photos.py — 报告照片归置器（第2/3/6章）
+"""prepare_report_photos.py — 报告照片归置器（第2/3/4/6章）
 
 背景（2026-10-13）：照片从"采集产物"到"报告图表"这一段此前**没有任何工序**——
 谁复制、放哪个目录、叫什么名、清单怎么写全靠人临场决定，于是出现三种后果：
@@ -9,6 +9,7 @@
   ③ 岚山区人民医院 7 张建筑照一张没用进 2.2（归属信息在采集层被丢掉，只能人肉看图）。
 
 本脚本把这一步工序化：**md 图注行仍是唯一编号源**；第2章按图注里的建筑名取图，
+第4章按 `energy_meter[].device_img → images[].file_id` 识别电表/水表等计量器具，
 第6章先用 `equipment[].img_ids → images[].file_id` 精确匹配，再按文件名兜底。
 
 覆盖范围（2026-10-21 扩到设备配图覆盖率硬校验）：
@@ -18,14 +19,20 @@
     `es.management_file_images` / `es.award_certificate_images`）；选图规则 =
     文件名主干命中图注 → 关键词判池（荣誉/奖/证书 → 荣誉证书；制度/文件/标识/
     管理/规定/措施/截图 → 管理文件）→ 按池顺序兜底。
+  - **第4章**：图 4.1…（计量器具照片，来源 `proj.images[]` 的 `计量器具`）；
+    按 `energy_meter[].device_img` + `data_type` 识别电表/水表/燃气表/热表，
+    无台账映射时按文件名兜底；附件 ID 与文件路径双重去重。通用图注
+    “计量器具照片”可承载同一图注下的多张照片，具体图注则按表种筛选。
   - **第6章**：凡 `equipment[].img_ids` 非空的设备，都必须各有一条
     `图6.N 设备名`；缺任何一条即 rc=2。特殊用能中的医疗设备与
     数据中心/信息中心分别校验，不能用系统级一张图代替。
 
 分工：
   - 本脚本：装配**前**的三方一致（md 图注 ↔ 清单 ↔ 磁盘文件）+ 未引用照片提示；
-    第3章照片**规则要求必给**，所以"有照片但 ch3.md 没写图注行"会按告警报出（rc=2）；
-  - ea_docx_asserts.py 的 ch2_22_photos：装配**后**的成品一致（图注 ↔ 图）。
+    第3/4章照片**规则要求必给**，所以"有照片但 ch3.md/ch4.md 没写图注行"
+    会按告警报出（rc=2）；
+  - ea_docx_asserts.py 的 ch2_22_photos / ch3_photos / ch4_photos：
+    装配**后**的成品一致（图注 ↔ 图）。
 
 用法:
     python prepare_report_photos.py <项目名|项目目录> [--force] [--dry-run] [--quiet]
@@ -33,11 +40,12 @@
 行为与退出码:
     0  正常（含"有照片未被引用"这类提示）
     1  输入缺失（项目目录 / data.json / chapter_md/ch2.md 任一不在）
-    2  有告警（图注匹配不到照片，或有 img_ids 的设备缺图注）——已能写的条目仍会写
+    2  有告警（图注匹配不到照片，或有照片却没写图注，或有 img_ids 的设备缺图注）
+       ——已能写的条目仍会写
 
 产物:
     <项目>/data/images/<规范化文件名>         照片副本（清单引用的就是它）
-    <项目>/report_images.json                 第2章照片条目重建（写前留 .bak）
+    <项目>/report_images.json                 第2/3/4/6章照片条目重建（写前留 .bak）
 
 约定（对应 2026-10-13 五项决策）:
     - 副本目录统一 `data/images/`，清单 src 写相对路径 `data/images/xxx.png`；
@@ -45,6 +53,8 @@
       "图2.1 {单位简称}单位整体外观"；
     - 图 2.N（N≥2）→ 图注里的建筑名 → 该建筑的 `building_name` 照片，图注措辞
       "图2.N {楼名}总体外观"；**图数不要求等于栋数**（挑几张即可）；
+    - 第4章 `图4.N 计量器具照片` → 按 `data.json.energy_meter[].device_img`
+      精确关联；通用图注按附件池顺序连续插入，同一附件 ID 只插入一次；
     - 本章之外条目（图表、附录照片等）原样保留，本脚本不碰。
 """
 import argparse
@@ -55,12 +65,26 @@ import re
 import shutil
 import sys
 
-CAP_RE = re.compile(r"^图([236])\.(\d+)\s*(.+?)\s*$")
+CAP_RE = re.compile(r"^图([2346])\.(\d+)\s*(.+?)\s*$")
 BUILDING_CAT = "建筑外观"
 OVERALL_CAT = "单位整体外观"
+METERING_CAT = "计量器具"
 IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
 # 本脚本负责重建的图注前缀（其余条目原样保留）
-MANAGED_PREFIXES = ("图2.", "图3.", "图6.")
+MANAGED_PREFIXES = ("图2.", "图3.", "图4.", "图6.")
+# 第4章：meter 表 data_type 与照片命名的既有口径
+CH4_METER_TYPES = {
+    1: ("electric", "电表"),
+    2: ("water", "水表"),
+    3: ("gas", "燃气表"),
+    4: ("heat", "热表"),
+}
+CH4_TYPE_WORDS = {
+    "electric": ("电表", "电能表"),
+    "water": ("水表",),
+    "gas": ("燃气表", "天然气表"),
+    "heat": ("热表", "热量表"),
+}
 # 第6章：设备照片池（建筑外观/计量器具不参与设备配图）
 CH6_DEVICE_CATS = {
     "制冷设备", "照明设备", "办公设备", "其他用电设备",
@@ -227,6 +251,70 @@ def pick_ch3_photo(desc: str, pools: dict, used: set):
             if p not in used:
                 return p, kind
     return "", ""
+
+
+def _meter_type_from_text(text: str) -> tuple:
+    """按文件名/图注识别计量器具表种；识别不到时返回通用标签。"""
+    raw = str(text or "")
+    for kind, words in CH4_TYPE_WORDS.items():
+        if any(word in raw for word in words):
+            label = next(label for k, label in CH4_METER_TYPES.values() if k == kind)
+            return kind, label
+    return "", METERING_CAT
+
+
+def metering_photos(images, energy_meter=None) -> list:
+    """返回第4章可用照片池；按附件 ID 优先、路径兜底去重。
+
+    附件 ID 是平台侧的稳定关联键。实测同一电表照片会在 `images[]` 中出现两次，
+    若只按路径去重，路径写法稍有差异仍会重复插图；因此两把键都保留。
+    """
+    kind_by_id = {}
+    for row in energy_meter or []:
+        fid = str((row or {}).get("device_img") or "").strip()
+        if not fid:
+            continue
+        try:
+            data_type = int((row or {}).get("data_type"))
+        except (TypeError, ValueError):
+            data_type = None
+        if data_type in CH4_METER_TYPES:
+            kind, label = CH4_METER_TYPES[data_type]
+            kind_by_id.setdefault(fid, (kind, label))
+
+    out, seen = [], set()
+    for im in images or []:
+        if str((im or {}).get("category") or "").strip() != METERING_CAT:
+            continue
+        src = str((im or {}).get("path") or "").strip()
+        if not src or not os.path.isfile(src):
+            continue
+        fid = str((im or {}).get("file_id") or "").strip()
+        key = f"id:{fid}" if fid else "path:" + os.path.normcase(os.path.abspath(src))
+        if key in seen:
+            continue
+        seen.add(key)
+        kind, label = kind_by_id.get(
+            fid, _meter_type_from_text(os.path.splitext(os.path.basename(src))[0])
+        )
+        out.append({"key": key, "src": src, "kind": kind, "label": label})
+    return out
+
+
+def pick_ch4_photos(desc: str, photos, used: set) -> list:
+    """按图注选第4章照片；未写表种时取全部未用照片（支持一注多图）。"""
+    hits = []
+    for kind, words in CH4_TYPE_WORDS.items():
+        positions = [desc.find(word) for word in words if word in desc]
+        if positions:
+            hits.append((min(positions), kind))
+    requested = [kind for _, kind in sorted(hits)]
+
+    if requested:
+        matched = [p for p in photos if p.get("kind") in requested]
+        out = [p for p in matched if p["key"] not in used]
+        return out or matched
+    return [p for p in photos if p["key"] not in used] or list(photos)
 
 
 def _photo_name_key(text) -> str:
@@ -431,7 +519,7 @@ def main(argv=None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         pass
-    ap = argparse.ArgumentParser(description="报告照片归置器（第2章建筑外观照 / 第3章管理文件·荣誉证书 / 第6章设备照）")
+    ap = argparse.ArgumentParser(description="报告照片归置器（第2章建筑外观照 / 第3章管理文件·荣誉证书 / 第4章计量器具照 / 第6章设备照）")
     ap.add_argument("project", help="项目名（~/projects/energy-audit/<项目名>）或项目目录")
     ap.add_argument("--force", action="store_true", help="同名不同内容时覆盖既有副本/清单")
     ap.add_argument("--dry-run", action="store_true", help="只报告，不复制、不写清单")
@@ -449,6 +537,7 @@ def main(argv=None) -> int:
     data_path = os.path.join(pdir, "data.json")
     md2_path = os.path.join(pdir, "chapter_md", "ch2.md")
     md3_path = os.path.join(pdir, "chapter_md", "ch3.md")
+    md4_path = os.path.join(pdir, "chapter_md", "ch4.md")
     md6_path = os.path.join(pdir, "chapter_md", "ch6.md")
     for need in (data_path, md2_path):
         if not os.path.isfile(need):
@@ -458,6 +547,7 @@ def main(argv=None) -> int:
     data = read_json(data_path, {})
     images = data.get("images") or []
     equipment = data.get("equipment") or []
+    meter_photos = metering_photos(images, data.get("energy_meter") or [])
     buildings = [(b.get("name") or "").strip() for b in (data.get("buildings") or [])]
     base = data.get("base") or {}
     unit_short = base.get("unit_short") or base.get("unit_name") or "单位"
@@ -465,22 +555,26 @@ def main(argv=None) -> int:
 
     caps2 = parse_captions(md2_path, "2")
     caps3 = parse_captions(md3_path, "3") if os.path.isfile(md3_path) else []
+    caps4 = parse_captions(md4_path, "4") if os.path.isfile(md4_path) else []
     caps6 = parse_captions(md6_path, "6") if os.path.isfile(md6_path) else []
     table_device_names = parse_md_device_names(md6_path)
-    if not caps2 and not caps3 and not caps6:
-        print(f"[错误] {md2_path} / {md3_path} / {md6_path} 里都没有 '图2.x' / '图3.x' / '图6.x' 图注行——"
+    if not caps2 and not caps3 and not caps4 and not caps6 and not meter_photos:
+        print(f"[错误] {md2_path} / {md3_path} / {md4_path} / {md6_path} 里都没有 "
+              f"'图2.x' / '图3.x' / '图4.x' / '图6.x' 图注行——"
               f"图注行是编号唯一来源，请先把它写进 md")
         return 1
 
     say(f"[项目] {pdir}")
     say(f"[输入] 建筑 {len(buildings)} 栋；照片 {len(images)} 条；"
-        f"图注 第2章 {len(caps2)} 条 / 第3章 {len(caps3)} 条 / 第6章 {len(caps6)} 条")
+        f"图注 第2章 {len(caps2)} 条 / 第3章 {len(caps3)} 条 / "
+        f"第4章 {len(caps4)} 条 / 第6章 {len(caps6)} 条")
 
     photo_entries = []
     copy_cache = {}
     warnings = []
     used_sources = set()
     used3 = set()
+    used4 = set()
     used6 = set()
     photo_gaps = equipment_caption_gaps(
         equipment, caps6, images, table_names=table_device_names
@@ -585,9 +679,42 @@ def main(argv=None) -> int:
                         f"但 ch3.md 没有 '图3.x' 图注行——按规则第3章**必须提供照片**，"
                         f"请在 3.2（管理文件截图）/ 3.3（荣誉证书）末尾补图注行后重跑")
 
+    # ---- 第4章：计量器具照片（台账 device_img + 文件名表种识别）----
+    if meter_photos:
+        by_type = {}
+        for p in meter_photos:
+            by_type[p["label"]] = by_type.get(p["label"], 0) + 1
+        say(f"[第4章] 可用照片 {len(meter_photos)} 张（"
+            + " / ".join(f"{k} {v}" for k, v in by_type.items()) + "）")
+    nums4 = [num for num, _, _ in caps4]
+    if nums4 and nums4 != list(range(1, len(nums4) + 1)):
+        warnings.append(f"第4章图注编号不连续：{nums4}（应自 图4.1 起连号）")
+    for num, caption, desc in caps4:
+        selected = pick_ch4_photos(desc, meter_photos, used4)
+        if not selected:
+            warnings.append(f"{caption}：第4章没有可用的 '{METERING_CAT}' 照片"
+                            f"（检查 data.json.images[] 与 energy_meter[].device_img）")
+            continue
+        for item in selected:
+            used4.add(item["key"])
+            stem = f"{METERING_CAT}_{item['label']}"
+            if args.dry_run:
+                say(f"  · {caption}  <=  {item['src']}")
+                photo_entries.append({"caption": caption,
+                                      "src": f"data/images/{safe_name(stem)}"})
+                continue
+            rel = place(pdir, item["src"], stem, args.force, copy_cache, say)
+            if rel:
+                photo_entries.append({"caption": caption, "src": rel})
+
+    if meter_photos and not caps4:
+        warnings.append(f"第4章有 {len(meter_photos)} 张可用 '{METERING_CAT}' 照片，"
+                        f"但 ch4.md 没有 '图4.x' 图注行——请在 4.2 末尾补"
+                        f"`图4.1 计量器具照片` 后重跑")
+
     man_path = os.path.join(pdir, "report_images.json")
     if args.dry_run:
-        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2/3/6章照片条目，未落盘")
+        say(f"[dry-run] 将写入 {len(photo_entries)} 条第2/3/4/6章照片条目，未落盘")
     else:
         man = read_json(man_path, {"images": []})
         if not isinstance(man, dict):
@@ -601,7 +728,7 @@ def main(argv=None) -> int:
             shutil.copy2(man_path, man_path + ".bak")
         with open(man_path, "w", encoding="utf-8") as f:
             json.dump(man, f, ensure_ascii=False, indent=2)
-        say(f"[清单] {os.path.basename(man_path)}：重建第2/3/6章条目 {len(photo_entries)} 条"
+        say(f"[清单] {os.path.basename(man_path)}：重建第2/3/4/6章条目 {len(photo_entries)} 条"
             f"（替换旧条目 {dropped} 条，保留其他条目 {len(kept)} 条）")
 
     if warnings:
@@ -609,7 +736,7 @@ def main(argv=None) -> int:
         for w in warnings:
             print(f"  · {w}")
         return 2
-    say("\n[完成] 第2/3/6章照片已归置（无告警）")
+    say("\n[完成] 第2/3/4/6章照片已归置（无告警）")
     return 0
 
 

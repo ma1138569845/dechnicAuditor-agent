@@ -87,11 +87,39 @@ def _metric_table(metric_key: str, label: str, unit: str,
     return _table(headers, rows)
 
 
-def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) -> str:
+def _manifest_figure(
+    manifest: dict[str, Any] | None,
+    kind: str,
+    energy_code: str = "",
+    year: str = "",
+) -> dict[str, Any]:
+    for item in (manifest or {}).get("figures", []) or []:
+        if str(item.get("kind") or "") != kind:
+            continue
+        if energy_code and str(item.get("energy_code") or "") != energy_code:
+            continue
+        if year and str(item.get("year") or "") != str(year):
+            continue
+        return item
+    return {}
+
+
+def _figure_no(figure: dict[str, Any]) -> str:
+    return str(figure.get("caption") or "").split(" ", 1)[0]
+
+
+def render(
+    spec: dict[str, Any],
+    results: list[dict[str, Any]],
+    unit_name: str,
+    figures_manifest: dict[str, Any] | None = None,
+) -> str:
     subtype = spec.get("subtype", "office")
     hotel = subtype == "hotel"
     years = [r["year"] for r in results]
     year_label = "、".join(str(y) for y in years)
+    flow_fig = _manifest_figure(figures_manifest, "energy_flow")
+    flow_block = [flow_fig["caption"], ""] if flow_fig else []
 
     lines: list[str] = [
         "# 第5章 能源资源消费/消耗指标分析",
@@ -101,10 +129,13 @@ def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) 
         "",
         "## 5.1 能源资源消费/消耗概况",
         "",
-        "本项目主要用能类型包括电、水、天然气等，能源资源流向如图5.1所示。",
+        (
+            f"本项目主要用能类型包括电、水、天然气等，能源资源流向如"
+            f"{_figure_no(flow_fig)}所示。"
+            if flow_fig else "本项目主要用能类型包括电、水、天然气等。"
+        ),
         "",
-        "图5.1 能源资源流向图",
-        "",
+        *flow_block,
         "## 5.2 能源资源消耗/消费数据",
         "",
         "### 5.2.1 用电情况分析",
@@ -118,9 +149,20 @@ def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) 
             f"{_f(y.get('electricity_kwh')):.0f}",
             f"{_f(y.get('electricity_cost_wan')):.2f}" if y.get("electricity_cost_wan") else "—",
         ])
-    lines += [_table(["年份", "用电量（kWh）", "电费（万元）"], elec_rows), "",
-              "近三年用电量变化趋势如图5.2所示，逐月用电情况如图5.3所示。", "",
-              "图5.2 年用电量变化趋势", "", "图5.3 逐月用电量", ""]
+    elec_total = _manifest_figure(figures_manifest, "total", "electricity")
+    elec_monthly = _manifest_figure(figures_manifest, "monthly", "electricity")
+    lines += [_table(["年份", "用电量（kWh）", "电费（万元）"], elec_rows), ""]
+    elec_refs = []
+    if elec_total:
+        elec_refs.append(f"年用电量变化趋势如{_figure_no(elec_total)}所示")
+    if elec_monthly:
+        elec_refs.append(f"逐月用电情况如{_figure_no(elec_monthly)}所示")
+    if elec_refs:
+        lines += ["，".join(elec_refs) + "。", ""]
+    if elec_total:
+        lines += [elec_total["caption"], ""]
+    if elec_monthly:
+        lines += [elec_monthly["caption"], ""]
 
     lines += ["### 5.2.2 用水情况分析", ""]
     water_rows = []
@@ -130,9 +172,20 @@ def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) 
             f"{_f(y.get('water_t')):.0f}",
             f"{_f(y.get('water_cost_wan')):.2f}" if y.get("water_cost_wan") else "—",
         ])
-    lines += [_table(["年份", "用水量（m³）", "水费（万元）"], water_rows), "",
-              "近三年用水量变化趋势如图5.4所示，逐月用水情况如图5.5所示。", "",
-              "图5.4 年用水量变化趋势", "", "图5.5 逐月用水量", ""]
+    water_total = _manifest_figure(figures_manifest, "total", "water")
+    water_monthly = _manifest_figure(figures_manifest, "monthly", "water")
+    lines += [_table(["年份", "用水量（m³）", "水费（万元）"], water_rows), ""]
+    water_refs = []
+    if water_total:
+        water_refs.append(f"年用水量变化趋势如{_figure_no(water_total)}所示")
+    if water_monthly:
+        water_refs.append(f"逐月用水情况如{_figure_no(water_monthly)}所示")
+    if water_refs:
+        lines += ["，".join(water_refs) + "。", ""]
+    if water_total:
+        lines += [water_total["caption"], ""]
+    if water_monthly:
+        lines += [water_monthly["caption"], ""]
 
     lines += ["### 5.2.3 其他用能分析", ""]
     other_rows = []
@@ -155,8 +208,18 @@ def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) 
             f"{_f(y.get('gas_cost_wan')):.2f}",
             f"{_f(y.get('heat_cost_wan')):.2f}",
         ])
-    lines += [_table(["年份", "电费（万元）", "水费（万元）", "燃气费（万元）", "热费（万元）"], cost_rows), "",
-              "费用占比及变化趋势按项目实际数据补充。", ""]
+    lines += [_table(["年份", "电费（万元）", "水费（万元）", "燃气费（万元）", "热费（万元）"], cost_rows), ""]
+    pie_captions = []
+    for year in years:
+        pie = _manifest_figure(figures_manifest, "cost_pie", year=str(year))
+        if pie:
+            pie_captions.append(pie["caption"])
+    if pie_captions:
+        lines += ["各年度能源费用占比如下。", ""]
+        for caption in pie_captions:
+            lines += [caption, ""]
+    else:
+        lines += ["费用占比及变化趋势按项目实际数据补充。", ""]
 
     lines += ["## 5.3 能耗资源消耗/消费指标", ""]
     metrics = HOTEL_METRICS if hotel else OFFICE_METRICS
@@ -176,5 +239,4 @@ def render(spec: dict[str, Any], results: list[dict[str, Any]], unit_name: str) 
             sentences.append(f"{r['year']}年为{value}{unit}，{grade}")
         lines += [f"{unit_name}{year_label}年{label}分别为：" + "；".join(sentences) + "。", ""]
 
-    lines += ["", "> 注：本章为 v0.1 自动生成骨架；图表与逐月归因由 author 按公共建筑写作指南补充。", ""]
     return "\n".join(lines)

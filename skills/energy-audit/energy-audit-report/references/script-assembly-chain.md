@@ -40,7 +40,8 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 | `data.json` | base（unit_name/audit_org_name/audit_org_address/contact/phone/report_date）、audit_team、cooperation |
 | `chapter_md/ch1..ch8.md` | LLM 逐章正文（第5章用 caliber 产出的 `ch5_import.md`，脚本优先匹配 `chN_import.md`）。`ch5_import.md` 由 `ea-calculation/scripts/prepare_chapter_md.py <项目名>` 就位（不覆盖作者已并入叙述段的版本；退出码 2 = 装配稿早于计算产物需人工确认） |
 | `chapter_md/appendix.md` | 附录（7 附录约定；有发票插发票附录） |
-| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径}]}`；caption 须与 md 图注行**精确一致**（`图4.1` 双图=两条同 caption 记录）。**第2/3/6章照片条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 生成**（副本落 `<项目>/data/images/`，src 写相对路径）。第6章按 `equipment[].img_ids → images[].file_id` 稳定匹配，再以文件名兜底；**有 `img_ids` 的设备若无 `图6.N 设备名`，脚本直接 rc=2**，不允许漏掉整个“设备 + 配图”对。V3 `CHAPTER6_PHOTO_COVERAGE` 再做成品侧反查 |
+| `chapter5_figures.json` | caliber 本次生成批次的第5章图清单：图号、图注、src、kind、energy_code、SHA-256。禁止手改；生成器只在全部预期图成功后原子写入 |
+| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径, sha256?}]}`；caption 须与 md 图注行**精确一致**。**第5章条目必须由 `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` 重建并写入 SHA-256**；第2/3/4/6章照片条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 生成。装配前硬校验“生成清单↔ch5_import 图注↔report_images 图5条目↔文件哈希”，任一不符即 exit 2 |
 | `assets/omml_formulas.json` | OMML 公式库（当前法院/机关型 5 个）。其他机构类型在其项目首次使用时从同类成品提取补入——同一 JSON 加键 `FORMULAn` 即可，无需改代码 |
 
 ### 装配覆盖（对齐 45 页终稿）

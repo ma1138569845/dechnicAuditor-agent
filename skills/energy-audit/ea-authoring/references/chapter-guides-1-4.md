@@ -201,7 +201,7 @@
 | `proj.buildings[]` | 每栋建筑的 `BuildingInfo` 字段（见 §7 field_mapping） |
 | `proj.equipment[]` | 用能设备（category: 空调/照明/办公/厨房…） |
 | `proj.energy_yearly[]` | 各能源字段（electricity_kwh/water_m3/…）>0 判定用能类型 |
-| `proj.images[]` | 照片（`ImageItem`：`category` 分类 + `building_name` 行归属）——`单位整体外观`（scene_img_id）→ 2.1 图2.1；`建筑外观`（带 `building_name`）→ 2.2 图区 |
+| `proj.images[]` | 照片（`ImageItem`：`category` 分类 + `building_name` 行归属）——`单位整体外观`（scene_img_id）→ 2.1 图2.1；`建筑外观`（带 `building_name`）→ 2.2 图区；`计量器具`（`file_id` 对应 `energy_meter[].device_img`）→ 4.2 图4.x |
 | 蓝本（同类成稿） | 同类报告写作参考（仅形态）：`energy-audit-report/references/audit-examples.md` |
 
 数据缺失时按 ea-authoring 主 SKILL.md「输入内容」回退流程处理，禁止编造。
@@ -846,6 +846,14 @@ good_42 = good_42 and std_ok
 | N | 水表 | 总管路 | 1 | [位置] |
 | N+1 | 天然气表 | [如：厨房] | 1 | [位置] |
 
+> **4.2 照片路由（2026-10-22 收口）**：author 只在表4.1后写一行
+> `图4.1 计量器具照片`，不复制照片、不手写清单。`prepare_report_photos.py`
+> 从 `proj.images[]` 的 `category=计量器具` 取图，并用
+> `energy_meter[].device_img → images[].file_id` 识别电表、水表、燃气表、热表；
+> 无台账映射时按文件名兜底。通用图注允许一个 `图4.1` 下连续放多张照片，
+> 同一 `file_id` 只放一次。若需要分表种单列，可写 `图4.1 电表`、
+> `图4.2 水表`，脚本会按图注中的表种词筛选。
+
 #### 三句核心话术数据驱动（scene 表字段，禁止固定好话）
 
 模板中"安装位置 / 位置合理性 / 计量规范性"三句必须按字段如实写：
@@ -947,7 +955,7 @@ all_ok    = bool(eqs) and not has_no                      # 100% 独立计量（
 
 ### 必须提供照片
 
-计量器具现场照片（电表箱、水表、监测系统界面等），嵌入方式同第2/3章（装配链插入 + 图注）。
+计量器具现场照片（电表箱、水表、燃气表、热表、监测系统界面等）是 4.2 的规定内容。author 只写图注行；副本与清单由 `prepare_report_photos.py` 统一归置到 `data/images/`。装配前脚本会检查“有图注无照片 / 有照片无图注”，装配后 `ch4_photos` 再检查成品中每条图注前至少有一张图且编号连续。
 
 
 

@@ -458,10 +458,11 @@ def test_metric_value_priority():
 class FakeParagraph:
     text: str = ""
     runs: tuple = ()
+    xml: str = ""
 
     @property
     def _p(self):
-        return type("FakeParagraphElement", (), {"xml": ""})()
+        return type("FakeParagraphElement", (), {"xml": self.xml})()
 
 
 @dataclass(frozen=True)
@@ -481,6 +482,12 @@ class FakeTable:
 
 def _block(text: str, chapter: int) -> v3.Block:
     return v3.Block("p", 0, text, FakeParagraph(text), chapter)
+
+
+def _image_block(chapter: int) -> v3.Block:
+    return v3.Block(
+        "p", 0, "", FakeParagraph("", xml="<w:drawing/>"), chapter
+    )
 
 
 def _table_block(
@@ -843,6 +850,24 @@ def test_chapter6_photo_coverage_accepts_one_caption_per_special_system():
         )
     }
     assert "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE" not in codes
+
+
+def test_chapter5_figures_accept_one_image_before_each_caption():
+    blocks = [
+        _image_block(5),
+        _block("图5.1 能源资源流向图", 5),
+        _image_block(5),
+        _block("图5.2 2022年-2024年总用电量（单位：kWh）", 5),
+    ]
+    assert v3.check_chapter5_figures(blocks) == []
+
+
+def test_chapter5_figures_missing_image_is_p0():
+    blocks = [_block("图5.1 能源资源流向图", 5)]
+    findings = v3.check_chapter5_figures(blocks)
+    assert findings
+    assert findings[0].severity == SEV_P0
+    assert findings[0].code == "V3.STRUCT.CHAPTER5_FIG_COUNT"
 
 
 def test_area_billing_rejects_heat_meter_defect_wording():
