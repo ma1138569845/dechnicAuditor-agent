@@ -19,6 +19,10 @@ def load_module(name, path):
 
 
 PHOTOS = load_module("prepare_report_photos", ROOT / "prepare_report_photos.py")
+WRITING_CONTEXT = load_module(
+    "prepare_writing_context_photo_contract",
+    ROOT / "prepare_writing_context.py",
+)
 ASSERTS = load_module(
     "ea_docx_asserts",
     ROOT.parents[1] / "energy-audit-report" / "scripts" / "ea_docx_asserts.py",
@@ -153,6 +157,31 @@ class PrepareReportPhotosCh4Tests(unittest.TestCase):
             self.assertFalse(any(
                 e["caption"].startswith("图4.") for e in project.manifest()
             ))
+
+    def test_equipment_without_image_fields_does_not_block_photo_finalization(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = PhotoProject(Path(td))
+            data_path = project.root / "data.json"
+            data = json.loads(data_path.read_text(encoding="utf-8"))
+            data["equipment"] = [{
+                "name": "蹲便器",
+                "category": "卫生器具",
+            }]
+            data_path.write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = PHOTOS.main([str(project.root), "--quiet"])
+
+            self.assertEqual(rc, 0)
+            status = json.loads(
+                (project.root / "photo_finalization_status.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(status["clean"])
+            self.assertEqual(status["warnings"], [])
 
 
 class PrepareReportPhotosCh3VisionTests(unittest.TestCase):
@@ -375,7 +404,12 @@ class PhotoSemanticReuseTests(unittest.TestCase):
             photo = root / "设备_冷水机组.png"
             photo.write_bytes(PNG)
             data = {
-                "base": {"unit_short": "测试单位"},
+                "base": {
+                    "unit_short": "测试单位",
+                    "unit_func": "C",
+                    "children_func": "B",
+                    "institution_category": "医疗",
+                },
                 "images": [{
                     "path": str(photo),
                     "category": "制冷设备",
@@ -406,6 +440,593 @@ class PhotoSemanticReuseTests(unittest.TestCase):
                 [item["caption"] for item in ch6],
                 ["图6.1 冷水机组"],
             )
+
+
+class Chapter6FieldCaptionTests(unittest.TestCase):
+    def test_one_image_field_requires_one_caption_per_attachment(self):
+        equipment = [{
+            "name": "数据中心/信息中心",
+            "category": "特殊设备",
+            "img_fields": [{
+                "field": "system_img",
+                "label": "系统图片",
+                "ids": [801, 802],
+            }],
+            "img_ids": [801, 802],
+        }]
+        images = [{"file_id": 801}, {"file_id": 802}]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [("图6.1", "img", "数据中心/信息中心")],
+            images,
+        )
+
+        self.assertEqual(gaps, ["数据中心/信息中心"])
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [
+                ("图6.1", "img", "数据中心/信息中心"),
+                ("图6.2", "img", "数据中心/信息中心"),
+            ],
+            images,
+        )
+        self.assertEqual(gaps, [])
+
+    def test_equipment_photo_contract_has_one_row_per_attachment(self):
+        data = {
+            "base": {"unit_short": "测试单位"},
+            "images": [
+                {"file_id": 801, "path": r"C:\images\801.png"},
+                {"file_id": 802, "path": r"C:\images\802.png"},
+            ],
+            "equipment": [{
+                "name": "冷冻水泵",
+                "category": "输配设备",
+                "img_fields": [{
+                    "field": "device_img",
+                    "label": "设备整体图片",
+                    "ids": [801, 802],
+                }],
+                "img_ids": [801, 802],
+            }],
+        }
+
+        rows = WRITING_CONTEXT.equipment_photo_contract(data)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row[5] for row in rows], ["801", "802"])
+
+    def test_same_caption_consumes_attachments_in_attachment_order(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            first_path = root / "first.png"
+            second_path = root / "second.png"
+            first_path.write_bytes(PNG)
+            second_path.write_bytes(PNG + b"second")
+            images = [
+                {
+                    "file_id": 801,
+                    "path": str(first_path),
+                    "category": "制冷设备",
+                },
+                {
+                    "file_id": 802,
+                    "path": str(second_path),
+                    "category": "制冷设备",
+                },
+            ]
+            equipment = [{
+                "name": "冷冻水泵",
+                "category": "输配设备",
+                "img_fields": [{
+                    "field": "device_img",
+                    "label": "设备整体图片",
+                    "ids": [801, 802],
+                }],
+                "img_ids": [801, 802],
+            }]
+            used = set()
+
+            first = PHOTOS.pick_ch6_photo_details(
+                "冷冻水泵", images, used, equipment
+            )
+            used.add(first["src"])
+            second = PHOTOS.pick_ch6_photo_details(
+                "冷冻水泵", images, used, equipment
+            )
+
+        self.assertEqual(first["file_id"], "801")
+        self.assertEqual(second["file_id"], "802")
+        self.assertEqual(
+            second["binding_ref"],
+            "equipment[].img_fields[device_img]",
+        )
+
+    def test_power_device_with_photo_is_checked_even_when_table_row_is_missing(self):
+        equipment = [{
+            "name": "生活水泵",
+            "category": "动力",
+            "img_ids": [901],
+        }]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [],
+            [{"file_id": 901}],
+            table_names=["冷水机组"],
+        )
+
+        self.assertEqual(gaps, ["生活水泵"])
+
+    def test_special_device_with_photo_is_checked_even_when_table_row_is_missing(self):
+        equipment = [{
+            "name": "数据中心/信息中心",
+            "category": "特殊设备",
+            "img_ids": [902],
+        }]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [],
+            [{"file_id": 902}],
+            table_names=["冷水机组"],
+        )
+
+        self.assertEqual(gaps, ["数据中心/信息中心"])
+
+    def test_ordinary_device_not_in_table_keeps_legacy_skip(self):
+        equipment = [{
+            "name": "备用电脑",
+            "category": "办公",
+            "img_ids": [903],
+        }]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [],
+            [{"file_id": 903}],
+            table_names=["冷水机组"],
+        )
+
+        self.assertEqual(gaps, [])
+
+    def test_registered_attachment_without_local_file_is_reported_separately(self):
+        equipment = [{
+            "name": "数据中心/信息中心",
+            "category": "特殊设备",
+            "img_ids": [904],
+        }]
+
+        coverage = PHOTOS.equipment_caption_coverage(
+            equipment,
+            [(1, "图6.1 数据中心/信息中心", "数据中心/信息中心")],
+            [],
+        )
+
+        self.assertEqual(coverage["missing_captions"], [])
+        self.assertEqual(
+            coverage["missing_local_files"],
+            ["数据中心/信息中心"],
+        )
+
+    def test_registered_attachment_without_local_file_still_requires_caption(self):
+        equipment = [{
+            "name": "数据中心/信息中心",
+            "category": "特殊设备",
+            "img_ids": [905],
+        }]
+
+        coverage = PHOTOS.equipment_caption_coverage(
+            equipment,
+            [],
+            [],
+            table_names=["冷水机组"],
+        )
+
+        self.assertEqual(
+            coverage["missing_captions"],
+            ["数据中心/信息中心"],
+        )
+        self.assertEqual(
+            coverage["missing_local_files"],
+            ["数据中心/信息中心"],
+        )
+
+    def test_water_aux_photo_is_bound_to_6_2_by_attachment_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            chapter_dir = root / "chapter_md"
+            chapter_dir.mkdir()
+            (chapter_dir / "ch2.md").write_text(
+                "# 第2章\n\n图2.1 测试单位单位整体外观\n",
+                encoding="utf-8",
+            )
+            (chapter_dir / "ch6.md").write_text(
+                "# 第6章\n\n"
+                "## 6.2 用水系统运行分析\n\n"
+                "图6.1 绿化灌溉设施\n",
+                encoding="utf-8",
+            )
+            overall = root / "overall.png"
+            greening = root / "unrelated-upload-name.png"
+            overall.write_bytes(PNG + b"overall")
+            greening.write_bytes(PNG + b"greening")
+            data = {
+                "base": {
+                    "unit_name": "测试单位",
+                    "unit_short": "测试单位",
+                },
+                "images": [
+                    {
+                        "path": str(overall),
+                        "category": "单位整体外观",
+                        "file_id": 700,
+                    },
+                    {
+                        "path": str(greening),
+                        "category": "用水设施",
+                        "file_id": 701,
+                    },
+                ],
+                "water_aux": {
+                    "greening": [{
+                        "irrigation_type": "自动喷灌",
+                        "img_ids": [701],
+                        "img_fields": [{
+                            "field": "device_img",
+                            "label": "设备图片",
+                            "ids": [701],
+                        }],
+                    }],
+                },
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False), encoding="utf-8"
+            )
+            (root / "report_images.json").write_text(
+                json.dumps({"images": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = PHOTOS.main([str(root), "--quiet"])
+
+            self.assertEqual(rc, 0)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )["images"]
+            water_photo = next(
+                item for item in manifest
+                if item["caption"] == "图6.1 绿化灌溉设施"
+            )
+            binding = water_photo["source"]["binding"]
+            self.assertEqual(
+                binding["ref"],
+                "water_aux.greening[].img_fields[device_img]",
+            )
+            self.assertEqual(binding["photo_section_key"], "water_system")
+
+    def test_multiple_upload_fields_keep_device_and_field_names(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "chapter_md").mkdir(parents=True)
+            (root / "chapter_md" / "ch2.md").write_text(
+                "# 第2章\n", encoding="utf-8"
+            )
+            (root / "chapter_md" / "ch6.md").write_text(
+                "# 第6章\n\n"
+                "图6.1 冷冻水泵设备整体图片\n\n"
+                "图6.2 冷冻水泵电机铭牌图片\n\n"
+                "图6.3 某冷热源\n",
+                encoding="utf-8",
+            )
+            images = []
+            for fid, suffix in ((5001, "overall"), (5002, "motor"), (5003, "source")):
+                image = root / f"{suffix}.png"
+                image.write_bytes(PNG + suffix.encode("ascii"))
+                images.append({
+                    "path": str(image),
+                    "category": "制冷设备",
+                    "file_id": fid,
+                })
+            data = {
+                "base": {"unit_short": "测试单位"},
+                "images": images,
+                "equipment": [
+                    {
+                        "name": "冷冻水泵",
+                        "category": "输配设备",
+                        "img_fields": [
+                            {
+                                "field": "device_img",
+                                "label": "设备整体图片",
+                                "ids": [5001],
+                            },
+                            {
+                                "field": "motor_img",
+                                "label": "电机铭牌图片",
+                                "ids": [5002],
+                            },
+                        ],
+                        "img_ids": [5001, 5002],
+                    },
+                    {
+                        "name": "某冷热源",
+                        "category": "其他设备",
+                        "img_fields": [{
+                            "field": "system_img",
+                            "label": "系统图片",
+                            "ids": [5003],
+                        }],
+                        "img_ids": [5003],
+                    },
+                ],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False), encoding="utf-8"
+            )
+            (root / "report_images.json").write_text(
+                json.dumps({"images": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = PHOTOS.main([str(root), "--quiet"])
+
+            self.assertEqual(rc, 0)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )["images"]
+            ch6 = {
+                item["caption"]: item
+                for item in manifest
+                if item["caption"].startswith("图6.")
+            }
+            self.assertEqual(
+                set(ch6),
+                {
+                    "图6.1 冷冻水泵设备整体图片",
+                    "图6.2 冷冻水泵电机铭牌图片",
+                    "图6.3 某冷热源",
+                },
+            )
+            self.assertEqual(
+                ch6["图6.1 冷冻水泵设备整体图片"]["source"]["binding"]["ref"],
+                "equipment[].img_fields[device_img]",
+            )
+            self.assertEqual(
+                ch6["图6.2 冷冻水泵电机铭牌图片"]["source"]["binding"]["ref"],
+                "equipment[].img_fields[motor_img]",
+            )
+            self.assertEqual(
+                ch6["图6.3 某冷热源"]["source"]["binding"]["ref"],
+                "equipment[].img_fields[system_img]",
+            )
+            self.assertEqual(
+                ch6["图6.1 冷冻水泵设备整体图片"]["source"]["binding"][
+                    "photo_section_key"
+                ],
+                "air_heating",
+            )
+            self.assertEqual(
+                ch6["图6.1 冷冻水泵设备整体图片"]["source"]["binding"][
+                    "photo_section_title"
+                ],
+                "空调与供暖系统",
+            )
+            self.assertEqual(
+                {
+                    Path(item["src"]).stem
+                    for item in ch6.values()
+                },
+                {
+                    "设备_冷冻水泵设备整体图片",
+                    "设备_冷冻水泵电机铭牌图片",
+                    "设备_某冷热源",
+                },
+            )
+
+    def test_multi_field_coverage_requires_each_exact_field_caption(self):
+        equipment = [{
+            "name": "冷冻水泵",
+            "category": "输配设备",
+            "img_fields": [
+                {
+                    "field": "device_img",
+                    "label": "设备整体图片",
+                    "ids": [5001],
+                },
+                {
+                    "field": "motor_img",
+                    "label": "电机铭牌图片",
+                    "ids": [5002],
+                },
+            ],
+            "img_ids": [5001, 5002],
+        }]
+        images = [{"file_id": 5001}, {"file_id": 5002}]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [("图6.1", "img", "冷冻水泵")],
+            images,
+        )
+
+        self.assertEqual(
+            gaps,
+            ["冷冻水泵设备整体图片", "冷冻水泵电机铭牌图片"],
+        )
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [("图6.1", "img", "冷冻水泵设备整体图片")],
+            images,
+        )
+        self.assertEqual(gaps, ["冷冻水泵电机铭牌图片"])
+
+    def test_water_aux_coverage_is_not_hidden_by_device_table_filter(self):
+        equipment = PHOTOS.chapter6_water_aux_photo_items({
+            "greening": [{
+                "img_ids": [701],
+                "img_fields": [{
+                    "field": "device_img",
+                    "label": "设备图片",
+                    "ids": [701],
+                }],
+            }],
+        })
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [],
+            [{"file_id": 701}],
+            table_names=["冷水机组"],
+        )
+
+        self.assertEqual(gaps, ["绿化灌溉设施"])
+
+    def test_duplicate_equipment_names_require_one_caption_per_attachment(self):
+        equipment = [
+            {
+                "name": "供水泵",
+                "img_ids": [701],
+                "img_fields": [{
+                    "field": "device_img",
+                    "label": "设备图片",
+                    "ids": [701],
+                }],
+            },
+            {
+                "name": "供水泵",
+                "img_ids": [702],
+                "img_fields": [{
+                    "field": "device_img",
+                    "label": "设备图片",
+                    "ids": [702],
+                }],
+            },
+        ]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [(1, "图6.1 供水泵", "供水泵")],
+            [{"file_id": 701}, {"file_id": 702}],
+        )
+
+        self.assertEqual(gaps, ["供水泵"])
+
+    def test_chapter6_caption_locations_track_the_enclosing_system_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            md = Path(td) / "ch6.md"
+            md.write_text(
+                "# 第6章\n\n"
+                "### （1）空调与供暖系统\n\n"
+                "图6.1 冷水机组\n\n"
+                "### （5）信息机房系统\n\n"
+                "图6.2 数据中心/信息中心\n\n"
+                "## 6.2 用水系统运行分析\n\n"
+                "图6.3 绿化灌溉设施\n",
+                encoding="utf-8",
+            )
+
+            sections = PHOTOS.parse_caption_sections(str(md), "6")
+
+            self.assertEqual(
+                sections,
+                [
+                    (1, "冷水机组", "air_heating"),
+                    (2, "数据中心/信息中心", "information_room"),
+                    (3, "绿化灌溉设施", "water_system"),
+                ],
+            )
+
+    def test_chapter6_reports_photo_placed_in_the_wrong_system_section(self):
+        equipment = [{
+            "name": "数据中心/信息中心",
+            "category": "特殊设备",
+            "total_power_kw": 17.8,
+            "img_fields": [{
+                "field": "device_img",
+                "label": "设备图片",
+                "ids": [6001],
+            }],
+            "img_ids": [6001],
+        }]
+        captions = [(1, "图6.1 数据中心/信息中心", "数据中心/信息中心")]
+        sections = [(1, "数据中心/信息中心", "information_room")]
+
+        warnings = PHOTOS.equipment_caption_section_warnings(
+            equipment,
+            captions,
+            sections,
+            unit_func="C",
+            children_func="B",
+        )
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("6.1 其他用电设备", warnings[0])
+        self.assertIn("6.1 信息机房系统", warnings[0])
+
+    def test_chapter6_reports_hygiene_photo_placed_outside_water_system(self):
+        equipment = [{
+            "name": "蹲便器",
+            "category": "卫生器具",
+            "img_ids": [6101],
+        }]
+        captions = [(1, "图6.1 蹲便器", "蹲便器")]
+        sections = [(1, "蹲便器", "air_heating")]
+
+        warnings = PHOTOS.equipment_caption_section_warnings(
+            equipment,
+            captions,
+            sections,
+        )
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("空调与供暖系统", warnings[0])
+        self.assertIn("用水系统", warnings[0])
+
+    def test_chapter6_equipment_without_images_does_not_create_photo_warning(self):
+        equipment = [{
+            "name": "蹲便器",
+            "category": "卫生器具",
+        }]
+
+        warnings = PHOTOS.equipment_caption_section_warnings(
+            equipment,
+            [],
+            [],
+        )
+
+        self.assertEqual(warnings, [])
+
+    def test_chapter6_pairs_duplicate_caption_names_one_to_one(self):
+        equipment = [
+            {
+                "name": "供水泵",
+                "photo_section_key": "other_energy",
+                "photo_section_title": "其他用电设备",
+            },
+            {
+                "name": "供水泵",
+                "photo_section_key": "water_system",
+                "photo_section_title": "用水系统",
+            },
+        ]
+        captions = [
+            (1, "图6.1 供水泵", "供水泵"),
+            (2, "图6.2 供水泵", "供水泵"),
+        ]
+        sections = [
+            (1, "供水泵", "other_energy"),
+            (2, "供水泵", "water_system"),
+        ]
+
+        warnings = PHOTOS.equipment_caption_section_warnings(
+            equipment,
+            captions,
+            sections,
+        )
+
+        self.assertEqual(warnings, [])
 
 
 class PhotoPruneTests(unittest.TestCase):

@@ -10,6 +10,7 @@ only neutral, data-bound caption facts.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -32,6 +33,55 @@ CHAPTER_BY_CATEGORY = {
     "节能改造示意": "第7章",
 }
 
+
+def _load_chapter6_contracts():
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        target = parent / "tools" / "energy_audit" / "project_data.py"
+        if not target.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "photo_catalog_project_data", target
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return (
+            module.CHAPTER6_SECTIONS,
+            module.chapter6_route_for_equipment,
+            module.chapter6_water_aux_photo_items,
+        )
+    try:
+        from tools.energy_audit.project_data import (  # type: ignore
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            chapter6_water_aux_photo_items,
+        )
+        return (
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            chapter6_water_aux_photo_items,
+        )
+    except ImportError as exc:
+        raise ImportError("无法加载第6章设备小节路由") from exc
+
+
+(
+    CHAPTER6_SECTIONS,
+    chapter6_route_for_equipment,
+    chapter6_water_aux_photo_items,
+) = _load_chapter6_contracts()
+CHAPTER6_PREFIX = {
+    "air_heating": "6.1",
+    "lighting": "6.1",
+    "office": "6.1",
+    "information_room": "6.1",
+    "medical_equipment": "6.1",
+    "substation": "6.1",
+    "other_energy": "6.1",
+    "water_system": "6.2",
+    "gas_system": "6.4",
+}
+
 METER_LABELS = {
     1: "电表",
     2: "水表",
@@ -50,6 +100,27 @@ def _ids(value: Any) -> List[str]:
     else:
         raw = str(value or "")
     return re.findall(r"\d+", raw)
+
+
+def _equipment_photo_fields(equipment: Dict[str, Any]) -> List[Dict[str, Any]]:
+    fields = []
+    for item in equipment.get("img_fields") or []:
+        if not isinstance(item, dict):
+            continue
+        ids = _ids(item.get("ids"))
+        if ids:
+            fields.append({
+                "field": _text(item.get("field")) or "img_ids",
+                "label": _text(item.get("label")),
+                "ids": ids,
+            })
+    if fields:
+        return fields
+    ids = _ids(equipment.get("img_ids"))
+    return (
+        [{"field": "img_ids", "label": "", "ids": ids}]
+        if ids else []
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -78,18 +149,36 @@ def _chapter_for(category: str) -> str:
     if category in {
         "制冷设备", "照明设备", "办公设备", "信息机房", "医疗设备",
         "其他用电设备", "特殊设备", "变压器/配电", "水泵/水箱", "厨房设备",
+        "用水设施", "燃气设备",
     }:
         return "第6章"
     return ""
 
 
-def _binding(ref: str, label: str, chapter: str, kind: str) -> Dict[str, str]:
-    return {
+def _binding(
+    ref: str,
+    label: str,
+    chapter: str,
+    kind: str,
+    *,
+    route: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    binding = {
         "ref": ref,
         "label": _text(label),
         "chapter": chapter,
         "kind": kind,
     }
+    for key in (
+        "equipment_section_key",
+        "equipment_section_title",
+        "photo_section_key",
+        "photo_section_title",
+        "routing_reason",
+    ):
+        if route and _text(route.get(key)):
+            binding[key] = _text(route.get(key))
+    return binding
 
 
 def _add_binding(candidate: Dict[str, Any], binding: Dict[str, str]) -> None:
@@ -97,9 +186,17 @@ def _add_binding(candidate: Dict[str, Any], binding: Dict[str, str]) -> None:
         binding.get("ref", ""),
         binding.get("label", ""),
         binding.get("chapter", ""),
+        binding.get("photo_section_key", ""),
+        binding.get("routing_reason", ""),
     )
     existing = {
-        (item.get("ref", ""), item.get("label", ""), item.get("chapter", ""))
+        (
+            item.get("ref", ""),
+            item.get("label", ""),
+            item.get("chapter", ""),
+            item.get("photo_section_key", ""),
+            item.get("routing_reason", ""),
+        )
         for item in candidate["bindings"]
     }
     if key not in existing:
@@ -175,15 +272,64 @@ def _attach_data_bindings(
                     _binding("images[].category", category, chapter, "category"),
                 )
 
-    for equipment in data.get("equipment") or []:
+    base = data.get("base") or {}
+    chapter6_items = list(data.get("equipment") or [])
+    chapter6_items.extend(
+        chapter6_water_aux_photo_items(data.get("water_aux") or {})
+    )
+    for equipment in chapter6_items:
         label = _text(equipment.get("name"))
-        for file_id in _ids(equipment.get("img_ids")):
-            candidate = index.get(f"file_id:{file_id}")
-            if candidate and label:
-                _add_binding(
-                    candidate,
-                    _binding("equipment[].img_ids", label, "第6章", "equipment"),
+        if not label:
+            continue
+        if _text(equipment.get("image_source_ref")).startswith("water_aux."):
+            route = {
+                key: _text(equipment.get(key))
+                for key in (
+                    "equipment_section_key",
+                    "equipment_section_title",
+                    "photo_section_key",
+                    "photo_section_title",
+                    "routing_reason",
                 )
+            }
+        else:
+            route = chapter6_route_for_equipment(
+                equipment,
+                unit_func=str(base.get("unit_func") or ""),
+                children_func=str(base.get("children_func") or ""),
+                institution_category=str(base.get("institution_category") or ""),
+                unit_name=str(base.get("unit_name") or ""),
+            )
+        fields = _equipment_photo_fields(equipment)
+        use_field_label = len(fields) > 1
+        source_ref = (
+            _text(equipment.get("image_source_ref"))
+            or "equipment[]"
+        )
+        for item in fields:
+            caption_label = (
+                f"{label}{item['label'] or '图片'}"
+                if use_field_label
+                else label
+            )
+            binding_ref = (
+                f"{source_ref}.img_fields[{item['field']}]"
+                if item["field"] != "img_ids"
+                else f"{source_ref}.img_ids"
+            )
+            for file_id in item["ids"]:
+                candidate = index.get(f"file_id:{file_id}")
+                if candidate:
+                    _add_binding(
+                        candidate,
+                        _binding(
+                            binding_ref,
+                            caption_label,
+                            "第6章",
+                            "equipment",
+                            route=route,
+                        ),
+                    )
 
     for meter in data.get("energy_meter") or []:
         try:

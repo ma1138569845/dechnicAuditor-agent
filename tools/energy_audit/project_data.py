@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Union, Tuple
 from datetime import datetime
 import hashlib
 import json
+import re
 import uuid
 from pathlib import Path
 
@@ -39,6 +40,8 @@ PHOTO_CATEGORIES = (
     '变压器/配电',   # 第6章 变压器室、配电柜等
     '水泵/水箱',     # 第6章 生活水泵、消防水箱等
     '厨房设备',      # 第6章 厨房设备
+    '用水设施',      # 第6章 6.2 绿化灌溉、其他用水设施
+    '燃气设备',      # 第6章 6.4 燃气锅炉、燃气热水器等
     '节能改造示意',  # 第7章 改造前现状照片（可选对比）
 )
 
@@ -47,6 +50,283 @@ LEGACY_PHOTO_CATEGORY_ALIASES = {
     '能耗账单': '缴费发票',
     '各建筑外观': '建筑外观',
 }
+
+# 设备照片上传字段 → 报告图注中的“字段名称”。
+# 同一设备存在多个非空上传字段时，图注按“设备名称 + 字段名称”展示；
+# 只有一个非空字段时仍只展示设备名称。字段名以平台字段含义为准，
+# 不把内部列名（如 motor_img）直接暴露给报告读者。
+# EA-CHECKPOINT-ITEM2-PHOTO-FIELD-CAPTION：中文命名待审，
+# 变更前先看 docs/checkpoints/2026-10-23-item2-chapter6-photo-field-caption.md。
+EQUIPMENT_IMAGE_FIELD_LABELS = {
+    'device_img': '设备图片',
+    'system_img': '系统图片',
+    'water_pump_img': '循环水泵图片',
+    'air_pump_img': '空气源热泵铭牌图片',
+    'tower_img': '参数铭牌/自动阀门图片',
+    'fan_img': '参数铭牌/手动阀门图片',
+    'heat_change_img': '换热器照片',
+    'motor_img': '电机铭牌图片',
+    'pump_img': '泵体图片',
+}
+
+EQUIPMENT_IMAGE_FIELD_LABELS_BY_CATEGORY = {
+    # 这两张表中的 device_img 明确表示“设备整体图片”。
+    ('其他设备', 'device_img'): '设备整体图片',
+    ('输配设备', 'device_img'): '设备整体图片',
+}
+
+# 平台各设备表把“其他设备”的真实名称放在不同字段。这里按报告设备分类
+# 固化来源，避免只认 other_device_name 而漏掉办公设备等表。
+OTHER_EQUIPMENT_REAL_NAME_FIELDS = {
+    '空调': ('other_device_name',),
+    '末端设备': ('other_device_name',),
+    '照明': ('other_device_name',),
+    '办公': ('device_name',),
+    '其他设备': ('other_device_name',),
+    '特殊设备': ('other_device_name',),
+}
+
+# 平台下拉框中的泛化选项名；这类值不能作为报告标题。
+OTHER_EQUIPMENT_GENERIC_NAMES = frozenset({
+    '其他',
+    '其它',
+    '其他设备',
+    '其它设备',
+    '其他特殊设备',
+    '其它特殊设备',
+    '其他特殊末端设备',
+    '其它特殊末端设备',
+    '其他特殊办公设备',
+    '其它特殊办公设备',
+    '其他特殊灯具',
+    '其它特殊灯具',
+    '其他特殊灯具等',
+    '其它特殊灯具等',
+})
+
+
+def _clean_equipment_text(record: Dict[str, Any], field_name: str) -> str:
+    return str(record.get(field_name) or '').strip()
+
+
+def _is_other_equipment_generic(value: str) -> bool:
+    return re.sub(r'\s+', '', value) in OTHER_EQUIPMENT_GENERIC_NAMES
+
+
+def equipment_display_name(record: Dict[str, Any], category: str = '') -> str:
+    """返回设备在报告中的真实名称。
+
+    平台不同设备表保存真实名称的字段不同：冷热源、末端、照明、特殊设备
+    使用 ``other_device_name``，办公设备使用 ``device_name``（泛化选项
+    存于 ``type``）。只有主名称是泛化选项时才替换；普通设备名不被覆盖。
+    """
+    primary = _clean_equipment_text(record, 'device_name')
+    generic_primary = (
+        not primary
+        or primary == '未命名'
+        or _is_other_equipment_generic(primary)
+    )
+    # 办公设备表的 device_name 本身就是真实名称，泛化选项在 type。
+    generic_office = (
+        category == '办公'
+        and _is_other_equipment_generic(_clean_equipment_text(record, 'type'))
+    )
+    if not (generic_primary or generic_office):
+        return primary or '未命名'
+
+    for field_name in OTHER_EQUIPMENT_REAL_NAME_FIELDS.get(category, ('other_device_name',)):
+        real_name = _clean_equipment_text(record, field_name)
+        if real_name and not _is_other_equipment_generic(real_name):
+            return real_name
+
+    # 泛化名没有配套真实名称时，保留原登记值，交由数据核查处理；
+    # 不能静默拼接或生成一个看似真实的设备名。
+    return primary or '未命名'
+
+
+def extract_equipment_image_fields(
+    record: Dict[str, Any],
+    category: str = '',
+) -> Tuple[List[Any], List[Dict[str, Any]]]:
+    """从设备原始记录提取图片 field 语义与扁平 file-id 列表。
+
+    返回 ``(img_ids, img_fields)``。``img_fields`` 保持数据库字段顺序：
+    ``[{"field": "motor_img", "label": "电机铭牌图片", "ids": [101]}]``。
+    ``img_ids`` 继续作为旧链路兼容键。
+    """
+    img_ids: List[Any] = []
+    img_fields: List[Dict[str, Any]] = []
+    for field_name, raw_value in record.items():
+        if not field_name.endswith('_img') or raw_value in (None, ''):
+            continue
+        raw_text = str(raw_value).strip()
+        if not raw_text:
+            continue
+        ids: List[Any] = []
+        for raw_id in re.split(r'[,，;；\s]+', raw_text.strip('[]')):
+            raw_id = raw_id.strip().strip('"\'')
+            if not raw_id:
+                continue
+            try:
+                ids.append(int(raw_id))
+            except ValueError:
+                ids.append(raw_id)
+        if not ids:
+            continue
+        label = (
+            EQUIPMENT_IMAGE_FIELD_LABELS_BY_CATEGORY.get((category, field_name))
+            or EQUIPMENT_IMAGE_FIELD_LABELS.get(field_name)
+            or field_name.removesuffix('_img').replace('_', ' ')
+        )
+        img_fields.append({
+            'field': field_name,
+            'label': label,
+            'ids': ids,
+        })
+        img_ids.extend(ids)
+    return img_ids, img_fields
+
+
+INFORMATION_ROOM_STRONG_KEYWORDS = (
+    '数据中心',
+    '信息中心',
+    '信息机房',
+    '数据机房',
+    '服务器',
+    '网络设备',
+    '存储设备',
+)
+MEDICAL_INSTITUTION_KEYWORDS = ('医疗', '医院')
+MEDICAL_EQUIPMENT_KEYWORDS = (
+    '医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA',
+)
+HOSPITAL_LEVEL_ALIASES = {
+    'A': 'A', 'B': 'B', 'C': 'C',
+    '一级': 'A', '二级': 'B', '三级': 'C',
+}
+
+
+def _equipment_evidence_text(record: Dict[str, Any]) -> Tuple[str, str]:
+    text = ' '.join(str(record.get(key) or '') for key in (
+        'name',
+        'device_name',
+        'other_device_name',
+        'spec',
+        'type',
+        'location',
+        'remark',
+    ))
+    return text, text.lower()
+
+
+def is_information_room_equipment(record: Dict[str, Any]) -> bool:
+    """只按明确的信息中心证据分类，普通“机房”不构成证据。"""
+    text, lowered = _equipment_evidence_text(record or {})
+    return (
+        any(keyword in text for keyword in INFORMATION_ROOM_STRONG_KEYWORDS)
+        or 'data center' in lowered
+        or 'server room' in lowered
+    )
+
+
+def is_medical_equipment_record(record: Dict[str, Any]) -> bool:
+    text, lowered = _equipment_evidence_text(record or {})
+    return (
+        any(keyword in text for keyword in MEDICAL_EQUIPMENT_KEYWORDS)
+        or any(keyword in lowered for keyword in ('medical', 'radiology'))
+    )
+
+
+def is_medical_institution(
+    unit_func: str,
+    institution_category: str = '',
+    unit_name: str = '',
+) -> bool:
+    """平台码优先；只有平台码为空时才允许类别或单位名回退。"""
+    code = str(unit_func or '').strip().upper()
+    if code:
+        return code == 'C'
+    fallback_text = f"{institution_category or ''} {unit_name or ''}"
+    return any(
+        keyword in fallback_text
+        for keyword in MEDICAL_INSTITUTION_KEYWORDS
+    )
+
+
+def normalize_hospital_level(value: str) -> str:
+    text = str(value or '').strip().upper()
+    if not text:
+        return ''
+    if text in HOSPITAL_LEVEL_ALIASES:
+        return HOSPITAL_LEVEL_ALIASES[text]
+    for keyword, code in HOSPITAL_LEVEL_ALIASES.items():
+        if keyword not in ('A', 'B', 'C') and keyword in text:
+            return code
+    return ''
+
+
+def equipment_photo_slots(equipment: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """把一个设备的每个非空附件 ID 展开成独立图片槽位。"""
+    record = dict(equipment or {})
+    fields: List[Dict[str, Any]] = []
+    for raw_field in record.get('img_fields') or []:
+        if not isinstance(raw_field, dict):
+            continue
+        field = str(raw_field.get('field') or 'img_ids').strip()
+        label = str(raw_field.get('label') or '').strip()
+        file_ids: List[str] = []
+        raw_ids = raw_field.get('ids')
+        if isinstance(raw_ids, (list, tuple, set)):
+            file_ids = [str(item).strip() for item in raw_ids if str(item).strip()]
+        else:
+            file_ids = [
+                item for item in re.split(r'[,，;；\s]+', str(raw_ids or '').strip('[]'))
+                if item.strip()
+            ]
+        if file_ids:
+            fields.append({'field': field or 'img_ids', 'label': label, 'ids': file_ids})
+    if not fields:
+        raw_ids = record.get('img_ids')
+        if isinstance(raw_ids, (list, tuple, set)):
+            file_ids = [str(item).strip() for item in raw_ids if str(item).strip()]
+        else:
+            file_ids = re.findall(r'\d+', str(raw_ids or ''))
+        if file_ids:
+            fields = [{'field': 'img_ids', 'label': '', 'ids': file_ids}]
+
+    use_field_label = len(fields) > 1
+    name = str(
+        record.get('name')
+        or record.get('other_device_name')
+        or record.get('device_name')
+        or ''
+    ).strip()
+    source_ref = str(record.get('image_source_ref') or 'equipment[]').strip()
+    slots: List[Dict[str, Any]] = []
+    seen = set()
+    for field in fields:
+        caption_label = (
+            f"{name}{field['label'] or '图片'}"
+            if use_field_label
+            else name
+        )
+        for attachment_index, file_id in enumerate(field['ids']):
+            key = (field['field'], str(file_id))
+            if key in seen:
+                continue
+            seen.add(key)
+            slots.append({
+                'equipment': record,
+                'name': name,
+                'category': str(record.get('category') or '').strip(),
+                'field': field['field'],
+                'field_label': field['label'],
+                'caption_label': caption_label,
+                'file_id': str(file_id),
+                'attachment_index': attachment_index,
+                'image_source_ref': source_ref,
+            })
+    return slots
 
 
 def normalize_photo_category(value: Any, *, strict: bool = False) -> str:
@@ -82,7 +362,6 @@ def photo_category_for_equipment(
         '办公': '办公设备',
         '厨房': '厨房设备',
         '生活热水': '其他用电设备',
-        '其他设备': '制冷设备',
         '输配设备': '制冷设备',
         '蒸汽': '制冷设备',
         '变配电': '变压器/配电',
@@ -90,22 +369,405 @@ def photo_category_for_equipment(
     if category != '特殊设备' and category != '动力':
         return direct.get(category, '')
 
+    record = {
+        'name': name,
+        'spec': spec,
+        'use_type': use_type,
+        'location': location,
+        'remark': remark,
+    }
     text = ' '.join(str(v or '') for v in
                     (name, spec, use_type, location, remark))
-    lowered = text.lower()
     if category == '动力':
         if any(k in text for k in ('水泵', '水箱')):
             return '水泵/水箱'
         return '其他用电设备'
 
     # “特殊设备”表同时承载数据中心和医疗设备，必须按内容细分。
-    if any(k in text for k in ('数据中心', '信息中心', '信息机房', '机房', '服务器')) or \
-            any(k in lowered for k in ('data center', 'server room')):
+    if is_information_room_equipment(record):
         return '信息机房'
-    if any(k in text for k in ('医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA')) or \
-            any(k in lowered for k in ('medical', 'radiology')):
+    if is_medical_equipment_record(record):
         return '医疗设备'
     return '特殊设备'
+
+
+# 第6章设备事实小节与照片目标小节的单一字典。
+# 设备正文按“设备事实”落位；同一照片可优先进入更具体的 6.2 用水 / 6.4 燃气。
+CHAPTER6_SECTIONS = {
+    'air_heating': {
+        'equipment_title': '空调与供暖系统',
+        'photo_title': '空调与供暖系统',
+    },
+    'lighting': {
+        'equipment_title': '照明系统',
+        'photo_title': '照明系统',
+    },
+    'office': {
+        'equipment_title': '办公设备系统',
+        'photo_title': '办公设备系统',
+    },
+    'information_room': {
+        'equipment_title': '信息机房系统',
+        'photo_title': '信息机房系统',
+    },
+    'medical_equipment': {
+        'equipment_title': '医疗设备系统',
+        'photo_title': '医疗设备系统',
+    },
+    'substation': {
+        'equipment_title': '变配电系统',
+        'photo_title': '变配电系统',
+    },
+    'other_energy': {
+        'equipment_title': '其他用电设备',
+        'photo_title': '其他用电设备',
+    },
+    'water_system': {
+        'equipment_title': '用水系统',
+        'photo_title': '用水系统',
+    },
+    'gas_system': {
+        'equipment_title': '用燃气系统',
+        'photo_title': '用燃气系统',
+    },
+}
+
+WATER_AUX_PHOTO_LABELS = {
+    'greening': '绿化灌溉设施',
+    'other': '其他用水设施',
+    'road': '道路冲洗设施',
+}
+
+
+def chapter6_water_aux_photo_items(water_aux: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """把 6.2 附属用水照片转成统一的第6章照片绑定项。"""
+    def _photo_ids(raw_value: Any) -> List[Any]:
+        if isinstance(raw_value, (list, tuple, set)):
+            raw_text = ' '.join(str(item or '') for item in raw_value)
+        else:
+            raw_text = str(raw_value or '')
+        ids: List[Any] = []
+        for raw_id in re.split(r'[,，;；\s]+', raw_text.strip('[]')):
+            raw_id = raw_id.strip().strip('"\'')
+            if not raw_id:
+                continue
+            try:
+                ids.append(int(raw_id))
+            except ValueError:
+                ids.append(raw_id)
+        return ids
+
+    items: List[Dict[str, Any]] = []
+    for group, base_label in WATER_AUX_PHOTO_LABELS.items():
+        for record in (water_aux or {}).get(group, []) or []:
+            if not isinstance(record, dict):
+                continue
+            img_fields: List[Dict[str, Any]] = []
+            for raw_field in record.get('img_fields') or []:
+                if not isinstance(raw_field, dict):
+                    continue
+                ids = _photo_ids(raw_field.get('ids'))
+                if ids:
+                    img_fields.append({
+                        'field': str(raw_field.get('field') or 'img_ids').strip(),
+                        'label': str(raw_field.get('label') or '').strip(),
+                        'ids': ids,
+                    })
+            if img_fields:
+                img_ids = [
+                    file_id
+                    for field in img_fields
+                    for file_id in field['ids']
+                ]
+            else:
+                img_ids, img_fields = extract_equipment_image_fields(
+                    record,
+                    '用水设施',
+                )
+            if not img_fields:
+                continue
+            items.append({
+                'name': base_label,
+                'category': '用水设施',
+                'img_ids': img_ids,
+                'img_fields': img_fields,
+                'equipment_section_key': 'water_system',
+                'equipment_section_title': CHAPTER6_SECTIONS['water_system']['equipment_title'],
+                'photo_section_key': 'water_system',
+                'photo_section_title': CHAPTER6_SECTIONS['water_system']['photo_title'],
+                'routing_reason': f'water_aux_{group}',
+                'image_source_ref': f'water_aux.{group}[]',
+            })
+    return items
+
+
+def _number_or_none(value: Any) -> Optional[float]:
+    if value in (None, ''):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def special_power_summary(record: Dict[str, Any]) -> Dict[str, Any]:
+    """汇总特殊设备四类功率明细，只在单位明确时换算为 kW。
+
+    平台历史数据同时存在 W 与 kW 两种输入尺度，且部分行没有 ``power_unit``。
+    为避免把 500 W 猜成 500 kW，缺少明确单位时保留原始明细，但
+    ``total_power_kw`` 必须为 ``None``。
+    """
+    components: List[Dict[str, Any]] = []
+    for key, label in (
+        ('server', '服务器'),
+        ('network', '网络设备'),
+        ('storage', '存储设备'),
+        ('air', '空调设备'),
+    ):
+        quantity = _number_or_none(record.get(f'{key}_num'))
+        unit_power = _number_or_none(record.get(f'{key}_power'))
+        if quantity is None and unit_power is None:
+            continue
+        components.append({
+            'name': label,
+            'field': key,
+            'quantity': quantity,
+            'unit_power': unit_power,
+        })
+
+    raw_unit = str(record.get('power_unit') or '').strip()
+    unit = raw_unit.lower().replace('千瓦', 'kw').replace('瓦', 'w')
+    total_power_kw: Optional[float] = None
+    power_error = ''
+    if unit in ('w', 'kw'):
+        complete = components and all(
+            item['quantity'] is not None and item['unit_power'] is not None
+            for item in components
+        )
+        if complete:
+            divisor = 1000.0 if unit == 'w' else 1.0
+            total_power_kw = round(sum(
+                item['quantity'] * item['unit_power'] / divisor
+                for item in components
+            ), 6)
+        else:
+            power_error = 'power_components_incomplete'
+    elif components:
+        power_error = 'power_unit_missing'
+
+    return {
+        'power_unit': raw_unit,
+        'power_components': components,
+        'total_power_kw': total_power_kw,
+        'routing_power_error': power_error,
+    }
+
+
+def _chapter6_route(
+    section_key: str,
+    *,
+    photo_category: str,
+    photo_section_key: Optional[str] = None,
+    routing_reason: str = '',
+) -> Dict[str, str]:
+    photo_key = photo_section_key or section_key
+    return {
+        'photo_category': photo_category,
+        'equipment_section_key': section_key,
+        'equipment_section_title': CHAPTER6_SECTIONS[section_key]['equipment_title'],
+        'photo_section_key': photo_key,
+        'photo_section_title': CHAPTER6_SECTIONS[photo_key]['photo_title'],
+        'routing_reason': routing_reason,
+    }
+
+
+def chapter6_route_for_equipment(
+    equipment: Dict[str, Any],
+    unit_func: str = '',
+    children_func: str = '',
+    institution_category: str = '',
+    unit_name: str = '',
+) -> Dict[str, str]:
+    """设备记录 → 第6章设备事实小节与照片目标小节的唯一路由。"""
+    record = dict(equipment or {})
+    category = str(record.get('category') or '').strip()
+    name = str(record.get('name') or record.get('device_name') or '').strip()
+
+    if category == '变配电':
+        return _chapter6_route(
+            'substation',
+            photo_category='变压器/配电',
+            routing_reason='substation',
+        )
+
+    if category == '照明':
+        return _chapter6_route(
+            'lighting',
+            photo_category='照明设备',
+            routing_reason='lighting',
+        )
+
+    if category == '办公':
+        return _chapter6_route(
+            'office',
+            photo_category='办公设备',
+            routing_reason='office',
+        )
+
+    # 卫生器具表整体属于 6.2 用水系统，不能作为普通“其他用电设备”漏回 6.1。
+    if category == '卫生器具':
+        return _chapter6_route(
+            'water_system',
+            photo_category='用水设施',
+            routing_reason='hygiene_fixture',
+        )
+
+    if category == '动力' and any(
+        key in name for key in ('生活水泵', '给水泵', '供水泵')
+    ):
+        return _chapter6_route(
+            'other_energy',
+            photo_category='水泵/水箱',
+            routing_reason='domestic_water_pump',
+        )
+
+    is_named_gas_equipment = (
+        any(key in name for key in ('燃气', '天然气', '液化气', '燃油'))
+        and any(key in name for key in ('锅炉', '吸收式', '热水器', '灶'))
+        or category in ('蒸汽', '厨房')
+        and any(key in name for key in ('燃气', '天然气', '液化气', '燃油'))
+    )
+    has_recorded_combustion = any(
+        (_number_or_none(record.get(key)) or 0) > 0
+        for key in ('gas_value', 'fuel_value')
+    )
+    is_combustion_absorption = any(
+        key in name for key in ('吸收式', '溴化锂', '直燃')
+    )
+    is_recorded_combustion_equipment = (
+        is_combustion_absorption and has_recorded_combustion
+    )
+    if is_named_gas_equipment or is_recorded_combustion_equipment:
+        return _chapter6_route(
+            'gas_system',
+            photo_category=(
+                '厨房设备'
+                if category == '厨房' or '灶' in name
+                else '燃气设备'
+            ),
+            routing_reason=(
+                'gas_equipment'
+                if is_named_gas_equipment
+                else 'recorded_combustion_equipment'
+            ),
+        )
+
+    if category == '生活热水':
+        return _chapter6_route(
+            'other_energy',
+            photo_category='其他用电设备',
+            photo_section_key='water_system',
+            routing_reason='non_combustion_hot_water',
+        )
+
+    if category == '末端设备':
+        return _chapter6_route(
+            'air_heating',
+            photo_category='制冷设备',
+            routing_reason='terminal_equipment',
+        )
+
+    if category in ('空调', '输配设备'):
+        return _chapter6_route(
+            'air_heating',
+            photo_category='制冷设备',
+            routing_reason=f'{category}_equipment',
+        )
+
+    if category == '其他设备' and any(
+        key in name for key in ('冷却塔', '空调系统补水装置')
+    ):
+        return _chapter6_route(
+            'air_heating',
+            photo_category='制冷设备',
+            routing_reason='air_heating_auxiliary',
+        )
+
+    if category == '其他设备':
+        return _chapter6_route(
+            'other_energy',
+            photo_category='其他用电设备',
+            routing_reason='other_equipment',
+        )
+
+    if category == '特殊设备':
+        if is_information_room_equipment(record):
+            total_power_kw = _number_or_none(record.get('total_power_kw'))
+            if total_power_kw is not None and total_power_kw > 100:
+                return _chapter6_route(
+                    'information_room',
+                    photo_category='信息机房',
+                    routing_reason='information_room_power_gt_100kw',
+                )
+            reason = (
+                'information_room_power_gt_100kw'
+                if total_power_kw is not None and total_power_kw > 100
+                else (
+                    'information_room_power_le_100kw'
+                    if total_power_kw is not None
+                    else 'information_room_power_unconfirmed'
+                )
+            )
+            return _chapter6_route(
+                'other_energy',
+                photo_category='信息机房',
+                routing_reason=reason,
+            )
+
+        is_medical_equipment = is_medical_equipment_record(record)
+        medical_institution = is_medical_institution(
+            unit_func,
+            institution_category,
+            unit_name,
+        )
+        hospital_level = normalize_hospital_level(children_func)
+        if (
+            is_medical_equipment
+            and medical_institution
+            and hospital_level in ('B', 'C')
+        ):
+            return _chapter6_route(
+                'medical_equipment',
+                photo_category='医疗设备',
+                routing_reason=f'hospital_level_{hospital_level}',
+            )
+        if is_medical_equipment:
+            return _chapter6_route(
+                'other_energy',
+                photo_category='医疗设备',
+                routing_reason=(
+                    'medical_equipment_requires_secondary_or_tertiary_hospital'
+                ),
+            )
+        return _chapter6_route(
+            'other_energy',
+            photo_category='特殊设备',
+            routing_reason='special_equipment_unclassified',
+        )
+
+    photo_category = photo_category_for_equipment(
+        category,
+        name=name,
+        spec=str(record.get('spec') or ''),
+        use_type=str(record.get('use_type') or ''),
+        location=str(record.get('location') or ''),
+        remark=str(record.get('remark') or ''),
+    )
+    return _chapter6_route(
+        'other_energy',
+        photo_category=photo_category or '其他用电设备',
+        routing_reason='other_energy',
+    )
 
 
 # ============================================================
@@ -359,7 +1021,12 @@ class Equipment:
     category: str = ""                 # 分类: 空调/照明/电梯/热水器/厨房/变压器
     spec: str = ""                     # 规格/功率
     quantity: int = 0                  # 数量
-    img_ids: List[str] = field(default_factory=list)  # 设备照片附件 file id（设备分表 _img 列，供第6章照片分类采集）
+    # 旧链路兼容的扁平附件 ID；新链路须与 img_fields 同时保存。
+    img_ids: List[str] = field(default_factory=list)
+    # 图片上传字段语义：保留 system_img / motor_img / pump_img 等来源字段，
+    # 供第6章按“设备名+字段名”生成不串义的图注。旧 data.json 无此键时，
+    # 下游自动退回 img_ids 兼容路径。
+    img_fields: List[Dict[str, Any]] = field(default_factory=list)
     energy_rating: str = ""            # 能效等级
     usage_years: str = ""              # 使用年限
     location: str = ""                 # 所在位置
@@ -382,6 +1049,7 @@ class Equipment:
     # 燃气用途判据（2026-10-16 接入，5.2.3 用气节段1 设备描述的唯一依据）：
     #   has_gas_use     特殊设备表（厨房/食堂）是否使用燃气：1 有 / 0 无 / None 未登记
     #   year_gas_value  蒸汽表：该设备年耗气量 m³      gas_value / fuel_value  冷热源表：耗气/耗油
+    #   第6章路由：“吸收式/溴化锂/直燃”且 gas_value/fuel_value > 0 → 6.4。
     # 口径：**设备存在即写**，耗气量只用于判断当年度是否运行（None=未登记 与 0=明确为 0 必须分开）
     has_gas_use: Optional[int] = None
     year_gas_value: Optional[float] = None
@@ -407,6 +1075,27 @@ class Equipment:
     remaining_capacity: Any = None
     substation_remark: str = ""
     attachments: List[Dict[str, Any]] = field(default_factory=list)
+    # 第6章统一路由与特殊设备功率明细（2026-10-23 接入）：
+    #   total_power_kw 仅在平台明确给出 power_unit 时可计算；
+    #   power_components 保留四类设备数量与单机功率，供正文和审计追溯。
+    other_device_name: str = ""
+    server_num: Optional[float] = None
+    server_power: Optional[float] = None
+    network_num: Optional[float] = None
+    network_power: Optional[float] = None
+    storage_num: Optional[float] = None
+    storage_power: Optional[float] = None
+    air_num: Optional[float] = None
+    air_power: Optional[float] = None
+    power_unit: str = ""
+    power_components: List[Dict[str, Any]] = field(default_factory=list)
+    total_power_kw: Optional[float] = None
+    routing_power_error: str = ""
+    equipment_section_key: str = ""
+    equipment_section_title: str = ""
+    photo_section_key: str = ""
+    photo_section_title: str = ""
+    routing_reason: str = ""
 
 
 @dataclass

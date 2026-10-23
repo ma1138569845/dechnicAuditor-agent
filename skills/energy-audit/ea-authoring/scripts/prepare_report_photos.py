@@ -10,7 +10,8 @@
 
 本脚本把这一步工序化：**md 图注行仍是唯一编号源**；第2章按图注里的建筑名取图，
 第4章按 `energy_meter[].device_img → images[].file_id` 识别电表/水表等计量器具，
-第6章先用 `equipment[].img_ids → images[].file_id` 精确匹配，再按文件名兜底。
+第6章先用 `equipment[].img_fields[] → images[].file_id` 精确匹配上传字段，
+再按文件名兜底；单字段图注为设备名，多字段图注为“设备名+字段名”。
 
 覆盖范围（2026-10-21 扩到设备配图覆盖率硬校验）：
   - **第2章**：图 2.1（单位整体外观）+ 图 2.2…（逐栋建筑外观照，来源
@@ -25,9 +26,10 @@
     按 `energy_meter[].device_img` + `data_type` 识别电表/水表/燃气表/热表，
     无台账映射时按文件名兜底；附件 ID 与文件路径双重去重。通用图注
     “计量器具照片”可承载同一图注下的多张照片，具体图注则按表种筛选。
-  - **第6章**：凡 `equipment[].img_ids` 非空的设备，都必须各有一条
-    `图6.N 设备名`；缺任何一条即 rc=2。特殊用能中的医疗设备与
-    数据中心/信息中心分别校验，不能用系统级一张图代替。
+  - **第6章**：`equipment[].img_fields[]` 中的每个附件 ID 都必须各有一条
+    独立图注（单字段 `图6.N 设备名`；多字段 `图6.N 设备名+字段名`）；
+    缺任何一条即返回告警码。信息机房与医疗设备按统一路由决定是否单列；
+    生活水泵照片目标为 6.1 其他用电设备，燃气设备照片目标为 6.4。
 
 分工：
   - 本脚本：装配**前**的三方一致（md 图注 ↔ 清单 ↔ 磁盘文件）+ 未引用照片提示；
@@ -44,7 +46,7 @@
 行为与退出码:
     0  正常（含"有照片未被引用"这类提示）
     1  输入缺失（项目目录 / data.json / chapter_md/ch2.md 任一不在）
-    2  有告警（图注匹配不到照片，或有照片却没写图注，或有 img_ids 的设备缺图注）
+    2  有告警（图注匹配不到照片，或有照片却没写图注，或有图片字段缺图注）
        ——已能写的条目仍会写
 
 产物:
@@ -68,6 +70,7 @@
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -79,26 +82,54 @@ from pathlib import Path
 
 def _load_photo_contract():
     """加载 repo 中的唯一分类契约；技能从 profile 或 repo 内运行都可用。"""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        target = parent / "tools" / "energy_audit" / "project_data.py"
+        if not target.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "prepare_report_photos_project_data",
+            target,
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return (
+            module.PHOTO_CATEGORIES,
+            module.normalize_photo_category,
+            module.CHAPTER6_SECTIONS,
+            module.chapter6_route_for_equipment,
+            module.chapter6_water_aux_photo_items,
+            module.equipment_photo_slots,
+        )
     try:
         from tools.energy_audit.project_data import (  # type: ignore
             PHOTO_CATEGORIES,
             normalize_photo_category,
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            chapter6_water_aux_photo_items,
+            equipment_photo_slots,
         )
-        return PHOTO_CATEGORIES, normalize_photo_category
-    except ModuleNotFoundError:
-        here = Path(__file__).resolve()
-        for parent in here.parents:
-            if (parent / "tools" / "energy_audit" / "project_data.py").is_file():
-                sys.path.insert(0, str(parent))
-                break
-        from tools.energy_audit.project_data import (  # type: ignore
+        return (
             PHOTO_CATEGORIES,
             normalize_photo_category,
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            chapter6_water_aux_photo_items,
+            equipment_photo_slots,
         )
-        return PHOTO_CATEGORIES, normalize_photo_category
+    except ImportError as exc:
+        raise ImportError("无法加载照片分类与第6章设备小节路由") from exc
 
 
-PHOTO_CATEGORIES, normalize_photo_category = _load_photo_contract()
+(
+    PHOTO_CATEGORIES,
+    normalize_photo_category,
+    CHAPTER6_SECTIONS,
+    chapter6_route_for_equipment,
+    chapter6_water_aux_photo_items,
+    equipment_photo_slots,
+) = _load_photo_contract()
 
 
 def _load_photo_vision():
@@ -165,18 +196,30 @@ CH4_TYPE_WORDS = {
 CH6_DEVICE_CATS = {
     "制冷设备", "照明设备", "办公设备", "其他用电设备",
     "信息机房", "医疗设备", "特殊设备", "变压器/配电", "水泵/水箱", "厨房设备",
+    "用水设施", "燃气设备",
 }
 assert CH6_DEVICE_CATS <= set(PHOTO_CATEGORIES)
+STRICT_REVERSE_PHOTO_CATEGORIES = {"动力", "特殊设备"}
 # 图注关键词 → 设备照片分类（文件名对不上时的兜底）
 CH6_CAT_HINTS = (
     (("照明", "灯"), "照明设备"),
     (("办公", "电脑", "打印"), "办公设备"),
-    (("信息机房", "机房", "服务器", "数据中心"), "信息机房"),
+    ((
+        "信息机房",
+        "数据机房",
+        "服务器",
+        "网络设备",
+        "存储设备",
+        "数据中心",
+        "信息中心",
+    ), "信息机房"),
     (("医疗", "X射线", "CT", "摄影"), "医疗设备"),
     (("空调", "冷水", "冷却塔", "热泵"), "制冷设备"),
     (("变压器", "配电柜", "配电室", "开关柜"), "变压器/配电"),
     (("水泵", "水箱"), "水泵/水箱"),
     (("厨房", "燃气灶", "蒸柜", "消毒柜"), "厨房设备"),
+    (("灌溉", "绿化", "用水设施"), "用水设施"),
+    (("燃气锅炉", "燃气热水", "燃气蒸汽", "燃气设备"), "燃气设备"),
     (("电梯", "开水器", "热水器"), "其他用电设备"),
 )
 # 图注关键词 → 文件名关键词（用于同义词匹配，禁止按分类乱抓）
@@ -195,7 +238,8 @@ CH6_KEYWORDS = (
     ("热泵", ("热泵",)),
     ("热水器", ("热水器",)),
     ("医疗", ("X光", "CT", "医疗")),
-    ("数据中心", ("机房", "数据中心")),
+    ("数据中心", ("数据中心", "信息中心", "信息机房", "数据机房", "服务器")),
+    ("信息中心", ("数据中心", "信息中心", "信息机房", "数据机房", "服务器")),
 )
 CH6_GARBAGE_STEMS = {"image", "店铺"}
 # 第3章：来源 → 图注关键词（照 chapter-guides-1-4.md「图片路由」节）
@@ -298,11 +342,74 @@ def parse_captions(md_path: str, chapter: str):
     return out
 
 
+CHAPTER6_PREFIX = {
+    "air_heating": "6.1",
+    "lighting": "6.1",
+    "office": "6.1",
+    "information_room": "6.1",
+    "medical_equipment": "6.1",
+    "substation": "6.1",
+    "other_energy": "6.1",
+    "water_system": "6.2",
+    "gas_system": "6.4",
+}
+
+
+def _chapter6_heading_key(title: str) -> str:
+    text = re.sub(r"\s+", "", str(title or ""))
+    rules = (
+        ("information_room", ("信息机房", "数据中心")),
+        ("medical_equipment", ("医疗设备",)),
+        ("water_system", ("用水系统", "用水运行")),
+        ("gas_system", ("燃气系统", "用燃气")),
+        ("substation", ("变配电系统",)),
+        ("lighting", ("照明系统",)),
+        ("office", ("办公设备",)),
+        ("air_heating", ("空调与供暖", "空调供暖")),
+        ("other_energy", ("其他用电设备",)),
+    )
+    for key, words in rules:
+        if any(word in text for word in words):
+            return key
+    return ""
+
+
+def chapter6_section_label(key: str) -> str:
+    section = CHAPTER6_SECTIONS.get(str(key or ""))
+    if not section:
+        return ""
+    prefix = CHAPTER6_PREFIX.get(str(key or ""), "")
+    return f"{prefix} {section['photo_title']}".strip()
+
+
+def parse_caption_sections(md_path: str, chapter: str):
+    """返回第6章图注及其所在系统小节：``(图号, 说明, 小节 key)``。"""
+    if not md_path or not os.path.isfile(md_path):
+        return []
+    out = []
+    section_key = ""
+    with open(md_path, encoding="utf-8", errors="replace") as stream:
+        for raw in stream:
+            line = raw.strip()
+            heading = re.match(r"^#{1,6}\s+(.+?)\s*$", line)
+            if heading:
+                section_key = _chapter6_heading_key(heading.group(1))
+                continue
+            match = CAP_RE.match(line)
+            if match and match.group(1) == chapter:
+                out.append((
+                    int(match.group(2)),
+                    match.group(3).strip(),
+                    section_key,
+                ))
+    return out
+
+
 def parse_md_device_names(md_path: str) -> set:
     """从第6章 Markdown 设备表抽取“设备名称”列。
 
-    配图覆盖以报告实际列出的设备行为边界；数据库里存在但未进入设备表的条目，
-    不在本脚本强制配图。
+    该集合只用于 Markdown 表内名称过滤；不能作为数据库动力设备、特殊设备的
+    配图覆盖免检边界。
     """
     names, col = set(), None
     if not md_path or not os.path.isfile(md_path):
@@ -375,6 +482,7 @@ def make_photo_entry(
     file_id=None,
     category: str = "",
     verification: str = "unverified",
+    section_route=None,
 ) -> dict:
     """Build a manifest entry while preserving the legacy caption/src contract."""
     image = _image_row_for_source(images, source_path, file_id=file_id)
@@ -389,6 +497,19 @@ def make_photo_entry(
         else f"path:{Path(source_abs).resolve()}"
     )
     destination_abs = os.path.join(project_dir, destination.replace("/", os.sep))
+    binding = {
+        "ref": binding_ref,
+        "label": binding_label,
+    }
+    for key in (
+        "equipment_section_key",
+        "equipment_section_title",
+        "photo_section_key",
+        "photo_section_title",
+        "routing_reason",
+    ):
+        if section_route and str((section_route or {}).get(key) or "").strip():
+            binding[key] = str(section_route[key]).strip()
     return {
         "caption": caption,
         "src": destination,
@@ -400,10 +521,7 @@ def make_photo_entry(
             "source_path": source_abs,
             "source_sha256": source_sha,
             "category": category or str(image.get("category") or ""),
-            "binding": {
-                "ref": binding_ref,
-                "label": binding_label,
-            },
+            "binding": binding,
             "selection_method": "file_id" if resolved_file_id else "path",
             "verification": verification,
         },
@@ -744,11 +862,42 @@ def _photo_name_key(text) -> str:
     ).lower()
 
 
-def _img_ids(equipment: dict) -> list:
-    raw = equipment.get("img_ids")
-    if isinstance(raw, (list, tuple, set)):
-        return [str(v).strip() for v in raw if str(v).strip()]
-    return re.findall(r"\d+", str(raw or ""))
+def _ch6_photo_contracts(equipment) -> list:
+    """设备图片附件 → 每个附件 ID 一条独立图注契约。"""
+    contracts = []
+    for eq in equipment or []:
+        for slot in equipment_photo_slots(eq):
+            contracts.append({
+                "equipment": eq,
+                "name": slot["name"],
+                "category": slot["category"],
+                "field": slot["field"],
+                "field_label": slot["field_label"],
+                "caption_label": slot["caption_label"],
+                "file_id": slot["file_id"],
+                "attachment_index": slot["attachment_index"],
+                "ids": [slot["file_id"]],
+                "image_source_ref": slot["image_source_ref"],
+            })
+    return contracts
+
+
+def _route_chapter6_equipment(equipment, base: dict) -> list:
+    """照片工序按同一路由契约重算小节，兼容未带路由的旧 data.json。"""
+    routed = []
+    for item in equipment or []:
+        record = dict(item)
+        record.update(chapter6_route_for_equipment(
+            record,
+            unit_func=str((base or {}).get("unit_func") or ""),
+            children_func=str((base or {}).get("children_func") or ""),
+            institution_category=str(
+                (base or {}).get("institution_category") or ""
+            ),
+            unit_name=str((base or {}).get("unit_name") or ""),
+        ))
+        routed.append(record)
+    return routed
 
 
 def _images_by_file_id(images) -> dict:
@@ -760,65 +909,219 @@ def _images_by_file_id(images) -> dict:
     return out
 
 
-def equipment_caption_gaps(equipment, captions, images=None, table_names=None) -> list:
-    """返回「有 img_ids 但第6章没有设备图注」的设备名。
-
-    这是本链路的硬校验：只检查 md 中已有图注是否都能找到图，会把
-    “设备行有附件、作者漏写图注”的整条记录静默跳过。必须从设备台账反向查。
-    """
-    caption_keys = [_photo_name_key(desc) for _, _, desc in captions]
+def equipment_caption_coverage(
+    equipment,
+    captions,
+    images=None,
+    table_names=None,
+) -> dict:
+    """反向检查登记附件所需的图注及本地文件，两个结果独立返回。"""
+    remaining_caption_keys = [
+        _photo_name_key(desc)
+        for _, _, desc in captions or []
+    ]
     available_ids = set(_images_by_file_id(images or []))
-    table_keys = [_photo_name_key(name) for name in (table_names or [])]
-    missing, seen = [], set()
+    table_keys = [
+        _photo_name_key(name)
+        for name in (table_names or [])
+    ]
+    missing_captions = []
+    missing_local_files = []
+
+    for contract in _ch6_photo_contracts(equipment):
+        name_key = _photo_name_key(contract["name"])
+        file_id = str(contract.get("file_id") or "").strip()
+        if not name_key or not file_id:
+            continue
+
+        strict_reverse = (
+            contract["category"] in STRICT_REVERSE_PHOTO_CATEGORIES
+            or contract["image_source_ref"].startswith("water_aux.")
+        )
+        if (
+            not strict_reverse
+            and table_keys
+            and not any(
+                name_key == table_key
+                or name_key in table_key
+                or table_key in name_key
+                for table_key in table_keys
+            )
+        ):
+            continue
+
+        caption_label = contract["caption_label"]
+        caption_key = _photo_name_key(caption_label)
+        legacy_caption = contract["field"] == "img_ids"
+        caption_index = next((
+            index
+            for index, current_key in enumerate(remaining_caption_keys)
+            if caption_key == current_key
+            or (
+                legacy_caption
+                and caption_key
+                and current_key
+                and (
+                    caption_key in current_key
+                    or current_key in caption_key
+                )
+            )
+        ), None)
+        if caption_index is None:
+            missing_captions.append(caption_label)
+        else:
+            remaining_caption_keys.pop(caption_index)
+
+        if file_id not in available_ids:
+            missing_local_files.append(caption_label)
+
+    return {
+        "missing_captions": missing_captions,
+        "missing_local_files": missing_local_files,
+    }
+
+
+def equipment_caption_gaps(equipment, captions, images=None, table_names=None) -> list:
+    """兼容旧调用：只返回缺少图注的槽位。"""
+    return equipment_caption_coverage(
+        equipment,
+        captions,
+        images,
+        table_names=table_names,
+    )["missing_captions"]
+
+
+def equipment_caption_section_warnings(
+    equipment,
+    captions,
+    sections,
+    *,
+    unit_func: str = "",
+    children_func: str = "",
+    institution_category: str = "",
+    unit_name: str = "",
+) -> list:
+    """告警第6章照片是否放在路由指定的系统小节。"""
+    actual_by_num = {
+        int(num): str(section or "")
+        for num, _desc, section in sections or []
+    }
+    caption_text_by_num = {
+        int(num): str(caption or "")
+        for num, caption, _desc in captions or []
+    }
+    warnings = []
+    consumed_caption_indexes = set()
     for eq in equipment or []:
-        name = str(eq.get("name") or "").strip()
-        key = _photo_name_key(name)
-        ids = _img_ids(eq)
-        if not key or key in seen or not ids or not available_ids.intersection(ids):
+        name_key = re.sub(r"\s+", "", str(eq.get("name") or ""))
+        if not name_key:
             continue
-        if table_keys and not any(key == tk or key in tk or tk in key for tk in table_keys):
+        caption_index = next((
+            index
+            for index, (_num, _caption, desc) in enumerate(captions or [])
+            if index not in consumed_caption_indexes
+            and name_key in re.sub(r"\s+", "", str(desc or ""))
+        ), None)
+        if caption_index is None:
             continue
-        seen.add(key)
-        if not any(key == ck or (key and ck and (key in ck or ck in key))
-                   for ck in caption_keys):
-            missing.append(name)
-    return missing
+        consumed_caption_indexes.add(caption_index)
+        caption_num = int(captions[caption_index][0])
+        route = {
+            key: str(eq.get(key) or "").strip()
+            for key in (
+                "equipment_section_key",
+                "equipment_section_title",
+                "photo_section_key",
+                "photo_section_title",
+                "routing_reason",
+            )
+        }
+        if not route["photo_section_key"]:
+            route = chapter6_route_for_equipment(
+                eq,
+                unit_func=unit_func,
+                children_func=children_func,
+                institution_category=institution_category,
+                unit_name=unit_name,
+            )
+        expected_key = str(route.get("photo_section_key") or "")
+        actual_key = actual_by_num.get(caption_num, "")
+        if not actual_key or not expected_key or actual_key == expected_key:
+            continue
+        actual_label = (
+            chapter6_section_label(actual_key)
+            or "未识别系统小节"
+        )
+        expected_label = (
+            chapter6_section_label(expected_key)
+            or str(route.get("photo_section_title") or expected_key)
+        )
+        warnings.append(
+            f"{caption_text_by_num.get(caption_num, f'图6.{caption_num}')}："
+            f"照片当前放在 {actual_label}，应在 {expected_label}"
+            f"（路由依据：{route.get('routing_reason') or 'equipment_route'}）"
+        )
+    return warnings
 
 
-def pick_ch6_photo(desc: str, images, used: set, equipment=None):
-    """第6章设备照：图注（设备名）→ 设备照片池按文件名匹配。
+def pick_ch6_photo_details(desc: str, images, used: set, equipment=None):
+    """第6章设备照：字段图注 → 对应上传字段的 file_id。
 
-    规则（2026-10-21）：每个合并后的设备表行 1 张图，图注=设备名；
-    优先文件名主干与图注完全相同，其次互相包含；只用设备类照片，
-    建筑外观/计量器具不参与。
+    优先精确命中“设备名+字段名”，再兼容旧图注“设备名”。同名图注
+    按附件顺序逐条消费第一张尚未使用的可用照片；文件名匹配只作旧数据兜底。
     """
     key = re.sub(r"\s+", "", desc or "")
     if not key:
-        return ""
+        return {}
     pool = [(im, str(im.get("path") or "")) for im in images
             if normalize_photo_category(im.get("category")) in CH6_DEVICE_CATS]
     by_file_id = _images_by_file_id(images)
 
-    # ① 设备台账 img_ids → 采集照片 file_id。文件 ID 是稳定关联键，
-    # 优先于文件名/分类猜测；平台多个附件同名时尤其必要。
     key_desc = _photo_name_key(desc)
-    matched_eqs = []
-    for eq in equipment or []:
-        eq_key = _photo_name_key(eq.get("name"))
-        if not eq_key:
-            continue
-        if eq_key == key_desc:
-            matched_eqs.insert(0, eq)
-        elif key_desc and (eq_key in key_desc or key_desc in eq_key):
-            matched_eqs.append(eq)
-    for eq in matched_eqs:
-        for fid in _img_ids(eq):
+    contracts = _ch6_photo_contracts(equipment)
+    exact = [
+        item for item in contracts
+        if _photo_name_key(item["caption_label"]) == key_desc
+    ]
+    legacy = [
+        item for item in contracts
+        if item["field"] == "img_ids"
+        and _photo_name_key(item["name"]) == key_desc
+    ]
+    matched = sorted(
+        exact or legacy,
+        key=lambda item: int(item.get("attachment_index") or 0),
+    )
+    for contract in matched:
+        for fid in contract["ids"]:
             im = by_file_id.get(fid)
             p = str((im or {}).get("path") or "")
             if not p or not os.path.isfile(p):
                 continue
             if p not in used:
-                return p
+                route = {
+                    key: str(contract["equipment"].get(key) or "").strip()
+                    for key in (
+                        "equipment_section_key",
+                        "equipment_section_title",
+                        "photo_section_key",
+                        "photo_section_title",
+                        "routing_reason",
+                    )
+                }
+                return {
+                    "src": p,
+                    "file_id": fid,
+                    "field": contract["field"],
+                    "field_label": contract["field_label"],
+                    "caption_label": contract["caption_label"],
+                    "binding_ref": (
+                        f"{contract['image_source_ref']}.img_fields[{contract['field']}]"
+                        if contract["field"] != "img_ids"
+                        else f"{contract['image_source_ref']}.img_ids"
+                    ),
+                    "section_route": route,
+                }
 
     def _first(match):
         for im, p in pool:
@@ -838,16 +1141,21 @@ def pick_ch6_photo(desc: str, images, used: set, equipment=None):
 
     hit = _first(lambda im, p: _stem(p) == key)          # ① 主干完全相同
     if hit:
-        return hit
+        return {"src": hit}
     hit = _first(lambda im, p: _stem(p) and (key in _stem(p) or _stem(p) in key))
     if hit:                                              # ② 互相包含
-        return hit
+        return {"src": hit}
     for cap_kw, img_kws in CH6_KEYWORDS:                # ③ 同义词关键词（不做分类兜底）
         if cap_kw in key:
             hit = _first(lambda im, p, ks=img_kws: any(k in _stem(p) for k in ks))
             if hit:
-                return hit
-    return ""
+                return {"src": hit}
+    return {}
+
+
+def pick_ch6_photo(desc: str, images, used: set, equipment=None):
+    """兼容旧调用：仅返回选中的源文件路径。"""
+    return str((pick_ch6_photo_details(desc, images, used, equipment) or {}).get("src") or "")
 
 
 def match_building(desc: str, buildings):
@@ -1032,10 +1340,16 @@ def main(argv=None) -> int:
         print(f"[错误] 缺少输入: {md2_path}")
         return 1
     images = data.get("images") or []
-    equipment = data.get("equipment") or []
+    base = data.get("base") or {}
+    equipment = _route_chapter6_equipment(
+        data.get("equipment") or [],
+        base,
+    )
+    equipment.extend(
+        chapter6_water_aux_photo_items(data.get("water_aux") or {})
+    )
     meter_photos = metering_photos(images, data.get("energy_meter") or [])
     buildings = [(b.get("name") or "").strip() for b in (data.get("buildings") or [])]
-    base = data.get("base") or {}
     unit_short = base.get("unit_short") or base.get("unit_name") or "单位"
     saving = data.get("energy_saving") or []
 
@@ -1043,6 +1357,11 @@ def main(argv=None) -> int:
     caps3 = parse_captions(md3_path, "3") if os.path.isfile(md3_path) else []
     caps4 = parse_captions(md4_path, "4") if os.path.isfile(md4_path) else []
     caps6 = parse_captions(md6_path, "6") if os.path.isfile(md6_path) else []
+    section_captions = (
+        parse_caption_sections(md6_path, "6")
+        if os.path.isfile(md6_path)
+        else []
+    )
     table_device_names = parse_md_device_names(md6_path)
     if not caps2 and not caps3 and not caps4 and not caps6 and not meter_photos:
         print(f"[错误] {md2_path} / {md3_path} / {md4_path} / {md6_path} 里都没有 "
@@ -1062,15 +1381,28 @@ def main(argv=None) -> int:
     used3 = set()
     used4 = set()
     used6 = set()
-    photo_gaps = equipment_caption_gaps(
+    coverage = equipment_caption_coverage(
         equipment, caps6, images, table_names=table_device_names
     )
-    if photo_gaps:
+    if coverage["missing_captions"]:
         warnings.append(
-            "第6章设备配图覆盖不足：以下有 img_ids 的设备没有对应图注："
-            + "、".join(photo_gaps)
-            + "。请按设备名补写 `图6.N 设备名` 后重跑"
+            "第6章设备配图覆盖不足：以下图片槽位没有对应图注："
+            + "、".join(coverage["missing_captions"])
         )
+    if coverage["missing_local_files"]:
+        warnings.append(
+            "第6章附件已登记但本地文件缺失，对应图注暂不能归置："
+            + "、".join(coverage["missing_local_files"])
+        )
+    warnings.extend(equipment_caption_section_warnings(
+        equipment,
+        caps6,
+        section_captions,
+        unit_func=str(base.get("unit_func") or ""),
+        children_func=str(base.get("children_func") or ""),
+        institution_category=str(base.get("institution_category") or ""),
+        unit_name=str(base.get("unit_name") or ""),
+    ))
 
     for num, caption, desc in caps2:
         if num == 1:
@@ -1289,17 +1621,22 @@ def main(argv=None) -> int:
         )
         say(f"[第3章] 视觉核验结果：{os.path.basename(vision_checks_path)}")
 
-    # ---- 第6章：设备照片（图注=设备名；每个合并后的设备表行 1 张）----
+    # ---- 第6章：设备照片（单字段=设备名；多字段=设备名+字段名）----
     if caps6:
-        say(f"[第6章] 图注 {len(caps6)} 条，优先按设备 img_ids 匹配，文件名兜底")
+        say(f"[第6章] 图注 {len(caps6)} 条，优先按设备图片字段匹配，文件名兜底")
     for num, caption, desc in caps6:
-        src = pick_ch6_photo(desc, images, used6, equipment=equipment)
+        picked = pick_ch6_photo_details(
+            desc, images, used6, equipment=equipment
+        )
+        src = str(picked.get("src") or "")
         if not src:
-            warnings.append(f"{caption}：第6章未找到与设备名匹配的照片"
+            warnings.append(f"{caption}：第6章未找到与该图注或图片字段匹配的照片"
                             f"（可用分类：{'、'.join(sorted(CH6_DEVICE_CATS))}）")
             continue
         used6.add(src)
-        stem = f"设备_{desc}"
+        binding_label = str(picked.get("caption_label") or desc)
+        stem = f"设备_{binding_label}"
+        binding_ref = str(picked.get("binding_ref") or "equipment[].img_ids")
         if args.dry_run:
             say(f"  · {caption}  <=  {src}")
             photo_entries.append(make_photo_entry(
@@ -1309,8 +1646,10 @@ def main(argv=None) -> int:
                 source_path=src,
                 images=images,
                 kind="equipment",
-                binding_ref="equipment[].img_ids",
-                binding_label=desc,
+                binding_ref=binding_ref,
+                binding_label=binding_label,
+                file_id=picked.get("file_id"),
+                section_route=picked.get("section_route"),
             ))
             continue
         rel = place(pdir, src, stem, args.force, copy_cache, say)
@@ -1322,8 +1661,10 @@ def main(argv=None) -> int:
                 source_path=src,
                 images=images,
                 kind="equipment",
-                binding_ref="equipment[].img_ids",
-                binding_label=desc,
+                binding_ref=binding_ref,
+                binding_label=binding_label,
+                file_id=picked.get("file_id"),
+                section_route=picked.get("section_route"),
             ))
 
     if pool_total and not caps3:

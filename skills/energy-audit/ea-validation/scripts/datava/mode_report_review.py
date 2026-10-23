@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .common import (
     SEV_P0,
@@ -107,6 +108,39 @@ FMT_H2 = {"font": "宋体", "size": 14.0, "bold": True, "align": 0}
 FMT_H3 = {"font": "宋体", "size": 12.0, "bold": True, "align": 0}
 TABLE_ROW_HEIGHT_EMU = 363600  # Cm(1.01)
 TABLE_ROW_HEIGHT_TOL = 12000
+
+
+def _load_chapter6_router():
+    """加载仓库内唯一路由与附件槽位契约；缺失时由快照字段兜底。"""
+    here = Path(__file__).resolve()
+    candidates = [
+        parent / "tools" / "energy_audit" / "project_data.py"
+        for parent in here.parents
+    ]
+    candidates.append(
+        Path.cwd() / "tools" / "energy_audit" / "project_data.py"
+    )
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        spec = importlib.util.spec_from_file_location(
+            "report_review_chapter6_project_data",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        router = getattr(module, "chapter6_route_for_equipment", None)
+        photo_slots = getattr(module, "equipment_photo_slots", None)
+        if callable(router):
+            return router, photo_slots if callable(photo_slots) else None
+    return None, None
+
+
+_CHAPTER6_ROUTER, _EQUIPMENT_PHOTO_SLOTS = _load_chapter6_router()
 
 _CN_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
@@ -729,10 +763,24 @@ CH6_PUBLIC_INSTITUTION_SYSTEM_ORDER = (
     ("空调与供暖", ("空调与供暖", "空调及供暖", "供暖空调")),
     ("照明", ("照明",)),
     ("办公设备", ("办公设备", "办公")),
-    ("特殊用能", ("特殊用能",)),
+    ("信息机房", ("信息机房", "数据中心")),
+    ("医疗设备", ("医疗设备",)),
     ("变配电", ("变配电",)),
     ("其他用电设备", ("其他用电设备",)),
 )
+
+CH6_PHOTO_SECTION_MATCHERS = (
+    ("water_system", ("用水系统", "用水")),
+    ("gas_system", ("用燃气系统", "燃气系统")),
+    ("information_room", ("信息机房", "数据中心")),
+    ("medical_equipment", ("医疗设备",)),
+    ("air_heating", ("空调与供暖", "空调及供暖", "供暖空调", "空调系统")),
+    ("lighting", ("照明系统", "照明")),
+    ("office", ("办公设备",)),
+    ("substation", ("变配电",)),
+    ("other_energy", ("其他用电设备", "其他用能系统")),
+)
+STRICT_REVERSE_PHOTO_CATEGORIES = {"动力", "特殊设备"}
 
 
 def _chapter6_photo_name_key(text: Any) -> str:
@@ -743,11 +791,61 @@ def _chapter6_photo_name_key(text: Any) -> str:
     ).lower()
 
 
-def _chapter6_equipment_img_ids(equipment: Dict[str, Any]) -> List[str]:
-    raw = equipment.get("img_ids")
-    if isinstance(raw, (list, tuple, set)):
-        return [str(v).strip() for v in raw if str(v).strip()]
-    return re.findall(r"\d+", str(raw or ""))
+def _ea_caption_key(text: Any) -> str:
+    return re.sub(
+        r"[\s/／\\、，,。.；;：:（）()\-—_]+",
+        "",
+        str(text or ""),
+    ).lower()
+
+
+def _chapter6_photo_contracts(
+    equipment: Optional[Sequence[Dict[str, Any]]],
+    *,
+    include_unbound: bool = False,
+) -> List[Dict[str, Any]]:
+    """把一个设备展开为逐附件 ID 的图注契约。
+
+    新数据使用 ``img_fields``：单字段图注为该设备名，多字段图注为
+    “设备名 + 字段名”。同一字段的多个附件逐张生成独立契约。
+    """
+    contracts: List[Dict[str, Any]] = []
+    for item in equipment or []:
+        slots: List[Dict[str, Any]]
+        if callable(_EQUIPMENT_PHOTO_SLOTS):
+            slots = _EQUIPMENT_PHOTO_SLOTS(item)
+        else:
+            slots = []
+            raw_ids = item.get("img_ids") or []
+            if isinstance(raw_ids, str):
+                raw_ids = re.findall(r"\d+", raw_ids)
+            for index, file_id in enumerate(raw_ids):
+                slots.append({
+                    "equipment": item,
+                    "name": str(item.get("name") or "").strip(),
+                    "category": str(item.get("category") or "").strip(),
+                    "field": "img_ids",
+                    "field_label": "",
+                    "caption_label": str(item.get("name") or "").strip(),
+                    "file_id": str(file_id),
+                    "attachment_index": index,
+                    "image_source_ref": "equipment[]",
+                })
+        slots = [slot for slot in slots if slot.get("name")]
+        if include_unbound and not slots and item.get("name"):
+            slots = [{
+                "equipment": item,
+                "name": str(item.get("name") or "").strip(),
+                "category": str(item.get("category") or "").strip(),
+                "field": "img_ids",
+                "field_label": "",
+                "caption_label": str(item.get("name") or "").strip(),
+                "file_id": "",
+                "attachment_index": 0,
+                "image_source_ref": "equipment[]",
+            }]
+        contracts.extend(slots)
+    return contracts
 
 
 def _chapter6_table_device_names(blocks: Sequence["Block"]) -> List[str]:
@@ -779,36 +877,151 @@ def _missing_chapter6_photo_captions(
     images: Optional[Sequence[Dict[str, Any]]] = None,
     table_device_names: Optional[Sequence[str]] = None,
 ) -> List[str]:
-    """有设备附件、但第6章没有对应设备名图注的设备（按设备名去重）。"""
-    caption_keys = []
+    """返回已登记附件但缺少对应独立图注的项。
+
+    附件 ID 是图注槽位存在的依据；本地文件是否存在不改变该检查。
+    """
+    remaining_caption_keys = []
     for block in captions:
         match = RE_CH6_FIGURE.match(block.text)
         if match:
-            caption_keys.append(_chapter6_photo_name_key(
+            remaining_caption_keys.append(_ea_caption_key(
                 re.sub(r"^图6\.\d+\s*", "", block.text)
             ))
-    available_ids = {
-        str(image.get("file_id")).strip()
-        for image in (images or [])
-        if image.get("file_id") not in (None, "")
-    }
     table_keys = [
-        _chapter6_photo_name_key(name) for name in (table_device_names or [])
+        _ea_caption_key(name) for name in (table_device_names or [])
     ]
-    missing, seen = [], set()
-    for item in equipment or []:
-        name = str(item.get("name") or "").strip()
-        key = _chapter6_photo_name_key(name)
-        ids = _chapter6_equipment_img_ids(item)
-        if not key or key in seen or not ids or not available_ids.intersection(ids):
+    missing = []
+    for contract in _chapter6_photo_contracts(equipment):
+        name_key = _ea_caption_key(contract["name"])
+        file_id = str(contract.get("file_id") or "").strip()
+        if not name_key or not file_id:
             continue
-        if table_keys and not any(key == tk or key in tk or tk in key for tk in table_keys):
+
+        strict_reverse = (
+            contract["category"] in STRICT_REVERSE_PHOTO_CATEGORIES
+            or contract["image_source_ref"].startswith("water_aux.")
+        )
+        if (
+            not strict_reverse
+            and table_keys
+            and not any(
+                name_key == table_key
+                or name_key in table_key
+                or table_key in name_key
+                for table_key in table_keys
+            )
+        ):
             continue
-        seen.add(key)
-        if not any(key == ck or (key and ck and (key in ck or ck in key))
-                   for ck in caption_keys):
-            missing.append(name)
+
+        caption_label = contract["caption_label"]
+        caption_key = _ea_caption_key(caption_label)
+        legacy_caption = contract["field"] == "img_ids"
+        caption_index = next((
+            index
+            for index, current_key in enumerate(remaining_caption_keys)
+            if caption_key == current_key
+            or (
+                legacy_caption
+                and caption_key
+                and current_key
+                and (
+                    caption_key in current_key
+                    or current_key in caption_key
+                )
+            )
+        ), None)
+        if caption_index is None:
+            missing.append(caption_label)
+        else:
+            remaining_caption_keys.pop(caption_index)
     return missing
+
+
+def _chapter6_photo_section_mismatches(
+    blocks: Sequence["Block"],
+    equipment: Optional[Sequence[Dict[str, Any]]],
+    *,
+    base: Optional[Dict[str, Any]] = None,
+) -> List[Tuple[str, str, str]]:
+    """按项目基础信息重算当前路由，返回图注放错的小节。"""
+    project_base = base or {}
+    route_equipment = []
+    for item in equipment or []:
+        record = dict(item)
+        stored_key = str(record.get("photo_section_key") or "").strip()
+        if callable(_CHAPTER6_ROUTER):
+            canonical = _CHAPTER6_ROUTER(
+                record,
+                unit_func=str(project_base.get("unit_func") or ""),
+                children_func=str(project_base.get("children_func") or ""),
+                institution_category=str(
+                    project_base.get("institution_category") or ""
+                ),
+                unit_name=str(project_base.get("unit_name") or ""),
+            )
+            record.update(canonical)
+            stored_key = str(
+                record.get("photo_section_key") or ""
+            ).strip()
+        if stored_key:
+            route_equipment.append(record)
+    if not route_equipment:
+        return []
+
+    def actual_section(caption_index: int) -> Tuple[str, str]:
+        for block in reversed(blocks[:caption_index]):
+            if block.kind != "p":
+                continue
+            text = block.text.strip()
+            if not (
+                RE_CH6_SECTION.match(text)
+                or RE_CH6_SUBSECTION.match(text)
+            ):
+                continue
+            for key, labels in CH6_PHOTO_SECTION_MATCHERS:
+                if any(label in text for label in labels):
+                    return key, text
+        return "", ""
+
+    mismatches = []
+    caption_indexes = [
+        index for index, block in enumerate(blocks)
+        if block.kind == "p" and RE_CH6_FIGURE.match(block.text)
+    ]
+    consumed_caption_indexes = set()
+    for contract in _chapter6_photo_contracts(
+        route_equipment,
+        include_unbound=True,
+    ):
+        expected_key = str(
+            contract.get("equipment", {}).get("photo_section_key") or ""
+        ).strip()
+        target_key = _ea_caption_key(contract["caption_label"])
+        name_key = _ea_caption_key(contract["name"])
+        caption_index = next((
+            index for index in caption_indexes
+            if index not in consumed_caption_indexes
+            if (
+                target_key in _ea_caption_key(blocks[index].text)
+                or name_key in _ea_caption_key(blocks[index].text)
+            )
+        ), None)
+        if caption_index is None or not expected_key:
+            continue
+        consumed_caption_indexes.add(caption_index)
+        actual_key, actual_text = actual_section(caption_index)
+        if not actual_key or actual_key == expected_key:
+            continue
+        expected_title = str(
+            contract.get("equipment", {}).get("photo_section_title") or expected_key
+        ).strip()
+        mismatches.append((
+            blocks[caption_index].text.strip(),
+            actual_text,
+            expected_title,
+        ))
+    return mismatches
 
 
 def check_chapter6_structure(
@@ -817,13 +1030,15 @@ def check_chapter6_structure(
     public_institution: bool = False,
     equipment: Optional[Sequence[Dict[str, Any]]] = None,
     images: Optional[Sequence[Dict[str, Any]]] = None,
+    base: Optional[Dict[str, Any]] = None,
 ) -> List[Finding]:
     """第6章结构/内容/措辞检查（2026-10-21 重构，P1 只告警）。
 
     结构权威：`ea-authoring/references/chapter-guides-6-8.md`《第6章》。
     检查：章标题、主干齐全与编号连续、6.1 动态小节与总述、每节三段、
     公共机构分系统顺序与变配电专表、设备表列头、禁词与平台语言、
-    第5章图表引用、图注与图片数量。公共建筑继续使用通用设备表规则。
+    第5章图表引用、图注与图片数量。项目 ``base`` 用于按当前规则
+    重算旧快照路由；公共建筑继续使用通用设备表规则。
     """
     # 目录条目会继承"第6章"的 chapter 标记（形如「6.1 …\t41」），必须先剔除
     ch6 = [b for b in blocks
@@ -1010,10 +1225,27 @@ def check_chapter6_structure(
         add(
             "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE",
             "第6章设备配图覆盖不足",
-            "以下设备有 img_ids，但报告中没有 `图6.N 设备名`："
+            "以下图片附件在报告中没有独立图注："
             + "、".join(missing_photo_captions),
-            "每个有 img_ids 的设备行各写一条设备图注",
+            "每个附件各写一条；单字段写设备名，多字段逐张写“设备名+字段名”",
             f"缺 {len(missing_photo_captions)} 项",
+        )
+
+    section_mismatches = _chapter6_photo_section_mismatches(
+        ch6,
+        equipment,
+        base=base,
+    )
+    if section_mismatches:
+        add(
+            "V3.STRUCT.CHAPTER6_PHOTO_SECTION",
+            "第6章照片放错系统小节",
+            "；".join(
+                f"{caption} 当前在「{actual}」，应在「{expected}」"
+                for caption, actual, expected in section_mismatches
+            ),
+            "照片图注应位于设备路由指定的 6.x 系统小节",
+            f"错位 {len(section_mismatches)} 条",
         )
 
     return findings
@@ -2082,6 +2314,7 @@ def run(
         public_institution=str(base.get("unit_type", "")).strip() == "公共机构",
         equipment=((raw or {}).get("equipment") or []),
         images=((raw or {}).get("images") or []),
+        base=base,
     )
     findings += check_chapter5_figures(blocks)
     findings += check_chapter7_structure(

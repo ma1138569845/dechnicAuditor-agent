@@ -10,6 +10,11 @@ import psycopg2.extras
 from typing import Dict, List
 
 from .db_config import get_pg_config
+from .project_data import (
+    equipment_display_name,
+    extract_equipment_image_fields,
+    special_power_summary,
+)
 
 
 
@@ -561,6 +566,10 @@ class PgDataQuery:
         """ts_institution_device_td — 输配设备（冷冻水泵/冷却塔等）。"""
         return self._get_device_by_table("ts_institution_device_td", customer_id)
 
+    def get_device_terminal(self, customer_id: int = None) -> List[Dict]:
+        """ts_institution_device_terminal — 空调/供暖末端设备。"""
+        return self._get_device_by_table("ts_institution_device_terminal", customer_id)
+
     @staticmethod
     def _select_latest_device_versions(
         rows: List[Dict],
@@ -708,6 +717,7 @@ class PgDataQuery:
             "特殊设备": self.get_device_special(customer_id),
             "蒸汽": self.get_device_steam(customer_id),
             "输配设备": self.get_device_td(customer_id),
+            "末端设备": self.get_device_terminal(customer_id),
             "变配电": self.get_device_substation(customer_id),
         }
 
@@ -741,7 +751,7 @@ class PgDataQuery:
         """把单条设备原始记录格式化为设备清单字段（含独立计量，表无该列则为空）。"""
         if category == '变配电':
             return PgDataQuery._fmt_substation(record)
-        name = record.get('device_name') or '未命名'
+        name = equipment_display_name(record, category)
         quantity = 0
         for qkey in ('device_num', 'use_num', 'quantity'):
             if record.get(qkey) is not None:
@@ -817,17 +827,20 @@ class PgDataQuery:
                 water_use[wk] = str(record.get(wk)).strip()
 
         # 图片列（各设备分表命名不一：device_img/system_img/fan_img/tower_img/
-        # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）
-        img_ids = []
-        for k, v in record.items():
-            if k.endswith('_img') and v:
-                for fid in str(v).replace('，', ',').split(','):
-                    fid = fid.strip()
-                    if fid:
-                        try:
-                            img_ids.append(int(fid))  # int：ts_attachment.group_id 为 bigint
-                        except ValueError:
-                            img_ids.append(fid)
+        # motor_img/pump_img/water_pump_img/air_pump_img/heat_change_img）。
+        # img_ids 保持旧契约；img_fields 额外保留字段来源和数据库顺序，
+        # 供第6章多上传字段生成“设备名+字段名”图注。
+        img_ids, img_fields = extract_equipment_image_fields(record, category)
+        special_power = (
+            special_power_summary(record)
+            if category == '特殊设备'
+            else {
+                'power_unit': '',
+                'power_components': [],
+                'total_power_kw': None,
+                'routing_power_error': '',
+            }
+        )
 
         return {
             'name': name,
@@ -837,6 +850,7 @@ class PgDataQuery:
             'frequency_control': freq,
             'control_mode': control,
             'img_ids': img_ids,
+            'img_fields': img_fields,
             'independent_metering': metering,
             'independent_metering_desc': str(record['metering_desc']).strip()
             if record.get('metering_desc') else '',
@@ -850,6 +864,17 @@ class PgDataQuery:
             **special_use,
             # 第6章用水判定（生活水泵配置 / 补水装置对应冷热源）
             **water_use,
+            # 第6章特殊设备功率透明度（数量 × 单机功率；单位不明时总功率为空）
+            'other_device_name': str(record.get('other_device_name') or '').strip(),
+            'server_num': record.get('server_num'),
+            'server_power': record.get('server_power'),
+            'network_num': record.get('network_num'),
+            'network_power': record.get('network_power'),
+            'storage_num': record.get('storage_num'),
+            'storage_power': record.get('storage_power'),
+            'air_num': record.get('air_num'),
+            'air_power': record.get('air_power'),
+            **special_power,
         }
 
     @staticmethod
@@ -952,6 +977,7 @@ class PgDataQuery:
             'frequency_control': '',
             'control_mode': '',
             'img_ids': [],
+            'img_fields': [],
             'independent_metering': '',
             'independent_metering_desc': '',
             'independent_metering_ratio': '',

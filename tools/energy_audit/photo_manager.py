@@ -39,7 +39,7 @@ PHOTO_REQUIREMENTS = {
         ('医疗设备', 'CT/X射线等医疗专用设备', 'chapter6.images.special'),
         ('特殊设备', '无法细分用途的特殊设备', 'chapter6.images.special'),
         ('变压器/配电', '变压器室、配电柜等', 'chapter6.images.transformer'),
-        ('水泵/水箱', '生活水泵、消防水箱等', 'chapter6.images.water'),
+        ('水泵/水箱', '生活水泵、消防水箱等', 'chapter6.images.other_energy'),
         ('厨房设备', '燃气灶具、消毒柜等', 'chapter6.images.other_energy'),
     ],
     '第7章': [

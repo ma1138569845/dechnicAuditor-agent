@@ -1260,7 +1260,7 @@ class ReportGenerator:
                        for eq in project.equipment]
             rd['chapter6'] = ch6 = rd.get('chapter6', {}) or {}
             ch6['_equipment'] = eq_list
-            # 第6章设备照片：按系统分组；兼容旧版顶层 images_equipment 消费方（顺序: 制冷→照明→变配电→水泵→厨房）
+            # 第6章设备照片：按系统分组；兼容旧版顶层 images_equipment 消费方。
             _eq_imgs = _chapter_imgs(
                 '制冷设备', '照明设备', '办公设备', '信息机房', '医疗设备',
                 '特殊设备', '其他用电设备', '变压器/配电', '水泵/水箱',
@@ -1276,9 +1276,10 @@ class ReportGenerator:
                         '信息机房', '医疗设备', '特殊设备', prefix='图6'
                     ),
                     'transformer': _chapter_imgs('变压器/配电', prefix='图6'),
-                    'water': _chapter_imgs('水泵/水箱', prefix='图6'),
+                    # 兼容旧版消费键，但生活水泵不得进入 6.2 用水系统。
+                    'water': [],
                     'other_energy': _chapter_imgs(
-                        '其他用电设备', '厨房设备', prefix='图6'
+                        '其他用电设备', '厨房设备', '水泵/水箱', prefix='图6'
                     ),
                 }
 

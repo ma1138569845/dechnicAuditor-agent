@@ -100,6 +100,47 @@ class PhotoCatalogTests(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(PHOTO_CATALOG, "缺少写作前照片事实目录模块")
 
+    def test_water_aux_photo_binding_targets_the_water_system_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = root / "greening.png"
+            image.write_bytes(b"greening-irrigation")
+            data = {
+                "images": [{
+                    "path": str(image),
+                    "file_id": 701,
+                    "category": "用水设施",
+                }],
+                "water_aux": {
+                    "greening": [{
+                        "irrigation_type": "自动喷灌",
+                        "img_ids": [701],
+                        "img_fields": [{
+                            "field": "device_img",
+                            "label": "设备图片",
+                            "ids": [701],
+                        }],
+                    }],
+                },
+            }
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+
+            binding = next(
+                item
+                for item in catalog["candidates"][0]["bindings"]
+                if item["kind"] == "equipment"
+            )
+            self.assertEqual(
+                binding["ref"],
+                "water_aux.greening[].img_fields[device_img]",
+            )
+            self.assertEqual(binding["photo_section_title"], "用水系统")
+            self.assertEqual(
+                catalog["candidates"][0]["suggested_caption"],
+                "图6.N 绿化灌溉设施",
+            )
+
     def test_catalog_aggregates_bindings_and_reuses_visual_by_content_hash(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -438,6 +479,300 @@ class PhotoCatalogContextTests(unittest.TestCase):
             )
             self.assertEqual(len(catalog["candidates"]), 1)
             self.assertEqual(catalog["candidates"][0]["file_id"], "202")
+
+    def test_equipment_field_labels_reach_catalog_and_writing_contract(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            overall = root / "pump-overall.png"
+            motor = root / "pump-motor.png"
+            overall.write_bytes(b"overall")
+            motor.write_bytes(b"motor")
+            data = {
+                "base": {"unit_name": "测试单位"},
+                "images": [
+                    {
+                        "path": str(overall),
+                        "file_id": 401,
+                        "category": "制冷设备",
+                    },
+                    {
+                        "path": str(motor),
+                        "file_id": 402,
+                        "category": "制冷设备",
+                    },
+                ],
+                "equipment": [{
+                    "name": "冷冻水泵",
+                    "category": "输配设备",
+                    "img_ids": [401, 402],
+                    "img_fields": [
+                        {
+                            "field": "device_img",
+                            "label": "设备整体图片",
+                            "ids": [401],
+                        },
+                        {
+                            "field": "motor_img",
+                            "label": "电机铭牌图片",
+                            "ids": [402],
+                        },
+                    ],
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTOS.build_photo_catalog(data, root)
+            by_id = {
+                item["file_id"]: item
+                for item in catalog["candidates"]
+            }
+            self.assertEqual(
+                by_id["401"]["suggested_caption"],
+                "图6.N 冷冻水泵设备整体图片",
+            )
+            self.assertEqual(
+                by_id["402"]["suggested_caption"],
+                "图6.N 冷冻水泵电机铭牌图片",
+            )
+            self.assertIn(
+                "equipment[].img_fields[motor_img]",
+                {
+                    binding["ref"]
+                    for binding in by_id["402"]["bindings"]
+                },
+            )
+
+            rc = WRITING_CONTEXT.main([str(root), "--quiet"])
+            self.assertEqual(rc, 0)
+            context = (root / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("冷冻水泵设备整体图片", context)
+            self.assertIn("冷冻水泵电机铭牌图片", context)
+
+    def test_equipment_binding_and_writing_contract_carry_target_section(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = root / "boiler.png"
+            image.write_bytes(b"gas-boiler")
+            data = {
+                "base": {
+                    "unit_name": "测试人民医院",
+                    "unit_short": "人民医院",
+                    "unit_func": "C",
+                    "children_func": "B",
+                },
+                "images": [{
+                    "path": str(image),
+                    "file_id": 501,
+                    "category": "燃气设备",
+                }],
+                "equipment": [{
+                    "name": "燃气蒸汽锅炉",
+                    "category": "蒸汽",
+                    "img_ids": [501],
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+            binding = next(
+                item
+                for item in catalog["candidates"][0]["bindings"]
+                if item["kind"] == "equipment"
+            )
+            self.assertEqual(binding["equipment_section_title"], "用燃气系统")
+            self.assertEqual(binding["photo_section_title"], "用燃气系统")
+            self.assertEqual(binding["routing_reason"], "gas_equipment")
+
+            rc = WRITING_CONTEXT.main([str(root), "--quiet"])
+            self.assertEqual(rc, 0)
+            context = (root / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("燃气蒸汽锅炉", context)
+            self.assertIn("6.4 用燃气系统", context)
+
+    def test_stale_routes_recompute_from_recorded_combustion(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = root / "absorption.png"
+            image.write_bytes(b"gas-absorption")
+            data = {
+                "base": {
+                    "unit_name": "测试人民医院",
+                    "unit_short": "人民医院",
+                    "unit_func": "C",
+                    "children_func": "B",
+                },
+                "images": [{
+                    "path": str(image),
+                    "file_id": 511,
+                    "category": "燃气设备",
+                }],
+                "equipment": [{
+                    "name": "吸收式溴化锂机组",
+                    "category": "空调",
+                    "gas_value": 1200,
+                    "img_ids": [511],
+                    "equipment_section_key": "air_heating",
+                    "equipment_section_title": "空调与供暖系统",
+                    "photo_section_key": "air_heating",
+                    "photo_section_title": "空调与供暖系统",
+                    "routing_reason": "空调_equipment",
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+            binding = next(
+                item
+                for item in catalog["candidates"][0]["bindings"]
+                if item["kind"] == "equipment"
+            )
+            self.assertEqual(binding["equipment_section_title"], "用燃气系统")
+            self.assertEqual(binding["photo_section_title"], "用燃气系统")
+            self.assertEqual(
+                binding["routing_reason"],
+                "recorded_combustion_equipment",
+            )
+
+            rc = WRITING_CONTEXT.main([str(root), "--quiet"])
+            self.assertEqual(rc, 0)
+            context = (root / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("吸收式溴化锂机组", context)
+            self.assertIn("6.4 用燃气系统", context)
+            self.assertNotIn(
+                "吸收式溴化锂机组\t空调\t6.1 空调与供暖系统",
+                context,
+            )
+
+    def test_stale_water_pump_route_is_recomputed_to_other_electric_equipment(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = root / "water-pump.png"
+            image.write_bytes(b"domestic-water-pump")
+            data = {
+                "base": {
+                    "unit_name": "测试人民医院",
+                    "unit_short": "人民医院",
+                },
+                "images": [{
+                    "path": str(image),
+                    "file_id": 520,
+                    "category": "水泵/水箱",
+                }],
+                "equipment": [{
+                    "name": "生活水泵",
+                    "category": "动力",
+                    "img_ids": [520],
+                    "equipment_section_key": "other_energy",
+                    "equipment_section_title": "其他用电设备",
+                    "photo_section_key": "water_system",
+                    "photo_section_title": "用水系统",
+                    "routing_reason": "domestic_water_pump",
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+            binding = next(
+                item
+                for item in catalog["candidates"][0]["bindings"]
+                if item["kind"] == "equipment"
+            )
+
+            self.assertEqual(
+                binding["equipment_section_title"],
+                "其他用电设备",
+            )
+            self.assertEqual(binding["photo_section_title"], "其他用电设备")
+            self.assertEqual(binding["routing_reason"], "domestic_water_pump")
+
+    def test_hygiene_and_electric_hotwater_photos_target_water_system(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            toilet_image = root / "toilet.png"
+            heater_image = root / "heater.png"
+            toilet_image.write_bytes(b"toilet")
+            heater_image.write_bytes(b"electric-heater")
+            data = {
+                "base": {
+                    "unit_name": "测试人民医院",
+                    "unit_short": "人民医院",
+                },
+                "images": [
+                    {
+                        "path": str(toilet_image),
+                        "file_id": 601,
+                        "category": "用水设施",
+                    },
+                    {
+                        "path": str(heater_image),
+                        "file_id": 602,
+                        "category": "其他用电设备",
+                    },
+                ],
+                "equipment": [
+                    {
+                        "name": "蹲便器",
+                        "category": "卫生器具",
+                        "img_ids": [601],
+                    },
+                    {
+                        "name": "电热水器",
+                        "category": "生活热水",
+                        "img_ids": [602],
+                    },
+                ],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+            by_id = {
+                item["file_id"]: item
+                for item in catalog["candidates"]
+            }
+            toilet_binding = next(
+                item
+                for item in by_id["601"]["bindings"]
+                if item["kind"] == "equipment"
+            )
+            heater_binding = next(
+                item
+                for item in by_id["602"]["bindings"]
+                if item["kind"] == "equipment"
+            )
+            self.assertEqual(toilet_binding["equipment_section_title"], "用水系统")
+            self.assertEqual(toilet_binding["photo_section_title"], "用水系统")
+            self.assertEqual(heater_binding["equipment_section_title"], "其他用电设备")
+            self.assertEqual(heater_binding["photo_section_title"], "用水系统")
+
+            rc = WRITING_CONTEXT.main([str(root), "--quiet"])
+            self.assertEqual(rc, 0)
+            context = (root / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("蹲便器", context)
+            self.assertIn("电热水器", context)
+            self.assertIn("6.2 用水系统", context)
 
 
 class PhotoCatalogIntegrationTests(unittest.TestCase):

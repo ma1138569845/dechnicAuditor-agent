@@ -25,7 +25,8 @@ from tools.energy_audit.project_data import (
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
     normalize_photo_category, photo_category_for_equipment,
-    dedupe_image_items,
+    dedupe_image_items, extract_equipment_image_fields,
+    chapter6_route_for_equipment,
 )
 from tools.energy_audit.indicators import compute_project_indicators, COEFFICIENT_RANGES
 from tools.energy_audit.institution_classifier import classify_institution
@@ -86,6 +87,24 @@ def collect_from_pg(project_name: str, version_code: str | None = None) -> Dict[
     pg.connect()
     try:
         result = _collect_from_pg_impl(pg, project_name)
+        found = result.get('found', {})
+        customer = found.get('customer_info', {}) or {}
+        project = found.get('project', {}) or {}
+        unit_name = project.get('unit_name') or project_name
+        classified_cat, _ = classify_institution(unit_name)
+        unit_func = str(customer.get('customer_func') or '').strip().upper()
+        children_func = str(customer.get('children_func') or '').strip().upper()
+        dict_cat, _ = _classify_from_codes(unit_func, children_func)
+        institution_category = dict_cat or (
+            classified_cat if classified_cat != '未分类' else ''
+        )
+        found['equipment'] = _with_chapter6_routes(
+            found.get('equipment', []),
+            unit_func=unit_func,
+            children_func=children_func,
+            institution_category=institution_category,
+            unit_name=unit_name,
+        )
         result["version_code"] = pg.version_code
         return result
     finally:
@@ -155,6 +174,7 @@ def collect_water_aux(pg, customer_id, result: Dict[str, Any]) -> None:
             result['missing'].append(f'附属用水登记·{label}读取失败（{exc}）')
         kept = []
         for r in rows:
+            img_ids, img_fields = extract_equipment_image_fields(r, '用水设施')
             item = {
                 'irrigation_type': (str(r.get('irrigation_type') or '')).strip(),
                 'irrigation_source': (str(r.get('irrigation_source') or '')).strip(),
@@ -165,6 +185,8 @@ def collect_water_aux(pg, customer_id, result: Dict[str, Any]) -> None:
                 # 单独计量（0/1；None=未登记）——7.1.1 厨房/空调供暖/灌溉分项判定
                 'is_metering': r.get('is_metering'),
                 'desc': (str(r.get('other_desc') or '')).strip(),
+                'img_ids': img_ids,
+                'img_fields': img_fields,
             }
             if not any(_water_field_ok(item[k]) for k in
                        ('irrigation_type', 'irrigation_source', 'water_system', 'water_type')):
@@ -1184,6 +1206,13 @@ def build_and_save_project(
     if pg_unit_func and not dict_cat:
         print(f"[datacollection v2] ⚠️ 平台单位类型码 customer_func={pg_unit_func!r} 未在字典中，"
               f"已回退单位名分类器（请复核 tools/energy_audit/dept_dict.py）")
+    pg_equipment = _with_chapter6_routes(
+        pg_equipment,
+        unit_func=pg_unit_func,
+        children_func=pg_children_func,
+        institution_category=pg_institution_category,
+        unit_name=unit_for_class,
+    )
 
     # ---- 图片采集：单位整体外观（scene_img_id）/ 建筑外观（build_img）/ 计量器具照片（device_img）----
     # file id → ts_attachment.attach_url → base_url 拼接 → 下载到 reports/attachments/
@@ -1227,18 +1256,26 @@ def build_and_save_project(
                 _period = _img.get('period_name') or _img.get('period_code') or ''
                 _photo_id_map.append((fid, '缴费发票', f"{_type_cn} {_period}".strip(), ''))
     for eq in pg_result['found'].get('equipment', []) or []:
-        _cat = photo_category_for_equipment(
-            eq.get('category') or '',
-            name=eq.get('name') or '',
-            spec=eq.get('spec') or '',
-            use_type=eq.get('use_type') or '',
-            location=eq.get('location') or '',
-            remark=eq.get('remark') or '',
+        _cat = (
+            eq.get('photo_category')
+            or photo_category_for_equipment(
+                eq.get('category') or '',
+                name=eq.get('name') or '',
+                spec=eq.get('spec') or '',
+                use_type=eq.get('use_type') or '',
+                location=eq.get('location') or '',
+                remark=eq.get('remark') or '',
+            )
         )
         if not _cat:
             continue
         for fid in (eq.get('img_ids') or []):
             _photo_id_map.append((fid, _cat, '', ''))
+    # 6.2 用水设施照片：绿化/其他/道路冲洗三表现已保留 device_img 等字段。
+    for _items in (pg_result['found'].get('water_aux', {}) or {}).values():
+        for _item in _items or []:
+            for fid in (_item.get('img_ids') or []):
+                _photo_id_map.append((fid, '用水设施', '', ''))
     if _photo_id_map:
         _atts = resolve_attachment_urls([fid for fid, *_ in _photo_id_map])
         _path_by_id = {}
@@ -1456,7 +1493,16 @@ def build_and_save_project(
         buildings=_merge_buildings(pg_buildings, excel_data.get('buildings', [])),
         energy_yearly=_yearly,
         energy_monthly=_expand_energy_monthly(_yearly),
-        equipment=_merge_equipment(pg_equipment, excel_data.get('equipment', [])),
+        equipment=_merge_equipment(
+            pg_equipment,
+            _with_chapter6_routes(
+                excel_data.get('equipment', []),
+                unit_func=pg_unit_func,
+                children_func=pg_children_func,
+                institution_category=pg_institution_category,
+                unit_name=unit_for_class,
+            ),
+        ),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
         energy_saving=_merge_energy_saving(pg_energy_saving, excel_data.get('energy_saving', [])),
@@ -1681,22 +1727,121 @@ def _attach_energy_anomalies(yearly_list: List[EnergyYearly], rows: List[dict]) 
     return total
 
 
+def _with_chapter6_routes(
+    equipment: List[dict],
+    *,
+    unit_func: str = '',
+    children_func: str = '',
+    institution_category: str = '',
+    unit_name: str = '',
+) -> List[dict]:
+    """给每条设备写入唯一的设备事实小节和照片目标小节。"""
+    routed: List[dict] = []
+    for item in equipment or []:
+        record = dict(item)
+        record.update(chapter6_route_for_equipment(
+            record,
+            unit_func=unit_func,
+            children_func=children_func,
+            institution_category=institution_category,
+            unit_name=unit_name,
+        ))
+        routed.append(record)
+    return routed
+
+
+def _merge_equipment_media(target: dict, incoming: dict) -> None:
+    """把后来源的附件并入前来源，不覆盖前来源已有事实。"""
+    def _file_ids(value: Any) -> List[str]:
+        if isinstance(value, (list, tuple, set)):
+            return [
+                str(item).strip()
+                for item in value
+                if str(item).strip()
+            ]
+        return [
+            item
+            for item in re.split(r'[,，;；\s]+', str(value or '').strip('[]'))
+            if item.strip()
+        ]
+
+    target_ids = _file_ids(target.get('img_ids'))
+    for file_id in _file_ids(incoming.get('img_ids')):
+        if file_id not in target_ids:
+            target_ids.append(file_id)
+    if target_ids:
+        target['img_ids'] = target_ids
+
+    target_fields = [
+        dict(item)
+        for item in (target.get('img_fields') or [])
+        if isinstance(item, dict)
+    ]
+    for raw_field in incoming.get('img_fields') or []:
+        if not isinstance(raw_field, dict):
+            continue
+        field = str(raw_field.get('field') or 'img_ids').strip()
+        label = str(raw_field.get('label') or '').strip()
+        ids = _file_ids(raw_field.get('ids'))
+        existing = next((
+            item for item in target_fields
+            if str(item.get('field') or '') == field
+        ), None)
+        if existing is None:
+            target_fields.append({
+                'field': field,
+                'label': label,
+                'ids': ids,
+            })
+            continue
+        existing_ids = _file_ids(existing.get('ids'))
+        for file_id in ids:
+            if file_id not in existing_ids:
+                existing_ids.append(file_id)
+        existing['ids'] = existing_ids
+    if target_fields:
+        target['img_fields'] = target_fields
+
+    for key, value in incoming.items():
+        if key in ('img_ids', 'img_fields'):
+            continue
+        if key not in target or target.get(key) in (None, '', [], {}):
+            target[key] = value
+
+
+def _equipment_merge_key(record: dict) -> Tuple[str, str]:
+    return (
+        re.sub(r"\s+", "", str(record.get("category") or "")).casefold(),
+        re.sub(r"\s+", "", str(record.get("name") or "")).casefold(),
+    )
+
+
 def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
-    """多源设备合并。同名同类同规格保留先出现的来源（PG 优先于 Excel）。"""
-    seen = set()
-    result = []
-    for src in sources:
-        for e in src:
-            key = (
-                e.get('category') or '',
-                e.get('name') or '',
-                e.get('spec') or '',
-            )
-            if key in seen:
+    """同源重复行全部保留；跨源同名同类按出现顺序 nth-to-nth 合并附件。"""
+    merged: List[dict] = []
+    created_source: List[int] = []
+    for source_index, source in enumerate(sources):
+        prior_by_key: Dict[Tuple[str, str], List[int]] = {}
+        for index, record in enumerate(merged):
+            if created_source[index] < source_index:
+                prior_by_key.setdefault(
+                    _equipment_merge_key(record),
+                    [],
+                ).append(index)
+
+        occurrences: Dict[Tuple[str, str], int] = {}
+        for raw in source or []:
+            incoming = dict(raw)
+            key = _equipment_merge_key(incoming)
+            occurrence = occurrences.get(key, 0)
+            occurrences[key] = occurrence + 1
+            candidates = prior_by_key.get(key, [])
+            if occurrence < len(candidates):
+                _merge_equipment_media(merged[candidates[occurrence]], incoming)
                 continue
-            seen.add(key)
-            result.append(_dataclass_from_dict(Equipment, e))
-    return result
+            merged.append(incoming)
+            created_source.append(source_index)
+    return [_dataclass_from_dict(Equipment, item) for item in merged]
 
 
 def _fill_meter_counts(metering: dict, energy_meter: List[dict]) -> dict:

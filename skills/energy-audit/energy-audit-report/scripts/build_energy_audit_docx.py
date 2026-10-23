@@ -44,6 +44,7 @@ T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页�
 交付基准: 烟台经开区法院 45 页终稿（2026-09）
 """
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -1346,6 +1347,62 @@ def _render_appendix(doc, project_dir, ctx):
     _render_md(doc, path, ctx, appendix=True)
 
 
+def _fill_missing_dict(target, source):
+    """只补空值，不覆盖项目当前数据。"""
+    if not isinstance(target, dict) or not isinstance(source, dict):
+        return
+    for key, value in source.items():
+        if key not in target or target[key] in (None, "", [], {}):
+            target[key] = value
+        elif isinstance(target[key], dict) and isinstance(value, dict):
+            _fill_missing_dict(target[key], value)
+
+
+def _load_report_data(project_dir):
+    """读取项目元数据；主数据被摘要覆盖时，从邻近备份补齐缺失字段。
+
+    交付断言文件曾被误配到 data.json，导致完整项目数据被很小的检查摘要覆盖。
+    装配器不应因此输出“××单位”和空白机构信息表，也不能擅自改写 data.json。
+    这里以当前文件为主，按修改时间从新到旧，仅用 data.json.bak-* 补空字段。
+    """
+    data_path = os.path.join(project_dir, "data.json")
+    with open(data_path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"data.json 顶层必须是对象: {data_path}")
+
+    candidates = sorted(
+        (
+            path for path in glob.glob(os.path.join(project_dir, "data.json.bak-*"))
+            if os.path.isfile(path)
+        ),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        try:
+            with open(candidate, encoding="utf-8") as f:
+                backup = json.load(f)
+        except (OSError, ValueError) as exc:
+            print(f"WARN: 跳过不可读数据备份 {candidate}: {exc}")
+            continue
+        _fill_missing_dict(data, backup)
+
+    base = data.setdefault("base", {})
+    if not isinstance(base, dict):
+        base = {}
+        data["base"] = base
+    unit = (
+        str(base.get("unit_name") or "").strip()
+        or str(base.get("entrust_unit") or "").strip()
+        or os.path.basename(os.path.normpath(project_dir))
+    )
+    base["unit_name"] = unit
+    if not base.get("audit_org_name") and base.get("auditor"):
+        base["audit_org_name"] = base["auditor"]
+    return data
+
+
 def _info_rows(base, data):
     institution = [
         ["机构名称", base.get("audit_org_name") or ""],
@@ -1369,8 +1426,7 @@ def _info_rows(base, data):
 
 
 def build(project_dir, out_path=None, figure_policy="placeholder"):
-    with open(os.path.join(project_dir, "data.json"), encoding="utf-8") as f:
-        data = json.load(f)
+    data = _load_report_data(project_dir)
     strict = figure_policy == "strict"
     figure_validation = _validate_chapter5_figures(project_dir, strict=False)
     issue_payload = {
@@ -1395,8 +1451,8 @@ def build(project_dir, out_path=None, figure_policy="placeholder"):
         )
         raise FigureBindingError(detail)
     base = data.get("base", {})
-    unit = base.get("unit_name") or "××单位"
-    org = base.get("audit_org_name") or ""
+    unit = base.get("unit_name") or os.path.basename(os.path.normpath(project_dir))
+    org = base.get("audit_org_name") or base.get("auditor") or ""
     date_text = _resolve_cover_date(base)
 
     if not out_path:

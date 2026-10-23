@@ -783,6 +783,52 @@ def test_chapter6_public_institution_enforces_electrical_system_order():
     assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" in codes
 
 
+def test_chapter6_public_institution_order_includes_information_and_medical_rooms():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block(
+            "本项目用电系统主要包括空调与供暖系统、信息机房系统、照明系统、"
+            "医疗设备系统、办公设备系统、变配电系统和其他用电设备。",
+            6,
+        ),
+        _block("（1）空调与供暖系统", 6),
+        _block("（2）信息机房系统", 6),
+        _block("（3）照明系统", 6),
+        _block("（4）医疗设备系统", 6),
+        _block("（5）办公设备系统", 6),
+        _block("（6）变配电系统", 6),
+        _block("（7）其他用电设备", 6),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=True)
+    }
+    assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" in codes
+
+
+def test_chapter6_public_institution_accepts_dynamic_system_order():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block(
+            "本项目用电系统主要包括空调与供暖系统、照明系统、办公设备系统、"
+            "信息机房系统、医疗设备系统、变配电系统和其他用电设备。",
+            6,
+        ),
+        _block("（1）空调与供暖系统", 6),
+        _block("（2）照明系统", 6),
+        _block("（3）办公设备系统", 6),
+        _block("（4）信息机房系统", 6),
+        _block("（5）医疗设备系统", 6),
+        _block("（6）变配电系统", 6),
+        _block("（7）其他用电设备", 6),
+    ]
+    codes = {
+        f.code
+        for f in v3.check_chapter6_structure(blocks, public_institution=True)
+    }
+    assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" not in codes
+
+
 def test_chapter6_public_building_ignores_public_institution_system_order():
     blocks = [
         _block("6.1 用电系统运行分析", 6),
@@ -799,6 +845,223 @@ def test_chapter6_public_building_ignores_public_institution_system_order():
         for f in v3.check_chapter6_structure(blocks, public_institution=False)
     }
     assert "V3.STRUCT.CHAPTER6_SYSTEM_ORDER" not in codes
+
+
+def test_chapter6_photo_reroutes_stale_medical_snapshot_with_project_base():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）其他用电设备", 6),
+        _block("图6.1 医疗设备", 6),
+    ]
+    equipment = [{
+        "name": "医疗设备",
+        "category": "特殊设备",
+        "photo_section_key": "other_energy",
+        "photo_section_title": "其他用电设备",
+    }]
+
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+        base={
+            "unit_func": "C",
+            "children_func": "B",
+            "institution_category": "医疗",
+            "unit_name": "测试医院",
+        },
+    )
+
+    mismatch = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_SECTION"
+    ]
+    assert mismatch
+    assert "医疗设备系统" in mismatch[0].detail
+
+
+def test_chapter6_does_not_treat_fire_equipment_room_as_information_room():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（7）其他用电设备", 6),
+        _block("图6.1 消防机房", 6),
+    ]
+    equipment = [{
+        "name": "消防机房",
+        "category": "特殊设备",
+        "photo_section_key": "other_energy",
+        "photo_section_title": "其他用电设备",
+    }]
+
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+    )
+
+    codes = {finding.code for finding in findings}
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
+def test_chapter6_photo_reports_caption_in_wrong_system_section():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("图6.1 生活水泵", 6),
+        _block("6.2 用水系统运行分析", 6),
+    ]
+    equipment = [{
+        "name": "生活水泵",
+        "category": "动力",
+        "photo_section_key": "water_system",
+        "photo_section_title": "用水系统",
+        "routing_reason": "domestic_water_pump",
+    }]
+
+    findings = v3.check_chapter6_structure(blocks, equipment=equipment)
+    mismatches = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_SECTION"
+    ]
+
+    assert mismatches
+    assert "空调与供暖系统" in mismatches[0].detail
+    assert "其他用电设备" in mismatches[0].detail
+
+
+def test_chapter6_photo_reports_hygiene_fixture_in_wrong_system_section():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("图6.1 蹲便器", 6),
+        _block("6.2 用水系统运行分析", 6),
+    ]
+    equipment = [{
+        "name": "蹲便器",
+        "category": "卫生器具",
+        "photo_section_key": "water_system",
+        "photo_section_title": "用水系统",
+        "routing_reason": "hygiene_fixture",
+    }]
+
+    findings = v3.check_chapter6_structure(blocks, equipment=equipment)
+    mismatches = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_SECTION"
+    ]
+
+    assert mismatches
+    assert "空调与供暖系统" in mismatches[0].detail
+    assert "用水系统" in mismatches[0].detail
+
+
+def test_chapter6_photo_rejects_water_pump_in_water_system():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("6.2 用水系统运行分析", 6),
+        _block("图6.1 生活水泵", 6),
+    ]
+    equipment = [{
+        "name": "生活水泵",
+        "category": "动力",
+        "photo_section_key": "water_system",
+        "photo_section_title": "用水系统",
+        "routing_reason": "domestic_water_pump",
+    }]
+
+    findings = {
+        finding.code: finding
+        for finding in v3.check_chapter6_structure(
+            blocks, equipment=equipment
+        )
+    }
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" in findings
+    assert "用水系统" in findings["V3.STRUCT.CHAPTER6_PHOTO_SECTION"].detail
+    assert "其他用电设备" in findings["V3.STRUCT.CHAPTER6_PHOTO_SECTION"].detail
+
+
+def test_chapter6_photo_accepts_water_pump_in_other_electric_equipment():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("（7）其他用电设备", 6),
+        _block("图6.1 生活水泵", 6),
+    ]
+    equipment = [{
+        "name": "生活水泵",
+        "category": "动力",
+        "photo_section_key": "water_system",
+        "photo_section_title": "用水系统",
+        "routing_reason": "domestic_water_pump",
+    }]
+
+    codes = {
+        finding.code
+        for finding in v3.check_chapter6_structure(
+            blocks, equipment=equipment
+        )
+    }
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
+def test_chapter6_photo_accepts_canonical_gas_route_for_stale_snapshot():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("6.4 用燃气系统运行分析", 6),
+        _block("图6.1 吸收式溴化锂机组", 6),
+    ]
+    equipment = [{
+        "name": "吸收式溴化锂机组",
+        "category": "空调",
+        "gas_value": 1200,
+        "photo_section_key": "air_heating",
+        "photo_section_title": "空调与供暖系统",
+        "routing_reason": "空调_equipment",
+    }]
+
+    codes = {
+        finding.code
+        for finding in v3.check_chapter6_structure(
+            blocks, equipment=equipment
+        )
+    }
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
+def test_chapter6_photo_section_check_pairs_duplicate_caption_names_one_to_one():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（7）其他用电设备", 6),
+        _block("图6.1 供水泵", 6),
+        _block("6.2 用水系统运行分析", 6),
+        _block("图6.2 供水泵", 6),
+    ]
+    equipment = [
+        {
+            "name": "供水泵",
+            "category": "动力",
+            "photo_section_key": "other_energy",
+            "photo_section_title": "其他用电设备",
+        },
+        {
+            "name": "供水泵",
+            "category": "卫生器具",
+            "photo_section_key": "water_system",
+            "photo_section_title": "用水系统",
+        },
+    ]
+
+    codes = {
+        finding.code
+        for finding in v3.check_chapter6_structure(
+            blocks, equipment=equipment
+        )
+    }
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
 
 
 def test_chapter6_photo_coverage_requires_each_equipment_with_img_ids():
@@ -827,7 +1090,7 @@ def test_chapter6_photo_coverage_requires_each_equipment_with_img_ids():
     assert "医疗设备" not in coverage[0].detail
 
 
-def test_chapter6_photo_coverage_accepts_one_caption_per_special_system():
+def test_chapter6_photo_coverage_requires_one_caption_per_attachment():
     blocks = [
         _block("6.1 用电系统运行分析", 6),
         _block("图6.9 医疗设备", 6),
@@ -840,16 +1103,197 @@ def test_chapter6_photo_coverage_accepts_one_caption_per_special_system():
     ]
     equipment = [
         {"name": "医疗设备", "category": "特殊设备", "img_ids": [101]},
-        {"name": "数据中心/信息中心", "category": "特殊设备", "img_ids": [102]},
+        {"name": "数据中心/信息中心", "category": "特殊设备", "img_ids": [102, 103]},
     ]
-    images = [{"file_id": 101}, {"file_id": 102}]
-    codes = {
-        f.code
-        for f in v3.check_chapter6_structure(
-            blocks, equipment=equipment, images=images
-        )
-    }
-    assert "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE" not in codes
+    images = [{"file_id": 101}, {"file_id": 102}, {"file_id": 103}]
+    findings = v3.check_chapter6_structure(
+        blocks, equipment=equipment, images=images
+    )
+    coverage = [
+        f for f in findings if f.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+
+    assert coverage
+    assert "数据中心/信息中心" in coverage[0].detail
+    assert "医疗设备" not in coverage[0].detail
+
+
+def test_chapter6_photo_coverage_accepts_one_caption_per_attachment():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.1 数据中心/信息中心", 6),
+        _block("图6.2 数据中心/信息中心", 6),
+    ]
+    equipment = [{
+        "name": "数据中心/信息中心",
+        "category": "特殊设备",
+        "img_ids": [102, 103],
+    }]
+    images = [{"file_id": 102}, {"file_id": 103}]
+
+    findings = v3.check_chapter6_structure(
+        blocks, equipment=equipment, images=images
+    )
+
+    assert not any(
+        f.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+        for f in findings
+    )
+
+
+def test_chapter6_reverse_check_includes_special_device_outside_table():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _table_block(
+            6,
+            ("序号", "设备名称"),
+            (("1", "冷水机组"),),
+        ),
+    ]
+    equipment = [{
+        "name": "数据中心/信息中心",
+        "category": "特殊设备",
+        "img_ids": [902],
+    }]
+
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+        images=[{"file_id": 902}],
+    )
+
+    coverage = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+    assert coverage
+    assert "数据中心/信息中心" in coverage[0].detail
+
+
+def test_chapter6_reverse_check_does_not_require_local_image():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _table_block(
+            6,
+            ("序号", "设备名称"),
+            (("1", "冷水机组"),),
+        ),
+    ]
+    equipment = [{
+        "name": "数据中心/信息中心",
+        "category": "特殊设备",
+        "img_ids": [906],
+    }]
+
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+        images=[],
+    )
+
+    coverage = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+    assert coverage
+    assert "数据中心/信息中心" in coverage[0].detail
+
+
+def test_chapter6_photo_coverage_requires_each_multi_field_caption():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.1 冷冻水泵设备整体图片", 6),
+    ]
+    equipment = [{
+        "name": "冷冻水泵",
+        "category": "输配设备",
+        "img_fields": [
+            {
+                "field": "device_img",
+                "label": "设备整体图片",
+                "ids": [501],
+            },
+            {
+                "field": "motor_img",
+                "label": "电机铭牌图片",
+                "ids": [502],
+            },
+        ],
+        "img_ids": [501, 502],
+    }]
+    images = [{"file_id": 501}, {"file_id": 502}]
+
+    findings = v3.check_chapter6_structure(
+        blocks, equipment=equipment, images=images
+    )
+    coverage = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+
+    assert coverage
+    assert "冷冻水泵电机铭牌图片" in coverage[0].detail
+    assert "冷冻水泵设备整体图片" not in coverage[0].detail
+
+
+def test_chapter6_photo_coverage_pairs_duplicate_names_one_to_one():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.1 供水泵", 6),
+    ]
+    equipment = [
+        {"name": "供水泵", "img_ids": [701]},
+        {"name": "供水泵", "img_ids": [702]},
+    ]
+
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+        images=[{"file_id": 701}, {"file_id": 702}],
+    )
+    coverage = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+
+    assert coverage
+    assert "供水泵" in coverage[0].detail
+
+
+def test_chapter6_photo_coverage_does_not_accept_bare_name_for_multi_field():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("图6.1 冷却塔", 6),
+    ]
+    equipment = [{
+        "name": "冷却塔",
+        "img_fields": [
+            {
+                "field": "tower_img",
+                "label": "参数铭牌/自动阀门图片",
+                "ids": [601],
+            },
+            {
+                "field": "fan_img",
+                "label": "参数铭牌/手动阀门图片",
+                "ids": [602],
+            },
+        ],
+        "img_ids": [601, 602],
+    }]
+    findings = v3.check_chapter6_structure(
+        blocks,
+        equipment=equipment,
+        images=[{"file_id": 601}, {"file_id": 602}],
+    )
+    coverage = [
+        finding for finding in findings
+        if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+    ]
+
+    assert coverage
+    assert "冷却塔参数铭牌/自动阀门图片" in coverage[0].detail
+    assert "冷却塔参数铭牌/手动阀门图片" in coverage[0].detail
 
 
 def test_chapter5_figures_accept_one_image_before_each_caption():

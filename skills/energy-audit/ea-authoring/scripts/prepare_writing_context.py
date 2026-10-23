@@ -16,6 +16,7 @@
 产物: <项目>/chapter_md/_context.md（幂等，可反复运行；每批收工后重跑以刷新"已落盘章节"）
 """
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -34,6 +35,69 @@ VALUE_KEYS = (
     "kgce_per_m2", "kgce_per_person", "kwh_per_m2", "kwh_per_person",
     "m3_per_person", "m3_per_bed", "value", "v", "water_value",
 )
+
+
+def _load_chapter6_contracts():
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path,
+            "tools",
+            "energy_audit",
+            "project_data.py",
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "writing_context_project_data", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return (
+                module.CHAPTER6_SECTIONS,
+                module.chapter6_route_for_equipment,
+                module.equipment_photo_slots,
+            )
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit.project_data import (  # type: ignore
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            equipment_photo_slots,
+        )
+        return (
+            CHAPTER6_SECTIONS,
+            chapter6_route_for_equipment,
+            equipment_photo_slots,
+        )
+    except ImportError as exc:
+        raise ImportError("无法加载第6章设备小节路由") from exc
+
+
+(
+    CHAPTER6_SECTIONS,
+    chapter6_route_for_equipment,
+    equipment_photo_slots,
+) = _load_chapter6_contracts()
+CHAPTER6_PREFIX = {
+    "air_heating": "6.1",
+    "lighting": "6.1",
+    "office": "6.1",
+    "information_room": "6.1",
+    "medical_equipment": "6.1",
+    "substation": "6.1",
+    "other_energy": "6.1",
+    "water_system": "6.2",
+    "gas_system": "6.4",
+}
+
+
+def chapter6_section_label(key: str, title: str) -> str:
+    prefix = CHAPTER6_PREFIX.get(str(key or ""), "")
+    text = str(title or "").strip()
+    return f"{prefix} {text}".strip()
 
 # 公共建筑（浙江）指标标签：与公共机构 5 项不同，单独一套。
 PUBLIC_BUILDING_OFFICE_LABELS = [
@@ -408,27 +472,38 @@ def diagnosis_digest(pdir: str, limit: int = 8):
 
 
 def equipment_photo_contract(data: dict) -> list:
-    """第6章设备配图硬清单：有 img_ids 的设备必须逐行出现图注。"""
+    """第6章设备配图硬清单：每个附件对应一条图注。"""
     by_file_id = {
         str(im.get("file_id")): str(im.get("path") or "")
         for im in (data.get("images") or [])
         if im.get("file_id") not in (None, "")
     }
-    rows, seen = [], set()
+    base = data.get("base") or {}
+    rows = []
     for eq in data.get("equipment") or []:
-        name = str(eq.get("name") or "").strip()
-        if not name or name in seen:
-            continue
-        raw_ids = eq.get("img_ids")
-        ids = ([str(v).strip() for v in raw_ids if str(v).strip()]
-               if isinstance(raw_ids, (list, tuple, set))
-               else re.findall(r"\d+", str(raw_ids or "")))
-        if not ids:
-            continue
-        seen.add(name)
-        paths = [by_file_id.get(fid, "") for fid in ids]
-        files = "；".join(os.path.basename(p) for p in paths if p) or "【缺本地文件】"
-        rows.append((name, str(eq.get("category") or ""), ",".join(ids), files))
+        route = chapter6_route_for_equipment(
+            eq,
+            unit_func=str(base.get("unit_func") or ""),
+            children_func=str(base.get("children_func") or ""),
+            institution_category=str(base.get("institution_category") or ""),
+            unit_name=str(base.get("unit_name") or ""),
+        )
+        section_label = chapter6_section_label(
+            route.get("photo_section_key", ""),
+            route.get("photo_section_title", ""),
+        )
+        for slot in equipment_photo_slots(eq):
+            file_id = slot["file_id"]
+            path = by_file_id.get(file_id, "")
+            rows.append((
+                slot["caption_label"],
+                slot["name"],
+                slot["category"],
+                section_label,
+                slot["field"],
+                file_id,
+                os.path.basename(path) if path else "【缺本地文件】",
+            ))
     return rows
 
 
@@ -456,6 +531,16 @@ def photo_catalog_context(project_dir: str, limit: int = 60) -> tuple:
         binding_text = "；".join(
             f"{binding.get('chapter') or '—'}："
             f"{binding.get('ref') or '—'} → {binding.get('label') or '—'}"
+            + (
+                "（"
+                + chapter6_section_label(
+                    str(binding.get("photo_section_key") or ""),
+                    str(binding.get("photo_section_title") or ""),
+                )
+                + "）"
+                if binding.get("photo_section_title")
+                else ""
+            )
             for binding in bindings
         ) or "—"
         visual = candidate.get("visual") or {}
@@ -761,27 +846,32 @@ def main(argv=None) -> int:
         "“情况待进一步核实”代替判断。",
     ]
 
-    # 第6章设备配图硬清单（2026-10-21）：图片曾因作者漏写单条图注而静默缺失，
-    # 且 V3 只比总数时仍会全绿。这里把「有 img_ids 的设备」直接摆进写作契约。
+    # 第6章设备配图硬清单：每张上传图保留其字段语义。单字段只用设备名，
+    # 多字段必须写成“设备名+字段名”，防止设备图、铭牌图、泵体图串义。
     photo_rows = equipment_photo_contract(data)
     lines += [
         "",
-        "### 第6章设备配图硬清单（有 img_ids 的设备逐项必写图注）",
+        "### 第6章设备配图硬清单（每个图片字段逐项必写图注）",
         "",
-        "> 第6章每个有 `img_ids` 的设备名都必须在 md 中出现对应的 "
-        "`图6.N 设备名`；特殊用能系统中的医疗设备、数据中心/信息中心分别各写一条。"
+        "> 设备只有一个非空图片字段时写 `图6.N 设备名`；同一设备有多个"
+        "非空图片字段时，逐张写 `图6.N 设备名+字段名称`（正文不出现“+”号）。"
+        "按“目标小节”列落位：信息机房 >100 kW 才单列，医疗设备仅在二级、"
+        "三级医院单列；用水设施照片放 6.2，燃气设备照片放 6.4。"
         "不能因为同一系统下已有另一张图就省略。",
         "",
     ]
     if photo_rows:
         lines += [
-            "| 设备名 | 分类 | img_ids | 本地文件 |",
-            "|---|---|---|---|",
+            "| 必写图注文字 | 设备名 | 分类 | 目标小节 | 图片字段 | img_ids | 本地文件 |",
+            "|---|---|---|---|---|---|---|",
         ]
-        for name, cat, ids, files in photo_rows:
-            lines.append(f"| {name} | {cat or '—'} | {ids} | {files} |")
+        for caption_label, name, cat, section, field, ids, files in photo_rows:
+            lines.append(
+                f"| {caption_label} | {name} | {cat or '—'} | "
+                f"{section or '—'} | {field} | {ids} | {files} |"
+            )
     else:
-        lines.append("（无带 `img_ids` 的设备：第6章不强制设备照片。）")
+        lines.append("（无设备图片字段：第6章不强制设备照片。）")
 
     catalog_state, catalog_rows, catalog_warning = photo_catalog_context(pdir)
     lines += [
