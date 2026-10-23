@@ -268,31 +268,65 @@ def normalize_hospital_level(value: str) -> str:
 def equipment_photo_slots(equipment: Dict[str, Any]) -> List[Dict[str, Any]]:
     """把一个设备的每个非空附件 ID 展开成独立图片槽位。"""
     record = dict(equipment or {})
+
+    def _file_ids(value: Any) -> List[str]:
+        if isinstance(value, (list, tuple, set)):
+            return [
+                str(item).strip()
+                for item in value
+                if str(item).strip()
+            ]
+        return [
+            item
+            for item in re.split(
+                r'[,，;；\s]+',
+                str(value or '').strip('[]'),
+            )
+            if item.strip()
+        ]
+
     fields: List[Dict[str, Any]] = []
     for raw_field in record.get('img_fields') or []:
         if not isinstance(raw_field, dict):
             continue
         field = str(raw_field.get('field') or 'img_ids').strip()
         label = str(raw_field.get('label') or '').strip()
-        file_ids: List[str] = []
-        raw_ids = raw_field.get('ids')
-        if isinstance(raw_ids, (list, tuple, set)):
-            file_ids = [str(item).strip() for item in raw_ids if str(item).strip()]
-        else:
-            file_ids = [
-                item for item in re.split(r'[,，;；\s]+', str(raw_ids or '').strip('[]'))
-                if item.strip()
-            ]
+        file_ids = _file_ids(raw_field.get('ids'))
         if file_ids:
             fields.append({'field': field or 'img_ids', 'label': label, 'ids': file_ids})
-    if not fields:
-        raw_ids = record.get('img_ids')
-        if isinstance(raw_ids, (list, tuple, set)):
-            file_ids = [str(item).strip() for item in raw_ids if str(item).strip()]
-        else:
-            file_ids = re.findall(r'\d+', str(raw_ids or ''))
-        if file_ids:
-            fields = [{'field': 'img_ids', 'label': '', 'ids': file_ids}]
+
+    flat_ids = _file_ids(record.get('img_ids'))
+    if not fields and flat_ids:
+        fields = [{'field': 'img_ids', 'label': '', 'ids': flat_ids}]
+    elif fields and flat_ids:
+        covered_ids = {
+            file_id
+            for field in fields
+            for file_id in field['ids']
+        }
+        missing_flat_ids = [
+            file_id for file_id in flat_ids
+            if file_id not in covered_ids
+        ]
+        if missing_flat_ids:
+            if len(fields) == 1:
+                fields[0]['ids'].extend(missing_flat_ids)
+            else:
+                synthetic = next(
+                    (
+                        field for field in fields
+                        if field['field'] == 'img_ids'
+                    ),
+                    None,
+                )
+                if synthetic is None:
+                    synthetic = {
+                        'field': 'img_ids',
+                        'label': '',
+                        'ids': [],
+                    }
+                    fields.append(synthetic)
+                synthetic['ids'].extend(missing_flat_ids)
 
     use_field_label = len(fields) > 1
     name = str(

@@ -945,25 +945,27 @@ def _chapter6_photo_section_mismatches(
     base: Optional[Dict[str, Any]] = None,
 ) -> List[Tuple[str, str, str]]:
     """按项目基础信息重算当前路由，返回图注放错的小节。"""
+    if not callable(_CHAPTER6_ROUTER):
+        # 快照里的 photo_section_key 是缓存结果；没有当前路由时
+        # 无法证明它仍是有效口径，不能继续据此判错或判对。
+        return []
     project_base = base or {}
     route_equipment = []
     for item in equipment or []:
         record = dict(item)
-        stored_key = str(record.get("photo_section_key") or "").strip()
-        if callable(_CHAPTER6_ROUTER):
-            canonical = _CHAPTER6_ROUTER(
-                record,
-                unit_func=str(project_base.get("unit_func") or ""),
-                children_func=str(project_base.get("children_func") or ""),
-                institution_category=str(
-                    project_base.get("institution_category") or ""
-                ),
-                unit_name=str(project_base.get("unit_name") or ""),
-            )
-            record.update(canonical)
-            stored_key = str(
-                record.get("photo_section_key") or ""
-            ).strip()
+        canonical = _CHAPTER6_ROUTER(
+            record,
+            unit_func=str(project_base.get("unit_func") or ""),
+            children_func=str(project_base.get("children_func") or ""),
+            institution_category=str(
+                project_base.get("institution_category") or ""
+            ),
+            unit_name=str(project_base.get("unit_name") or ""),
+        )
+        record.update(canonical)
+        stored_key = str(
+            record.get("photo_section_key") or ""
+        ).strip()
         if stored_key:
             route_equipment.append(record)
     if not route_equipment:

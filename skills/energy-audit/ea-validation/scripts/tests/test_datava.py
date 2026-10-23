@@ -879,6 +879,28 @@ def test_chapter6_photo_reroutes_stale_medical_snapshot_with_project_base():
     assert "医疗设备系统" in mismatch[0].detail
 
 
+def test_chapter6_stale_snapshot_route_is_ignored_without_canonical_router(
+    monkeypatch,
+):
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）其他用电设备", 6),
+        _block("图6.1 医疗设备", 6),
+    ]
+    equipment = [{
+        "name": "医疗设备",
+        "category": "特殊设备",
+        "photo_section_key": "medical_equipment",
+        "photo_section_title": "医疗设备系统",
+    }]
+    monkeypatch.setattr(v3, "_CHAPTER6_ROUTER", None)
+
+    findings = v3.check_chapter6_structure(blocks, equipment=equipment)
+
+    codes = {finding.code for finding in findings}
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
 def test_chapter6_does_not_treat_fire_equipment_room_as_information_room():
     blocks = [
         _block("6.1 用电系统运行分析", 6),

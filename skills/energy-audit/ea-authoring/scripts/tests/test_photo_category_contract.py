@@ -442,6 +442,20 @@ class CanonicalPhotoCategoryTests(unittest.TestCase):
         )
         self.assertEqual([slot["attachment_index"] for slot in slots], [0, 1])
 
+    def test_equipment_photo_slots_include_flat_ids_missing_from_fields(self):
+        slots = PROJECT_DATA.equipment_photo_slots({
+            "name": "冷冻水泵",
+            "category": "输配设备",
+            "img_fields": [{
+                "field": "device_img",
+                "label": "设备图片",
+                "ids": [101],
+            }],
+            "img_ids": [101, 201],
+        })
+
+        self.assertEqual([slot["file_id"] for slot in slots], ["101", "201"])
+
     def test_information_room_rows_are_atomic_without_group_evidence(self):
         route = PROJECT_DATA.chapter6_route_for_equipment
 

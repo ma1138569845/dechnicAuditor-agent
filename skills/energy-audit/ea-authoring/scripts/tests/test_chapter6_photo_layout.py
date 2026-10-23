@@ -101,6 +101,33 @@ class Chapter6PhotoLayoutTests(unittest.TestCase):
             caption_para = next(p for p in doc.paragraphs if p.text == "图6.1 冷水机组")
             self.assertEqual(caption_para.alignment, WD_ALIGN_PARAGRAPH.CENTER)
 
+    def test_missing_chapter6_local_file_leaves_a_visible_placeholder(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            chapter_dir = root / "chapter_md"
+            chapter_dir.mkdir()
+            md_path = chapter_dir / "ch6.md"
+            md_path.write_text(
+                "# 第6章\n\n## 6.1 用电系统运行分析\n\n图6.1 冷水机组\n",
+                encoding="utf-8",
+            )
+            doc = Document()
+            BUILD_MOD._render_md(
+                doc,
+                str(md_path),
+                {
+                    "images": {
+                        "图6.1 冷水机组": ["data/images/missing.png"]
+                    },
+                    "project_dir": str(root),
+                },
+            )
+
+            self.assertTrue(any(
+                "图6.1 冷水机组（暂缺：" in paragraph.text
+                for paragraph in doc.paragraphs
+            ))
+
     def test_non_chapter6_photos_keep_existing_12cm_layout(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

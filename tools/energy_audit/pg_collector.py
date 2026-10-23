@@ -1502,6 +1502,10 @@ def build_and_save_project(
                 institution_category=pg_institution_category,
                 unit_name=unit_for_class,
             ),
+            unit_func=pg_unit_func,
+            children_func=pg_children_func,
+            institution_category=pg_institution_category,
+            unit_name=unit_for_class,
         ),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
@@ -1816,7 +1820,13 @@ def _equipment_merge_key(record: dict) -> Tuple[str, str]:
     )
 
 
-def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
+def _merge_equipment(
+    *sources: List[dict],
+    unit_func: str = '',
+    children_func: str = '',
+    institution_category: str = '',
+    unit_name: str = '',
+) -> List[Equipment]:
     """同源重复行全部保留；跨源同名同类按出现顺序 nth-to-nth 合并附件。"""
     merged: List[dict] = []
     created_source: List[int] = []
@@ -1841,7 +1851,18 @@ def _merge_equipment(*sources: List[dict]) -> List[Equipment]:
                 continue
             merged.append(incoming)
             created_source.append(source_index)
-    return [_dataclass_from_dict(Equipment, item) for item in merged]
+    routed: List[Equipment] = []
+    for item in merged:
+        record = dict(item)
+        record.update(chapter6_route_for_equipment(
+            record,
+            unit_func=unit_func,
+            children_func=children_func,
+            institution_category=institution_category,
+            unit_name=unit_name,
+        ))
+        routed.append(_dataclass_from_dict(Equipment, record))
+    return routed
 
 
 def _fill_meter_counts(metering: dict, energy_meter: List[dict]) -> dict:

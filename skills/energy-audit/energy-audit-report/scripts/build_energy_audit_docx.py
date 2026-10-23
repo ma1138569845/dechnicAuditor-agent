@@ -1049,7 +1049,7 @@ def _prevent_table_row_split(row):
 
 
 def _add_photo_cell(cell, caption, srcs, project_dir):
-    """无边框照片格：6.8cm 等比例图片 + 图注；缺图时仅保留图注。"""
+    """无边框照片格：6.8cm 等比例图片 + 图注；缺图时写红色暂缺。"""
     paragraph = cell.paragraphs[0]
     inserted = False
     for src in srcs:
@@ -1073,6 +1073,10 @@ def _add_photo_cell(cell, caption, srcs, project_dir):
     cap_run = cap_para.add_run(caption)
     cap_run.font.name = SONG
     cap_run.font.size = Pt(12)
+    if not inserted:
+        reason = "图片附件已登记，本地文件缺失" if srcs else "图片清单缺少"
+        cap_run.text = f"{caption}（暂缺：{reason}）"
+        cap_run.font.color.rgb = RED_NOTE_COLOR
     return inserted
 
 
@@ -1107,8 +1111,18 @@ def _render_chapter6_photos(doc, captions, images, project_dir):
             inserted = True
         if not srcs:
             print(f"WARN: 图清单缺少: {caption}")
-        _para(doc, caption, size=12, bold=False,
-              align=WD_ALIGN_PARAGRAPH.CENTER)
+        if inserted:
+            _para(doc, caption, size=12, bold=False,
+                  align=WD_ALIGN_PARAGRAPH.CENTER)
+        else:
+            reason = "图片附件已登记，本地文件缺失" if srcs else "图片清单缺少"
+            _para(
+                doc,
+                f"{caption}（暂缺：{reason}）",
+                size=12,
+                color=RED_NOTE_COLOR,
+                align=WD_ALIGN_PARAGRAPH.CENTER,
+            )
         return inserted
 
     table = doc.add_table(rows=1, cols=2)

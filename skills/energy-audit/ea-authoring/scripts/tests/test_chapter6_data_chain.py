@@ -361,6 +361,27 @@ class Chapter6DeviceQueryChainTests(unittest.TestCase):
         self.assertEqual(merged[0].img_ids, ["101", "201", "301"])
         self.assertEqual(merged[1].img_ids, ["102", "202", "302"])
 
+    def test_merge_equipment_reroutes_after_merged_facts_change_route(self):
+        pg = COLLECTOR._with_chapter6_routes([
+            {
+                "category": "空调",
+                "name": "吸收式溴化锂机组",
+                "img_ids": ["101"],
+            },
+        ])
+        excel = COLLECTOR._with_chapter6_routes([
+            {
+                "category": "空调",
+                "name": "吸收式溴化锂机组",
+                "gas_value": 1200,
+            },
+        ])
+
+        merged = COLLECTOR._merge_equipment(pg, excel)
+
+        self.assertEqual(merged[0].gas_value, 1200)
+        self.assertEqual(merged[0].photo_section_key, "gas_system")
+
 
 if __name__ == "__main__":
     unittest.main()
