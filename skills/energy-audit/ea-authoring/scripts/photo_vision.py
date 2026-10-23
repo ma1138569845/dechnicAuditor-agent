@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, Optional
 DEFAULT_MODEL = "deepseek-flash"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 PROMPT_VERSION = "certificate-check-v2"
+GENERAL_PROMPT_VERSION = "photo-fact-v1"
 MIN_CONFIDENCE = 0.80
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
 
@@ -275,6 +276,119 @@ def verify_certificate(
         return {
             "status": "unverified",
             "reason": f"视觉核验不可用：{exc}",
+            "model": model,
+        }
+
+
+def _photo_fact_prompt(expected_context: str) -> str:
+    return f"""你是能源审计报告的照片事实提取员。数据库把这张照片绑定为“{expected_context}”。
+请只读取图片中肉眼可见的内容，不推断、不补全，也不要把数据库绑定当成图片事实。
+返回一个 JSON 对象，字段固定为：
+{{
+  "scene_type": "建筑外观|设备|仪表|证书|文件|其他",
+  "visible_title": "图片中最醒目的正式文字标题；看不清填空字符串",
+  "object_labels": ["可直接看到的物体或设备名称"],
+  "brand": "清晰可见的品牌；看不清填空字符串",
+  "model": "清晰可见的型号；看不清填空字符串",
+  "confidence": 0.0
+}}
+confidence 取 0 到 1。图片模糊、主体不明确或文字无法确认时必须降低 confidence。"""
+
+
+def _visible_photo_facts(observed: Dict[str, Any]) -> Dict[str, Any]:
+    labels = observed.get("object_labels")
+    if not isinstance(labels, list):
+        labels = []
+    facts = {
+        "scene_type": str(observed.get("scene_type") or "").strip(),
+        "visible_title": str(observed.get("visible_title") or "").strip(),
+        "object_labels": [
+            str(label).strip()
+            for label in labels
+            if str(label).strip()
+        ],
+        "brand": str(observed.get("brand") or "").strip(),
+        "model": str(observed.get("model") or "").strip(),
+    }
+    try:
+        confidence = float(observed.get("confidence"))
+    except (TypeError, ValueError):
+        confidence = 0.0
+    facts["confidence"] = confidence
+    return facts
+
+
+def inspect_photo(
+    *,
+    image_path: str,
+    expected_context: str,
+    api_key: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
+    base_url: str = DEFAULT_BASE_URL,
+    timeout: int = 45,
+    poster: Optional[Callable[[str, Dict, Dict, int], Dict]] = None,
+) -> Dict[str, Any]:
+    """Extract visible photo facts; failures remain non-blocking."""
+    key = api_key if api_key is not None else _resolve_api_key()
+    if not key:
+        return {
+            "status": "unverified",
+            "reason": "未配置 DEEPSEEK_API_KEY，跳过照片事实提取",
+            "observed": {},
+            "model": model,
+        }
+
+    try:
+        payload = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": _photo_fact_prompt(expected_context),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": _image_data_url(image_path),
+                            "detail": "high",
+                        },
+                    },
+                ],
+            }],
+            "thinking": {"type": "disabled"},
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+            "max_tokens": 800,
+        }
+        request = poster or _post_json
+        response = request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            {"Authorization": f"Bearer {key}"},
+            payload,
+            timeout,
+        )
+        observed = _visible_photo_facts(parse_vision_response(response))
+        confidence = observed["confidence"]
+        status = "pass" if confidence >= MIN_CONFIDENCE else "review"
+        reason = (
+            ""
+            if status == "pass"
+            else f"视觉识别置信度不足（{confidence}）"
+        )
+        return {
+            "status": status,
+            "reason": reason,
+            "observed": observed,
+            "model": model,
+            "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "status": "unverified",
+            "reason": f"照片事实提取不可用：{exc}",
+            "observed": {},
             "model": model,
         }
 

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import importlib.util
 import json
 import tempfile
@@ -92,6 +93,24 @@ class PrepareReportPhotosCh4Tests(unittest.TestCase):
                 },
             )
             self.assertTrue(all((project.root / e["src"]).is_file() for e in ch4))
+            for entry in ch4:
+                source = entry.get("source") or {}
+                self.assertEqual(len(entry.get("sha256", "")), 64)
+                self.assertEqual(
+                    entry["sha256"],
+                    hashlib.sha256(
+                        (project.root / entry["src"]).read_bytes()
+                    ).hexdigest(),
+                )
+                self.assertTrue(source.get("source_path"))
+                self.assertEqual(len(source.get("source_sha256", "")), 64)
+                self.assertEqual(
+                    source.get("binding", {}).get("ref"),
+                    "energy_meter[].device_img",
+                )
+                self.assertEqual(source.get("category"), "计量器具")
+                self.assertEqual(source.get("selection_method"), "file_id")
+                self.assertEqual(source.get("verification"), "unverified")
             self.assertFalse(any(e["src"].startswith("images/") for e in entries))
             self.assertIn(
                 "charts/energy-flow.png",
@@ -321,6 +340,199 @@ class Ch4PhotoAssertTests(unittest.TestCase):
         ])
         self.assertFalse(ok)
         self.assertIn("不连续", why)
+
+
+class PhotoSemanticReuseTests(unittest.TestCase):
+    def test_guard_reports_same_source_under_different_captions(self):
+        entries = [
+            {
+                "caption": "图6.1 冷水机组",
+                "src": "data/images/a.png",
+                "source": {"source_sha256": "a" * 64},
+            },
+            {
+                "caption": "图6.2 冷冻水泵",
+                "src": "data/images/b.png",
+                "source": {"source_sha256": "a" * 64},
+            },
+        ]
+
+        warnings = PHOTOS.semantic_reuse_warnings(entries)
+
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("图6.1 冷水机组", warnings[0])
+        self.assertIn("图6.2 冷冻水泵", warnings[0])
+
+    def test_chapter6_does_not_reuse_one_photo_for_a_second_equipment_caption(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "chapter_md").mkdir(parents=True)
+            (root / "chapter_md" / "ch2.md").write_text("# 第2章\n", encoding="utf-8")
+            (root / "chapter_md" / "ch6.md").write_text(
+                "# 第6章\n\n图6.1 冷水机组\n\n图6.2 冷冻水泵\n",
+                encoding="utf-8",
+            )
+            photo = root / "设备_冷水机组.png"
+            photo.write_bytes(PNG)
+            data = {
+                "base": {"unit_short": "测试单位"},
+                "images": [{
+                    "path": str(photo),
+                    "category": "制冷设备",
+                    "file_id": 5001,
+                }],
+                "equipment": [
+                    {"name": "冷水机组", "img_ids": ["5001"]},
+                    {"name": "冷冻水泵", "img_ids": ["5001"]},
+                ],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (root / "report_images.json").write_text(
+                json.dumps({"images": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = PHOTOS.main([str(root), "--quiet"])
+
+            self.assertEqual(rc, 2)
+            manifest = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )["images"]
+            ch6 = [item for item in manifest if item["caption"].startswith("图6.")]
+            self.assertEqual(
+                [item["caption"] for item in ch6],
+                ["图6.1 冷水机组"],
+            )
+
+
+class PhotoPruneTests(unittest.TestCase):
+    def make_project(self, root: Path):
+        images_dir = root / "data" / "images"
+        images_dir.mkdir(parents=True)
+        kept = images_dir / "kept.png"
+        orphan = images_dir / "orphan.png"
+        kept.write_bytes(PNG)
+        orphan.write_bytes(PNG + b"orphan")
+        (root / "report_images.json").write_text(
+            json.dumps({
+                "images": [{
+                    "caption": "图6.1 冷水机组",
+                    "src": "data/images/kept.png",
+                }],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return kept, orphan
+
+    def test_report_mode_moves_nothing_and_apply_mode_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            kept, orphan = self.make_project(root)
+
+            report = PHOTOS.prune_photo_orphans(root, apply=False)
+
+            self.assertEqual(report["orphans"], ["data/images/orphan.png"])
+            self.assertTrue(kept.is_file())
+            self.assertTrue(orphan.is_file())
+
+            first = PHOTOS.prune_photo_orphans(root, apply=True)
+
+            self.assertFalse(first.get("blocked"))
+            self.assertTrue(kept.is_file())
+            self.assertFalse(orphan.exists())
+            moved = Path(first["trash_dir"]) / "data" / "images" / "orphan.png"
+            self.assertTrue(moved.is_file())
+
+            second = PHOTOS.prune_photo_orphans(root, apply=True)
+
+            self.assertEqual(second["orphans"], [])
+            self.assertEqual(second["moved"], [])
+
+    def test_apply_is_blocked_when_finalization_has_warnings(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _kept, orphan = self.make_project(root)
+            (root / "photo_finalization_status.json").write_text(
+                json.dumps({
+                    "clean": False,
+                    "warnings": ["第6章缺图"],
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            result = PHOTOS.prune_photo_orphans(root, apply=True)
+
+            self.assertTrue(result["blocked"])
+            self.assertEqual(result["orphans"], ["data/images/orphan.png"])
+            self.assertTrue(orphan.is_file())
+
+    def test_apply_is_blocked_when_reference_manifest_is_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _kept, orphan = self.make_project(root)
+            (root / "report_images.json").unlink()
+
+            result = PHOTOS.prune_photo_orphans(root, apply=True)
+
+            self.assertTrue(result["blocked"])
+            self.assertIn("report_images.json", result["reason"])
+            self.assertTrue(orphan.is_file())
+
+    def test_cli_dry_run_never_moves_prune_orphans(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _kept, orphan = self.make_project(root)
+
+            rc = PHOTOS.main([
+                str(root),
+                "--prune",
+                "apply",
+                "--dry-run",
+                "--quiet",
+            ])
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(orphan.is_file())
+
+
+class PhotoProvenanceCategoryTests(unittest.TestCase):
+    def test_overall_photo_fallback_records_the_actual_building_category(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "chapter_md").mkdir(parents=True)
+            (root / "chapter_md" / "ch2.md").write_text(
+                "# 第2章\n\n图2.1 测试单位单位整体外观\n",
+                encoding="utf-8",
+            )
+            building = root / "building.png"
+            building.write_bytes(PNG)
+            (root / "data.json").write_text(
+                json.dumps({
+                    "base": {"unit_short": "测试单位"},
+                    "images": [{
+                        "path": str(building),
+                        "category": "建筑外观",
+                        "building_name": "门诊楼",
+                        "file_id": 101,
+                    }],
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (root / "report_images.json").write_text(
+                json.dumps({"images": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = PHOTOS.main([str(root), "--quiet"])
+
+            self.assertEqual(rc, 0)
+            entry = json.loads(
+                (root / "report_images.json").read_text(encoding="utf-8")
+            )["images"][0]
+            self.assertEqual(entry["source"]["category"], "建筑外观")
 
 
 if __name__ == "__main__":

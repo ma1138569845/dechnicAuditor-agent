@@ -12,7 +12,9 @@ prod - serial number - 1
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Any, Union, Tuple
 from datetime import datetime
-import json, os, shutil, uuid
+import hashlib
+import json
+import uuid
 from pathlib import Path
 
 
@@ -592,9 +594,63 @@ class ImageItem:
     caption: str = ""                  # 图注（可选，报告内展示用）
     building_name: str = ""            # 行归属：建筑外观照=所属建筑名，其余留空
     file_id: Optional[int] = None      # ts_attachment.group_id，设备 img_ids 的稳定关联键
+    sha256: str = ""                   # 物理文件内容 SHA-256；缺失时由采集/目录边界补齐
 
     def __post_init__(self):
         self.category = normalize_photo_category(self.category)
+
+
+def _image_field(image: Union[ImageItem, dict], name: str, default: Any = None) -> Any:
+    if isinstance(image, dict):
+        return image.get(name, default)
+    return getattr(image, name, default)
+
+
+def image_identity(image: Union[ImageItem, dict]) -> str:
+    """返回照片的稳定物理身份：附件 ID 优先，其次规范化绝对路径。"""
+    file_id = _image_field(image, 'file_id')
+    if file_id not in (None, ''):
+        return f"file_id:{file_id}"
+    path = str(_image_field(image, 'path', '') or '').strip()
+    return f"path:{Path(path).resolve()}"
+
+
+def image_sha256(image: Union[ImageItem, dict]) -> str:
+    """计算照片文件内容的 SHA-256；文件不可读时返回空字符串。"""
+    digest = str(_image_field(image, 'sha256', '') or '').strip()
+    if digest:
+        return digest
+    path = Path(str(_image_field(image, 'path', '') or ''))
+    if not path.is_file():
+        return ''
+    hasher = hashlib.sha256()
+    try:
+        with path.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                hasher.update(chunk)
+    except OSError:
+        return ''
+    return hasher.hexdigest()
+
+
+def dedupe_image_items(images: List[ImageItem]) -> List[ImageItem]:
+    """按物理身份去重，保留首条语义并补齐内容哈希。
+
+    实测岚山区人民医院 219 条附件登记只对应 41 个物理路径。重复登记
+    必须合并，但设备侧 ``img_ids`` 等数据库绑定保持原样，由后续目录层
+    聚合到唯一候选上。
+    """
+    deduped: List[ImageItem] = []
+    seen = set()
+    for image in images:
+        identity = image_identity(image)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if not image.sha256:
+            image.sha256 = image_sha256(image)
+        deduped.append(image)
+    return deduped
 
 
 # ============================================================

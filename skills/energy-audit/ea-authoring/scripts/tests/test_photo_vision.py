@@ -175,5 +175,92 @@ class CertificateVerificationTests(unittest.TestCase):
             self.assertNotEqual(first, second)
 
 
+class GeneralPhotoInspectionTests(unittest.TestCase):
+    def setUp(self):
+        self.assertIsNotNone(VISION, "缺少 DeepSeek 视觉核验模块")
+
+    def test_inspect_photo_keeps_only_visible_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            image = Path(td) / "equipment.png"
+            image.write_bytes(PNG)
+
+            def fake_poster(url, headers, payload, timeout):
+                self.assertIn("门诊楼建筑外观", payload["messages"][0]["content"][0]["text"])
+                self.assertEqual(payload["thinking"], {"type": "disabled"})
+                self.assertEqual(payload["response_format"], {"type": "json_object"})
+                return {
+                    "choices": [{
+                        "message": {
+                            "content": (
+                                '{"scene_type":"建筑外观","visible_title":"门诊楼",'
+                                '"object_labels":["外墙"],"brand":"","model":"",'
+                                '"confidence":0.91,"speculation":"不要保留"}'
+                            )
+                        }
+                    }]
+                }
+
+            result = VISION.inspect_photo(
+                image_path=str(image),
+                expected_context="门诊楼建筑外观",
+                api_key="test-key",
+                poster=fake_poster,
+            )
+
+            self.assertEqual(result["status"], "pass")
+            self.assertEqual(
+                set(result["observed"]),
+                {
+                    "scene_type",
+                    "visible_title",
+                    "object_labels",
+                    "brand",
+                    "model",
+                    "confidence",
+                },
+            )
+
+    def test_inspect_photo_low_confidence_requires_review(self):
+        with tempfile.TemporaryDirectory() as td:
+            image = Path(td) / "equipment.png"
+            image.write_bytes(PNG)
+            result = VISION.inspect_photo(
+                image_path=str(image),
+                expected_context="冷水机组",
+                api_key="test-key",
+                poster=lambda *_args, **_kwargs: {
+                    "choices": [{
+                        "message": {
+                            "content": (
+                                '{"scene_type":"设备","visible_title":"",'
+                                '"object_labels":["机组"],"brand":"","model":"",'
+                                '"confidence":0.62}'
+                            )
+                        }
+                    }]
+                },
+            )
+
+            self.assertEqual(result["status"], "review")
+
+    def test_inspect_photo_api_failure_degrades_to_unverified(self):
+        with tempfile.TemporaryDirectory() as td:
+            image = Path(td) / "equipment.png"
+            image.write_bytes(PNG)
+
+            def failing_poster(*_args, **_kwargs):
+                raise OSError("network unavailable")
+
+            result = VISION.inspect_photo(
+                image_path=str(image),
+                expected_context="冷水机组",
+                api_key="test-key",
+                poster=failing_poster,
+            )
+
+            self.assertEqual(result["status"], "unverified")
+            self.assertEqual(result["observed"], {})
+
+
 if __name__ == "__main__":
     unittest.main()

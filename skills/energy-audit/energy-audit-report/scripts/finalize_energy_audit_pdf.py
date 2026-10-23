@@ -211,19 +211,39 @@ def _replace_retry(src, dst, attempts=6, delay=0.8):
 
 
 def _ensure_update_fields_zip(path):
-    """确保 settings 含 updateFields（Word 保存可能剥离）；返回是否补写。"""
+    """确保 settings 含按 schema 顺序放置的 updateFields；返回是否改动。"""
     with zipfile.ZipFile(path) as z:
         s = z.read("word/settings.xml").decode("utf-8")
-        if "updateFields" in s:
-            return False
         items = [(i, z.read(i.filename)) for i in z.infolist()]
-    s2 = s.replace("</w:settings>", '<w:updateFields w:val="true"/></w:settings>')
+    # CT_Settings is an ordered sequence. Insert before the first element that
+    # must follow updateFields; appending directly before </w:settings> creates
+    # schema-invalid XML that strict validators reject.
+    update = '<w:updateFields w:val="true"/>'
+    s = re.sub(
+        r"<w:updateFields\b[^>]*/>|<w:updateFields\b[^>]*>.*?</w:updateFields>",
+        "",
+        s,
+        flags=re.S,
+    )
+    following = (
+        "hdrShapeDefaults|footnotePr|endnotePr|compat|docVars|rsids|mathPr|"
+        "themeFontLang|clrSchemeMapping|doNotIncludeSubdocsInStats|"
+        "doNotAutoCompressPictures|forceUpgrade|captions|readModeInkLockDown|"
+        "smartTagType|schemaLibrary|shapeDefaults|doNotEmbedSmartTags|"
+        "decimalSymbol|listSeparator"
+    )
+    anchor = re.search(rf"<w:(?:{following})\b", s)
+    if anchor:
+        s2 = s[:anchor.start()] + update + s[anchor.start():]
+    else:
+        s2 = s.replace("</w:settings>", update + "</w:settings>")
+    changed = s2 != s
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for item, data in items:
             if item.filename == "word/settings.xml":
                 data = s2.encode("utf-8")
             z.writestr(item, data)
-    return True
+    return changed
 
 
 def _toc1_entries(path):

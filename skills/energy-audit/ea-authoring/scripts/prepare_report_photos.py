@@ -38,6 +38,8 @@
 
 用法:
     python prepare_report_photos.py <项目名|项目目录> [--force] [--dry-run] [--quiet]
+    python prepare_report_photos.py <项目名|项目目录> --catalog-only [--vision]
+    python prepare_report_photos.py <项目名|项目目录> --prune {report,apply}
 
 行为与退出码:
     0  正常（含"有照片未被引用"这类提示）
@@ -46,9 +48,13 @@
        ——已能写的条目仍会写
 
 产物:
+    <项目>/photo_catalog.json                写作前照片事实目录（--catalog-only）
     <项目>/data/images/<规范化文件名>         照片副本（清单引用的就是它）
-    <项目>/report_images.json                 第2/3/4/6章照片条目重建（写前留 .bak）
+    <项目>/report_images.json                 第2/3/4/6章照片条目重建（写前留 .bak；含来源元数据）
     <项目>/photo_vision_checks.json            第3章荣誉证书视觉核验缓存与核验记录
+    <项目>/photo_finalization_status.json     本次归置是否仍有告警
+    <项目>/photo_prune_report.json            孤立照片扫描/移动记录
+    <项目>/_work/photo_trash/<时间>/           --prune apply 的可恢复回收区
 
 约定（对应 2026-10-13 五项决策）:
     - 副本目录统一 `data/images/`，清单 src 写相对路径 `data/images/xxx.png`；
@@ -67,6 +73,7 @@ import os
 import re
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
@@ -100,16 +107,39 @@ def _load_photo_vision():
         sys.path.insert(0, str(here))
     from photo_vision import (  # type: ignore
         DEFAULT_MODEL,
+        inspect_photo,
         normalize_claim_text,
         verify_certificate,
         vision_cache_key,
     )
-    return DEFAULT_MODEL, normalize_claim_text, verify_certificate, vision_cache_key
+    return (
+        DEFAULT_MODEL,
+        inspect_photo,
+        normalize_claim_text,
+        verify_certificate,
+        vision_cache_key,
+    )
 
 
-VISION_MODEL, _normalize_claim_text, verify_certificate, vision_cache_key = \
+VISION_MODEL, inspect_photo, _normalize_claim_text, verify_certificate, vision_cache_key = \
     _load_photo_vision()
 VISION_CHECKS_FILENAME = "photo_vision_checks.json"
+FINALIZATION_STATUS_FILENAME = "photo_finalization_status.json"
+PRUNE_REPORT_FILENAME = "photo_prune_report.json"
+
+
+def _load_photo_catalog():
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    from photo_catalog import (  # type: ignore
+        build_photo_catalog,
+        write_photo_catalog,
+    )
+    return build_photo_catalog, write_photo_catalog
+
+
+build_photo_catalog, write_photo_catalog = _load_photo_catalog()
 
 CAP_RE = re.compile(r"^图([2346])\.(\d+)\s*(.+?)\s*$")
 BUILDING_CAT = "建筑外观"
@@ -304,6 +334,190 @@ def _attachment_ids(value) -> list:
 
 def _path_key(path: str) -> str:
     return os.path.normcase(os.path.abspath(str(path or "")))
+
+
+def _sha256_file(path: str) -> str:
+    if not path or not os.path.isfile(path):
+        return ""
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def _image_row_for_source(images, source_path: str, file_id=None) -> dict:
+    source_key = _path_key(source_path)
+    for image in images or []:
+        if _path_key(image.get("path")) == source_key:
+            return image
+    file_id = str(file_id or "").strip()
+    if file_id:
+        for image in images or []:
+            if str(image.get("file_id") or "").strip() == file_id:
+                return image
+    return {}
+
+
+def make_photo_entry(
+    *,
+    caption: str,
+    destination: str,
+    project_dir: str,
+    source_path: str,
+    images,
+    kind: str,
+    binding_ref: str,
+    binding_label: str,
+    file_id=None,
+    category: str = "",
+    verification: str = "unverified",
+) -> dict:
+    """Build a manifest entry while preserving the legacy caption/src contract."""
+    image = _image_row_for_source(images, source_path, file_id=file_id)
+    resolved_file_id = str(
+        file_id if file_id not in (None, "") else image.get("file_id") or ""
+    ).strip()
+    source_abs = os.path.abspath(source_path)
+    source_sha = str(image.get("sha256") or "").strip() or _sha256_file(source_abs)
+    candidate_id = (
+        f"file_id:{resolved_file_id}"
+        if resolved_file_id
+        else f"path:{Path(source_abs).resolve()}"
+    )
+    destination_abs = os.path.join(project_dir, destination.replace("/", os.sep))
+    return {
+        "caption": caption,
+        "src": destination,
+        "sha256": _sha256_file(destination_abs),
+        "source": {
+            "kind": kind,
+            "candidate_id": candidate_id,
+            "file_id": resolved_file_id,
+            "source_path": source_abs,
+            "source_sha256": source_sha,
+            "category": category or str(image.get("category") or ""),
+            "binding": {
+                "ref": binding_ref,
+                "label": binding_label,
+            },
+            "selection_method": "file_id" if resolved_file_id else "path",
+            "verification": verification,
+        },
+    }
+
+
+def semantic_reuse_warnings(entries) -> list:
+    """Warn when one physical source is reused under different captions."""
+    by_source = {}
+    for entry in entries or []:
+        source = entry.get("source") or {}
+        digest = str(source.get("source_sha256") or "").strip()
+        caption = str(entry.get("caption") or "").strip()
+        if not digest or not caption:
+            continue
+        by_source.setdefault(digest, [])
+        if caption not in by_source[digest]:
+            by_source[digest].append(caption)
+
+    warnings = []
+    for captions in by_source.values():
+        if len(captions) > 1:
+            warnings.append(
+                "同一张源照片被分配给不同图注，存在语义错配风险："
+                + " / ".join(captions)
+            )
+    return warnings
+
+
+def prune_photo_orphans(project_dir: str | Path, *, apply: bool = False) -> dict:
+    """Report or move unreferenced photos without touching referenced files."""
+    root = Path(project_dir).resolve()
+    images_dir = root / "data" / "images"
+    manifest_path = root / "report_images.json"
+    reasons = []
+    if images_dir.is_symlink():
+        reasons.append("data/images 是符号链接，拒绝扫描或移动其目标目录")
+    manifest = read_json(manifest_path, None) if manifest_path.is_file() else None
+    manifest_valid = (
+        isinstance(manifest, dict)
+        and isinstance(manifest.get("images"), list)
+    )
+    if not manifest_valid:
+        manifest = {"images": []}
+
+    referenced = set()
+    for entry in manifest.get("images") or []:
+        src = str((entry or {}).get("src") or "").strip()
+        if not src:
+            continue
+        candidate = Path(src)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        referenced.add(candidate.resolve())
+
+    scanned = []
+    if images_dir.is_dir() and not images_dir.is_symlink():
+        for current, dirnames, filenames in os.walk(images_dir):
+            current_path = Path(current)
+            dirnames[:] = [
+                name for name in dirnames
+                if not (current_path / name).is_symlink()
+            ]
+            for name in filenames:
+                path = current_path / name
+                if path.is_symlink() or not path.is_file():
+                    continue
+                scanned.append(path.resolve())
+
+    orphans = sorted(path for path in scanned if path not in referenced)
+    finalization = read_json(root / FINALIZATION_STATUS_FILENAME, {})
+    if not manifest_valid:
+        reasons.append("report_images.json 缺失或无效，无法判断哪些照片已被引用")
+    if (
+        isinstance(finalization, dict)
+        and finalization.get("clean") is False
+    ):
+        reasons.append("上次照片归置仍有告警，需先清理告警并重跑归置")
+    blocked = bool(apply and reasons)
+    result = {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "mode": "apply" if apply else "report",
+        "blocked": blocked,
+        "reason": "；".join(reasons),
+        "referenced": [
+            os.path.relpath(path, root).replace(os.sep, "/")
+            for path in sorted(referenced)
+        ],
+        "orphans": [
+            os.path.relpath(path, root).replace(os.sep, "/")
+            for path in orphans
+        ],
+        "moved": [],
+        "trash_dir": "",
+    }
+
+    if apply and orphans and not blocked:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        trash_dir = root / "_work" / "photo_trash" / stamp
+        for source in orphans:
+            relative = source.relative_to(images_dir)
+            destination = trash_dir / "data" / "images" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(destination))
+            result["moved"].append(
+                os.path.relpath(destination, root).replace(os.sep, "/")
+            )
+        result["trash_dir"] = str(trash_dir)
+
+    (root / PRUNE_REPORT_FILENAME).write_text(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return result
 
 
 def build_ch3_pools(saving, images=None):
@@ -597,17 +811,16 @@ def pick_ch6_photo(desc: str, images, used: set, equipment=None):
             matched_eqs.insert(0, eq)
         elif key_desc and (eq_key in key_desc or key_desc in eq_key):
             matched_eqs.append(eq)
-    for allow_used in (False, True):
-        for eq in matched_eqs:
-            for fid in _img_ids(eq):
-                im = by_file_id.get(fid)
-                p = str((im or {}).get("path") or "")
-                if not p or not os.path.isfile(p):
-                    continue
-                if allow_used or p not in used:
-                    return p
+    for eq in matched_eqs:
+        for fid in _img_ids(eq):
+            im = by_file_id.get(fid)
+            p = str((im or {}).get("path") or "")
+            if not p or not os.path.isfile(p):
+                continue
+            if p not in used:
+                return p
 
-    def _first(match, allow_used=False):
+    def _first(match):
         for im, p in pool:
             stem = _stem(p)
             if stem in CH6_GARBAGE_STEMS or stem.startswith("微信图片"):
@@ -616,27 +829,24 @@ def pick_ch6_photo(desc: str, images, used: set, equipment=None):
                 continue
             if not os.path.isfile(p):
                 continue
-            if allow_used or p not in used:
+            if p not in used:
                 return p
         return ""
 
     def _stem(p):
         return re.sub(r"\s+", "", os.path.splitext(os.path.basename(p))[0])
 
-    for allow_used in (False, True):                    # ① 主干完全相同（先未用，后允许复用）
-        hit = _first(lambda im, p: _stem(p) == key, allow_used)
-        if hit:
-            return hit
-    for allow_used in (False, True):                    # ② 互相包含
-        hit = _first(lambda im, p: _stem(p) and (key in _stem(p) or _stem(p) in key), allow_used)
-        if hit:
-            return hit
+    hit = _first(lambda im, p: _stem(p) == key)          # ① 主干完全相同
+    if hit:
+        return hit
+    hit = _first(lambda im, p: _stem(p) and (key in _stem(p) or _stem(p) in key))
+    if hit:                                              # ② 互相包含
+        return hit
     for cap_kw, img_kws in CH6_KEYWORDS:                # ③ 同义词关键词（不做分类兜底）
         if cap_kw in key:
-            for allow_used in (False, True):
-                hit = _first(lambda im, p, ks=img_kws: any(k in _stem(p) for k in ks), allow_used)
-                if hit:
-                    return hit
+            hit = _first(lambda im, p, ks=img_kws: any(k in _stem(p) for k in ks))
+            if hit:
+                return hit
     return ""
 
 
@@ -730,6 +940,24 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="只报告，不复制、不写清单")
     ap.add_argument("--quiet", action="store_true", help="只在告警时输出")
     ap.add_argument(
+        "--catalog-only",
+        action="store_true",
+        help="写作前只生成 photo_catalog.json，不要求 chapter_md/ch2.md",
+    )
+    ap.add_argument(
+        "--vision",
+        action="store_true",
+        help="配合 --catalog-only，用 DeepSeek 提取图片可见事实（失败不阻断）",
+    )
+    ap.add_argument(
+        "--prune",
+        choices=("report", "apply"),
+        help=(
+            "孤立照片处理：report=只报告；apply=移动到 "
+            "<项目>/_work/photo_trash/<时间>/"
+        ),
+    )
+    ap.add_argument(
         "--certificate-policy",
         choices=("review", "strict"),
         default="review",
@@ -748,17 +976,61 @@ def main(argv=None) -> int:
     if not pdir:
         print(f"[错误] 项目目录不存在: {args.project}（查找根: {projects_root()}）")
         return 1
+    if args.prune:
+        if args.prune == "apply" and args.dry_run:
+            say("[dry-run] 清理只生成报告，不移动文件")
+        result = prune_photo_orphans(
+            pdir,
+            apply=args.prune == "apply" and not args.dry_run,
+        )
+        if result["blocked"]:
+            print(f"[阻断] {result['reason']}")
+            print(f"[报告] 仍可在 {PRUNE_REPORT_FILENAME} 查看孤立文件清单")
+            return 2
+        say(
+            f"[照片清理] 引用 {len(result['referenced'])}，"
+            f"孤立 {len(result['orphans'])}，移动 {len(result['moved'])}"
+        )
+        if result["trash_dir"]:
+            say(f"  回收目录：{result['trash_dir']}")
+        return 0
+
     data_path = os.path.join(pdir, "data.json")
     md2_path = os.path.join(pdir, "chapter_md", "ch2.md")
     md3_path = os.path.join(pdir, "chapter_md", "ch3.md")
     md4_path = os.path.join(pdir, "chapter_md", "ch4.md")
     md6_path = os.path.join(pdir, "chapter_md", "ch6.md")
-    for need in (data_path, md2_path):
-        if not os.path.isfile(need):
-            print(f"[错误] 缺少输入: {need}")
-            return 1
+    if not os.path.isfile(data_path):
+        print(f"[错误] 缺少输入: {data_path}")
+        return 1
 
     data = read_json(data_path, {})
+    if args.catalog_only:
+        visualizer = None
+        if args.vision:
+            def visualizer(path, context):
+                return inspect_photo(
+                    image_path=path,
+                    expected_context=context,
+                    model=VISION_MODEL,
+                )
+        catalog = build_photo_catalog(
+            data,
+            pdir,
+            visualizer=visualizer,
+        )
+        out = write_photo_catalog(pdir, catalog)
+        say(
+            f"[照片目录] {len(catalog.get('candidates') or [])} 个物理照片："
+            f"{out}"
+        )
+        for warning in catalog.get("warnings") or []:
+            say(f"  ⚠️ {warning}")
+        return 0
+
+    if not os.path.isfile(md2_path):
+        print(f"[错误] 缺少输入: {md2_path}")
+        return 1
     images = data.get("images") or []
     equipment = data.get("equipment") or []
     meter_photos = metering_photos(images, data.get("energy_meter") or [])
@@ -822,11 +1094,39 @@ def main(argv=None) -> int:
         used_sources.add(src)
         if args.dry_run:
             say(f"  · {caption}  <=  {src}")
-            photo_entries.append({"caption": caption, "src": f"data/images/{safe_name(stem)}"})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=f"data/images/{safe_name(stem)}",
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind="building",
+                binding_ref=(
+                    "images[].category" if num == 1
+                    else "images[].building_name"
+                ),
+                binding_label=(
+                    unit_short if num == 1 else name
+                ),
+            ))
             continue
         rel = place(pdir, src, stem, args.force, copy_cache, say)
         if rel:
-            photo_entries.append({"caption": caption, "src": rel})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=rel,
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind="building",
+                binding_ref=(
+                    "images[].category" if num == 1
+                    else "images[].building_name"
+                ),
+                binding_label=(
+                    unit_short if num == 1 else name
+                ),
+            ))
 
     unused = [im for im in images
               if normalize_photo_category(im.get("category")) == BUILDING_CAT
@@ -882,6 +1182,7 @@ def main(argv=None) -> int:
                 )
             continue
 
+        verification_status = "unverified"
         if kind == "award":
             expected_title = str(record.get("title") or desc).strip()
             cache_key = vision_cache_key(
@@ -914,6 +1215,7 @@ def main(argv=None) -> int:
                     vision_cache_dirty = True
 
             status = str((verification or {}).get("status") or "unverified")
+            verification_status = status
             reason = str((verification or {}).get("reason") or "未完成视觉核验")
             if status == "mismatch":
                 if args.certificate_policy == "strict":
@@ -939,12 +1241,45 @@ def main(argv=None) -> int:
         stem = f"{prefix}_{os.path.splitext(os.path.basename(src))[0]}"
         if args.dry_run:
             say(f"  · {caption}  <=  {src}")
-            photo_entries.append({"caption": caption,
-                                  "src": f"data/images/{safe_name(stem)}"})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=f"data/images/{safe_name(stem)}",
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind=kind,
+                binding_ref=(
+                    "energy_saving[].award_certificate"
+                    if kind == "award"
+                    else "energy_saving[].management_files"
+                ),
+                binding_label=str(
+                    record.get("title") or "能源管理制度文件"
+                ),
+                file_id=record.get("file_id"),
+                verification=verification_status,
+            ))
             continue
         rel = place(pdir, src, stem, args.force, copy_cache, say)
         if rel:
-            photo_entries.append({"caption": caption, "src": rel})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=rel,
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind=kind,
+                binding_ref=(
+                    "energy_saving[].award_certificate"
+                    if kind == "award"
+                    else "energy_saving[].management_files"
+                ),
+                binding_label=str(
+                    record.get("title") or "能源管理制度文件"
+                ),
+                file_id=record.get("file_id"),
+                verification=verification_status,
+            ))
 
     if vision_cache_dirty and not args.dry_run:
         write_json(
@@ -967,12 +1302,29 @@ def main(argv=None) -> int:
         stem = f"设备_{desc}"
         if args.dry_run:
             say(f"  · {caption}  <=  {src}")
-            photo_entries.append({"caption": caption,
-                                  "src": f"data/images/{safe_name(stem)}"})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=f"data/images/{safe_name(stem)}",
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind="equipment",
+                binding_ref="equipment[].img_ids",
+                binding_label=desc,
+            ))
             continue
         rel = place(pdir, src, stem, args.force, copy_cache, say)
         if rel:
-            photo_entries.append({"caption": caption, "src": rel})
+            photo_entries.append(make_photo_entry(
+                caption=caption,
+                destination=rel,
+                project_dir=pdir,
+                source_path=src,
+                images=images,
+                kind="equipment",
+                binding_ref="equipment[].img_ids",
+                binding_label=desc,
+            ))
 
     if pool_total and not caps3:
         warnings.append(f"第3章有 {pool_total} 张可用照片（管理文件 "
@@ -1001,17 +1353,38 @@ def main(argv=None) -> int:
             stem = f"{METERING_CAT}_{item['label']}"
             if args.dry_run:
                 say(f"  · {caption}  <=  {item['src']}")
-                photo_entries.append({"caption": caption,
-                                      "src": f"data/images/{safe_name(stem)}"})
+                photo_entries.append(make_photo_entry(
+                    caption=caption,
+                    destination=f"data/images/{safe_name(stem)}",
+                    project_dir=pdir,
+                    source_path=item["src"],
+                    images=images,
+                    kind="metering",
+                    binding_ref="energy_meter[].device_img",
+                    binding_label=item["label"],
+                    category=METERING_CAT,
+                ))
                 continue
             rel = place(pdir, item["src"], stem, args.force, copy_cache, say)
             if rel:
-                photo_entries.append({"caption": caption, "src": rel})
+                photo_entries.append(make_photo_entry(
+                    caption=caption,
+                    destination=rel,
+                    project_dir=pdir,
+                    source_path=item["src"],
+                    images=images,
+                    kind="metering",
+                    binding_ref="energy_meter[].device_img",
+                    binding_label=item["label"],
+                    category=METERING_CAT,
+                ))
 
     if meter_photos and not caps4:
         warnings.append(f"第4章有 {len(meter_photos)} 张可用 '{METERING_CAT}' 照片，"
                         f"但 ch4.md 没有 '图4.x' 图注行——请在 4.2 末尾补"
                         f"`图4.1 计量器具照片` 后重跑")
+
+    warnings.extend(semantic_reuse_warnings(photo_entries))
 
     man_path = os.path.join(pdir, "report_images.json")
     if args.dry_run:
@@ -1031,6 +1404,17 @@ def main(argv=None) -> int:
             json.dump(man, f, ensure_ascii=False, indent=2)
         say(f"[清单] {os.path.basename(man_path)}：重建第2/3/4/6章条目 {len(photo_entries)} 条"
             f"（替换旧条目 {dropped} 条，保留其他条目 {len(kept)} 条）")
+
+    if not args.dry_run:
+        write_json(
+            os.path.join(pdir, FINALIZATION_STATUS_FILENAME),
+            {
+                "clean": not warnings,
+                "warnings": warnings,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            backup=True,
+        )
 
     if warnings:
         print(f"\n[告警] {len(warnings)} 条：")

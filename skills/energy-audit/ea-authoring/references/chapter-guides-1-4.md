@@ -647,7 +647,11 @@ author 想进一步扩展时，可用下面的引言段句式与编号列表（�
 图3.2 节能降耗优质奖奖牌（二等奖）
 ```
 
-- 图注文字要与**照片内容相符**（写之前先看图；禁止照抄别家的荣誉名或制度名）
+- 图注文字要与**照片内容相符**。写章前先运行
+  `prepare_report_photos.py <项目名> --catalog-only --vision`，再读
+  `chapter_md/_context.md` 的“照片事实目录”：`核验状态=pass` 才能写图片内可见的
+  品牌、型号、灯型或证书名；`review`/`unverified` 只能写数据库绑定支撑的中性说明。
+  禁止照抄别家的荣誉名或制度名，也禁止根据文件名猜图。
 - 照片副本与清单条目由 `ea-authoring/scripts/prepare_report_photos.py <项目名>` 归置
   （副本落 `<项目>/data/images/`，清单写相对路径 `data/images/xxx.png`），
   author **只写图注行**，不手工复制照片、不手写清单条目

@@ -25,6 +25,7 @@ from tools.energy_audit.project_data import (
     save_project, SourceResolver, first_non_empty_source,
     is_valid_coefficient, total_building_area,
     normalize_photo_category, photo_category_for_equipment,
+    dedupe_image_items,
 )
 from tools.energy_audit.indicators import compute_project_indicators, COEFFICIENT_RANGES
 from tools.energy_audit.institution_classifier import classify_institution
@@ -1269,6 +1270,10 @@ def build_and_save_project(
     _yearly = _merge_energy(pg_energy, excel_data.get('energy_yearly', []))
     # 注意：本函数里的采集结果变量名是 pg_result（不是 result）——2026-10-13 修 NameError
     _attach_energy_anomalies(_yearly, pg_result.get('found', {}).get('energy_anomalies', []) or [])
+
+    # 数据库按设备/建筑/场景多次引用同一附件。实测岚山区人民医院 219 条
+    # 照片登记只对应 41 个物理文件；去重只合并物理身份，设备 img_ids 绑定不删除。
+    photo_items = dedupe_image_items(photo_items)
 
     proj = AuditProject(
         base=ProjectBase(

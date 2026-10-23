@@ -15,7 +15,8 @@ T2 章节渲染（md 元素映射，对齐 45 页终稿）：
   - 表题/子标题（**…**）：居中 12pt 加粗；图注：居中 12pt 不加粗
   - 项目符号：Wingdings U+F06C 实心圆点（numId=1 的 abstractNum lvl0 重定义）
   - 公式：md 占位 [FORMULAn] → assets/omml_formulas.json 注入 OMML（居中段）
-  - 图片：report_images.json 清单（图注精确匹配 → 12cm 独立居中段 + 图注段）
+  - 图片：report_images.json 清单（图注精确匹配）；第6章设备照片 6.8cm、
+    每行两张、末张居中，其他章节图片维持 12cm 独立居中段 + 图注段
 
 T3 附录渲染特例：
   - '# 附录：'：H1 样式但 12pt 不加粗左对齐
@@ -84,6 +85,9 @@ CHAPTER5_MANIFEST = "chapter5_figures.json"
 CHAPTER5_FIGURE_ISSUES = "chapter5_figure_issues.json"
 CHAPTER5_CAPTION_RE = re.compile(r"^图5\.(\d+)\s+\S.+$")
 CHAPTER5_PLACEHOLDER_RE = re.compile(r"（暂缺[：:].*）$")
+CHAPTER6_PHOTO_CAPTION_RE = re.compile(r"^图6\.\d+\s+\S.+$")
+CHAPTER6_PHOTO_WIDTH_CM = 6.8
+CHAPTER6_PHOTO_COLUMN_WIDTH_CM = 7.3
 
 _THEME_ATTRS = ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme")
 
@@ -704,7 +708,32 @@ def _set_update_fields(doc):
     if el.find(qn("w:updateFields")) is None:
         uf = OxmlElement("w:updateFields")
         uf.set(qn("w:val"), "true")
-        el.append(uf)
+        # CT_Settings is an ordered sequence: updateFields belongs after the
+        # print/save flags and before hdrShapeDefaults, document defaults and
+        # compatibility blocks. Appending it produces schema-invalid XML.
+        el.insert_element_before(
+            uf,
+            "w:hdrShapeDefaults",
+            "w:footnotePr",
+            "w:endnotePr",
+            "w:compat",
+            "w:docVars",
+            "w:rsids",
+            "w:mathPr",
+            "w:themeFontLang",
+            "w:clrSchemeMapping",
+            "w:doNotIncludeSubdocsInStats",
+            "w:doNotAutoCompressPictures",
+            "w:forceUpgrade",
+            "w:captions",
+            "w:readModeInkLockDown",
+            "w:smartTagType",
+            "w:schemaLibrary",
+            "w:shapeDefaults",
+            "w:doNotEmbedSmartTags",
+            "w:decimalSymbol",
+            "w:listSeparator",
+        )
 
 
 def _set_pg_num_start(doc, start=1):
@@ -971,6 +1000,133 @@ def _add_image_para(doc, path, width_cm=12.0):
     return p
 
 
+def _style_photo_paragraph(paragraph):
+    """设备照片段落：居中、零段前后距、1.5 倍行距。"""
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    pf = paragraph.paragraph_format
+    pf.space_before = Pt(0)
+    pf.space_after = Pt(0)
+    pf.line_spacing = 1.5
+
+
+def _set_table_borders_none(table):
+    """移除照片网格表格的全部可见边框。"""
+    tbl_pr = table._tbl.tblPr
+    borders = tbl_pr.first_child_found_in("w:tblBorders")
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        # OOXML requires tblBorders before shd/tblLayout/tblCellMar/tblLook.
+        # python-docx writes tblLayout when autofit=False, so append at the end
+        # would produce schema-invalid XML that Word may repair on open.
+        following_tags = {
+            qn("w:shd"),
+            qn("w:tblLayout"),
+            qn("w:tblCellMar"),
+            qn("w:tblLook"),
+            qn("w:tblCaption"),
+            qn("w:tblDescription"),
+        }
+        for child in tbl_pr:
+            if child.tag in following_tags:
+                child.addprevious(borders)
+                break
+        else:
+            tbl_pr.append(borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        tag = qn(f"w:{edge}")
+        element = borders.find(tag)
+        if element is None:
+            element = OxmlElement(f"w:{edge}")
+            borders.append(element)
+        element.set(qn("w:val"), "nil")
+
+
+def _prevent_table_row_split(row):
+    tr_pr = row._tr.get_or_add_trPr()
+    if tr_pr.find(qn("w:cantSplit")) is None:
+        tr_pr.append(OxmlElement("w:cantSplit"))
+
+
+def _add_photo_cell(cell, caption, srcs, project_dir):
+    """无边框照片格：6.8cm 等比例图片 + 图注；缺图时仅保留图注。"""
+    paragraph = cell.paragraphs[0]
+    inserted = False
+    for src in srcs:
+        path = os.path.join(project_dir, src)
+        if not os.path.isfile(path):
+            print(f"WARN: 图文件不存在: {path}")
+            continue
+        _style_photo_paragraph(paragraph)
+        run = paragraph.add_run()
+        run.add_picture(path, width=Cm(CHAPTER6_PHOTO_WIDTH_CM))
+        inserted = True
+        paragraph = cell.add_paragraph()
+
+    if not srcs:
+        print(f"WARN: 图清单缺少: {caption}")
+    cap_para = paragraph
+    cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cap_para.paragraph_format.space_before = Pt(0)
+    cap_para.paragraph_format.space_after = Pt(0)
+    cap_para.paragraph_format.line_spacing = 1.5
+    cap_run = cap_para.add_run(caption)
+    cap_run.font.name = SONG
+    cap_run.font.size = Pt(12)
+    return inserted
+
+
+def _chapter6_photo_block(lines, next_index, first_caption):
+    """收集最多两条相邻的第六章照片图注，跳过二者之间的空行。"""
+    captions = [first_caption]
+    j = next_index
+    while j < len(lines) and len(captions) < 2:
+        candidate = lines[j].strip()
+        if not candidate:
+            j += 1
+            continue
+        if not CHAPTER6_PHOTO_CAPTION_RE.match(candidate):
+            break
+        captions.append(candidate)
+        j += 1
+    return captions, j
+
+
+def _render_chapter6_photos(doc, captions, images, project_dir):
+    """第六章照片排版：两张一行、6.8cm 等比例；末张单列时居中。"""
+    if len(captions) == 1:
+        caption = captions[0]
+        srcs = images.get(caption) or []
+        inserted = False
+        for src in srcs:
+            path = os.path.join(project_dir, src)
+            if not os.path.isfile(path):
+                print(f"WARN: 图文件不存在: {path}")
+                continue
+            _add_image_para(doc, path, width_cm=CHAPTER6_PHOTO_WIDTH_CM)
+            inserted = True
+        if not srcs:
+            print(f"WARN: 图清单缺少: {caption}")
+        _para(doc, caption, size=12, bold=False,
+              align=WD_ALIGN_PARAGRAPH.CENTER)
+        return inserted
+
+    table = doc.add_table(rows=1, cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    _set_table_borders_none(table)
+    _prevent_table_row_split(table.rows[0])
+    for column in table.columns:
+        column.width = Cm(CHAPTER6_PHOTO_COLUMN_WIDTH_CM)
+    inserted_any = False
+    for cell, caption in zip(table.rows[0].cells, captions):
+        cell.width = Cm(CHAPTER6_PHOTO_COLUMN_WIDTH_CM)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        inserted_any = _add_photo_cell(
+            cell, caption, images.get(caption) or [], project_dir
+        ) or inserted_any
+    return inserted_any
+
+
 def _formula_para(doc, omml_xml):
     """公式段：居中、无缩进、间距 0/0、1.5 行距；内容为 OMML。"""
     p = doc.add_paragraph()
@@ -1150,6 +1306,9 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif line.startswith("**") and line.endswith("**") and len(line) > 4:
             _para(doc, line[2:-2].strip(), size=12, bold=True,
                   align=WD_ALIGN_PARAGRAPH.CENTER)
+        elif CHAPTER6_PHOTO_CAPTION_RE.match(line):
+            captions, i = _chapter6_photo_block(lines, i, line)
+            _render_chapter6_photos(doc, captions, images, project_dir)
         elif re.match(r"^图\d+\.\d+", line):
             _figure(doc, line, images, project_dir, figure_issues)
         elif appendix and listing:

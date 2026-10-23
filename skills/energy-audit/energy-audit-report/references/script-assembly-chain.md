@@ -41,7 +41,7 @@ python skills/energy-audit/energy-audit-report/scripts/ea_docx_asserts.py \
 | `chapter_md/ch1..ch8.md` | LLM 逐章正文（第5章用 caliber 产出的 `ch5_import.md`，脚本优先匹配 `chN_import.md`）。`ch5_import.md` 由 `ea-calculation/scripts/prepare_chapter_md.py <项目名>` 就位（不覆盖作者已并入叙述段的版本；退出码 2 = 装配稿早于计算产物需人工确认） |
 | `chapter_md/appendix.md` | 附录（7 附录约定；有发票插发票附录） |
 | `chapter5_figures.json` | caliber 本次生成批次的第5章图清单：图号、图注、kind、energy_code；可信图附 src/SHA-256/`status=available`，缺图附 `status=missing` + reason。禁止手改 |
-| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径, sha256?}]}`；caption 须与 md 图注行**精确一致**。**第5章仅由 `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` 写入可信条目**，同时生成 `chapter5_figure_issues.json` 和 `missing_items.json`；第2/3/4/6章照片条目由 `prepare_report_photos.py` 生成。默认缺图不写清单，由装配器写红色“暂缺”并继续；`--figure-policy strict` 才因四链不一致 exit 2 |
+| `report_images.json` | 图清单：`{images: [{caption: "图X.Y …", src: 相对路径, sha256?}]}`；caption 须与 md 图注行**精确一致**。**第5章仅由 `ea-authoring/scripts/prepare_chapter5_figures.py <项目名>` 写入可信条目**，同时生成 `chapter5_figure_issues.json` 和 `missing_items.json`；第2/3/4/6章照片条目由 `prepare_report_photos.py` 生成。装配器按相邻图注自动把第6章设备照片排成每行两张、每张 6.8cm 等比缩放；最后单张居中。其他章节图片尺寸不变。默认缺图不写清单，由装配器写红色“暂缺”并继续；`--figure-policy strict` 才因四链不一致 exit 2 |
 | `assets/omml_formulas.json` | OMML 公式库（当前法院/机关型 5 个）。其他机构类型在其项目首次使用时从同类成品提取补入——同一 JSON 加键 `FORMULAn` 即可，无需改代码 |
 
 ### 装配覆盖（对齐 45 页终稿）

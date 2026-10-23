@@ -431,6 +431,72 @@ def equipment_photo_contract(data: dict) -> list:
         rows.append((name, str(eq.get("category") or ""), ",".join(ids), files))
     return rows
 
+
+def photo_catalog_context(project_dir: str, limit: int = 60) -> tuple:
+    """读取写作前照片目录，返回 (状态, 行, 告警文本)。
+
+    ``_context.md`` 只给作者可核验的事实。视觉状态为 review/unverified 时
+    不展示模型猜测的品牌/型号，要求退回数据库绑定或中性图注。
+    """
+    path = os.path.join(project_dir, "photo_catalog.json")
+    if not os.path.isfile(path):
+        return "", [], "missing"
+    catalog = load_json(path)
+    if not isinstance(catalog, dict):
+        return "", [], "invalid"
+
+    rows = []
+    for candidate in (catalog.get("candidates") or [])[:limit]:
+        bindings = candidate.get("bindings") or []
+        chapters = "、".join(sorted({
+            str(binding.get("chapter") or "").strip()
+            for binding in bindings
+            if str(binding.get("chapter") or "").strip()
+        })) or "—"
+        binding_text = "；".join(
+            f"{binding.get('chapter') or '—'}："
+            f"{binding.get('ref') or '—'} → {binding.get('label') or '—'}"
+            for binding in bindings
+        ) or "—"
+        visual = candidate.get("visual") or {}
+        status = str(visual.get("status") or "unverified").strip()
+        observed = visual.get("observed") or {}
+        if status == "pass":
+            labels = "、".join(
+                str(label) for label in (observed.get("object_labels") or [])
+                if str(label).strip()
+            )
+            parts = [
+                str(observed.get("visible_title") or "").strip(),
+                labels,
+                str(observed.get("brand") or "").strip(),
+                str(observed.get("model") or "").strip(),
+            ]
+            parts = [part for part in parts if part]
+            if observed.get("confidence") not in (None, ""):
+                parts.append(f"置信度 {observed.get('confidence')}")
+            visual_text = "；".join(parts) or "未识别到可用于具体图注的可见文字"
+        elif status in {"review", "unverified"}:
+            visual_text = "—（核验未通过，仅用中性数据绑定图注）"
+        else:
+            visual_text = f"—（{status}）"
+        rows.append((
+            str(candidate.get("candidate_id") or "—"),
+            chapters,
+            binding_text,
+            visual_text,
+            str(candidate.get("suggested_caption") or "—"),
+            status,
+        ))
+    warning = ""
+    if len(catalog.get("candidates") or []) > limit:
+        warning = (
+            f"照片目录共 {len(catalog.get('candidates') or [])} 条，"
+            f"本契约只展示前 {limit} 条；需要更多时直接打开 `photo_catalog.json`。"
+        )
+    return "present", rows, warning
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="生成写章接续契约 _context.md")
     ap.add_argument("project", help="项目名（对应 ~/projects/energy-audit/<项目名>/）或项目目录")
@@ -717,6 +783,42 @@ def main(argv=None) -> int:
     else:
         lines.append("（无带 `img_ids` 的设备：第6章不强制设备照片。）")
 
+    catalog_state, catalog_rows, catalog_warning = photo_catalog_context(pdir)
+    lines += [
+        "",
+        "### 照片事实目录（写具体图注前必读）",
+        "",
+        "> 具体品牌、型号、灯型、证书名称和图片内可见标题只能取自本表 "
+        "`核验状态=pass` 的可见事实，或直接取自数据库绑定。"
+        "核验状态为 `review` / `unverified` 时，只能使用中性、由数据库绑定支撑的图注，"
+        "不得根据文件名或上下文猜测图片内容。",
+        "",
+    ]
+    if catalog_state == "present":
+        if catalog_rows:
+            lines += [
+                "| candidate_id | 可用章节 | 数据绑定 | 图片可见事实 | 建议图注 | 核验状态 |",
+                "|---|---|---|---|---|---|",
+            ]
+            for row in catalog_rows:
+                lines.append("| " + " | ".join(row) + " |")
+        else:
+            lines.append("（照片目录存在，但没有候选照片。）")
+        if catalog_warning:
+            lines += ["", f"> {catalog_warning}"]
+    elif catalog_state == "invalid":
+        lines.append("> ⚠️ `photo_catalog.json` 无法解析；写具体图注前必须重新生成。")
+    else:
+        lines += [
+            "> ⚠️ 尚未生成 `photo_catalog.json`。写章前请运行：",
+            "",
+            "```text",
+            "python ea-authoring/scripts/prepare_report_photos.py <项目> --catalog-only --vision",
+            "```",
+            "",
+            "> 未生成目录时，作者只能使用数据库绑定或中性图注。",
+        ]
+
     lines += ["", "## 三、已落盘章节（其余为待写；**禁止重复生成已存在的章**）", ""]
     order = [f"ch{i}.md" for i in range(1, 9)] + ["appendix.md"]
     found = []
@@ -802,7 +904,7 @@ def main(argv=None) -> int:
         ("| 蓝本文件 | `energy-audit-report/references/families/public-building/blueprint.md` |"
          if is_pb else
          "| 蓝本文件 | `energy-audit-report/references/audit-examples.md` |"),
-        (f"| 本机构类型小节 | 整篇（去事实化公共建筑蓝本） |"
+        ("| 本机构类型小节 | 整篇（去事实化公共建筑蓝本） |"
          if is_pb else
          f"| 本机构类型小节 | {blueprint_section(ind.get('institution_type'), base.get('institution_category'))} |"),
         "| 可复用（形态 + 固定表述） | 章节骨架 / 表格习惯 / 措辞粒度；1.1 定义段、1.3 三段式、1.5 审计过程、1.6 依据清单、4.1 计量六条、5.3 指标定义等固定表述 |",
