@@ -85,6 +85,7 @@
 --expect 键: pages（容差 ±2）/ oMath / captions / tables / drawings / media_files
 """
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -110,13 +111,33 @@ PUBLIC_BUILDING_SKIP = {
     "ch4_photos", "ch4_structure", "ch5_531_leadin", "ch5_52_layout", "ch5_52_water",
     "ch5_t51", "ch5_energy_leadin", "ch5_trend_word", "ch5_525_fee",
     "ch5_std_symbol", "ch5_532_note", "ch5_53_removal", "ch5_533_people",
-    "ch5_534_water", "apx2_table",
+    "ch5_534_water", "ch3_photos", "apx2_landscape", "apx2_table",
 }
-PUBLIC_BUILDING_P1 = {
-    "pb_ch2_title", "pb_ch6_structure", "pb_ch5_metrics",
-    "pb_coefficient", "pb_appendix2", "pb_no_public_institution",
-}
-P1_NONBLOCKING |= PUBLIC_BUILDING_P1
+
+
+def _load_report_family_contracts():
+    path = Path(__file__).resolve()
+    for parent in [path.parent, *path.parents]:
+        target = parent / "tools" / "energy_audit" / "report_family.py"
+        if target.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "docx_asserts_report_family", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module.resolve_report_family, module.ReportFamilyUnsupported
+    try:
+        from tools.energy_audit.report_family import (  # type: ignore
+            ReportFamilyUnsupported,
+            resolve_report_family,
+        )
+        return resolve_report_family, ReportFamilyUnsupported
+    except ImportError as exc:
+        raise ImportError("无法加载报告族路由") from exc
+
+
+resolve_report_family, ReportFamilyUnsupported = _load_report_family_contracts()
 
 
 def detect_family(docx_path: str) -> str:
@@ -128,8 +149,7 @@ def detect_family(docx_path: str) -> str:
         try:
             with open(data_path, encoding="utf-8") as fh:
                 raw = json.load(fh)
-            if str((raw.get("base") or {}).get("unit_type") or "") == "公共建筑":
-                return "public_building"
+            return resolve_report_family(raw.get("base") or {}).family
         except (OSError, json.JSONDecodeError):
             pass
         break
@@ -138,15 +158,43 @@ def detect_family(docx_path: str) -> str:
 
 def public_building_checks(text: str):
     tn = norm(text)
+    office_metrics = all(
+        label in tn
+        for label in (
+            "5.3.1单位建筑面积能耗",
+            "5.3.2常规用能系统单位建筑面积电耗",
+            "5.3.3人均综合能耗",
+            "5.3.4人均电耗",
+            "5.3.5单位用水量",
+        )
+    )
+    hotel_metrics = all(
+        label in tn
+        for label in (
+            "5.3.1单位综合能耗",
+            "5.3.2单位可比综合能耗",
+            "5.3.3单位用水量",
+        )
+    )
+    expected_metrics = hotel_metrics if "单位可比综合能耗" in tn else office_metrics
     checks = {
         "pb_ch2_title": ("第2章建筑概况" in tn and "公共机构概况" not in tn),
         "pb_ch6_structure": all(
             x in tn for x in ("6.1用电系统运行分析", "6.2用水系统运行分析", "6.3其他用能系统运行分析")
         ),
-        "pb_ch5_metrics": ("5.3.1" in tn and "5.3.3" in tn
-                           and "单位建筑面积非供暖能耗" not in tn),
+        "pb_ch5_metrics": (
+            expected_metrics and "单位建筑面积非供暖能耗" not in tn
+        ),
         "pb_coefficient": ("0.1229" in tn and "0.31" not in tn),
-        "pb_appendix2": ("附录2" in tn and "各种能源折标准煤参考系数" in tn and "0.1229" in tn),
+        "pb_appendix1": bool(
+            re.search(r"附录1[：:]?建筑能耗数据信息表", tn)
+        ),
+        "pb_appendix2": bool(
+            re.search(r"附录2[：:]?各种能源折标准煤参考系数", tn)
+            and "0.1229" in tn
+        ),
+        "pb_no_appendix3": "附录3" not in tn,
+        "pb_no_db37": "DB37" not in tn,
         "pb_no_public_institution": ("公共机构概况" not in tn and "非供暖能耗" not in tn),
     }
     details = {}
@@ -155,11 +203,22 @@ def public_building_checks(text: str):
     if not checks["pb_ch6_structure"]:
         details["pb_ch6_structure"] = "第6章应为 6.1 用电 / 6.2 用水 / 6.3 其他"
     if not checks["pb_ch5_metrics"]:
-        details["pb_ch5_metrics"] = "5.3 指标节不足，或出现公共机构「非供暖能耗」口径"
+        details["pb_ch5_metrics"] = (
+            "5.3 指标节不足（办公/场馆应有 5 项，饭店应有 3 项），"
+            "或出现公共机构「非供暖能耗」口径"
+        )
     if not checks["pb_coefficient"]:
         details["pb_coefficient"] = "电力折标应为 0.1229，且不得出现 0.31"
+    if not checks["pb_appendix1"]:
+        details["pb_appendix1"] = "缺少「附录1 建筑能耗数据信息表」"
     if not checks["pb_appendix2"]:
-        details["pb_appendix2"] = "附录2 应为折标系数表且含 0.1229"
+        details["pb_appendix2"] = (
+            "附录2 名称应为「各种能源折标准煤参考系数」且含 0.1229"
+        )
+    if not checks["pb_no_appendix3"]:
+        details["pb_no_appendix3"] = "浙江公共建筑报告只允许附录1、附录2"
+    if not checks["pb_no_db37"]:
+        details["pb_no_db37"] = "浙江公共建筑报告不得出现 DB37 系列标准"
     if not checks["pb_no_public_institution"]:
         details["pb_no_public_institution"] = "正文出现公共机构专属章名/指标名"
     return checks, details
@@ -1849,7 +1908,7 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
     return checks, metrics, details
 
 
-def main() -> int:
+def main(argv=None) -> int:
     try:                                   # 详情里可能含 m³ 等非 GBK 字符，避免打印崩掉掩盖结果
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
@@ -1861,10 +1920,25 @@ def main() -> int:
     ap.add_argument("--json", dest="json_out", default=None)
     ap.add_argument("--family", choices=["auto", "public_institution", "public_building"],
                     default="auto", help="报告族；auto 从 data.json 推断")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     try:
         checks, metrics, details = run(args.docx, args.pdf, args.family)
+    except ReportFamilyUnsupported as exc:
+        print("[FAIL] report_family — %s" % exc)
+        if args.json_out:
+            json.dump(
+                {
+                    "docx": args.docx,
+                    "passed": False,
+                    "error_type": "report_family",
+                    "error": str(exc),
+                },
+                open(args.json_out, "w", encoding="utf-8"),
+                ensure_ascii=False,
+                indent=2,
+            )
+        return 3
     except Exception as exc:  # 解包失败等
         print("[FAIL] zip_ok — %s" % exc)
         if args.json_out:

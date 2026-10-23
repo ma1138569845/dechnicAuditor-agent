@@ -99,6 +99,38 @@ METRIC_SPECS: Tuple[MetricSpec, ...] = (
     ),
 )
 
+# 浙江公共建筑指标的 V2 审查口径。键必须与
+# ea-calculation/scripts/public_building_indicators.py 的输出一致。
+PUBLIC_BUILDING_METRICS: Dict[str, Tuple[Tuple[str, str, str, str, str, str], ...]] = {
+    "office": (
+        ("unit_area_energy", "单位建筑面积能耗", "unit_area_energy", "kgce/m²", "three", "unit_area_energy"),
+        ("unit_area_electricity", "常规用能系统单位建筑面积电耗", "unit_area_electricity", "kWh/m²", "three", "unit_area_electricity"),
+        ("per_capita_energy", "人均综合能耗", "per_capita_energy", "kgce/人", "three", "per_capita_energy"),
+        ("per_capita_electricity", "人均电耗", "per_capita_electricity", "kWh/人", "three", "per_capita_electricity"),
+        ("unit_water", "单位用水量", "unit_water", "m³/(人·a)", "water", "unit_water"),
+    ),
+    "hotel": (
+        ("unit_energy", "单位综合能耗", "unit_energy", "kgce/m²", "reference", "unit_energy"),
+        ("unit_comparable_energy", "单位可比综合能耗", "unit_comparable_energy", "kgce/m²", "level", "unit_comparable_energy"),
+        ("water_per_bed", "单位用水量", "water_per_bed", "m³/(床·年)", "water", "water"),
+    ),
+}
+
+PUBLIC_BUILDING_TOP_METRICS: Dict[str, Tuple[Tuple[str, str, str], ...]] = {
+    "office": (
+        ("unit_area_non_heating_energy", "kgce_per_m2", "unit_area_energy"),
+        ("unit_area_electricity", "kwh_per_m2", "unit_area_electricity"),
+        ("per_capita_energy", "kgce_per_person", "per_capita_energy"),
+        ("per_capita_electricity", "kwh_per_person", "per_capita_electricity"),
+        ("water_indicator", "m3_per_person", "unit_water"),
+    ),
+    "hotel": (
+        ("unit_energy", "kgce_per_m2", "unit_energy"),
+        ("unit_comparable_energy", "kgce_per_m2", "unit_comparable_energy"),
+        ("water_indicator", "m3_per_bed", "water_per_bed"),
+    ),
+}
+
 
 # ================================================================
 #  输入加载
@@ -259,6 +291,8 @@ def load_indicators(
             payload, payload_path = data, cand
             break
     if isinstance(payload, dict):
+        if is_public_building_payload(payload):
+            return payload, f"indicators.json ({payload_path})", ""
         if payload.get("yearly"):
             return payload, f"indicators.json ({payload_path})", ""
         if payload.get("by_year"):
@@ -286,6 +320,335 @@ def load_indicators(
             return embedded, "data.json → indicators（compute 不可用时的兜底快照）", ""
 
     return None, "", f"indicators 不存在且现算失败（项目 '{project}'）"
+
+
+def is_public_building_payload(payload: dict) -> bool:
+    return (
+        str(payload.get("family") or "").strip() == "公共建筑"
+        or isinstance(payload.get("public_building"), dict)
+    )
+
+
+def _public_building_expected_grade(
+    value: float,
+    tiers: Sequence[float],
+    kind: str,
+    *,
+    water_missing: bool = False,
+) -> str:
+    if kind == "reference":
+        return "参考指标"
+    if kind == "water":
+        if water_missing or value <= 0 or len(tiers) < 2:
+            return "无数据，不评价"
+        general, advanced = safe_float(tiers[0]), safe_float(tiers[1])
+        if advanced > 0 and value <= advanced:
+            return "低于先进值"
+        if general > 0 and value <= general:
+            return "低于通用值"
+        return "高于通用值"
+    if len(tiers) < 3:
+        return ""
+    first, second, third = (safe_float(v) for v in tiers[:3])
+    if kind == "level":
+        if third > 0 and value <= third:
+            return "低于1级（先进值）"
+        if second > 0 and value <= second:
+            return "低于2级（约束值）"
+        if first > 0 and value <= first:
+            return "低于3级（限额值）"
+        return "高于3级（限额值）"
+    if third > 0 and value <= third:
+        return "低于引导值"
+    if second > 0 and value <= second:
+        return "低于基准值"
+    if first > 0 and value <= first:
+        return "低于约束值"
+    return "高于约束值"
+
+
+def review_public_building_payload(
+    indicators: dict, raw: Optional[dict]
+) -> List[Finding]:
+    """审查浙江公共建筑 indicators.json，不回算、不套山东指标。"""
+    findings: List[Finding] = []
+    public_building = indicators.get("public_building") or {}
+    subtype = str(public_building.get("subtype") or "")
+    metric_family = "hotel" if subtype == "hotel" else "office"
+    if subtype not in ("office", "venue", "hotel"):
+        findings.append(
+            Finding(
+                code="V2.PB.SUBTYPE",
+                category="报告族",
+                severity=SEV_P0,
+                title="浙江公共建筑子类无效，无法确定指标集",
+                actual=f"subtype={subtype or '空'}",
+                suggestion="确认 public_building.subtype 为 office / venue / hotel",
+            )
+        )
+
+    results = public_building.get("results")
+    if not isinstance(results, list) or not results:
+        return findings + [
+            Finding(
+                code="V2.PB.RESULTS",
+                category="报告族",
+                severity=SEV_P0,
+                title="公共建筑指标结果缺失",
+                suggestion="重跑 caliber_agent.py，生成 public_building.results[]",
+            )
+        ]
+
+    if isinstance(raw, dict):
+        base = raw.get("base") or {}
+        if str(base.get("unit_type") or "").strip() != "公共建筑":
+            findings.append(
+                Finding(
+                    code="V2.PB.FAMILY_MISMATCH",
+                    category="报告族",
+                    severity=SEV_P0,
+                    title="指标为公共建筑，但 data.json 报告族不是公共建筑",
+                    actual=f"unit_type={base.get('unit_type') or '空'}",
+                    suggestion="以 data.json → base.unit_type + base.province 为唯一报告族来源",
+                )
+            )
+        if "浙江" not in str(base.get("province") or ""):
+            findings.append(
+                Finding(
+                    code="V2.PB.REGION",
+                    category="报告族",
+                    severity=SEV_P0,
+                    title="浙江公共建筑指标缺少浙江省份依据",
+                    actual=f"province={base.get('province') or '空'}",
+                    suggestion="补录 base.province=浙江；其他省份不得套用 DB33/T 指标",
+                )
+            )
+    else:
+        findings.append(
+            Finding(
+                code="V2.PB.RAW_MISSING",
+                category="数据一致性",
+                severity=SEV_P1,
+                title="data.json 缺失，公共建筑报告族与输入口径无法交叉核验",
+                suggestion="恢复项目 data.json 后重跑 V2",
+            )
+        )
+
+    specs = PUBLIC_BUILDING_METRICS[metric_family]
+    values_by_metric: Dict[str, List[Tuple[int, float]]] = {}
+    valid_results = []
+
+    def result_year(row: Any) -> int:
+        return int(safe_float(row.get("year"))) if isinstance(row, dict) else 0
+
+    for result in sorted(results, key=result_year):
+        if not isinstance(result, dict):
+            findings.append(
+                Finding(
+                    code="V2.PB.RESULT_SHAPE",
+                    category="数据一致性",
+                    severity=SEV_P0,
+                    title="公共建筑年度指标结果结构错误",
+                    suggestion="每个 results[] 项必须是对象",
+                )
+            )
+            continue
+        valid_results.append(result)
+        year = int(safe_float(result.get("year")))
+        values = result.get("values") or {}
+        quota = result.get("quota") or {}
+        grades = result.get("grade") or {}
+        notes = result.get("notes") or {}
+        for key, label, value_field, unit, kind, grade_key in specs:
+            raw_value = values.get(value_field)
+            value = safe_float(raw_value)
+            compare_value = value
+            if metric_family == "hotel" and key == "water_per_bed":
+                compare_value = safe_float(values.get("water_per_bed_normalized"))
+            if raw_value is None:
+                findings.append(
+                    Finding(
+                        code="V2.PB.METRIC_MISSING",
+                        category="数据一致性",
+                        severity=SEV_P0,
+                        title=f"{label}缺少年度结果",
+                        location=f"{year}年 · {label}",
+                        suggestion="重算公共建筑指标，补齐 values 字段",
+                    )
+                )
+                continue
+            if value <= 0 and kind != "water":
+                findings.append(
+                    Finding(
+                        code="V2.PB.METRIC_ZERO",
+                        category="数据一致性",
+                        severity=SEV_P0,
+                        title=f"{label}数值为 0",
+                        location=f"{year}年 · {label}",
+                        suggestion="核对面积/人数/床位与能耗分子，零值不能生成正式对标结论",
+                    )
+                )
+            if value > 0:
+                values_by_metric.setdefault(key, []).append((year, value))
+            tiers = quota.get("water" if grade_key == "water" else key) or []
+            water_missing = bool(notes.get("water_missing")) or value <= 0
+            expected = _public_building_expected_grade(
+                compare_value, tiers, kind, water_missing=water_missing
+            )
+            recorded = str(grades.get(grade_key) or "")
+            if expected and recorded != expected:
+                findings.append(
+                    Finding(
+                        code="V2.PB.GRADE",
+                        category="对标合理性",
+                        severity=SEV_P0,
+                        title=f"{label}评价结论与数值不符",
+                        location=f"{year}年 · {label}",
+                        expected=expected,
+                        actual=recorded or "空",
+                        suggestion="修正公共建筑指标评价或第5章结论，二者必须逐字一致",
+                    )
+                )
+
+    for key, points in values_by_metric.items():
+        points.sort()
+        for (prev_year, prev_value), (year, value) in zip(points, points[1:]):
+            change = pct_change(value, prev_value)
+            if change is None:
+                findings.append(
+                    Finding(
+                        code="V2.PB.YOY.ZERO_BASE",
+                        category="年际对比",
+                        severity=SEV_P1,
+                        title=f"{key} {prev_year}年基数为 0，无法计算年际变化",
+                        location=f"{prev_year}→{year}年 · {key}",
+                        suggestion="补齐基准年数据，否则第5章趋势结论不成立",
+                    )
+                )
+                continue
+            severity = _yoy_severity(change)
+            if severity:
+                findings.append(
+                    Finding(
+                        code="V2.PB.YOY.CHANGE",
+                        category="年际对比",
+                        severity=severity,
+                        title=f"{key} {prev_year}→{year}年变化 {change:+.1f}%",
+                        location=f"{prev_year}→{year}年 · {key}",
+                        suggestion="先排除面积/人数/床位/能耗录入错误，再在第5章说明原因",
+                    )
+                )
+
+    if not valid_results:
+        return findings + [
+            Finding(
+                code="V2.PB.RESULTS",
+                category="报告族",
+                severity=SEV_P0,
+                title="公共建筑指标结果无可读年度对象",
+                suggestion="重跑 caliber_agent.py，生成 public_building.results[]",
+            )
+        ]
+    latest = sorted(valid_results, key=result_year)[-1]
+    latest_values = latest.get("values") or {}
+    expected_standards = (
+        {"unit_comparable_energy"}
+        if metric_family == "hotel"
+        else {
+            "unit_area_non_heating_energy",
+            "unit_area_electricity",
+            "per_capita_energy",
+            "per_capita_electricity",
+        }
+    )
+    for metric_key, value_field, result_key in PUBLIC_BUILDING_TOP_METRICS[metric_family]:
+        node = indicators.get(metric_key)
+        if not isinstance(node, dict):
+            findings.append(
+                Finding(
+                    code="V2.PB.TOP_METRIC",
+                    category="对标合理性",
+                    severity=SEV_P0,
+                    title=f"公共建筑顶层指标缺少 {metric_key}",
+                    suggestion="重跑 caliber_agent.py，保持顶层指标与 results[] 同源",
+                )
+            )
+            continue
+        top_value = safe_float(node.get(value_field))
+        latest_value = safe_float(latest_values.get(result_key))
+        if abs(top_value - latest_value) > 0.011:
+            findings.append(
+                Finding(
+                    code="V2.PB.TOP_METRIC_MISMATCH",
+                    category="数据一致性",
+                    severity=SEV_P0,
+                    title=f"{metric_key} 顶层值与最新年度值不一致",
+                    expected=f"{fmt_num(latest_value)}",
+                    actual=f"{fmt_num(top_value)}",
+                    suggestion="以同一批 results[] 重建顶层指标，防止第5章与写作契约分叉",
+                )
+            )
+        benchmark = node.get("benchmark") or {}
+        standard = str(benchmark.get("标准") or "")
+        grade_key = (
+            "water"
+            if metric_key == "water_indicator" and metric_family == "hotel"
+            else result_key
+        )
+        latest_grade = str((latest.get("grade") or {}).get(grade_key) or "")
+        benchmark_grade = str(benchmark.get("评价结果") or "")
+        if benchmark_grade and latest_grade and benchmark_grade != latest_grade:
+            findings.append(
+                Finding(
+                    code="V2.PB.TOP_BENCHMARK",
+                    category="对标合理性",
+                    severity=SEV_P0,
+                    title=f"{metric_key} 顶层评价结果与最新年度不一致",
+                    expected=latest_grade,
+                    actual=benchmark_grade,
+                    suggestion="以 public_building.results[] 最新年度结果同步顶层 benchmark",
+                )
+            )
+        if "DB37" in standard.upper():
+            findings.append(
+                Finding(
+                    code="V2.PB.DB37",
+                    category="对标合理性",
+                    severity=SEV_P0,
+                    title=f"{metric_key} 错用山东 DB37 定额",
+                    actual=standard,
+                    suggestion="浙江公共建筑改用 DB33/T 736-2021 或 DB33/T 760-2023",
+                )
+            )
+        if metric_key in expected_standards:
+            required = "DB33/T 760-2023" if metric_family == "hotel" else "DB33/T 736-2021"
+            if required not in standard:
+                findings.append(
+                    Finding(
+                        code="V2.PB.STANDARD",
+                        category="对标合理性",
+                        severity=SEV_P0,
+                        title=f"{metric_key} 标准号与公共建筑子类不符",
+                        expected=required,
+                        actual=standard or "空",
+                        suggestion="修正公共建筑指标标准来源",
+                    )
+                )
+        elif metric_key == "water_indicator" and standard:
+            if "浙江" not in standard or not any(
+                token in standard for token in ("用水", "取水", "水定额")
+            ):
+                findings.append(
+                    Finding(
+                        code="V2.PB.WATER_STANDARD",
+                        category="对标合理性",
+                        severity=SEV_P0,
+                        title="单位用水量未引用浙江省用水定额",
+                        actual=standard,
+                        suggestion="用水指标改引浙江省用（取）水定额（2019）",
+                    )
+                )
+    return findings
 
 
 def metric_value(metric: dict, spec: MetricSpec) -> Tuple[str, Optional[float]]:
@@ -723,7 +1086,10 @@ def run(project: str, *, output_dir: Optional[str] = None) -> ReviewResult:
     if error or indicators is None:
         return build_result(MODE, project, [], error=error or "指标加载失败")
 
-    if indicators.get("status") != "ok":
+    if (
+        not is_public_building_payload(indicators)
+        and indicators.get("status") != "ok"
+    ):
         return build_result(
             MODE,
             project,
@@ -741,6 +1107,50 @@ def run(project: str, *, output_dir: Optional[str] = None) -> ReviewResult:
         )
 
     raw = read_json(project_data_path(project))
+    if is_public_building_payload(indicators):
+        public_building = indicators.get("public_building") or {}
+        results = public_building.get("results") or []
+        findings = review_public_building_payload(
+            indicators, raw if isinstance(raw, dict) else None
+        )
+        result = build_result(
+            MODE,
+            project,
+            findings,
+            inputs={
+                "指标来源": source,
+                "报告族": "公共建筑（浙江）",
+                "data.json": "已读取" if isinstance(raw, dict) else "缺失（跳过口径校验）",
+            },
+            extra={
+                "institution_type": "public_building",
+                "public_building_subtype": public_building.get("subtype", ""),
+                "years": [
+                    int(safe_float(row.get("year")))
+                    for row in results
+                    if isinstance(row, dict)
+                ],
+                "building_area": indicators.get("building_area"),
+                "people_count": indicators.get("people_count"),
+                "beds_count": indicators.get("beds_count"),
+            },
+        )
+        save_dir = project_dir(project, output_dir)
+        review_path = Path(
+            write_json(save_dir / "indicator_review.json", result.to_dict())
+        )
+        result = with_artifacts(result, {"indicator_review.json": str(review_path)})
+        result = with_artifacts(
+            result,
+            {
+                "indicator_review.txt": write_text(
+                    save_dir / "indicator_review.txt", result.render_text()
+                )
+            },
+        )
+        write_json(review_path, result.to_dict())
+        return result
+
     institution_type = str(indicators.get("institution_type") or "government")
     yearly = indicators.get("yearly") or []
 

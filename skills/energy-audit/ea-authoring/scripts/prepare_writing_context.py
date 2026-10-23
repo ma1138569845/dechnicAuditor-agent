@@ -76,11 +76,47 @@ def _load_chapter6_contracts():
         raise ImportError("无法加载第6章设备小节路由") from exc
 
 
+def _load_report_family_contracts():
+    """从 repo 的 tools/energy_audit 加载唯一报告族路由。"""
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path,
+            "tools",
+            "energy_audit",
+            "report_family.py",
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "writing_context_report_family", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module.resolve_report_family, module.ReportFamilyUnsupported
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit.report_family import (  # type: ignore
+            ReportFamilyUnsupported,
+            resolve_report_family,
+        )
+        return resolve_report_family, ReportFamilyUnsupported
+    except ImportError as exc:
+        raise ImportError("无法加载报告族路由") from exc
+
+
 (
     CHAPTER6_SECTIONS,
     chapter6_route_for_equipment,
     equipment_photo_slots,
 ) = _load_chapter6_contracts()
+(
+    resolve_report_family,
+    ReportFamilyUnsupported,
+) = _load_report_family_contracts()
 CHAPTER6_PREFIX = {
     "air_heating": "6.1",
     "lighting": "6.1",
@@ -352,11 +388,17 @@ def blueprint_body(inst_type: str, category: str, limit: int):
 
 
 def is_public_building(base: dict, ind: dict) -> bool:
-    return (
-        str((base or {}).get("unit_type") or "").strip() == "公共建筑"
-        or str((ind or {}).get("unit_type") or "").strip() == "公共建筑"
-        or str((ind or {}).get("family") or "").strip() == "公共建筑"
-    )
+    return resolve_project_family(base, ind).is_public_building
+
+
+def resolve_project_family(base: dict, ind: dict):
+    """只按 data.json 的项目级字段分诊。
+
+    ``indicators.json`` 是计算产物，不能反过来决定报告族；否则写作、计算、
+    装配和 QA 会在缺字段的旧项目上得到不同分支。
+    """
+    del ind
+    return resolve_report_family(base or {})
 
 
 def public_building_subtype(base: dict, ind: dict) -> str:
@@ -603,7 +645,12 @@ def main(argv=None) -> int:
 
     base = data.get("base") or {}
     ind = load_json(os.path.join(pdir, "indicators.json")) or {}
-    is_pb = is_public_building(base, ind)
+    try:
+        family = resolve_project_family(base, ind)
+    except ReportFamilyUnsupported as exc:
+        print(f"[错误] {exc}")
+        return 1
+    is_pb = family.is_public_building
     pb_subtype = public_building_subtype(base, ind) if is_pb else ""
     anchors = load_std_anchors()          # ★来源锚点（定额可溯源性判定，见 resolve_anchor）
     md_dir = os.path.join(pdir, "chapter_md")
@@ -632,7 +679,8 @@ def main(argv=None) -> int:
         (f"| 机构类型 | 公共建筑 / {pb_subtype} | data.json / indicators.json |"
          if is_pb else
          f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |"),
-        f"| 报告族 | {'公共建筑（浙江）' if is_pb else '公共机构'} | data.json → base.unit_type / indicators.json |",
+        f"| 报告族 | {family.label} | data.json → base.unit_type + base.province / indicators.json |",
+        f"| 标准包 | {family.standard_pack or 'energy-audit-core/references/standards-values.md（山东公共机构）'} | 报告族路由 |",
         "",
         "## 二、关键数字（正文引用必须与此一致）",
         "",

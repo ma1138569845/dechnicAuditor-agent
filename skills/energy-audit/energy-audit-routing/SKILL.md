@@ -1,7 +1,7 @@
 ---
 name: energy-audit-routing
 description: "编制/生成某单位能源审计报告时，default 必须先加载本技能分诊：单项目直跑、批量转 editor."
-version: 1.2.0
+version: 1.3.0
 author: DechnicAuditor
 license: MIT
 platforms: [windows]
@@ -43,6 +43,11 @@ metadata:
 2. 工具链可达：`EA_TOOLS_ROOT` 指向 repo 根（含 `tools/energy_audit`），或用绝对路径调用；缺省按 `_paths.py` 三级降级解析
 3. 确认项目目录 `~/projects/energy-audit/<单位全称>/`；未指定版本且 data.json 已存在则跳过采集。任务带了 `versionCode` / `--version-code` 时必须重采。
 4. 部署前提自检（新机/换机必做）：见 `energy-audit-core/references/deployment-ops.md`（部署前提一节）
+5. **报告族分诊**：用 `tools/energy_audit/report_family.py::resolve_report_family()` 读取 `data.json → base.unit_type + base.province`。
+   - `公共机构` → 山东公共机构现行主链；
+   - `公共建筑 + 浙江` → 浙江公共建筑 v0.1；
+   - `公共建筑 + 其他省份` → 当前未接入，停止并说明，**不得**套用浙江 DB33 指标或蓝本；
+   - 医院、学校、办公等建筑功能不能单独决定报告族。
 
 ### 阶段 1：脚本链直跑（无 LLM 思考环节）
 
@@ -73,12 +78,16 @@ python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --m
 
 > **每批开工前先跑并读接续契约**：`python <skills>/ea-authoring/scripts/prepare_writing_context.py <项目名>` → 读 `<项目>/chapter_md/_context.md`（唯一口径/关键数字/已落盘章节/术语写法）；每批收工再跑一次刷新。
 
-> **再读本批蓝本（形态参照）**：`energy-audit-report/references/audit-examples.md` 对应机构类型小节（法院/党政机关、医院、学校）——**只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；项目变量一律取本项目数据源，交付前跑变量一致性闸门 `ea-validation/scripts/verify_variables_provenance.py`。
+> **再读本批蓝本（形态参照）**：先看 `_context.md` 的“报告族”。
+> - 公共机构：`energy-audit-report/references/audit-examples.md` 对应机构类型小节；
+> - 浙江公共建筑：`energy-audit-report/references/families/public-building/blueprint.md`。
+>
+> 蓝本**只学形态**（章节骨架/表格习惯/措辞粒度/固定表述）；项目变量一律取本项目数据源，交付前跑变量一致性闸门 `ea-validation/scripts/verify_variables_provenance.py`。
 
 - 批 1：封面数据 + 第 1~4 章 → `chapter_md/ch1~ch4.md`
 - 批 2：第 5 章装配（**装配稿由阶段 1 的 3.5 步就位**：`chapter_md/ch5_import.md`；作者可在其上并入叙述段，但**禁重算数值**）+ 第 6/7 章
 - 批 3：第 8 章 + 附录 → `chapter_md/ch8.md`、`chapter_md/appendix.md`
-- **本批读哪份章节指南**（2026-09-18 合并后）：批 1 → `ea-authoring/references/chapter-guides-1-4.md`；批 2 与批 3 → `ea-authoring/references/chapter-guides-6-8.md`
+- **本批读哪份章节指南**：公共机构继续用 `ea-authoring/references/chapter-guides-1-4.md` / `chapter-guides-6-8.md`；浙江公共建筑用 `ea-authoring/references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`
 - **三批全落盘后 → 装配脚本链**（2026-09-17 起主链）：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`，见 `energy-audit-report/references/script-assembly-chain.md`；office_editor 路径为备用
 
 **直跑铁律（与 kanban 三卡铁律同源）**：

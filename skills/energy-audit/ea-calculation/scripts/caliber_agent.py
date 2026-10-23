@@ -69,6 +69,10 @@ if str(ROOT_DIR) not in sys.path:
 
 try:
     from tools.energy_audit.project_data import load_project, AuditProject
+    from tools.energy_audit.report_family import (
+        ReportFamilyUnsupported,
+        resolve_report_family,
+    )
     from tools.energy_audit.indicators import (
         YearlyEnergyData,
         calc_unit_area_non_heating_energy,
@@ -337,8 +341,15 @@ def format_indicators_report(results: dict) -> str:
 #  公共建筑分支（浙江；不影响公共机构路径）
 # ================================================================
 
+def _report_family_context(proj: AuditProject):
+    return resolve_report_family({
+        "unit_type": getattr(proj.base, "unit_type", "") or "",
+        "province": getattr(proj.base, "province", "") or "",
+    })
+
+
 def _is_public_building(proj: AuditProject) -> bool:
-    return str(getattr(proj.base, "unit_type", "") or "").strip() == "公共建筑"
+    return _report_family_context(proj).is_public_building
 
 
 def _load_raw_project_data(project_name: str) -> dict:
@@ -525,6 +536,12 @@ def run_public_building_caliber(project_name: str, proj: AuditProject,
                                 output_dir: Optional[str] = None) -> dict:
     if not PUBLIC_BUILDING_AVAILABLE:
         return {"error": "公共建筑模块不可用"}
+    try:
+        family = _report_family_context(proj)
+    except ReportFamilyUnsupported as exc:
+        return {"error": str(exc)}
+    if not family.is_public_building:
+        return {"error": "当前项目不是浙江公共建筑报告族"}
 
     print(f"\n{'='*60}")
     print("📊 Caliber — 公共建筑（浙江）指标计算")
@@ -684,8 +701,13 @@ def run_caliber(
     print(f"  ✅ 加载成功 | 建筑: {len(getattr(proj, 'buildings', []))}栋 | "
           f"能耗: {len(getattr(proj, 'energy_yearly', []))}年")
 
+    try:
+        family = _report_family_context(proj)
+    except ReportFamilyUnsupported as exc:
+        return {"error": str(exc)}
+
     # 公共建筑（浙江）分支：走独立指标模块，不进入山东公共机构计算链
-    if _is_public_building(proj):
+    if family.is_public_building:
         return run_public_building_caliber(
             project_name=project_name,
             proj=proj,

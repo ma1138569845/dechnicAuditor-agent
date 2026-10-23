@@ -1,13 +1,13 @@
 ---
 name: ea-calculation
-description: "计算能源审计指标、做 DB37 定额对标并生成第5章（caliber 专用）."
-version: 1.3.0
+description: "按报告族计算能源审计指标、做地区定额对标并生成第5章（caliber 专用）."
+version: 1.4.0
 author: 马天远
 license: MIT
 platforms: [windows]
 metadata:
   hermes:
-    tags: [energy-audit, indicators, db37, chapter5]
+    tags: [energy-audit, indicators, db37, db33, chapter5]
 ---
 
 # Indicator Calculation Skill
@@ -27,6 +27,16 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 ```
 
 职责边界：本 Skill 只做**指标计算、定额对标、用能情况和用能规律的详细表述、第5章 Markdown + 图表**。不采集数据、不做数据验证、不生成其他章节、不修改原始项目数据。
+
+## 报告族分支
+
+`caliber_agent.py` 先调用 `tools/energy_audit/report_family.py::resolve_report_family()`：
+
+| 报告族 | 计算路径 |
+|---|---|
+| 公共机构 | 现有山东 5 项指标链（本文件下半部分） |
+| 浙江公共建筑 | `public_building_indicators.py` + `public_building_chapter5.py`，电力 0.1229 当量值 |
+| 其他 | 返回明确错误，不进入任何地区算法 |
 
 ---
 

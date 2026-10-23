@@ -1,7 +1,7 @@
 ---
 name: ea-validation
 description: "对能源审计项目做三模式数据验证与报告审查（datava 专用）；P0/P1/P2 分级裁决."
-version: 2.1.0
+version: 2.2.0
 author: 马天远
 license: MIT
 platforms: [windows]
@@ -180,10 +180,29 @@ kanban_block(reason="V1 输入待补: <缺什么>; 由 <agent 名> 通过 <具�
    - **评价文字复核**：按阈值重算评价并与记录值比对，不一致为 P0
 3. **数据一致性** — 面积（三处口径互校）/ 人数 / 床位 / 供暖电排除 / 指标量级合理性（超出 PLAUSIBLE_RANGE 多为分母口径错误）
 
+### 报告族分支
+
+V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indicators.json.family` 反向决定报告族。
+
+| 报告族 | V2 指标来源 | 审查口径 |
+|---|---|---|
+| 公共机构 | 山东现行 `yearly[]` / 指标包 / 现算链 | 保持既有公共机构指标与 DB37 检查 |
+| 浙江公共建筑（办公、场馆） | `indicators.json → public_building.results[]` | 单位建筑面积能耗、常规用能系统单位建筑面积电耗、人均综合能耗、人均电耗、单位用水量共 5 项 |
+| 浙江公共建筑（饭店） | `indicators.json → public_building.results[]` | 单位综合能耗（参考指标）、单位可比综合能耗、单位用水量共 3 项；水耗按入住率折算值对标 |
+
+浙江公共建筑检查为阻塞项：
+
+- 报告族、省份必须与 `data.json` 一致，其他省份不得套用浙江指标；
+- 不得出现 DB37；能耗指标必须匹配 DB33/T 736-2021，饭店可比能耗必须匹配 DB33/T 760-2023；
+- 用水指标必须引用浙江省用（取）水定额；
+- 年度 `grade`、顶层指标、顶层 benchmark 评价结果和最新年度结果必须同源；
+- 饭店 `unit_energy` 的年度评价必须明确写“参考指标”。
+
 ### 输入加载优先级
 
 ```
-indicators.json → data.json 内嵌 indicators → compute_project_indicators() 现算
+浙江公共建筑：indicators.json.public_building.results[]（禁止回落山东 yearly[]/现算链）
+公共机构：indicators.json → data.json 内嵌 indicators → compute_project_indicators() 现算
 ```
 
 ### 产出

@@ -1,7 +1,7 @@
 ---
 name: energy-audit-report
 description: "能源审计报告共享资产库：实例库、市州模板、装配链与数值断言、附录规范."
-version: 1.0.0
+version: 1.1.0
 author: 马天远
 license: MIT
 platforms: [windows]
@@ -38,7 +38,10 @@ agent_created: true
 | `scripts/build_energy_audit_docx.py` | **装配主链①**：一次构建报告 docx（封面/信息表/目录/8章/附录/页眉水印/页脚） |
 | `scripts/finalize_energy_audit_pdf.py` | **装配主链②**：Word COM 刷目录缓存 + 导出签章 PDF |
 | `scripts/ea_docx_asserts.py` | 交付断言器（docx+PDF 级硬检查与度量，每份必跑） |
+| `references/families/public-building/blueprint.md` | 浙江公共建筑（办公/公寓）去事实化蓝本 |
 | `assets/`（header_template.xml、**header_template_prebody.xml**（前置节专用，2026-09-22 分节改造新增）、footer_template.xml、omml_formulas.json） | 页眉/页脚/OMML 模板资产 |
+
+装配器启动时按 `data.json → base.unit_type + base.province` 解析报告族。浙江公共建筑固定 8 章，且 `chapter_md/appendix.md` 必须包含附录1（建筑能耗数据信息表）和附录2（折标系数）；其他省份公共建筑当前直接拒绝，不套用浙江附录与指标。
 
 ## 资产使用场景
 

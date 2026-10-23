@@ -1,7 +1,7 @@
 ---
 name: ea-authoring
-description: "装配能源审计报告公共章节并生成 Word 产物（author 角色专用）；第5章补写分析叙述、不重算数值."
-version: 2.0.0
+description: "按报告族装配能源审计报告章节并生成 Word 产物（author 角色专用）；第5章补写分析叙述、不重算数值."
+version: 2.1.0
 author: 马天远
 license: MIT
 platforms: [windows]
@@ -14,7 +14,12 @@ metadata:
 
 ## 概述
 
-本技能回答"如何写出 8 章完整、格式规范的公共机构能源审计报告 .docx"，只含报告写作/排版环节的深度知识。
+本技能回答"如何写出 8 章完整、格式规范的能源审计报告 .docx"，只含报告写作/排版环节的深度知识。写作前必须先读 `_context.md` 的报告族与指南路径：
+
+- 公共机构：`references/chapter-guides-1-4.md` / `chapter-guides-6-8.md`；
+- 浙江公共建筑：`references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。
+
+报告族只由 `base.unit_type + base.province` 决定；`indicators.json` 是下游计算产物，不能反向改选报告族。公共建筑目前只接入浙江。
 
 **正文写作由 LLM 逐章完成，本技能是唯一写作知识源。** 脚本（tools/energy_audit/）只负责采集、指标计算与图表渲染，**不写任何正文**；任何"跑脚本生成正文"的路径均已废弃（2026-09-04 定，report_generator 正文生成已退役）。
 

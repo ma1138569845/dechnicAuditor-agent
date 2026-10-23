@@ -46,6 +46,7 @@ T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页�
 import argparse
 import glob
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -95,6 +96,41 @@ _THEME_ATTRS = ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme")
 
 class FigureBindingError(ValueError):
     """第5章图注、生成清单、图片文件和清单条目不一致。"""
+
+
+class ReportFamilyContractError(ValueError):
+    """项目报告族不受支持，或该族的章节/附录输入不完整。"""
+
+
+def _load_report_family_contracts():
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path, "tools", "energy_audit", "report_family.py"
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "docx_builder_report_family", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module.resolve_report_family, module.ReportFamilyUnsupported
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit.report_family import (  # type: ignore
+            ReportFamilyUnsupported,
+            resolve_report_family,
+        )
+        return resolve_report_family, ReportFamilyUnsupported
+    except ImportError as exc:
+        raise ImportError("无法加载报告族路由") from exc
+
+
+resolve_report_family, ReportFamilyUnsupported = _load_report_family_contracts()
 
 
 def _sha256_file(path: str) -> str:
@@ -1417,6 +1453,67 @@ def _load_report_data(project_dir):
     return data
 
 
+def resolve_project_family(project_dir):
+    data = _load_report_data(project_dir)
+    try:
+        return resolve_report_family(data.get("base") or {})
+    except ReportFamilyUnsupported as exc:
+        raise ReportFamilyContractError(str(exc)) from exc
+
+
+def _chapter_path(project_dir, number):
+    md_dir = os.path.join(project_dir, "chapter_md")
+    for name in (f"ch{number}_import.md", f"ch{number}.md"):
+        path = os.path.join(md_dir, name)
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def validate_family_inputs(project_dir, family_context):
+    """校验报告族的强制输入；浙江公共建筑固定 8 章 + 附录 1/2。"""
+    if not family_context.is_public_building:
+        return
+
+    missing = [
+        f"ch{number}.md"
+        for number in range(1, 9)
+        if not _chapter_path(project_dir, number)
+    ]
+    if missing:
+        raise ReportFamilyContractError(
+            "浙江公共建筑报告缺少章节：" + "、".join(missing)
+        )
+
+    appendix = os.path.join(project_dir, "chapter_md", "appendix.md")
+    if not os.path.isfile(appendix):
+        raise ReportFamilyContractError(
+            "浙江公共建筑报告缺少附录：chapter_md/appendix.md"
+        )
+    with open(appendix, encoding="utf-8", errors="replace") as fh:
+        text = fh.read()
+    compact = re.sub(r"\s+", "", text)
+    required_appendices = {
+        "附录1": r"附录1[：:]?建筑能耗数据信息表",
+        "附录2": r"附录2[：:]?各种能源折标准煤参考系数",
+    }
+    missing_appendices = [
+        label
+        for label, pattern in required_appendices.items()
+        if not re.search(pattern, compact)
+    ]
+    if missing_appendices:
+        raise ReportFamilyContractError(
+            "浙江公共建筑报告附录名称必须为「附录1：建筑能耗数据信息表」、"
+            "「附录2：各种能源折标准煤参考系数」；缺失或命名不符："
+            + "、".join(missing_appendices)
+        )
+    if "附录3" in compact:
+        raise ReportFamilyContractError(
+            "浙江公共建筑报告只允许附录1、附录2，不得出现附录3"
+        )
+
+
 def _info_rows(base, data):
     institution = [
         ["机构名称", base.get("audit_org_name") or ""],
@@ -1441,6 +1538,8 @@ def _info_rows(base, data):
 
 def build(project_dir, out_path=None, figure_policy="placeholder"):
     data = _load_report_data(project_dir)
+    family_context = resolve_project_family(project_dir)
+    validate_family_inputs(project_dir, family_context)
     strict = figure_policy == "strict"
     figure_validation = _validate_chapter5_figures(project_dir, strict=False)
     issue_payload = {
@@ -1527,6 +1626,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         out, doc = build(a.project_dir, a.out, a.figure_policy)
+    except ReportFamilyContractError as exc:
+        print(f"[错误] 报告族输入校验失败：{exc}")
+        return 3
     except FigureBindingError as exc:
         print(f"[错误] 第5章图表强绑定校验失败：{exc}")
         return 2

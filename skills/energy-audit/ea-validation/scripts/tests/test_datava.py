@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import copy
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -379,6 +381,263 @@ def test_check_yoy_flags_big_jump():
 def test_check_yoy_zero_base():
     codes = [f.code for f in v2.check_yoy(_yearly((2022, 0.0), (2023, 14.0)))]
     assert "V2.YOY.ZERO_BASE" in codes
+
+
+def _public_building_office_payload():
+    return {
+        "family": "公共建筑",
+        "institution_type": "public_building",
+        "building_area": 10000,
+        "people_count": 100,
+        "public_building": {
+            "subtype": "office",
+            "results": [
+                {
+                    "year": 2024,
+                    "values": {
+                        "unit_area_energy": 5.0,
+                        "unit_area_electricity": 40.0,
+                        "per_capita_energy": 300.0,
+                        "per_capita_electricity": 1000.0,
+                        "unit_water": 10.0,
+                    },
+                    "quota": {
+                        "unit_area_energy": [10.0, 6.0, 4.0],
+                        "unit_area_electricity": [70.0, 45.0, 25.0],
+                        "per_capita_energy": [450.0, 230.0, 140.0],
+                        "per_capita_electricity": [2300.0, 1700.0, 1200.0],
+                        "unit_water": [21.9, 15.0],
+                    },
+                    "grade": {
+                        "unit_area_energy": "低于基准值",
+                        "unit_area_electricity": "低于基准值",
+                        "per_capita_energy": "低于约束值",
+                        "per_capita_electricity": "低于引导值",
+                        "unit_water": "低于先进值",
+                    },
+                    "notes": {"water_missing": False},
+                }
+            ],
+        },
+        "unit_area_non_heating_energy": {
+            "kgce_per_m2": 5.0,
+            "benchmark": {
+                "约束值": 10.0,
+                "基准值": 6.0,
+                "引导值": 4.0,
+                "标准": "DB33/T 736-2021",
+                "评价结果": "低于基准值",
+            },
+        },
+        "unit_area_electricity": {
+            "kwh_per_m2": 40.0,
+            "benchmark": {
+                "约束值": 70.0,
+                "基准值": 45.0,
+                "引导值": 25.0,
+                "标准": "DB33/T 736-2021",
+                "评价结果": "低于基准值",
+            },
+        },
+        "per_capita_energy": {
+            "kgce_per_person": 300.0,
+            "benchmark": {
+                "约束值": 450.0,
+                "基准值": 230.0,
+                "引导值": 140.0,
+                "标准": "DB33/T 736-2021",
+                "评价结果": "低于约束值",
+            },
+        },
+        "per_capita_electricity": {
+            "kwh_per_person": 1000.0,
+            "benchmark": {
+                "约束值": 2300.0,
+                "基准值": 1700.0,
+                "引导值": 1200.0,
+                "标准": "DB33/T 736-2021",
+                "评价结果": "低于引导值",
+            },
+        },
+        "water_indicator": {
+            "m3_per_person": 10.0,
+            "benchmark": {
+                "通用值": 21.9,
+                "先进值": 15.0,
+                "标准": "浙江省用（取）水定额（2019）",
+                "评价结果": "低于先进值",
+            },
+        },
+    }
+
+
+def _public_building_raw(unit_type="公共建筑", province="浙江"):
+    return {"base": {"unit_type": unit_type, "province": province}}
+
+
+def test_public_building_office_payload_is_clean():
+    findings = v2.review_public_building_payload(
+        _public_building_office_payload(), _public_building_raw()
+    )
+    assert findings == []
+
+
+def test_public_building_rejects_cross_family_and_db37():
+    payload = copy.deepcopy(_public_building_office_payload())
+    payload["unit_area_electricity"]["benchmark"]["标准"] = "DB37/T 2672-2019"
+    payload["public_building"]["results"][0]["grade"]["per_capita_energy"] = "高于约束值"
+
+    codes = [
+        finding.code
+        for finding in v2.review_public_building_payload(
+            payload, _public_building_raw(unit_type="公共机构", province="山东")
+        )
+    ]
+
+    assert "V2.PB.DB37" in codes
+    assert "V2.PB.FAMILY_MISMATCH" in codes
+    assert "V2.PB.REGION" in codes
+    assert "V2.PB.GRADE" in codes
+
+
+def test_public_building_hotel_water_uses_occupancy_normalized_value():
+    payload = {
+        "family": "公共建筑",
+        "institution_type": "public_building",
+        "public_building": {
+            "subtype": "hotel",
+            "results": [
+                {
+                    "year": 2024,
+                    "values": {
+                        "unit_energy": 6.0,
+                        "unit_comparable_energy": 5.4,
+                        "water_per_bed": 100.0,
+                        "water_per_bed_normalized": 60.0,
+                    },
+                    "quota": {
+                        "unit_comparable_energy": [25.0, 18.0, 12.0],
+                        "water": [125.0, 70.0],
+                    },
+                    "grade": {
+                        "unit_energy": "参考指标",
+                        "unit_comparable_energy": "低于1级（先进值）",
+                        "water": "低于先进值",
+                    },
+                    "notes": {"water_missing": False},
+                }
+            ],
+        },
+        "unit_energy": {"kgce_per_m2": 6.0, "benchmark": None},
+        "unit_comparable_energy": {
+            "kgce_per_m2": 5.4,
+            "benchmark": {
+                "3级（限额值）": 25.0,
+                "2级（约束值）": 18.0,
+                "1级（先进值）": 12.0,
+                "标准": "DB33/T 760-2023",
+                "评价结果": "低于1级（先进值）",
+            },
+        },
+        "water_indicator": {
+            "m3_per_bed": 100.0,
+            "benchmark": {
+                "通用值": 125.0,
+                "先进值": 70.0,
+                "标准": "浙江省用（取）水定额（2019）",
+                "评价结果": "低于先进值",
+            },
+        },
+    }
+
+    findings = v2.review_public_building_payload(payload, _public_building_raw())
+
+    assert findings == []
+
+
+def test_public_building_hotel_requires_reference_grade_and_top_benchmark_sync():
+    payload = {
+        "family": "公共建筑",
+        "institution_type": "public_building",
+        "public_building": {
+            "subtype": "hotel",
+            "results": [
+                {
+                    "year": 2024,
+                    "values": {
+                        "unit_energy": 6.0,
+                        "unit_comparable_energy": 5.4,
+                        "water_per_bed": 100.0,
+                        "water_per_bed_normalized": 60.0,
+                    },
+                    "quota": {
+                        "unit_comparable_energy": [25.0, 18.0, 12.0],
+                        "water": [125.0, 70.0],
+                    },
+                    "grade": {
+                        "unit_comparable_energy": "低于1级（先进值）",
+                        "water": "低于先进值",
+                    },
+                    "notes": {"water_missing": False},
+                }
+            ],
+        },
+        "unit_energy": {"kgce_per_m2": 6.0, "benchmark": None},
+        "unit_comparable_energy": {
+            "kgce_per_m2": 5.4,
+            "benchmark": {
+                "3级（限额值）": 25.0,
+                "2级（约束值）": 18.0,
+                "1级（先进值）": 12.0,
+                "标准": "DB33/T 760-2023",
+                "评价结果": "低于2级（约束值）",
+            },
+        },
+        "water_indicator": {
+            "m3_per_bed": 100.0,
+            "benchmark": {
+                "通用值": 125.0,
+                "先进值": 70.0,
+                "标准": "浙江省用（取）水定额（2019）",
+                "评价结果": "低于先进值",
+            },
+        },
+    }
+
+    codes = {
+        finding.code
+        for finding in v2.review_public_building_payload(
+            payload, _public_building_raw()
+        )
+    }
+
+    assert "V2.PB.GRADE" in codes
+    assert "V2.PB.TOP_BENCHMARK" in codes
+
+
+def test_public_building_v2_run_does_not_require_legacy_yearly_schema(
+    tmp_path, monkeypatch
+):
+    projects_root = tmp_path / "projects"
+    project = projects_root / "public-building"
+    project.mkdir(parents=True)
+    (project / "data.json").write_text(
+        json.dumps(_public_building_raw(), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (project / "indicators.json").write_text(
+        json.dumps(_public_building_office_payload(), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    output = tmp_path / "out"
+    monkeypatch.setenv("HERMES_PROJECTS_ROOT", str(projects_root))
+
+    result = v2.run("public-building", output_dir=str(output))
+
+    assert result.status == "pass"
+    assert result.exit_code == EXIT_OK
+    assert result.extra["public_building_subtype"] == "office"
+    assert (output / "indicator_review.json").is_file()
 
 
 def test_consistency_requires_area_and_people():

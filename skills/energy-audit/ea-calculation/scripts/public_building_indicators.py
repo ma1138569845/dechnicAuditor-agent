@@ -255,6 +255,7 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "water": water_tiers,
             },
             "grade": {
+                "unit_energy": "参考指标",
                 "unit_comparable_energy": _grade_760(unit_comparable, tiers),
                 "water": ("无数据，不评价" if water_missing
                           else _grade_two(water_normalized, water_tiers)),

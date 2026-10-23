@@ -1,7 +1,7 @@
 ---
 name: energy-audit-core
-description: "能源审计共享核心知识：全流程、8章结构、格式规范、三级兜底、DB37 对标."
-version: 5.0.1
+description: "能源审计共享核心知识：报告族路由、全流程、8章结构、格式规范、三级兜底与地区定额对标."
+version: 5.1.0
 author: 马天远
 license: MIT
 platforms: [windows]
@@ -31,7 +31,19 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 需人工确认（`confirmed=true` + `reason`）后指标复核与报告装配才继续——强制人工审核异常项，防止脏数据进报告。
 批量流水线场景可在用户确认后由 editor 批量确认再继续下游。
 
-##  公共机构能源审计报告章节结构
+## 报告族选择（先于章节与标准）
+
+报告族由 `data.json → base.unit_type + base.province` 决定，禁止按医院/学校/办公等建筑功能猜；`indicators.json`、蓝本或文件名都不能反向决定报告族：
+
+| 报告族 | 当前状态 | 标准与写作入口 |
+|---|---|---|
+| 公共机构 | 在用（山东主链） | `standards-values.md`、`chapter-guides-1-4.md`、`chapter-guides-6-8.md` |
+| 浙江公共建筑 | v0.1 代码已接入 | `standards/zhejiang/`、`families/public-building/` |
+
+唯一路由代码：`tools/energy_audit/report_family.py::resolve_report_family()`。
+公共建筑目前只接入浙江；其他省份必须停止并说明，不得静默套用 DB33/T。
+
+## 公共机构能源审计报告章节结构
 
 1. 能源审计执行概要（1.1-1.6）
 2. 公共机构概况（2.1-2.3）
@@ -58,7 +70,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
   一个公共机构 = 一个项目 = 一份报告。每项目 8 步串行（采集→V1验证→计算→V2复核→报告卡1基础章→报告卡2数据章→报告卡3收尾章→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
-- 报告章节细节与编写规范见逐章指南（`ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md`；第5章见 `ea-calculation/references/chapter5-spec.md` + `chapter5-templates.md`）；"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
+- 报告章节细节与编写规范按报告族取：公共机构见 `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md`；浙江公共建筑见 `ea-authoring/references/families/public-building/`。"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
 
 ## 参考文件索引
 
