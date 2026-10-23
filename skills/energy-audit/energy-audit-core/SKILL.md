@@ -37,11 +37,14 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 
 | 报告族 | 当前状态 | 标准与写作入口 |
 |---|---|---|
-| 公共机构 | 在用（山东主链） | `standards-values.md`、`chapter-guides-1-4.md`、`chapter-guides-6-8.md` |
-| 浙江公共建筑 | v0.1 代码已接入 | `standards/zhejiang/`、`families/public-building/` |
+| 山东公共机构 | 在用（兼容主链） | `standards-values.md`、公共机构 `chapter-guides-1-4.md` / `chapter-guides-6-8.md` |
+| 山东公共建筑 | 已接入（DB37 二档） | `standards/shandong/public_building/`、`families/public-building/` |
+| 浙江公共建筑 | 已接入（DB33/T 736/760） | `standards/zhejiang/`、`families/public-building/` |
+| 浙江公共机构 | 已接入（DB33/T 736/737/738） | `standards/zhejiang/public_institution/`、公共机构章节指南 |
 
 唯一路由代码：`tools/energy_audit/report_family.py::resolve_report_family()`。
-公共建筑目前只接入浙江；其他省份必须停止并说明，不得静默套用 DB33/T。
+公共建筑当前只接入山东、浙江；其他省份必须停止并说明，不得静默套用 DB33/T 或 DB37/T。
+山东公共建筑只有约束值、先进值二档；浙江公共机构使用约束值、基准值、引导值三档，两者不得混写。
 
 ## 公共机构能源审计报告章节结构
 
@@ -70,7 +73,7 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
   一个公共机构 = 一个项目 = 一份报告。每项目 8 步串行（采集→V1验证→计算→V2复核→报告卡1基础章→报告卡2数据章→报告卡3收尾章→V3审查），不同项目完全并行。
   适合 1~100+ 栋的规模。详见 `kanban-energy-audit-orchestrator/SKILL.md`。
 - 第5章 5.2 按用能类型动态分节、第6章 6.1 分系统详述、第7章问题从实际数据推断——具体规则见各专属技能 references。
-- 报告章节细节与编写规范按报告族取：公共机构见 `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md`；浙江公共建筑见 `ea-authoring/references/families/public-building/`。"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
+- 报告章节细节与编写规范按报告族取：山东公共机构、浙江公共机构见 `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md`；山东/浙江公共建筑见 `ea-authoring/references/families/public-building/`。"主题 → 唯一权威"映射见 `references/AUTHORITY-INDEX.md`。
 
 ## 参考文件索引
 
@@ -90,6 +93,8 @@ datava 验证发现异常后写入 analysis_result.json（`anomalies[].confirmed
 | `lessons-learned.md` | ★跨项目经验库（教训索引：现象→铁律→详见，按数据源/标准/报告/装配/协作五类，2026-09-18 建） |
 | `knowledge-base-maintenance.md` | ★知识库维护（**写侧**）：谁在何时喂料 / 边界 / 验收四条硬指标 / 删除禁令（knowledger 专属；editor 的巡检也引它；原 S16a「交付件入库」2026-10-10 废止） |
 | `standards-sources/` | 定额**原文摘录件**（包内机读件：`DB37T2671-2019-全文抽取.txt`、`DB37-5026-2022-气候区划表3.0.1.md`）。**原始 PDF 已移出包**（与知识库重复件，2026-09-22 瘦身），位置见 `standards-values.md` 内的指针 |
+| `standards/shandong/public_building/` | 山东公共建筑 DB37/T 5076/5078/5079-2024 包；人读 `quota-values.md`，代码只读 `quota-values.json` |
+| `standards/zhejiang/public_institution/` | 浙江公共机构 DB33/T 736/737/738-2021 包；736 数值共享 `standards/zhejiang/quota-values.json` |
 | `_archive/2026-09-17/`、`_archive/2026-09-18/` | 历史文档与合并前原件归档（仅供追溯，勿引用） |
 
 **本技能 `scripts/`（随技能发布，knowledger/author/editor 直接用）**：

@@ -41,7 +41,12 @@ agent_created: true
 | `references/families/public-building/blueprint.md` | 浙江公共建筑（办公/公寓）去事实化蓝本 |
 | `assets/`（header_template.xml、**header_template_prebody.xml**（前置节专用，2026-09-22 分节改造新增）、footer_template.xml、omml_formulas.json） | 页眉/页脚/OMML 模板资产 |
 
-装配器启动时按 `data.json → base.unit_type + base.province` 解析报告族。浙江公共建筑固定 8 章，且 `chapter_md/appendix.md` 必须包含附录1（建筑能耗数据信息表）和附录2（折标系数）；其他省份公共建筑当前直接拒绝，不套用浙江附录与指标。
+装配器启动时按 `data.json → base.unit_type + base.province` 解析报告族：
+
+- 山东、浙江公共建筑固定 8 章；
+- 只有浙江公共建筑强制 `chapter_md/appendix.md` 包含附录1（建筑能耗数据信息表）和附录2（折标系数），且不得出现附录3；
+- 山东公共建筑不套用浙江附录契约；山东/浙江公共机构继续按公共机构附录规则；
+- 其他省份公共建筑直接拒绝，不静默套用既有地区标准。
 
 ## 资产使用场景
 

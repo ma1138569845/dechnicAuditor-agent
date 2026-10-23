@@ -1,0 +1,45 @@
+{
+  "verified_at": "2026-10-23",
+  "standards": [
+    {
+      "id": "DB37/T 5076-2024",
+      "title": "宾馆酒店建筑能耗限额标准",
+      "status": "现行",
+      "source_url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=490AA99A3A259D72E06397BE0A0AA7AC",
+      "http_status": 200,
+      "local_pdf": "sources/DB37_T_5076_2024.pdf",
+      "sha256": "cfdadfe47bbfac1579ce28e8013798f29f8dae7d466cfe8945ef11f82cef6de4",
+      "table": "表7.0.2-1 至 表7.0.2-3"
+    },
+    {
+      "id": "DB37/T 5078-2024",
+      "title": "商务办公建筑能耗限额标准",
+      "status": "现行",
+      "source_url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=490AA99A3A269D72E06397BE0A0AA7AC",
+      "http_status": 200,
+      "local_pdf": "sources/DB37_T_5078_2024.pdf",
+      "sha256": "082c28bc247919900416b26283796050547177e1eeacd9d7f2228f514b041297",
+      "table": "表7.0.2"
+    },
+    {
+      "id": "DB37/T 5079-2024",
+      "title": "医院建筑能耗限额标准",
+      "status": "现行",
+      "source_url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=490AA99A3A279D72E06397BE0A0AA7AC",
+      "http_status": 200,
+      "local_pdf": "sources/DB37_T_5079_2024.pdf",
+      "sha256": "e820dbbc6c37fd5950fcd1c53347d678e9414153a29cc2adc1b13ff52484e972",
+      "table": "表7.0.2-1 至 表7.0.2-4"
+    },
+    {
+      "id": "DB37/T 5077-2016",
+      "title": "机关办公建筑能耗限额标准",
+      "status": "废止",
+      "abolished_at": "2024-10-09",
+      "source_url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=DFBD1BA05696A532E05397BE0A0ABAFE",
+      "http_status": 200,
+      "local_pdf": null,
+      "policy": "不得作为现行能源审计定额依据"
+    }
+  ]
+}

@@ -140,7 +140,7 @@ def _load_report_family_contracts():
 resolve_report_family, ReportFamilyUnsupported = _load_report_family_contracts()
 
 
-def detect_family(docx_path: str) -> str:
+def detect_family_context(docx_path: str):
     p = Path(docx_path).resolve()
     for parent in [p.parent, *p.parents]:
         data_path = parent / "data.json"
@@ -149,11 +149,15 @@ def detect_family(docx_path: str) -> str:
         try:
             with open(data_path, encoding="utf-8") as fh:
                 raw = json.load(fh)
-            return resolve_report_family(raw.get("base") or {}).family
+            return resolve_report_family(raw.get("base") or {})
         except (OSError, json.JSONDecodeError):
             pass
         break
-    return "public_institution"
+    return resolve_report_family({"unit_type": "公共机构", "province": ""})
+
+
+def detect_family(docx_path: str) -> str:
+    return detect_family_context(docx_path).family
 
 
 def public_building_checks(text: str):
@@ -221,6 +225,125 @@ def public_building_checks(text: str):
         details["pb_no_db37"] = "浙江公共建筑报告不得出现 DB37 系列标准"
     if not checks["pb_no_public_institution"]:
         details["pb_no_public_institution"] = "正文出现公共机构专属章名/指标名"
+    return checks, details
+
+
+def shandong_public_building_checks(text: str):
+    """山东公共建筑交付断言：DB37 二档口径，禁止混入 DB33/浙江三档。"""
+    tn = norm(text)
+    standard_hits = [
+        standard for standard in ("DB37/T5076-2024", "DB37/T5078-2024", "DB37/T5079-2024")
+        if standard in tn
+    ]
+    checks = {
+        "sd_pb_ch2_title": "第2章建筑概况" in tn and "公共机构概况" not in tn,
+        "sd_pb_standards": bool(standard_hits),
+        "sd_pb_single_standard": len(standard_hits) == 1,
+        "sd_pb_metrics": (
+            "单位建筑面积供暖能耗" in tn
+            and "单位建筑面积非供暖电耗" in tn
+            and "单位建筑面积非供暖能耗" not in tn
+        ),
+        "sd_pb_hospital_metric": (
+            "单位床位非供暖电耗" in tn
+            if "DB37/T5079-2024" in standard_hits else True
+        ),
+        "sd_pb_two_tiers": (
+            "约束值" in tn and "先进值" in tn
+            and "基准值" not in tn and "引导值" not in tn
+        ),
+        "sd_pb_no_db33": not any(token in tn for token in ("DB33", "736-2021", "760-2023")),
+        "sd_pb_no_legacy_public_institution_coefficient": "0.31" not in tn,
+        "sd_pb_no_public_institution": "公共机构概况" not in tn,
+    }
+    details = {}
+    if not checks["sd_pb_ch2_title"]:
+        details["sd_pb_ch2_title"] = "第2章应为「建筑概况」，不得出现「公共机构概况」"
+    if not checks["sd_pb_standards"]:
+        details["sd_pb_standards"] = (
+            "至少引用一个适用标准：DB37/T 5078（商务办公）、"
+            "DB37/T 5076（酒店）或 DB37/T 5079（医院）"
+        )
+    if not checks["sd_pb_single_standard"]:
+        details["sd_pb_single_standard"] = (
+            "一份山东公共建筑报告只能引用一个适用子类标准；"
+            f"当前检出 {len(standard_hits)} 个"
+        )
+    if not checks["sd_pb_metrics"]:
+        details["sd_pb_metrics"] = (
+            "缺少 eA「单位建筑面积供暖能耗」或 eB「单位建筑面积非供暖电耗」，"
+            "或误用了公共机构「单位建筑面积非供暖能耗」"
+        )
+    if not checks["sd_pb_hospital_metric"]:
+        details["sd_pb_hospital_metric"] = (
+            "医院报告使用 DB37/T 5079 时还必须披露 eC「单位床位非供暖电耗」"
+        )
+    if not checks["sd_pb_two_tiers"]:
+        details["sd_pb_two_tiers"] = (
+            "山东公共建筑只允许约束值/先进值二档；不得出现基准值/引导值"
+        )
+    if not checks["sd_pb_no_db33"]:
+        details["sd_pb_no_db33"] = "山东公共建筑报告不得出现 DB33/T 736 或 760"
+    if not checks["sd_pb_no_legacy_public_institution_coefficient"]:
+        details["sd_pb_no_legacy_public_institution_coefficient"] = (
+            "山东公共建筑折标使用标准包 0.1229，不得混入公共机构旧等价值 0.31"
+        )
+    if not checks["sd_pb_no_public_institution"]:
+        details["sd_pb_no_public_institution"] = "正文出现公共机构专属章名"
+    return checks, details
+
+
+def zhejiang_public_institution_checks(text: str):
+    """浙江公共机构交付断言：DB33/T 736/737/738 + 三档 + 0.1229。"""
+    tn = norm(text)
+    standard_hits = [
+        standard for standard in (
+            "DB33/T736-2021", "DB33/T737-2021", "DB33/T738-2021"
+        )
+        if standard in tn
+    ]
+    checks = {
+        "zj_pi_standard": bool(standard_hits),
+        "zj_pi_single_standard": len(standard_hits) == 1,
+        "zj_pi_three_tiers": all(label in tn for label in ("约束值", "基准值", "引导值")),
+        "zj_pi_coefficient": "0.1229" in tn and "0.31" not in tn,
+        "zj_pi_no_db37": "DB37" not in tn,
+        "zj_pi_hospital_metric": (
+            "可比单位建筑面积能耗" in tn
+            if "DB33/T738-2021" in standard_hits else True
+        ),
+        "zj_pi_no_shandong_metrics": not any(
+            label in tn for label in ("单位建筑面积供暖能耗", "单位建筑面积非供暖电耗")
+        ),
+        "zj_pi_no_public_building_subtype": not any(
+            label in tn for label in ("单位可比综合能耗", "三星级酒店", "四星级酒店")
+        ),
+    }
+    details = {}
+    if not checks["zj_pi_standard"]:
+        details["zj_pi_standard"] = (
+            "至少引用一个适用标准：DB33/T 736（机关/场馆）、"
+            "DB33/T 737（普通高校）或 DB33/T 738（二级及以上医院）"
+        )
+    if not checks["zj_pi_single_standard"]:
+        details["zj_pi_single_standard"] = (
+            "一份浙江公共机构报告只能引用一个适用子类标准；"
+            f"当前检出 {len(standard_hits)} 个"
+        )
+    if not checks["zj_pi_three_tiers"]:
+        details["zj_pi_three_tiers"] = "浙江公共机构必须完整披露约束值、基准值、引导值三档"
+    if not checks["zj_pi_coefficient"]:
+        details["zj_pi_coefficient"] = "电力折标应为 0.1229，且不得出现 0.31"
+    if not checks["zj_pi_no_db37"]:
+        details["zj_pi_no_db37"] = "浙江公共机构报告不得出现山东 DB37 标准"
+    if not checks["zj_pi_hospital_metric"]:
+        details["zj_pi_hospital_metric"] = (
+            "医院报告使用 DB33/T 738 时必须披露「可比单位建筑面积能耗」"
+        )
+    if not checks["zj_pi_no_shandong_metrics"]:
+        details["zj_pi_no_shandong_metrics"] = "正文混入山东公共建筑 eA/eB 指标"
+    if not checks["zj_pi_no_public_building_subtype"]:
+        details["zj_pi_no_public_building_subtype"] = "正文混入浙江公共建筑专属指标"
     return checks, details
 IMG_EXT = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".emf", ".wmf", ".tif", ".tiff")
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -1616,8 +1739,9 @@ def _apx2_table_ok(sect_detail) -> bool:
 
 
 def run(docx: str, pdf: str = None, family: str = "auto"):
+    family_context = detect_family_context(docx)
     if family == "auto":
-        family = detect_family(docx)
+        family = family_context.family
     z = zipfile.ZipFile(docx)
     znames = z.namelist()
     doc = z.read("word/document.xml").decode("utf-8", "ignore")
@@ -1836,9 +1960,16 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         for key in PUBLIC_BUILDING_SKIP:
             checks[key] = True
             details.pop(key, None)
-        pb_checks, pb_details = public_building_checks(text)
+        if family_context.is_shandong_public_building:
+            pb_checks, pb_details = shandong_public_building_checks(text)
+        else:
+            pb_checks, pb_details = public_building_checks(text)
         checks.update(pb_checks)
         details.update(pb_details)
+    elif family_context.is_zhejiang_public_institution:
+        pi_checks, pi_details = zhejiang_public_institution_checks(text)
+        checks.update(pi_checks)
+        details.update(pi_details)
 
     metrics = {
         "toc_state": toc_state,

@@ -640,6 +640,365 @@ def test_public_building_v2_run_does_not_require_legacy_yearly_schema(
     assert (output / "indicator_review.json").is_file()
 
 
+def _shandong_public_building_payload():
+    return {
+        "family": "公共建筑",
+        "region": "山东",
+        "institution_type": "public_building",
+        "building_area": 10000,
+        "people_count": 500,
+        "beds_count": 200,
+        "public_building": {
+            "subtype": "hospital",
+            "region": "山东",
+            "results": [
+                {
+                    "year": 2024,
+                    "standard_id": "DB37/T 5079-2024",
+                    "values": {
+                        "unit_area_heating_energy": 0.61,
+                        "unit_area_non_heating_electricity": 63.57,
+                        "per_bed_non_heating_electricity": 1.0,
+                    },
+                    "quota": {
+                        "unit_area_heating_energy": [10.0, 7.0],
+                        "unit_area_non_heating_electricity": [67.0, 44.0],
+                        "per_bed_non_heating_electricity": [12.0, 8.0],
+                    },
+                    "grade": {
+                        "unit_area_heating_energy": "达到先进值",
+                        "unit_area_non_heating_electricity": "符合约束值",
+                        "per_bed_non_heating_electricity": "达到先进值",
+                    },
+                }
+            ],
+        },
+        "unit_area_heating_energy": {
+            "kgce_per_m2": 0.61,
+            "benchmark": {
+                "约束值": 10.0,
+                "先进值": 7.0,
+                "标准": "DB37/T 5079-2024",
+                "来源": "表7.0.2-1",
+                "评价结果": "达到先进值",
+            },
+        },
+        "unit_area_non_heating_electricity": {
+            "kwh_per_m2": 63.57,
+            "benchmark": {
+                "约束值": 67.0,
+                "先进值": 44.0,
+                "标准": "DB37/T 5079-2024",
+                "来源": "表7.0.2-1",
+                "评价结果": "符合约束值",
+            },
+        },
+        "per_bed_non_heating_electricity": {
+            "k10_kwh_per_bed": 1.0,
+            "benchmark": {
+                "约束值": 12.0,
+                "先进值": 8.0,
+                "标准": "DB37/T 5079-2024",
+                "来源": "表7.0.2-1",
+                "评价结果": "达到先进值",
+            },
+        },
+    }
+
+
+def _zhejiang_public_institution_payload():
+    return {
+        "family": "公共机构",
+        "region": "浙江",
+        "institution_type": "public_institution",
+        "building_area": 100000,
+        "people_count": 20000,
+        "public_institution": {
+            "subtype": "university",
+            "region": "浙江",
+            "results": [
+                {
+                    "year": 2024,
+                    "standard_id": "DB33/T 737-2021",
+                    "values": {
+                        "unit_area_energy": 4.9,
+                        "per_capita_energy": 140.0,
+                        "unit_area_electricity": 30.0,
+                        "per_capita_electricity": 550.0,
+                    },
+                    "quota": {
+                        "unit_area_energy": [7.0, 4.5, 2.5],
+                        "per_capita_energy": [180.0, 130.0, 80.0],
+                        "unit_area_electricity": [40.0, 25.0, 18.0],
+                        "per_capita_electricity": [800.0, 500.0, 300.0],
+                    },
+                    "grade": {
+                        "unit_area_energy": "低于约束值",
+                        "per_capita_energy": "低于约束值",
+                        "unit_area_electricity": "低于约束值",
+                        "per_capita_electricity": "低于约束值",
+                    },
+                }
+            ],
+        },
+        "unit_area_energy": {
+            "kgce_per_m2": 4.9,
+            "benchmark": {
+                "约束值": 7.0,
+                "基准值": 4.5,
+                "引导值": 2.5,
+                "标准": "DB33/T 737-2021",
+                "来源": "表1",
+                "评价结果": "低于约束值",
+            },
+        },
+        "per_capita_energy": {
+            "kgce_per_person": 140.0,
+            "benchmark": {
+                "约束值": 180.0,
+                "基准值": 130.0,
+                "引导值": 80.0,
+                "标准": "DB33/T 737-2021",
+                "来源": "表1",
+                "评价结果": "低于约束值",
+            },
+        },
+        "unit_area_electricity": {
+            "kwh_per_m2": 30.0,
+            "benchmark": {
+                "约束值": 40.0,
+                "基准值": 25.0,
+                "引导值": 18.0,
+                "标准": "DB33/T 737-2021",
+                "来源": "表2",
+                "评价结果": "低于约束值",
+            },
+        },
+        "per_capita_electricity": {
+            "kwh_per_person": 550.0,
+            "benchmark": {
+                "约束值": 800.0,
+                "基准值": 500.0,
+                "引导值": 300.0,
+                "标准": "DB33/T 737-2021",
+                "来源": "表2",
+                "评价结果": "低于约束值",
+            },
+        },
+    }
+
+
+def _datava_project(tmp_path, monkeypatch, *, name, raw, indicators):
+    projects_root = tmp_path / "projects"
+    project = projects_root / name
+    project.mkdir(parents=True)
+    (project / "data.json").write_text(
+        json.dumps(raw, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (project / "indicators.json").write_text(
+        json.dumps(indicators, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HERMES_PROJECTS_ROOT", str(projects_root))
+    return name, tmp_path / "out"
+
+
+def test_shandong_public_building_payload_is_clean():
+    findings = v2.review_shandong_public_building_payload(
+        _shandong_public_building_payload(),
+        _public_building_raw(province="山东"),
+    )
+
+    assert findings == []
+
+
+def test_shandong_public_building_rejects_three_tiers_and_db33():
+    payload = copy.deepcopy(_shandong_public_building_payload())
+    payload["public_building"]["results"][0]["quota"][
+        "unit_area_heating_energy"
+    ] = [10.0, 7.0, 5.0]
+    payload["unit_area_heating_energy"]["benchmark"]["标准"] = (
+        "DB33/T 736-2021"
+    )
+
+    codes = {
+        finding.code
+        for finding in v2.review_shandong_public_building_payload(
+            payload,
+            _public_building_raw(province="山东"),
+        )
+    }
+
+    assert "V2.SD_PB.TIERS" in codes
+    assert "V2.SD_PB.DB33" in codes
+
+
+def test_zhejiang_public_institution_payload_is_clean():
+    findings = v2.review_zhejiang_public_institution_payload(
+        _zhejiang_public_institution_payload(),
+        _public_building_raw(unit_type="公共机构", province="浙江"),
+    )
+
+    assert findings == []
+
+
+def test_zhejiang_public_institution_hospital_requires_comparable_metric():
+    payload = copy.deepcopy(_zhejiang_public_institution_payload())
+    section = payload["public_institution"]
+    section["subtype"] = "hospital"
+    result = section["results"][0]
+    result["standard_id"] = "DB33/T 738-2021"
+    result["values"] = {
+        "comparable_unit_area_energy": 20.0,
+        "per_capita_energy": 250.0,
+        "unit_area_electricity": 120.0,
+    }
+    result["quota"] = {
+        "comparable_unit_area_energy": [32.0, 27.0, 22.0],
+        "per_capita_energy": [400.0, 270.0, 180.0],
+        "unit_area_electricity": [160.0, 130.0, 95.0],
+    }
+    result["grade"] = {
+        "comparable_unit_area_energy": "低于引导值",
+        "per_capita_energy": "低于基准值",
+        "unit_area_electricity": "低于基准值",
+    }
+    payload.pop("unit_area_energy", None)
+    payload.pop("per_capita_electricity", None)
+    payload["comparable_unit_area_energy"] = {
+        "kgce_per_m2": 20.0,
+        "benchmark": {
+            "约束值": 32.0,
+            "基准值": 27.0,
+            "引导值": 22.0,
+            "标准": "DB33/T 738-2021",
+            "来源": "表1",
+            "评价结果": "低于引导值",
+        },
+    }
+    payload["per_capita_energy"] = {
+        "kgce_per_person": 250.0,
+        "benchmark": {
+            "约束值": 400.0,
+            "基准值": 270.0,
+            "引导值": 180.0,
+            "标准": "DB33/T 738-2021",
+            "来源": "表1",
+            "评价结果": "低于基准值",
+        },
+    }
+    payload["unit_area_electricity"] = {
+        "kwh_per_m2": 120.0,
+        "benchmark": {
+            "约束值": 160.0,
+            "基准值": 130.0,
+            "引导值": 95.0,
+            "标准": "DB33/T 738-2021",
+            "来源": "表2",
+            "评价结果": "低于基准值",
+        },
+    }
+
+    findings = v2.review_zhejiang_public_institution_payload(
+        payload,
+        _public_building_raw(unit_type="公共机构", province="浙江"),
+    )
+    assert findings == []
+
+    result["values"].pop("comparable_unit_area_energy")
+    result["values"]["unit_area_energy"] = 20.0
+    codes = {
+        finding.code
+        for finding in v2.review_zhejiang_public_institution_payload(
+            payload,
+            _public_building_raw(unit_type="公共机构", province="浙江"),
+        )
+    }
+    assert "V2.ZJ_PI.METRIC_MISSING" in codes
+
+
+def test_zhejiang_public_institution_rejects_top_level_mismatch():
+    payload = copy.deepcopy(_zhejiang_public_institution_payload())
+    payload["unit_area_energy"]["kgce_per_m2"] = 8.8
+    payload["per_capita_energy"]["benchmark"].pop("引导值")
+
+    codes = {
+        finding.code
+        for finding in v2.review_zhejiang_public_institution_payload(
+            payload,
+            _public_building_raw(unit_type="公共机构", province="浙江"),
+        )
+    }
+
+    assert "V2.ZJ_PI.TOP_METRIC_MISMATCH" in codes
+    assert "V2.ZJ_PI.TOP_BENCHMARK" in codes
+
+
+def test_zhejiang_public_institution_rejects_cross_region_and_wrong_grade():
+    payload = copy.deepcopy(_zhejiang_public_institution_payload())
+    payload["public_institution"]["results"][0]["standard_id"] = (
+        "DB37/T 5078-2024"
+    )
+    payload["public_institution"]["results"][0]["grade"][
+        "unit_area_energy"
+    ] = "低于基准值"
+    payload["electricity_coefficient"] = 0.31
+
+    codes = {
+        finding.code
+        for finding in v2.review_zhejiang_public_institution_payload(
+            payload,
+            _public_building_raw(unit_type="公共建筑", province="山东"),
+        )
+    }
+
+    assert "V2.ZJ_PI.STANDARD" in codes
+    assert "V2.ZJ_PI.GRADE" in codes
+    assert "V2.ZJ_PI.COAL_EQUIVALENT" in codes
+    assert "V2.ZJ_PI.DB37" in codes
+    assert "V2.ZJ_PI.FAMILY_MISMATCH" in codes
+    assert "V2.ZJ_PI.REGION" in codes
+
+
+def test_v2_run_dispatches_shandong_public_building(
+    tmp_path, monkeypatch
+):
+    name, output = _datava_project(
+        tmp_path,
+        monkeypatch,
+        name="shandong-public-building",
+        raw=_public_building_raw(province="山东"),
+        indicators=_shandong_public_building_payload(),
+    )
+
+    result = v2.run(name, output_dir=str(output))
+
+    assert result.status == "pass"
+    assert result.inputs["报告族"] == "公共建筑（山东）"
+    assert result.extra["region"] == "山东"
+    assert result.extra["public_building_subtype"] == "hospital"
+
+
+def test_v2_run_dispatches_zhejiang_public_institution(
+    tmp_path, monkeypatch
+):
+    name, output = _datava_project(
+        tmp_path,
+        monkeypatch,
+        name="zhejiang-public-institution",
+        raw=_public_building_raw(unit_type="公共机构", province="浙江"),
+        indicators=_zhejiang_public_institution_payload(),
+    )
+
+    result = v2.run(name, output_dir=str(output))
+
+    assert result.status == "pass"
+    assert result.inputs["报告族"] == "公共机构（浙江）"
+    assert result.extra["region"] == "浙江"
+    assert result.extra["public_institution_subtype"] == "university"
+
+
 def test_consistency_requires_area_and_people():
     findings = v2.check_consistency(
         {"institution_type": "government", "building_area": 0, "people_count": 0}, None

@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "region": "浙江",
+    "family": "公共机构",
+    "verified": "2026-10-23",
+    "human_authority": "quota-values.md",
+    "shared_736_source": "../quota-values.json",
+    "note": "736 数值不复制；代码组合读取共享 736 包与本单位扩充包，避免两份数值漂移。"
+  },
+  "coefficients": {
+    "electricity_kgce_per_kwh": 0.1229,
+    "natural_gas_kgce_per_m3": 1.2143,
+    "lpg_kgce_per_kg": 1.7143,
+    "gasoline_kgce_per_kg": 1.4714,
+    "diesel_kgce_per_kg": 1.4571,
+    "fuel_oil_kgce_per_kg": 1.4286,
+    "raw_coal_kgce_per_kg": 0.7143,
+    "heat_kgce_per_gj": 34.12
+  },
+  "db33_t_737_2021": {
+    "title": "普通高等院校能耗定额及计算方法",
+    "status": "现行",
+    "table": "表1、表2",
+    "applicability": "全部或部分使用财政性资金的普通高等院校；不含成人高校和自考高校",
+    "primary": {
+      "unit_area_energy": [7.0, 4.5, 2.5],
+      "per_capita_energy": [180, 130, 80]
+    },
+    "reference": {
+      "unit_area_electricity": [40, 25, 18],
+      "per_capita_electricity": [800, 500, 300],
+      "eeue": [2.0, 1.8, 1.5]
+    }
+  },
+  "db33_t_738_2021": {
+    "title": "医疗机构能耗定额及计算方法",
+    "status": "现行",
+    "table": "表1、表2、第6.3条",
+    "applicability": "全部或部分使用财政性资金的二级及以上医疗机构",
+    "primary": {
+      "unit_area_energy": {
+        "三级": [32, 27, 22],
+        "二级": [24, 16, 10]
+      },
+      "per_capita_energy": {
+        "三级": [400, 270, 180],
+        "二级": [310, 220, 160]
+      }
+    },
+    "reference": {
+      "unit_area_electricity": {
+        "三级": [160, 130, 95],
+        "二级": [100, 85, 65]
+      },
+      "eeue": [2.0, 1.8, 1.5]
+    },
+    "corrections": {
+      "outpatient_over_2000000": 1.15,
+      "outpatient_over_3000000": 1.2,
+      "open_beds_over_800": 1.15,
+      "open_beds_over_1000": 1.2,
+      "formula": "comparable_unit_area_energy = unit_area_energy / (alpha1 * alpha2)"
+    }
+  },
+  "water_2019": {
+    "standard": "浙江省用（取）水定额（2019）",
+    "national_org": {
+      "with_canteen": [38.0, 22.5],
+      "without_canteen": [21.9, 15.0],
+      "unit": "m3/(person·a)",
+      "tiers": ["通用值", "先进值"]
+    }
+  }
+}

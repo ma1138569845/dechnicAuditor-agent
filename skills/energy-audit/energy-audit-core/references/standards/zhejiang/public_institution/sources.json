@@ -1,0 +1,35 @@
+{
+  "verified_at": "2026-10-23",
+  "standards": [
+    {
+      "id": "DB33/T 736-2021",
+      "title": "行政机关、场馆能耗定额及计算方法",
+      "status": "现行",
+      "source_url": "https://zjjcmspublic.oss-cn-hangzhou-zwynet-d01-a.internet.cloud.zj.gov.cn/jcms_files/jcms1/web3250/site/attach/0/2305041144504589.pdf",
+      "http_status": 200,
+      "local_pdf": "sources/DB33_T_736_2021.pdf",
+      "sha256": "db8342ac0f24109e8a5c71643bafead4dca5030852a82b7be09b9335d4bd44cf",
+      "tables": ["表1", "表2", "表3", "表4", "附录A"]
+    },
+    {
+      "id": "DB33/T 737-2021",
+      "title": "普通高等院校能耗定额及计算方法",
+      "status": "现行",
+      "source_url": "https://zjjcmspublic.oss-cn-hangzhou-zwynet-d01-a.internet.cloud.zj.gov.cn/jcms_files/jcms1/web3112/site/attach/0/3201d537254c41a4b78b809d1308a2a8.pdf",
+      "http_status": 200,
+      "local_pdf": "sources/DB33_T_737_2021.pdf",
+      "sha256": "450c69adf21e01fcef09d81450717898e06e3ccc712f3c759ca0262762d5c783",
+      "tables": ["表1", "表2", "附录A"]
+    },
+    {
+      "id": "DB33/T 738-2021",
+      "title": "医疗机构能耗定额及计算方法",
+      "status": "现行",
+      "source_url": "https://zjjcmspublic.oss-cn-hangzhou-zwynet-d01-a.internet.cloud.zj.gov.cn/jcms_files/jcms1/web3112/site/attach/0/7543ad7a30ff4be3948dfb5f8854f312.pdf",
+      "http_status": 200,
+      "local_pdf": "sources/DB33_T_738_2021.pdf",
+      "sha256": "5e5f73da4b423bf2e089a04a4b962956eb70aebb45c61f59741f7a4ef6a5ab35",
+      "tables": ["表1", "表2", "第6.3条", "附录A"]
+    }
+  ]
+}

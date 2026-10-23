@@ -1471,7 +1471,7 @@ def _chapter_path(project_dir, number):
 
 
 def validate_family_inputs(project_dir, family_context):
-    """校验报告族的强制输入；浙江公共建筑固定 8 章 + 附录 1/2。"""
+    """校验报告族的强制输入；附录名称只按地区标准包执行。"""
     if not family_context.is_public_building:
         return
 
@@ -1482,8 +1482,11 @@ def validate_family_inputs(project_dir, family_context):
     ]
     if missing:
         raise ReportFamilyContractError(
-            "浙江公共建筑报告缺少章节：" + "、".join(missing)
+            f"{family_context.label}报告缺少章节：" + "、".join(missing)
         )
+
+    if not family_context.is_zhejiang_public_building:
+        return
 
     appendix = os.path.join(project_dir, "chapter_md", "appendix.md")
     if not os.path.isfile(appendix):

@@ -150,6 +150,48 @@ PUBLIC_BUILDING_HOTEL_LABELS = [
     ("water_indicator", "单位用水量", "m³/(床·年)"),
 ]
 
+SHANDONG_PUBLIC_BUILDING_LABELS = {
+    "business_office": [
+        ("unit_area_heating_energy", "单位建筑面积供暖能耗", "kgce/(m²·a)"),
+        (
+            "unit_area_non_heating_electricity",
+            "单位建筑面积非供暖电耗",
+            "kWh/(m²·a)",
+        ),
+    ],
+    "hotel": [
+        ("unit_area_heating_energy", "单位建筑面积供暖能耗", "kgce/(m²·a)"),
+        (
+            "unit_area_non_heating_electricity",
+            "单位建筑面积非供暖电耗",
+            "kWh/(m²·a)",
+        ),
+    ],
+    "hospital": [
+        ("unit_area_heating_energy", "单位建筑面积供暖能耗", "kgce/(m²·a)"),
+        (
+            "unit_area_non_heating_electricity",
+            "单位建筑面积非供暖电耗",
+            "kWh/(m²·a)",
+        ),
+        (
+            "per_bed_non_heating_electricity",
+            "单位床位非供暖电耗",
+            "10³ kWh/(床·a)",
+        ),
+    ],
+}
+
+ZHEJIANG_PUBLIC_INSTITUTION_LABELS = [
+    ("unit_area_energy", "单位建筑面积能耗", "kgce/(m²·a)"),
+    ("per_capita_energy", "人均综合能耗", "kgce/(人·a)"),
+    ("unit_area_electricity", "常规用能系统单位建筑面积电耗", "kWh/(m²·a)"),
+    ("per_capita_electricity", "人均电耗", "kWh/(人·a)"),
+    ("comparable_unit_area_energy", "可比单位建筑面积能耗", "kgce/(m²·a)"),
+    ("eeue", "数据中心机房 EEUE", ""),
+    ("water_indicator", "人均用水量", "m³/(人·a)"),
+]
+
 # 指标 → 定额标准中的期望表号（与 ea-calculation/scripts/verify_benchmark_sources.py 同一口径；
 #   两处口径若不一致，契约会误报「缺锚点」——2026-09-21 修的正是这个分叉）。
 EXPECTED_TABLE = {
@@ -404,20 +446,35 @@ def resolve_project_family(base: dict, ind: dict):
 def public_building_subtype(base: dict, ind: dict) -> str:
     pb = (ind or {}).get("public_building") or {}
     subtype = str(pb.get("subtype") or "").strip().lower()
-    if subtype in ("office", "venue", "hotel"):
+    if subtype in (
+        "office", "venue", "hotel",
+        "business_office", "hospital",
+    ):
         return subtype
     text = f"{(base or {}).get('institution_category', '')}{(base or {}).get('specific_type', '')}"
+    if "商务办公" in text:
+        return "business_office"
     if any(k in text for k in ("公寓", "饭店", "宾馆", "酒店")):
         return "hotel"
+    if "医院" in text:
+        return "hospital"
     if any(k in text for k in ("场馆", "图书馆", "博物馆", "体育馆", "科技馆")):
         return "venue"
     return "office"
 
 
-def public_building_blueprint_path() -> str:
-    env = os.environ.get("EA_PUBLIC_BUILDING_BLUEPRINT")
+def public_building_blueprint_path(region: str = "浙江") -> str:
+    env_name = (
+        "EA_SHANDONG_PUBLIC_BUILDING_BLUEPRINT"
+        if region == "山东"
+        else "EA_PUBLIC_BUILDING_BLUEPRINT"
+    )
+    env = os.environ.get(env_name)
     if env and os.path.isfile(env):
         return env
+    if region == "山东":
+        # 山东公共建筑尚无经用户审核的专属蓝本；不得以浙江蓝本代替。
+        return ""
     here = os.path.dirname(os.path.abspath(__file__))
     pkg = os.path.dirname(os.path.dirname(here))
     cand = os.path.join(
@@ -427,13 +484,13 @@ def public_building_blueprint_path() -> str:
     return cand if os.path.isfile(cand) else ""
 
 
-def public_building_blueprint_body(limit: int):
+def public_building_blueprint_body(limit: int, region: str = "浙江"):
     """整篇注入公共建筑蓝本（已去事实化）。"""
-    path = public_building_blueprint_path()
+    path = public_building_blueprint_path(region)
     if not path:
         return "", "", False, (
-            "⚠️ 找不到公共建筑蓝本 `families/public-building/blueprint.md`"
-            "（可用 EA_PUBLIC_BUILDING_BLUEPRINT 指定）。"
+            f"⚠️ {region}公共建筑暂无专属蓝本；本次只按本族章节指南和"
+            "项目数据写作，禁止借用其他省份蓝本。"
         )
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -443,7 +500,7 @@ def public_building_blueprint_body(limit: int):
     truncated = len(body) > limit
     if truncated:
         body = body[:limit].rstrip() + "\n…（蓝本剩余部分已截断）"
-    return "# 公共建筑（浙江）蓝本", body.strip(), truncated, ""
+    return f"# 公共建筑（{region}）蓝本", body.strip(), truncated, ""
 
 
 def projects_root() -> str:
@@ -651,6 +708,9 @@ def main(argv=None) -> int:
         print(f"[错误] {exc}")
         return 1
     is_pb = family.is_public_building
+    is_shandong_pb = family.is_shandong_public_building
+    is_zhejiang_pb = family.is_zhejiang_public_building
+    is_zhejiang_pi = family.is_zhejiang_public_institution
     pb_subtype = public_building_subtype(base, ind) if is_pb else ""
     anchors = load_std_anchors()          # ★来源锚点（定额可溯源性判定，见 resolve_anchor）
     md_dir = os.path.join(pdir, "chapter_md")
@@ -676,9 +736,13 @@ def main(argv=None) -> int:
         f"| 基准期 | {base.get('base_period') or '【待补充】'} | data.json → base.base_period |",
         f"| 建筑面积（m²） | {base.get('building_area') or '【待补充】'} | data.json → base.building_area |",
         f"| 用能人数 | {base.get('people_count') or '【待补充】'} | data.json → base.people_count |",
-        (f"| 机构类型 | 公共建筑 / {pb_subtype} | data.json / indicators.json |"
+        (f"| 机构类型 | 公共建筑（{family.region}） / {pb_subtype} | data.json / indicators.json |"
          if is_pb else
-         f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |"),
+         (f"| 机构类型 | 公共机构（浙江） / "
+          f"{(ind.get('public_institution') or {}).get('subtype') or '【待补充】'} "
+          "| data.json / indicators.json |"
+          if is_zhejiang_pi else
+         f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |")),
         f"| 报告族 | {family.label} | data.json → base.unit_type + base.province / indicators.json |",
         f"| 标准包 | {family.standard_pack or 'energy-audit-core/references/standards-values.md（山东公共机构）'} | 报告族路由 |",
         "",
@@ -687,11 +751,21 @@ def main(argv=None) -> int:
     ]
 
     if ind:
-        if is_pb:
+        if is_shandong_pb:
+            labels = SHANDONG_PUBLIC_BUILDING_LABELS.get(
+                pb_subtype, SHANDONG_PUBLIC_BUILDING_LABELS["business_office"]
+            )
+            quota_keys = ("约束值", "先进值")
+        elif is_pb:
             labels = (PUBLIC_BUILDING_HOTEL_LABELS if pb_subtype == "hotel"
                       else PUBLIC_BUILDING_OFFICE_LABELS)
             quota_keys = ("约束值", "基准值", "引导值", "通用值", "先进值",
                           "3级（限额值）", "2级（约束值）", "1级（先进值）")
+        elif is_zhejiang_pi:
+            labels = ZHEJIANG_PUBLIC_INSTITUTION_LABELS
+            quota_keys = (
+                "约束值", "基准值", "引导值", "通用值", "先进值"
+            )
         else:
             labels = INDICATOR_LABELS
             quota_keys = ("约束值", "基准值", "引导值")
@@ -711,7 +785,7 @@ def main(argv=None) -> int:
                 str(bench.get(k)) for k in quota_keys if bench.get(k) is not None
             ) or "—"
             std = bench.get("标准") or "—"
-            if is_pb:
+            if is_pb or is_zhejiang_pi:
                 anchor = bench.get("来源") or "—"
                 _anchored = bool(bench.get("来源"))
             else:
@@ -1021,7 +1095,24 @@ def main(argv=None) -> int:
         "托管基准口径（本包 5.4 是节能量核定口径）。",
         "",
     ]
-    if is_pb:
+    if is_shandong_pb:
+        lines += [
+            "### 山东公共建筑族专属规则（本批强制）",
+            "",
+            "- 第2章章名：**建筑概况**；不得出现“公共机构概况”。",
+            "- 第6章：按公共建筑章节骨架组织，不套山东公共机构 6.1.1~6.1.6。",
+            "- 标准归属：商务办公用 DB37/T 5078-2024；三星/四星/五星酒店分别用 "
+            "DB37/T 5076-2024 表7.0.2-1～3；医院用 DB37/T 5079-2024，"
+            "并按三级综合/三级专科/二级及以下综合/二级及以下专科分表。",
+            "- 指标只允许 `eA` 单位建筑面积供暖能耗、`eB` 单位建筑面积非供暖电耗；"
+            "医院另用 `eC` 单位床位非供暖电耗。",
+            "- 评价只有 **约束值、先进值** 两档；禁止出现“基准值/引导值”。",
+            "- 折标系数从山东公共建筑包读取；不得出现 DB33、736、760 或浙江蓝本。",
+            "- 机关办公不属本包；酒店缺星级、医院缺等级或综合/专科属性时停止计算并补采。",
+            "- 写作指南：`ea-authoring/references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。",
+            "",
+        ]
+    elif is_zhejiang_pb:
         lines += [
             "### 公共建筑族专属规则（本批强制）",
             "",
@@ -1034,16 +1125,42 @@ def main(argv=None) -> int:
             "- **上文公共机构的 5.4 托管基准、7.1 C 类八方向、公共机构 8 章口径不适用于本族**；以本族指南为准。",
             "",
         ]
+    elif is_zhejiang_pi:
+        lines += [
+            "### 浙江公共机构族专属规则（本批强制）",
+            "",
+            "- 行政机关、科技馆/文化馆/博物馆使用 DB33/T 736-2021；"
+            "普通高等院校使用 DB33/T 737-2021；二级及以上医疗机构使用 DB33/T 738-2021。",
+            "- 评价统一为约束值、基准值、引导值三档；不得输出山东公共建筑的"
+            "“约束值/先进值”二档作为本族主结论。",
+            "- 电力折标为 0.1229 kgce/kWh；报告中不得出现山东公共机构 0.31 等价值口径。",
+            "- 一级医院、成人高校、自考高校、普通中小学不得套用本包标准。",
+            "- 738 的可比单位面积能耗须披露门急诊人次和开放床位修正；"
+            "736 的 2005 年前无中央空调修正须披露适用条件。",
+            "- 公共机构的 5.4 托管基准、7.1 C 类八方向继续适用；"
+            "但定额数值、表号和评价档位必须服从浙江公共机构包。",
+            "",
+        ]
     lines += [
         "## 五、本批蓝本（形态参照，**只学形态**）",
         "",
         "| 项 | 值 |",
         "|---|---|",
         ("| 蓝本文件 | `energy-audit-report/references/families/public-building/blueprint.md` |"
-         if is_pb else
+         if is_zhejiang_pb else
+         "| 蓝本文件 | 无山东公共建筑专属蓝本；按公共建筑章节指南形态写作，"
+         "不得借用浙江蓝本 |"
+         if is_shandong_pb else
+         "| 蓝本文件 | 无浙江公共机构专属蓝本；按公共机构章节指南和浙江标准包写作，"
+         "不得混入山东定额值 |"
+         if is_zhejiang_pi else
          "| 蓝本文件 | `energy-audit-report/references/audit-examples.md` |"),
-        ("| 本机构类型小节 | 整篇（去事实化公共建筑蓝本） |"
-         if is_pb else
+        ("| 本机构类型小节 | 整篇（去事实化浙江公共建筑蓝本） |"
+         if is_zhejiang_pb else
+         "| 本机构类型小节 | 公共建筑章节骨架（只学形态） |"
+         if is_shandong_pb else
+         "| 本机构类型小节 | 公共机构章节骨架（只学形态） |"
+         if is_zhejiang_pi else
          f"| 本机构类型小节 | {blueprint_section(ind.get('institution_type'), base.get('institution_category'))} |"),
         "| 可复用（形态 + 固定表述） | 章节骨架 / 表格习惯 / 措辞粒度；1.1 定义段、1.3 三段式、1.5 审计过程、1.6 依据清单、4.1 计量六条、5.3 指标定义等固定表述 |",
         "| **必须替换为本项目数据** | 单位名 / 地址 / 人数 / 面积 / 能耗 / 费用 / 设备 / 定额取值 / 问题与建议 |",
@@ -1060,8 +1177,22 @@ def main(argv=None) -> int:
     # 5.1 蓝本正文注入（2026-09-20「钩子 1」）：不再只给路径，直接把本类小节切进来——
     #     契约里只写"去读某文件"，模型不读就绕过去了；正文进契约后，读不读不再是选择。
     if not args.no_blueprint_body:
-        if is_pb:
-            _head, _body, _trunc, _warn = public_building_blueprint_body(args.blueprint_limit)
+        if is_zhejiang_pb:
+            _head, _body, _trunc, _warn = public_building_blueprint_body(
+                args.blueprint_limit, "浙江"
+            )
+        elif is_shandong_pb:
+            _head, _body, _trunc, _warn = public_building_blueprint_body(
+                args.blueprint_limit, "山东"
+            )
+        elif is_zhejiang_pi:
+            _head, _body, _trunc, _warn = (
+                "",
+                "",
+                False,
+                "⚠️ 浙江公共机构暂无专属蓝本；本次只按章节指南和项目数据写作，"
+                "禁止借用山东公共机构蓝本中的定额和评价口径。",
+            )
         else:
             _head, _body, _trunc, _warn = blueprint_body(
                 ind.get("institution_type"), base.get("institution_category"),
@@ -1165,7 +1296,7 @@ def main(argv=None) -> int:
     if not args.quiet:
         print(f"[契约] 已生成/刷新：{out}")
         print(f"       已落盘章节 {len(found)} 个：" + ("、".join(n for n, _, _ in found) if found else "（无，批1）"))
-        if ind and not is_pb:
+        if ind and not is_pb and not is_zhejiang_pi:
             missing = [
                 label for key, label, _ in INDICATOR_LABELS
                 if isinstance(ind.get(key), dict)
@@ -1175,9 +1306,20 @@ def main(argv=None) -> int:
                 print(f"       ⚠️ 以下指标的定额值缺「原文锚点」（建议跑 verify_benchmark_sources.py 并补锚点）：{'、'.join(missing)}")
             else:
                 print("       ✅ 指标定额锚点齐全（缺失时按 (标准号, 表号) 在 standards-values.md 定位）")
-        elif ind and is_pb:
-            labels = (PUBLIC_BUILDING_HOTEL_LABELS if pb_subtype == "hotel"
-                      else PUBLIC_BUILDING_OFFICE_LABELS)
+        elif ind and (is_pb or is_zhejiang_pi):
+            if is_shandong_pb:
+                labels = SHANDONG_PUBLIC_BUILDING_LABELS.get(
+                    pb_subtype,
+                    SHANDONG_PUBLIC_BUILDING_LABELS["business_office"],
+                )
+            elif is_zhejiang_pb:
+                labels = (
+                    PUBLIC_BUILDING_HOTEL_LABELS
+                    if pb_subtype == "hotel"
+                    else PUBLIC_BUILDING_OFFICE_LABELS
+                )
+            else:
+                labels = ZHEJIANG_PUBLIC_INSTITUTION_LABELS
             missing = [
                 label for key, label, _ in labels
                 if isinstance(ind.get(key), dict)
@@ -1185,9 +1327,9 @@ def main(argv=None) -> int:
                 and not (ind[key].get("benchmark") or {}).get("来源")
             ]
             if missing:
-                print(f"       ⚠️ 以下公共建筑指标缺「来源/表号」：{'、'.join(missing)}")
+                print(f"       ⚠️ 以下地区标准指标缺「来源/表号」：{'、'.join(missing)}")
             else:
-                print("       ✅ 公共建筑指标来源/表号齐全")
+                print("       ✅ 地区标准指标来源/表号齐全")
     return 0
 
 

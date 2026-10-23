@@ -34,9 +34,13 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 
 | 报告族 | 计算路径 |
 |---|---|
-| 公共机构 | 现有山东 5 项指标链（本文件下半部分） |
+| 山东公共机构 | 现有 5 项指标链（本文件下半部分） |
+| 山东公共建筑 | `shandong_public_building_indicators.py` + `standard_chapter5.py`；DB37/T 5076/5078/5079-2024，约束值/先进值二档 |
 | 浙江公共建筑 | `public_building_indicators.py` + `public_building_chapter5.py`，电力 0.1229 当量值 |
+| 浙江公共机构 | `zhejiang_public_institution_indicators.py` + `standard_chapter5.py`；DB33/T 736/737/738-2021，约束值/基准值/引导值三档 |
 | 其他 | 返回明确错误，不进入任何地区算法 |
+
+计算前先按 `data.json → base.unit_type + base.province` 固定报告族。不得把山东公共建筑的 `eA/eB/eC` 写成公共机构“单位建筑面积非供暖能耗”，也不得把浙江公共机构三档降成山东二档。
 
 ---
 

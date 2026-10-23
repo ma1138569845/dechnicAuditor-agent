@@ -186,9 +186,18 @@ V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indi
 
 | 报告族 | V2 指标来源 | 审查口径 |
 |---|---|---|
-| 公共机构 | 山东现行 `yearly[]` / 指标包 / 现算链 | 保持既有公共机构指标与 DB37 检查 |
+| 山东公共机构 | 山东现行 `yearly[]` / 指标包 / 现算链 | 保持既有公共机构指标与 DB37 检查 |
+| 山东公共建筑 | `indicators.json → public_building.results[]` | eA 单位面积供暖能耗、eB 单位面积非供暖电耗；医院另查 eC；只允许约束值/先进值 |
 | 浙江公共建筑（办公、场馆） | `indicators.json → public_building.results[]` | 单位建筑面积能耗、常规用能系统单位建筑面积电耗、人均综合能耗、人均电耗、单位用水量共 5 项 |
 | 浙江公共建筑（饭店） | `indicators.json → public_building.results[]` | 单位综合能耗（参考指标）、单位可比综合能耗、单位用水量共 3 项；水耗按入住率折算值对标 |
+| 浙江公共机构 | `indicators.json → public_institution.results[]` | DB33/T 736 机关/场馆、737 普通高校、738 二级及以上医院；约束值/基准值/引导值三档 |
+
+山东公共建筑检查为阻塞项：
+
+- 子类仅限商务办公、宾馆酒店、医院；机关办公不进入本包；
+- 标准必须匹配 DB37/T 5078/5076/5079-2024，不得出现 DB33；
+- 限额数组必须恰好两项，评价只允许“达到先进值/符合约束值/超过约束值”；
+- 标准包电力折标为 0.1229，不得混入公共机构旧等价值 0.31。
 
 浙江公共建筑检查为阻塞项：
 
@@ -198,11 +207,20 @@ V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indi
 - 年度 `grade`、顶层指标、顶层 benchmark 评价结果和最新年度结果必须同源；
 - 饭店 `unit_energy` 的年度评价必须明确写“参考指标”。
 
+浙江公共机构检查为阻塞项：
+
+- 子类仅限 agency / venue / university / hospital；一级医院、成人和自考高校、普通中小学不得套用；
+- 标准必须匹配 DB33/T 736/737/738-2021，不得出现 DB37；
+- 三档必须完整且按数值重算评价，不得输出山东公共建筑“约束值/先进值”主结论；
+- 电力折标为 0.1229 kgce/kWh，不得出现山东公共机构 0.31。
+
 ### 输入加载优先级
 
 ```
+山东公共建筑：indicators.json.public_building.results[]（禁止进入浙江计算器）
 浙江公共建筑：indicators.json.public_building.results[]（禁止回落山东 yearly[]/现算链）
-公共机构：indicators.json → data.json 内嵌 indicators → compute_project_indicators() 现算
+浙江公共机构：indicators.json.public_institution.results[]（禁止进入山东公共机构主链）
+山东公共机构：indicators.json → data.json 内嵌 indicators → compute_project_indicators() 现算
 ```
 
 ### 产出

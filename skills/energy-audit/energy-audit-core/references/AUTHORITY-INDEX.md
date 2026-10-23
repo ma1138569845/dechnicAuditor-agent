@@ -13,8 +13,10 @@
 
 | 主题 | 唯一权威 | 谁引用它 | 禁止复述在 |
 |---|---|---|---|
-| 定额三档值（机构类型 × 机构等级 × 气候区） | `energy-audit-core/references/standards-values.md` | caliber、datava V2、author（1.6 / 5.3 / 8.1） | 任何 SKILL / SOUL / 章节指南（曾因取错气候区写成"来源：DB"不实） |
+| 山东公共机构定额三档值（机构类型 × 机构等级 × 气候区） | `energy-audit-core/references/standards-values.md` | caliber、datava V2、author（1.6 / 5.3 / 8.1） | 任何 SKILL / SOUL / 章节指南（曾因取错气候区写成"来源：DB"不实） |
 | 浙江公共建筑定额与折标包 | `energy-audit-core/references/standards/zhejiang/`（人读 `quota-values.md`，代码只读 `quota-values.json`） | caliber、author、datava V2/V3 | 山东 `standards-values.md` / `coefficient-caliber.md` |
+| 山东公共建筑定额与折标包 | `energy-audit-core/references/standards/shandong/public_building/`（人读 `quota-values.md`，代码只读 `quota-values.json`） | caliber、author、datava V2/V3 | 山东公共机构 `standards-values.md`、浙江 `standards/zhejiang/` |
+| 浙江公共机构定额与折标包 | `energy-audit-core/references/standards/zhejiang/public_institution/`（736 的唯一数值源仍是 `../quota-values.json`） | caliber、author、datava V2/V3 | 山东公共机构 `standards-values.md`、山东公共建筑包 |
 | 折标系数与综合能耗口径（水不折算） | `energy-audit-core/references/coefficient-caliber.md` | caliber、datava V2、author 第5章 | 同上（旧 caliber SOUL 曾写"水 0.2571 / 气 1.33 / 电 0.1229"，已删除） |
 | 版本归一（草稿优先，禁多数投票） | `energy-audit-core/references/version-normalization.md` | datacollection、datava、energy-audit-pg-data | pg-data SKILL 的"版本机制"复述段 |
 | 5 项指标定义与兜底链 | `ea-calculation/SKILL.md` | caliber、datava V2、author 第8章 | 章节指南、SOUL（曾出现"4 项指标"） |
@@ -29,10 +31,14 @@
 | 第6/7/8 章写作规则 | `ea-authoring/references/chapter-guides-6-8.md`（第6章 6.1 用电动态系统 + 6.2 用水 + 6.3 用热 + 6.4 用燃气 + 6.5 其他用能 + 室内环境、第7章问题/建议一一对应、第8章结论=**平铺式不分节无表**，2026-10-21 起） | author、datava V3 | 旧 `chapter6~8-guide.md`、`chapter6-sub-system-spec.md`（均已归档） |
 | 第5章结构 / 表号图号 / 写作细节 | `ea-calculation/references/chapter5-spec.md`（结构+逻辑+细节）+ `chapter5-templates.md`（模板+生成逻辑）★2026-09-18 合并后以此二者为准 | caliber、author 批2 | 原 8 个 5.x 文件（已归档 `_archive/2026-09-18/`） |
 | 浙江公共建筑指标口径 | `ea-calculation/references/public-building-indicator-spec.md` | caliber、datava V2、author 第5/8章 | 山东 `ea-calculation/SKILL.md` 的 5 项公共机构公式 |
+| 山东公共建筑指标口径 | `energy-audit-core/references/standards/shandong/public_building/calculation-spec.md` + `ea-calculation/scripts/shandong_public_building_indicators.py` | caliber、datava V2、author 第5/8章 | 公共机构 5 项指标、浙江公共建筑指标 |
+| 浙江公共机构指标口径 | `energy-audit-core/references/standards/zhejiang/public_institution/calculation-spec.md` + `ea-calculation/scripts/zhejiang_public_institution_indicators.py` | caliber、datava V2、author 第5/8章 | 山东公共机构 5 项指标、浙江公共建筑指标 |
 | 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` | author、caliber | — |
 | 报告实例库 / 蓝本（法院/医院/学校） | `energy-audit-report/references/audit-examples.md`（2026-09-18 三合一） | author、energy-audit-style | 章节指南里不复述实例原文；蓝本只提供**形态**，变量必须来自本项目数据源 |
 | 浙江公共建筑写作指南 | `ea-authoring/references/families/public-building/chapter-guides-1-4.md` + `chapter-guides-5-8.md` | author、datava V3 | 公共机构 `chapter-guides-*.md` |
 | 浙江公共建筑蓝本 | `energy-audit-report/references/families/public-building/blueprint.md` | author、datava V3 | `audit-examples.md` 里不得混入浙江公共建筑规则 |
+| 山东公共建筑写作指南 | `ea-authoring/references/families/public-building/chapter-guides-1-4.md` + `chapter-guides-5-8.md`；项目无山东专属蓝本 | author、datava V3 | 浙江公共建筑蓝本、公共机构蓝本 |
+| 浙江公共机构写作 | 公共机构 `chapter-guides-1-4.md` / `chapter-guides-6-8.md`；项目无浙江公共机构专属蓝本 | author、datava V3 | 山东公共机构蓝本、浙江公共建筑蓝本 |
 | 写作论证链 / 句式 / 防抄 / 审查清单 | `energy-audit-style/references/rules.md`（第1~8章论证链 + 审查清单 16 项） | author、editor、datava V3。**关键规则已直接注入写章契约**（`ea-authoring/scripts/prepare_writing_context.py` 正文含：5.2 归因下沉、5.4 先判可比性、7.1 三类问题＋依据锚点、正文禁忌），`rules.md` 为完整版与审查依据 —— 2026-09-29 更新，此前"未接入写作主流程"的注已过期 | 各章指南不复述句式与禁词表（只路径引用）；锚点细节在 `ea-authoring/references/chapter7-anchor-table.md` |
 | Word 版式技术细则（页码域/前置节与正文节/首行缩进/水印/OOXML） | `ea-authoring/references/docx-techniques.md` | author、editor | 各 SKILL 只写"必做"，不复述命令与 XML 细节 |
 | OfficeCLI 集成与第5章公式方案（A/B/C） | `ea-authoring/references/docx-tools.md` | author（仅 office_editor 备用路径） | 装配主链不复述公式注入细节 |
@@ -47,6 +53,8 @@
 | 格式规范（字体/字号/行距/表格/封面/目录/图片/水印） | `energy-audit-core/references/report-format-spec.md` + `tools/energy_audit/format_spec.py` | 全角色、datava V3、装配脚本 | core SKILL / ea-authoring SKILL / author SOUL 的字体表（已改指针） |
 | 装配主链（构建 → 收尾 → 断言） | `energy-audit-report/references/script-assembly-chain.md` | author、editor | 旧 `word-finishing.md`（已归档） |
 | 浙江公共建筑交付断言 | `energy-audit-report-qa/references/public-building-checks.md` + `ea_docx_asserts.py --family public_building` | author、editor、default | 公共机构断言集 |
+| 山东公共建筑交付断言 | `energy-audit-report-qa/references/shandong-public-building-checks.md` + `ea_docx_asserts.py::shandong_public_building_checks()` | author、editor、datava V3 | 浙江 DB33、浙江三档、公共机构 0.31 |
+| 浙江公共机构交付断言 | `energy-audit-report-qa/references/zhejiang-public-institution-checks.md` + `ea_docx_asserts.py::zhejiang_public_institution_checks()` | author、editor、datava V3 | 山东 DB37、山东公共建筑二档 |
 | 仿写链 spec.json 语法与图表标记 | `energy-audit-imitate/SKILL.md` + `references/assemble-format-notes.md`、`assemble-format-notes.md` | author（仿写模式） | — |
 | 验收口径（四类合规 + 高频错误 + 根因链） | `energy-audit-report-qa/SKILL.md`（+ `references/fixes.md`、`fixes.md`） | editor、datava V3、default 交付前 | editor SOUL 的 A~O 自查清单（已删除） |
 | 三张信息表的表结构与来源链路 | `energy-audit-core/references/conventions.md`《审计基本信息三张表的表结构》一节（结构）+ `energy-audit-report-qa/references/fixes.md`（来源与修复） | author、datacollection、V1/V3 | — |

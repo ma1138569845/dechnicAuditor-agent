@@ -16,10 +16,14 @@ metadata:
 
 本技能回答"如何写出 8 章完整、格式规范的能源审计报告 .docx"，只含报告写作/排版环节的深度知识。写作前必须先读 `_context.md` 的报告族与指南路径：
 
-- 公共机构：`references/chapter-guides-1-4.md` / `chapter-guides-6-8.md`；
-- 浙江公共建筑：`references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。
+- 山东公共机构、浙江公共机构：`references/chapter-guides-1-4.md` / `chapter-guides-6-8.md`；
+- 山东公共建筑、浙江公共建筑：`references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。
 
-报告族只由 `base.unit_type + base.province` 决定；`indicators.json` 是下游计算产物，不能反向改选报告族。公共建筑目前只接入浙江。
+报告族只由 `base.unit_type + base.province` 决定；`indicators.json` 是下游计算产物，不能反向改选报告族。公共建筑当前只接入山东、浙江。
+
+- 山东公共建筑沿用公共建筑章节形态，但定额只用 DB37/T 5076/5078/5079 的约束值/先进值二档；
+- 浙江公共机构沿用公共机构章节形态，但定额只用 DB33/T 736/737/738 的约束值/基准值/引导值三档；
+- 两族没有经用户审核的专属蓝本时，只按章节指南和项目数据写，禁止互借蓝本、定额或评价档位。
 
 **正文写作由 LLM 逐章完成，本技能是唯一写作知识源。** 脚本（tools/energy_audit/）只负责采集、指标计算与图表渲染，**不写任何正文**；任何"跑脚本生成正文"的路径均已废弃（2026-09-04 定，report_generator 正文生成已退役）。
 
