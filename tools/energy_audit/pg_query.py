@@ -32,6 +32,7 @@ class PgDataQuery:
         self.connection = None
         self.cursor = None
         self.version_code = self.normalize_version_code(version_code)
+        self._device_table_columns: dict[str, frozenset[str]] = {}
 
     @staticmethod
     def normalize_version_code(raw) -> str | None:
@@ -481,50 +482,92 @@ class PgDataQuery:
 
     # ========== 设备信息 ==========
 
-    def _get_device_by_table(self, table: str, customer_id: int = None) -> List[Dict]:
-        """通用设备表查询（使用 SELECT *，避免硬编码字段与实际表结构不一致）。
+    def _get_table_columns(self, table: str) -> frozenset[str]:
+        """读取并缓存指定表在当前 schema 中的列名。"""
+        cache = getattr(self, '_device_table_columns', None)
+        if cache is None:
+            cache = {}
+            self._device_table_columns = cache
+        if table in cache:
+            return cache[table]
+        rows = self._execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = %s",
+            (table,),
+        )
+        columns = frozenset(
+            str(row.get('column_name')).strip()
+            for row in rows
+            if row.get('column_name')
+        )
+        cache[table] = columns
+        return columns
 
-        设备表与能耗/建筑/场景表同为版本机制（草稿 + PL 正式版本），
-        同一设备（device_name+power+power_unit）并存多版本时按版本归一：
-        草稿优先（is_draft=1，最新编辑数据），无草稿时 version_code 大者优先，避免设备清单出现重复。
-        表无 version_code/is_draft 列时回退全量查询。
+    def _get_device_by_table(self, table: str, customer_id: int = None) -> List[Dict]:
+        """查询设备表，并按该表实际存在的列做版本归一和过滤。
+
+        设备表并不共享完全相同的字段：部分表没有 power/power_unit，附属表还
+        可能没有版本列。先读取 information_schema，再按可用字段组装查询；
+        数据库异常必须原样抛出，不能用 SELECT * 回退掩盖权限或 SQL 错误。
         """
-        base = f"FROM {table} t WHERE t.deleted = 0"
+        columns = self._get_table_columns(table)
+        conditions = []
         params = []
+        if 'deleted' in columns:
+            conditions.append("t.deleted = 0")
         if customer_id:
-            base += " AND t.customer_id = %s"
+            if 'customer_id' not in columns:
+                raise ValueError(f"{table} 不支持按 customer_id 过滤")
+            conditions.append("t.customer_id = %s")
             params.append(customer_id)
-        ver_sql, ver_params = self._version_where("t")
-        base += ver_sql
-        params.extend(ver_params)
+
+        versioned = {'is_draft', 'version_code'} <= columns
+        if self.version_code and not versioned:
+            raise ValueError(f"{table} 不支持 version_code 快照锁定")
         if self.version_code:
-            order = self._version_order_tail("t")
-        else:
-            order = (
-                " CASE WHEN t.is_draft = 1 THEN 0 ELSE 1 END,"
-                " t.version_code DESC NULLS LAST"
+            conditions.extend((
+                "COALESCE(t.is_draft, 0) = 0",
+                "t.version_code = %s",
+            ))
+            params.append(self.version_code)
+
+        base = f"FROM {table} t"
+        if conditions:
+            base += " WHERE " + " AND ".join(conditions)
+        if not versioned:
+            return self._execute(f"SELECT * {base}", tuple(params))
+
+        name_expr = (
+            "COALESCE(t.device_name, 'id_' || t.id::text)"
+            if 'device_name' in columns
+            else "'id_' || t.id::text"
+        )
+        partition = [name_expr]
+        if 'power' in columns:
+            partition.append('t.power')
+        if 'power_unit' in columns:
+            partition.append('t.power_unit')
+        order = (
+            "t.id DESC"
+            if self.version_code
+            else (
+                "COALESCE(t.is_draft, 0) DESC, "
+                "t.version_code DESC NULLS LAST, t.id DESC"
             )
-        versioned = f"""
+        )
+        versioned_sql = f"""
             SELECT * FROM (
                 SELECT t.*, ROW_NUMBER() OVER (
-                    PARTITION BY COALESCE(t.device_name, 'id_' || t.id::text), t.power, t.power_unit
+                    PARTITION BY {', '.join(partition)}
                     ORDER BY {order}
                 ) AS _rn
                 {base}
             ) x WHERE _rn = 1
         """
-        try:
-            rows = self._execute(versioned, tuple(params))
-            for r in rows:
-                r.pop('_rn', None)
-            return rows
-        except Exception:
-            # 表无版本字段（version_code/is_draft 缺失等），回退全量
-            try:
-                self.connection.rollback()  # 防御：非 autocommit 连接下清理 aborted 事务
-            except Exception:
-                pass
-            return self._execute(f"SELECT * {base}", tuple(params))
+        rows = self._execute(versioned_sql, tuple(params))
+        for row in rows:
+            row.pop('_rn', None)
+        return rows
 
     def get_device_air(self, customer_id: int = None) -> List[Dict]:
         """ts_institution_device_air — 冷热源/空调设备。"""

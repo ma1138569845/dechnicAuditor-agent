@@ -16,6 +16,18 @@ def _query(version_code=None):
 
     q._execute = fake_execute
     q.connection = None
+    q._device_table_columns = {
+        "ts_institution_device_light": frozenset({
+            "id",
+            "deleted",
+            "customer_id",
+            "device_name",
+            "power",
+            "power_unit",
+            "is_draft",
+            "version_code",
+        }),
+    }
     return q, captured
 
 
