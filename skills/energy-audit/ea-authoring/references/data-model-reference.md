@@ -46,7 +46,7 @@ if proj is None:
 | 第6章 设备 | 分系统设备（品牌/型号/功率/运行时间从 `spec` 复合串解析；生活水泵配置见 `config`；补水装置对应冷热源见 `device_air_name`；末端设备来自 `ts_institution_device_terminal`） | `proj.equipment[]`（category/name/spec/quantity/**img_ids**/**img_fields**/config/device_air_name/energy_rating/location/independent_metering/**equipment_section_key/equipment_section_title/photo_section_key/photo_section_title/routing_reason**）；`img_fields[] = {field,label,ids}` 保留上传字段语义 |
 | 第6章 特殊设备分档 | 数据中心/信息中心按数据库每一行判断，>100 kW 才单列信息机房；医疗设备以 `unit_func=C` 为权威，二级/三级医院才单列；单位不明不得猜算 | `proj.base.unit_func` / `children_func` / `institution_category` / `unit_name`；`proj.equipment[].power_unit` / `power_components` / `total_power_kw` / `routing_power_error`；总功率只在 `power_unit` 明确时计算 |
 | 第6章 用水构成 | 灌溉登记与照片 | `proj.water_aux.greening[]`（灌溉方式/水源/`img_fields`）；生活水泵的设备事实和照片均经 `photo_section_key=other_energy` 放 6.1“其他用电设备”，不得进入 6.2 |
-| 第6章 用燃气设备 | 燃气锅炉、燃气热水器，以及有实际燃气/燃油用量的吸收式、溴化锂、直燃设备 | `proj.equipment[]` 中 `gas_value > 0` 或 `fuel_value > 0` + 名称含“吸收式/溴化锂/直燃”时，按唯一路由写 `photo_section_key=gas_system`；0 或空值不触发；照片放 6.4，不在 6.1 重复 |
+| 第6章 用燃气设备 | 燃气锅炉、非生活热水表的燃气设备，以及有实际燃气/燃油用量的吸收式、溴化锂、直燃设备 | `proj.equipment[]` 中燃烧型生活热水设备的事实写 6.4，非燃烧型生活热水设备的事实写 6.1；生活热水系统表全部设备照片统一写 `photo_section_key=water_system` 放 6.2，不在 6.4 重复。其他燃气设备的 `gas_value > 0` 或 `fuel_value > 0` + 名称含“吸收式/溴化锂/直燃”时照片放 6.4；0 或空值不触发燃烧路由 |
 | 第6章 室内环境 | 检测数据（第6章末节，按条件生成） | `proj.indoor_env.rooms[]` |
 | 第7章 7.1.1 计量证据 | 用水、用燃气的分项计量状态 | `proj.metering.water_measured_depth` / `water_kitchen_metering`；`proj.water_aux`（绿化/其他用水的 `is_metering`）；`proj.equipment[]`（`has_gas_use` / `independent_metering` / `gas_value` / `fuel_value`）。**0=明确无、1=明确有、空=正文省略**，空值不得推断为“未计量”或“待核实” |
 | 第7章 问题 | 从实际字段推断 | 基于 `proj.metering` / `proj.equipment` / `proj.buildings` 推断，禁止写通用问题 |

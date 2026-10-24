@@ -984,6 +984,36 @@ class Chapter6FieldCaptionTests(unittest.TestCase):
         self.assertIn("空调与供暖系统", warnings[0])
         self.assertIn("用水系统", warnings[0])
 
+    def test_life_hotwater_photo_routes_to_water_without_moving_fact(self):
+        equipment = [
+            {
+                "name": "燃气热水锅炉",
+                "category": "生活热水",
+            },
+            {
+                "name": "电热水器",
+                "category": "生活热水",
+            },
+            {
+                "name": "生活水泵",
+                "category": "动力",
+            },
+        ]
+
+        routed = PHOTOS._route_chapter6_equipment(equipment, {})
+
+        self.assertEqual(routed[0]["equipment_section_key"], "gas_system")
+        self.assertEqual(routed[0]["photo_section_key"], "water_system")
+        self.assertEqual(routed[0]["photo_category"], "用水设施")
+        self.assertEqual(routed[1]["equipment_section_key"], "other_energy")
+        self.assertEqual(routed[1]["photo_section_key"], "water_system")
+        self.assertEqual(routed[2]["equipment_section_key"], "other_energy")
+        self.assertEqual(routed[2]["photo_section_key"], "other_energy")
+        self.assertEqual(
+            PHOTOS.equipment_caption_gaps(equipment, [], []),
+            [],
+        )
+
     def test_chapter6_equipment_without_images_does_not_create_photo_warning(self):
         equipment = [{
             "name": "蹲便器",

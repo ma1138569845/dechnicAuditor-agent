@@ -703,13 +703,15 @@ class PhotoCatalogContextTests(unittest.TestCase):
             self.assertEqual(binding["photo_section_title"], "其他用电设备")
             self.assertEqual(binding["routing_reason"], "domestic_water_pump")
 
-    def test_hygiene_and_electric_hotwater_photos_target_water_system(self):
+    def test_hygiene_and_all_hotwater_photos_target_water_system(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             toilet_image = root / "toilet.png"
             heater_image = root / "heater.png"
+            gas_heater_image = root / "gas-heater.png"
             toilet_image.write_bytes(b"toilet")
             heater_image.write_bytes(b"electric-heater")
+            gas_heater_image.write_bytes(b"gas-heater")
             data = {
                 "base": {
                     "unit_name": "测试人民医院",
@@ -726,6 +728,11 @@ class PhotoCatalogContextTests(unittest.TestCase):
                         "file_id": 602,
                         "category": "其他用电设备",
                     },
+                    {
+                        "path": str(gas_heater_image),
+                        "file_id": 603,
+                        "category": "燃气设备",
+                    },
                 ],
                 "equipment": [
                     {
@@ -737,6 +744,11 @@ class PhotoCatalogContextTests(unittest.TestCase):
                         "name": "电热水器",
                         "category": "生活热水",
                         "img_ids": [602],
+                    },
+                    {
+                        "name": "燃气热水锅炉",
+                        "category": "生活热水",
+                        "img_ids": [603],
                     },
                 ],
             }
@@ -760,10 +772,27 @@ class PhotoCatalogContextTests(unittest.TestCase):
                 for item in by_id["602"]["bindings"]
                 if item["kind"] == "equipment"
             )
+            gas_heater_binding = next(
+                item
+                for item in by_id["603"]["bindings"]
+                if item["kind"] == "equipment"
+            )
             self.assertEqual(toilet_binding["equipment_section_title"], "用水系统")
             self.assertEqual(toilet_binding["photo_section_title"], "用水系统")
             self.assertEqual(heater_binding["equipment_section_title"], "其他用电设备")
             self.assertEqual(heater_binding["photo_section_title"], "用水系统")
+            self.assertEqual(
+                gas_heater_binding["equipment_section_title"],
+                "用燃气系统",
+            )
+            self.assertEqual(
+                gas_heater_binding["photo_section_title"],
+                "用水系统",
+            )
+            self.assertEqual(
+                gas_heater_binding["routing_reason"],
+                "hot_water_combustion_photo_to_water_system",
+            )
 
             rc = WRITING_CONTEXT.main([str(root), "--quiet"])
             self.assertEqual(rc, 0)
@@ -772,6 +801,7 @@ class PhotoCatalogContextTests(unittest.TestCase):
             )
             self.assertIn("蹲便器", context)
             self.assertIn("电热水器", context)
+            self.assertIn("燃气热水锅炉", context)
             self.assertIn("6.2 用水系统", context)
 
 

@@ -681,6 +681,24 @@ def chapter6_route_for_equipment(
     is_recorded_combustion_equipment = (
         is_combustion_absorption and has_recorded_combustion
     )
+
+    # 生活热水系统表的设备事实仍按能源形式归属，但照片统一进入 6.2
+    # 用水系统，避免燃气热水设备被 6.4 的燃气路由提前截走。
+    if category == '生活热水':
+        is_combustion_hot_water = (
+            is_named_gas_equipment or is_recorded_combustion_equipment
+        )
+        return _chapter6_route(
+            'gas_system' if is_combustion_hot_water else 'other_energy',
+            photo_category='用水设施',
+            photo_section_key='water_system',
+            routing_reason=(
+                'hot_water_combustion_photo_to_water_system'
+                if is_combustion_hot_water
+                else 'non_combustion_hot_water'
+            ),
+        )
+
     if is_named_gas_equipment or is_recorded_combustion_equipment:
         return _chapter6_route(
             'gas_system',
@@ -694,14 +712,6 @@ def chapter6_route_for_equipment(
                 if is_named_gas_equipment
                 else 'recorded_combustion_equipment'
             ),
-        )
-
-    if category == '生活热水':
-        return _chapter6_route(
-            'other_energy',
-            photo_category='其他用电设备',
-            photo_section_key='water_system',
-            routing_reason='non_combustion_hot_water',
         )
 
     if category == '末端设备':

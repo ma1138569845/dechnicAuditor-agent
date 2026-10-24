@@ -173,15 +173,35 @@ class CanonicalPhotoCategoryTests(unittest.TestCase):
         gas_steam = route({"category": "蒸汽", "name": "燃气蒸汽锅炉"})
         gas_heater = route({"category": "生活热水", "name": "燃气热水锅炉"})
         electric_heater = route({"category": "生活热水", "name": "电热水器"})
+        hot_water_absorption = route({
+            "category": "生活热水",
+            "name": "吸收式溴化锂机组",
+            "gas_value": 1200,
+        })
 
         self.assertEqual(water_pump["equipment_section_key"], "other_energy")
         self.assertEqual(water_pump["photo_section_key"], "other_energy")
         self.assertEqual(water_pump["routing_reason"], "domestic_water_pump")
         self.assertEqual(gas_steam["equipment_section_key"], "gas_system")
         self.assertEqual(gas_steam["photo_section_key"], "gas_system")
-        self.assertEqual(gas_heater["photo_section_key"], "gas_system")
+        self.assertEqual(gas_heater["equipment_section_key"], "gas_system")
+        self.assertEqual(gas_heater["photo_section_key"], "water_system")
+        self.assertEqual(gas_heater["photo_category"], "用水设施")
+        self.assertEqual(
+            gas_heater["routing_reason"],
+            "hot_water_combustion_photo_to_water_system",
+        )
         self.assertEqual(electric_heater["equipment_section_key"], "other_energy")
         self.assertEqual(electric_heater["photo_section_key"], "water_system")
+        self.assertEqual(electric_heater["photo_category"], "用水设施")
+        self.assertEqual(
+            hot_water_absorption["equipment_section_key"],
+            "gas_system",
+        )
+        self.assertEqual(
+            hot_water_absorption["photo_section_key"],
+            "water_system",
+        )
 
     def test_chapter6_route_uses_recorded_combustion_for_absorption_equipment(self):
         route = PROJECT_DATA.chapter6_route_for_equipment

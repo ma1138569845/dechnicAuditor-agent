@@ -1593,6 +1593,27 @@ def test_chapter6_photo_reports_hygiene_fixture_in_wrong_system_section():
     assert "用水系统" in mismatches[0].detail
 
 
+def test_chapter6_accepts_combustion_hotwater_photo_in_water_system():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("6.2 用水系统运行分析", 6),
+        _block("图6.1 燃气热水锅炉", 6),
+    ]
+    equipment = [{
+        "name": "燃气热水锅炉",
+        "category": "生活热水",
+        "photo_section_key": "gas_system",
+        "photo_section_title": "用燃气系统",
+        "routing_reason": "gas_equipment",
+    }]
+
+    findings = v3.check_chapter6_structure(blocks, equipment=equipment)
+    codes = {finding.code for finding in findings}
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
 def test_chapter6_photo_rejects_water_pump_in_water_system():
     blocks = [
         _block("6.1 用电系统运行分析", 6),
