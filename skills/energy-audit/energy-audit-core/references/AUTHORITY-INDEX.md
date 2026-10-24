@@ -65,7 +65,7 @@
 |---|---|---|---|
 | 数据契约与字段取值路径 | `ea-authoring/references/data-model-reference.md` | author、caliber、datava、datacollection | SOUL 里的字段清单（已改指针） |
 | PG 表结构 / 能源代码 / 图片链路 / 取数陷阱 | `energy-audit-pg-data/SKILL.md` | datacollection、datava | — |
-| 流程与调度（分诊 / 直跑 / 批量 / 角色矩阵） | `energy-audit-routing/SKILL.md`（分诊与直跑）+ `kanban-energy-audit-orchestrator/SKILL.md` 与 `references/{workflow.md, role-definitions.md, tools-reference.md}`（批量与角色） | default、editor、全角色 | 旧 `pipeline-architecture.md`（已归档）；**待办：合并为单一 workflow.md** |
+| 流程与调度（分诊 / 直跑 / 批量 / 角色矩阵） | `energy-audit-routing/SKILL.md`（分诊与直跑）+ `kanban-energy-audit-orchestrator/SKILL.md` 与 `references/{workflow.md, role-definitions.md, tools-reference.md}`（批量与角色）；唯一状态机见 `energy-audit-core/references/WORKFLOW.md` | default、editor、全角色 | 旧 `pipeline-architecture.md`（已归档）；routing 与 kanban 不复述状态机 |
 | SOUL 编写与发布 | `energy-audit-core/references/soul-purity-principle.md` + `skills/energy-audit/_soul/*.md` + `scripts/sync_ea_skills.py` | 全角色 | SOUL 不内嵌数值与框架生命周期 |
 | 部署前提与自检 / Hermes 运维 / **技能包→repo→profile 发布链** | `energy-audit-core/references/deployment-ops.md`（2026-09-18 三合一；2026-09-20 增《四、技能包 ↔ repo 的同步》）+ 执行体 `scripts/deploy_ea_skills.py`、`scripts/sync_ea_skills.py` | 全角色（新机/换机、改技能后） | 各 SKILL 不复述镜像路径、守卫判据与命令行参数 |
 | 视觉模型（证书复核默认 DeepSeek V4.1-Flash；铭牌/仪表/图纸可用 Qwen-VL） | `energy-audit-core/references/deployment-ops.md`《视觉模型配置》一节 | author、datacollection、视觉核验环节 | 别的技能不复述 provider/model/端点 |

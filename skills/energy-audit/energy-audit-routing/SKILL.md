@@ -108,7 +108,7 @@ python <skills>/ea-validation/scripts/data_verification_agent.py <项目名> --m
 
 ### 阶段 4：交付
 
-双文件落盘 `<单位全称>能源审计报告.docx` + `.pdf`（签章默认启用；脚本链默认输出 `output/_script_build/`，正式命名切换待定），向用户报路径 + 各阶段实测耗时。
+双文件落盘 `<单位全称>能源审计报告.docx` + `.pdf`（签章默认启用；脚本链默认输出 `output/_script_build/`，对外交付复制到 `output/交付件/`），向用户报路径 + 各阶段实测耗时。
 
 ---
 
