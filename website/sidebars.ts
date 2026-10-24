@@ -35,6 +35,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/windows-wsl-quickstart',
         'user-guide/switching-to-source',
         'user-guide/configuration',
+        'user-guide/which-file-does-what',
         'user-guide/managed-scope',
         'user-guide/configuring-models',
         {
@@ -490,15 +491,6 @@ const sidebars: SidebarsConfig = {
                 },
                 {
                   type: 'category',
-                  label: 'migration',
-                  key: 'skills-optional-migration',
-                  collapsed: true,
-                  items: [
-                    'user-guide/skills/optional/migration/migration-openclaw-migration',
-                  ],
-                },
-                {
-                  type: 'category',
                   label: 'mlops',
                   key: 'skills-optional-mlops',
                   collapsed: true,
@@ -756,6 +748,7 @@ const sidebars: SidebarsConfig = {
         'guides/run-nemotron-3-ultra-free',
         'guides/run-hermes-with-nous-portal',
         'guides/tips',
+        'guides/secure-hermes-on-a-work-machine',
         'guides/local-llm-on-mac',
         'guides/daily-briefing-bot',
         'guides/team-telegram-assistant',
@@ -768,6 +761,7 @@ const sidebars: SidebarsConfig = {
         'guides/cron-script-only',
         'guides/automation-blueprints',
         'guides/cron-troubleshooting',
+        'guides/troubleshooting-agent-quality',
         'guides/work-with-skills',
         'guides/delegation-patterns',
         'guides/agent-email-address',
@@ -839,6 +833,7 @@ const sidebars: SidebarsConfig = {
                 'developer-guide/web-search-provider-plugin',
                 'developer-guide/browser-provider-plugin',
                 'developer-guide/terminal-environment-plugin',
+                'developer-guide/delegation-provider-plugin',
                 'developer-guide/plugins/application-declarations',
                 'developer-guide/plugins/catalog-submission',
               ],

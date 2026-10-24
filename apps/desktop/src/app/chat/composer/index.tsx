@@ -27,8 +27,8 @@ import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
 import { triggerHaptic } from '@/lib/haptics'
 import { isMacPlatform } from '@/lib/platform'
 import {
-  type EnergyAuditTemplate,
   ENERGY_AUDIT_TEMPLATES,
+  type EnergyAuditTemplate,
   shouldShowEnergyAuditTemplates
 } from '@/lib/templates/energy-audit'
 import { useStoreSelector, useStoresSelector } from '@/lib/use-session-slice'
@@ -65,10 +65,10 @@ import {
 } from './composer-utils'
 import { ContextMenu } from './context-menu'
 import { COMPOSER_AREAS } from './contrib'
-import { EnergyAuditDialog } from './energy-audit-dialog'
 import { ComposerControls } from './controls'
 import { ComposerDirectiveActions } from './directive-actions'
 import { COMPOSER_DROP_ACTIVE_CLASS, COMPOSER_DROP_FADE_CLASS } from './drop-affordance'
+import { EnergyAuditDialog } from './energy-audit-dialog'
 import { markActiveComposer, onComposerAttachImagesRequest } from './focus'
 import { HelpHint } from './help-hint'
 import { useAtCompletions } from './hooks/use-at-completions'
@@ -112,7 +112,6 @@ import { useComposerScope, useComposerSurfaceId } from './scope'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
 import { StatusDrawerContent, StatusDrawerToggle } from './status-stack/drawer'
-import { SuggestionPills } from './suggestion-pills'
 import { TemplateChips } from './template-chips'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
@@ -1326,7 +1325,6 @@ export function ChatBar({
               and share one left edge with it. */}
           <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
             <ActionBadges sessionId={statusSessionId} />
-            <SuggestionPills sessionId={statusSessionId} />
             <PreparedImageRecovery
               occupied={hasText || attachments.length > 0 || busy || disabled}
               onRestore={(text, restored, id) => {
