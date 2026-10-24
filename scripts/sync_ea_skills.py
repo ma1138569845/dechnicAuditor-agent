@@ -106,8 +106,29 @@ def walk_files(root):
     return out
 
 
+_TEXT_SUFFIXES = {
+    ".cfg", ".css", ".csv", ".html", ".ini", ".js", ".json", ".jsonc",
+    ".jsx", ".md", ".mjs", ".py", ".sql", ".toml", ".ts", ".tsx",
+    ".txt", ".xml", ".yaml", ".yml",
+}
+
+
 def md5(p):
-    return hashlib.md5(open(p, "rb").read()).hexdigest()
+    """内容摘要；文本忽略 CRLF/LF 差异，二进制仍按原始字节比较。
+
+    Hermes 会在加载技能后把部分文本文件的 CRLF 统一为 LF。若这里按原始字节
+    比较，`--verify` 会把内容完全一致的 47 个文件误报为漂移，并反复复制。
+    """
+    with open(p, "rb") as fh:
+        data = fh.read()
+    if os.path.splitext(p)[1].lower() in _TEXT_SUFFIXES:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        else:
+            data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.md5(data).hexdigest()
 
 
 def copy_tree(src, dst, dry_run=False):
