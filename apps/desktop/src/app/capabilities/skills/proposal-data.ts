@@ -59,18 +59,66 @@ function operationOf(record: RecordValue, target: string): SkillProposalSummary[
   }
 }
 
-function fallbackDiff(record: RecordValue, operation: RecordValue): string | undefined {
-  const operationDiff = asString(operation.patch) || asString(operation.diff)
+function prefixedLines(prefix: string, value: string): string[] {
+  return value.split('\n').map(line => `${prefix}${line}`)
+}
 
-  if (operationDiff) {
-    return operationDiff
+function patchDiff(operation: RecordValue, fallbackTarget: string): string | undefined {
+  const explicitDiff = asString(operation.patch) || asString(operation.diff)
+
+  if (explicitDiff) {
+    return explicitDiff
   }
 
+  const hasOldString = typeof operation.old_string === 'string'
+  const hasNewString = typeof operation.new_string === 'string'
+
+  if (!hasOldString && !hasNewString) {
+    return undefined
+  }
+
+  const target = asString(operation.name) || fallbackTarget
+  const filePath = asString(operation.file_path) || 'SKILL.md'
+  const label = `${target}/${filePath}`
+  const oldLines = hasOldString ? prefixedLines('-', asString(operation.old_string)) : []
+  const newLines = hasNewString ? prefixedLines('+', asString(operation.new_string)) : []
+
+  return [`--- ${label}`, `+++ ${label}`, ...oldLines, ...newLines].join('\n')
+}
+
+function operationDiff(operation: RecordValue, fallbackTarget: string): string | undefined {
+  const explicitDiff = asString(operation.patch) || asString(operation.diff)
+
+  if (explicitDiff) {
+    return explicitDiff
+  }
+
+  if (operation.action === 'batch') {
+    const operations = Array.isArray(operation.operations) ? operation.operations : []
+
+    const diffs = operations
+      .filter(isRecord)
+      .map(item => patchDiff(item, fallbackTarget))
+      .filter((diff): diff is string => Boolean(diff))
+
+    return diffs.length > 0 ? diffs.join('\n') : undefined
+  }
+
+  return patchDiff(operation, fallbackTarget)
+}
+
+function fallbackDiff(record: RecordValue, operation: RecordValue): string | undefined {
   const preview = asRecord(record.preview)
   const previewDiff = asString(preview.diff)
 
   if (previewDiff) {
     return previewDiff
+  }
+
+  const derivedDiff = operationDiff(operation, asString(asRecord(record.target).name))
+
+  if (derivedDiff) {
+    return derivedDiff
   }
 
   const payload = asRecord(record.payload)

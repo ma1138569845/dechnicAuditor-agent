@@ -34,7 +34,8 @@ function rawProposal(overrides: Record<string, unknown> = {}) {
       action: 'patch',
       name: 'energy-audit-report',
       file_path: 'references/chapter1.md',
-      patch: '@@ -1 +1 @@\n-Verify one source.\n+Verify two sources.'
+      old_string: 'Verify one source.',
+      new_string: 'Verify two sources.'
     },
     evidence: [
       {
@@ -100,11 +101,59 @@ describe('skill proposal data', () => {
       target: { skill: 'energy-audit-report' },
       preview: {
         summary: 'patch energy-audit-report / references/chapter1.md',
-        diff: '@@ -1 +1 @@\n-Verify one source.\n+Verify two sources.',
+        diff: [
+          '--- energy-audit-report/references/chapter1.md',
+          '+++ energy-audit-report/references/chapter1.md',
+          '-Verify one source.',
+          '+Verify two sources.'
+        ].join('\n'),
         lint: [{ severity: 'warning' }]
       }
     })
     expect(normalized.queue.targets_over_limit).toHaveLength(1)
+  })
+
+  it('builds a labeled diff for every patch in a real batch operation', () => {
+    const normalized = normalizeSkillProposalDetail(
+      rawProposal({
+        target: {
+          name: 'audit-report',
+          names: ['audit-report', 'source-check']
+        },
+        operation: {
+          action: 'batch',
+          operations: [
+            {
+              action: 'patch',
+              name: 'audit-report',
+              file_path: 'SKILL.md',
+              old_string: 'Check one source.',
+              new_string: 'Check two sources.'
+            },
+            {
+              action: 'patch',
+              name: 'source-check',
+              file_path: 'references/checks.md',
+              old_string: 'Use the first source.',
+              new_string: 'Use independent sources.'
+            }
+          ]
+        }
+      })
+    )
+
+    expect(normalized.preview.diff).toBe(
+      [
+        '--- audit-report/SKILL.md',
+        '+++ audit-report/SKILL.md',
+        '-Check one source.',
+        '+Check two sources.',
+        '--- source-check/references/checks.md',
+        '+++ source-check/references/checks.md',
+        '-Use the first source.',
+        '+Use independent sources.'
+      ].join('\n')
+    )
   })
 
   it('rejects a v2 query response without a review hash instead of inventing one', () => {
