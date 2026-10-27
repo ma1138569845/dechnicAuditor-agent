@@ -74,8 +74,9 @@ class CLIProcessNotificationsMixin:
             self._pending_input.put(pending)
 
     def _tui_unwrap_input(self, user_input):
-        """Unwrap ``_VoiceInputMessage`` / ``_SeededQueryMessage`` -> ``(text_or_tuple, is_voice_input, is_seeded_query)``."""
+        """Unwrap input sentinels -> ``(text_or_tuple, voice, seeded, skill_context)``."""
         from cli import _VoiceInputMessage, _SeededQueryMessage
+        from tools.skill_intent_queue import QueuedSkillIntentPrompt
         from tools.process_registry import process_registry
         from tools.process_registry_notifications import (
             PROCESS_COMPLETE_DISPLAY_KIND, ProcessNotificationBatch, TimelineNotification)
@@ -93,5 +94,9 @@ class CLIProcessNotificationsMixin:
             from hermes_cli.gateway_tools_notify import arm_adopted
             arm_adopted(self, user_input)
             user_input = (user_input.text, user_input.images) if user_input.images else user_input.text
-        return user_input, is_voice_input, is_seeded_query
+        skill_context = None
+        if isinstance(user_input, QueuedSkillIntentPrompt):
+            skill_context = user_input.context
+            user_input = user_input.text
+        return user_input, is_voice_input, is_seeded_query, skill_context
 

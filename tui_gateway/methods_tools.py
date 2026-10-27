@@ -672,7 +672,18 @@ def _prompt_builtin(module: str, fn: str, kw: str = ""):
 
     def cmd(rid, params, session, name, arg):
         build = getattr(_tools_mod(module), fn)
-        return _ok(rid, {"type": "send", "message": build(**{kw: arg}) if kw else build(arg)})
+        message = build(**{kw: arg}) if kw else build(arg)
+        payload = {"type": "send", "message": message}
+        if name == "learn":
+            from tools.skill_intent import SkillWriteIntent
+            from tui_gateway.skill_intent_tickets import resolve_ticket_profile, ticket_store
+            payload["skill_intent_ticket"] = ticket_store.issue(
+                str((session or {}).get("session_key") or params.get("session_id") or ""),
+                resolve_ticket_profile(params, session or {}),
+                message,
+                SkillWriteIntent.USER_LEARN,
+            )
+        return _ok(rid, payload)
     return cmd
 
 

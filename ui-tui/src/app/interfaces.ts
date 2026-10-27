@@ -588,7 +588,7 @@ export interface SlashHandlerContext {
     page: (text: string, title?: string) => void
     panel: (title: string, sections: PanelSection[]) => void
     send: (text: string, showUserMessage?: boolean, displayText?: string, expandOverride?: (value: string) => string,
-      submitOpts?: { attachments?: Array<{ path: string; mime: string }> }) => void
+      submitOpts?: { attachments?: Array<{ path: string; mime: string }>; skillIntentTicket?: string }) => void
     setHistoryItems: StateSetter<Msg[]>
     sys: (text: string) => void
     trimLastExchange: (items: Msg[]) => Msg[]

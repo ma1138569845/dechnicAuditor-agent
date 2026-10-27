@@ -1183,6 +1183,11 @@ def _run_review_fork(
     try:
         if review_run is None or review_run.begin_request(st.review_agent):
             # Routed -> digest (cache cold anyway); same model -> full snapshot (warm cache reads).
+            from tools.skill_intent import SkillWriteIntent, normal_skill_context
+            review_context = normal_skill_context(
+                session_id=str(getattr(agent, "session_id", "") or ""),
+                attended=explicit,
+            ).with_intent(SkillWriteIntent.BACKGROUND_REVIEW)
             st.review_agent.run_conversation(
                 user_message=(
                     prompt + "\n\nYou can only call " + memory_phrase_prompt +
@@ -1190,6 +1195,8 @@ def _run_review_fork(
                     "at runtime — do not attempt them." + prompt_extra
                 ),
                 conversation_history=_digest_history(messages_snapshot) if _routed else messages_snapshot,
+                skill_write_intent=SkillWriteIntent.BACKGROUND_REVIEW,
+                skill_write_context=review_context,
             )
     finally:
         clear_thread_tool_whitelist()

@@ -209,8 +209,16 @@ function isPreAdmissionRefusal(error: unknown): boolean {
 
   const { code, message } = error as { code?: unknown; message?: unknown }
 
-  return code === 4094 || (code === 4000 && typeof message === 'string' && /submission_id/.test(message))
+  return (
+    code === 4094 ||
+    (code === 4000 &&
+      typeof message === 'string' &&
+      /(?:submission_id|skill_intent_ticket)/.test(message))
+  )
 }
+
+const skillIntentAdmissionParams = (ticket: string | undefined) =>
+  ticket ? { queued: true, skill_intent_ticket: ticket } : {}
 
 export function useSubmitPrompt(deps: SubmitPromptDeps) {
   const {
@@ -1153,7 +1161,11 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
                   throw new Error('Legacy submission acknowledgement is unknown; automatic retry is unsafe')
                 }
 
-                const params: Record<string, unknown> = { ...prepared.params, session_id: liveId }
+                const params: Record<string, unknown> = {
+                  ...prepared.params,
+                  session_id: liveId,
+                  ...skillIntentAdmissionParams(options?.skillIntentTicket)
+                }
 
                 try {
                   return await requestGateway<SubmitReceipt>('prompt.submit', params, PROMPT_SUBMIT_REQUEST_TIMEOUT_MS)
@@ -1169,7 +1181,9 @@ export function useSubmitPrompt(deps: SubmitPromptDeps) {
 
                   prepared.legacyAttempted = true
                   await writePreparedSubmission(retryKey, prepared)
-                  const { submission_id: _id, ...legacyParams } = params
+                  const legacyParams = { ...params }
+                  delete legacyParams.skill_intent_ticket
+                  delete legacyParams.submission_id
 
                   const result = await requestGateway<SubmitReceipt>(
                     'prompt.submit',

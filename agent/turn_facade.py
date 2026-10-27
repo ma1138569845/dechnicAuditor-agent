@@ -30,6 +30,8 @@ class TurnFacadeMixin:
         relay_metadata: Optional[dict[str, Any]] = None,
         title_user_message: Optional[str]=None,
         prelude: Optional[Generator]=None,
+        skill_write_intent: Any = None,
+        skill_write_context: Any = None,
     ) -> dict[str, Any]:
         """Forwarder — see ``agent.conversation_loop.run_conversation``."""
         # A review shares this session_id for cache parity: fence review startup or interrupt
@@ -44,6 +46,18 @@ class TurnFacadeMixin:
         from agent.aux_accounting import reset_accounting_context, set_accounting_context
         from agent.auxiliary_client import scoped_runtime_main
         from agent.conversation_loop import run_conversation
+        from tools.skill_intent_resolve import resolve_skill_write_context
+
+        skill_context = (
+            resolve_skill_write_context(
+                skill_write_intent,
+                skill_write_context,
+                task_id=str(task_id or ""),
+                session_id=str(getattr(self, "session_id", None) or ""),
+            )
+            if skill_write_intent is not None or skill_write_context is not None
+            else None
+        )
         from agent.portal_tags import (
             reset_affinity_scope, reset_conversation_context, set_affinity_scope,
             set_conversation_context,
@@ -145,6 +159,9 @@ class TurnFacadeMixin:
                 try:
                     if lease is not None:
                         lease.start()
+                    conversation_kwargs = {}
+                    if skill_context is not None:
+                        conversation_kwargs["skill_write_context"] = skill_context
                     result = run_conversation(
                         self, user_message, system_message, conversation_history, effective_task_id,
                         stream_callback, persist_user_message,
@@ -155,6 +172,7 @@ class TurnFacadeMixin:
                         turn_author=turn_author,
                         title_user_message=title_user_message,
                         prelude=prelude,
+                        **conversation_kwargs,
                     )
                 finally:
                     # Post-loop relay/task finalization must not receive a late refresh interrupt;

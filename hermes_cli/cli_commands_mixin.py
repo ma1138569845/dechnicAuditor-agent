@@ -1311,9 +1311,9 @@ class CLICommandsMixin(CLICommandsSessionToolsMixin):
         """Handle /learn — distill a reusable skill from anything the user describes (a directory,
         a URL, "what we just did", pasted notes). The live agent gathers the material with the
         tools it already has and authors the skill via ``skill_manage``."""
-        from agent.learn_prompt import build_learn_prompt
+        from tools.skill_intent_queue import build_queued_learn_prompt
         user_request = _command_arg(cmd)
-        self._queue_prompt_turn(build_learn_prompt(user_request), "/learn", _t("learn.from_description" if user_request else "learn.from_conversation"))
+        self._queue_prompt_turn(build_queued_learn_prompt(user_request), "/learn", _t("learn.from_description" if user_request else "learn.from_conversation"))
 
     def _handle_plan_command(self, cmd: str):
         """Handle /plan — write a markdown implementation plan, no execution. The live agent
