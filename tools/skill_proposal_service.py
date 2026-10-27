@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -139,6 +140,7 @@ def submit_skill_proposal(
         "target_full": "proposal_target_full",
         "anchor_occupied": "anchor_occupied",
         "invalid_proposal": "invalid_proposal",
+        "claimed": "proposal_in_review",
     }
     if result.status in mapping:
         return {"success": False, "error": mapping[result.status]}
@@ -162,71 +164,163 @@ def approve_skill_proposal(
     apply_fn: Callable[[dict[str, Any]], str | dict[str, Any]],
     now: float | None = None,
 ) -> dict[str, Any]:
-    current = get_skill_proposal(proposal_id)
+    current = get_skill_proposal(proposal_id, now=now)
     if current is None:
         return {"success": False, "error": "not_found"}
-    if current.get("revision") != revision or current.get("review_hash") != review_hash:
+
+    owner = f"approval-{secrets.token_hex(8)}"
+    claimed = claim_skill_proposal(
+        proposal_id,
+        owner=owner,
+        expected_revision=revision,
+        expected_review_hash=review_hash,
+        now=now,
+    )
+    if claimed is None:
+        return {"success": False, "error": "already_being_reviewed"}
+    if claimed.get("status") == "expired":
+        return {"success": False, "error": "expired"}
+    if claimed.get("status") == "review_hash_mismatch":
+        latest = claimed.get("proposal") if isinstance(claimed.get("proposal"), Mapping) else {}
         return {
             "success": False,
             "error": "review_hash_mismatch",
-            "current_revision": current.get("revision"),
-            "current_review_hash": current.get("review_hash"),
+            "current_revision": latest.get("revision"),
+            "current_review_hash": latest.get("review_hash"),
         }
-    claimed = claim_skill_proposal(proposal_id, owner="approval", now=now)
-    if claimed is None:
-        return {"success": False, "error": "already_being_reviewed"}
+    if conflict := claimed.get("conflict"):
+        release_skill_proposal(proposal_id, owner=owner)
+        return {"success": False, "error": str(conflict), "proposal": claimed}
     try:
-        fresh_base = base_hash_digest(operation_base_hashes(current["operation"]))
-        if fresh_base != base_hash or fresh_base != current.get("base_hash"):
-            released = release_skill_proposal(proposal_id, owner="approval", conflict="target_changed")
-            released["revision"] = int(released.get("revision", 1)) + 1
-            return {"success": False, "error": "target_changed", "proposal": released}
-        validation = validate_proposed_operation(current["operation"])
+        fresh_base = base_hash_digest(operation_base_hashes(claimed["operation"]))
+        if fresh_base != base_hash or fresh_base != claimed.get("base_hash"):
+            return _release_review_change(
+                proposal_id,
+                owner=owner,
+                proposal=claimed,
+                error="target_changed",
+            )
+        validation = validate_proposed_operation(claimed["operation"])
         if validation is not None:
-            released = release_skill_proposal(proposal_id, owner="approval")
-            return {"success": False, "error": validation, "proposal": released}
-        applied = apply_fn(current)
+            if validation in {"target_changed", "anchor_stale"}:
+                return _release_review_change(
+                    proposal_id,
+                    owner=owner,
+                    proposal=claimed,
+                    error=validation,
+                )
+            if validation in {"blocked_by_lint", "blocked_by_security"}:
+                return _release_review_change(
+                    proposal_id,
+                    owner=owner,
+                    proposal=claimed,
+                    error="review_refresh_required",
+                    last_error=validation,
+                )
+            release_skill_proposal(proposal_id, owner=owner)
+            return {"success": False, "error": validation, "proposal": claimed}
+        applied = apply_fn(claimed)
         if isinstance(applied, str):
             applied = json.loads(applied)
         if not applied.get("success"):
-            released = release_skill_proposal(proposal_id, owner="approval")
-            released["last_error"] = applied.get("error", "apply failed")
             mapped = applied.get("error")
-            if mapped not in {
-                "target_changed",
-                "anchor_stale",
-                "unsafe_target",
-                "blocked_by_lint",
-                "blocked_by_security",
-            }:
-                mapped = "apply_failed"
+            if mapped in {"target_changed", "anchor_stale"}:
+                return _release_review_change(
+                    proposal_id,
+                    owner=owner,
+                    proposal=claimed,
+                    error=str(mapped),
+                )
+            if mapped in {"blocked_by_lint", "blocked_by_security"}:
+                return _release_review_change(
+                    proposal_id,
+                    owner=owner,
+                    proposal=claimed,
+                    error="review_refresh_required",
+                    last_error=str(mapped),
+                )
+            mapped = "apply_failed"
+            released = release_skill_proposal(
+                proposal_id,
+                owner=owner,
+                last_error=str(applied.get("error", "apply failed")),
+            )
             return {"success": False, "error": mapped, "proposal": released}
         finished = finish_skill_proposal(
             proposal_id,
             status="applied",
             review_hash=review_hash,
+            owner=owner,
             now=now,
         )
-        return {"success": True, "proposal": finished}
+        if finished.get("status") == "applied":
+            return {"success": True, "proposal": finished}
+        release_skill_proposal(proposal_id, owner=owner)
+        return {"success": False, "error": "already_being_reviewed", "proposal": finished}
     finally:
-        release_skill_proposal(proposal_id, owner="approval")
+        release_skill_proposal(proposal_id, owner=owner)
 
 
 def reject_skill_proposal(
     proposal_id: str, *, review_hash: str, now: float | None = None
 ) -> dict[str, Any]:
-    current = get_skill_proposal(proposal_id)
+    current = get_skill_proposal(proposal_id, now=now)
     if current is None:
         return {"success": False, "error": "not_found"}
-    if current.get("review_hash") != review_hash:
-        return {"success": False, "error": "review_hash_mismatch"}
-    finished = finish_skill_proposal(
+    owner = f"reject-{secrets.token_hex(8)}"
+    claimed = claim_skill_proposal(
         proposal_id,
-        status="rejected",
-        review_hash=review_hash,
+        owner=owner,
+        expected_review_hash=review_hash,
         now=now,
     )
-    return {"success": finished.get("status") == "rejected", "proposal": finished}
+    if claimed is None:
+        return {"success": False, "error": "already_being_reviewed"}
+    if claimed.get("status") == "expired":
+        return {"success": False, "error": "expired"}
+    if claimed.get("status") == "review_hash_mismatch":
+        return {"success": False, "error": "review_hash_mismatch"}
+    try:
+        finished = finish_skill_proposal(
+            proposal_id,
+            status="rejected",
+            review_hash=review_hash,
+            owner=owner,
+            now=now,
+        )
+        if finished.get("status") == "rejected":
+            return {"success": True, "proposal": finished}
+        return {"success": False, "error": "already_being_reviewed", "proposal": finished}
+    finally:
+        release_skill_proposal(proposal_id, owner=owner)
+
+
+def _release_review_change(
+    proposal_id: str,
+    *,
+    owner: str,
+    proposal: Mapping[str, Any],
+    error: str,
+    last_error: str | None = None,
+) -> dict[str, Any]:
+    revision = int(proposal.get("revision", 1)) + 1
+    snapshot = {**proposal, "revision": revision, "conflict": error}
+    review_hash = compute_review_hash(snapshot)
+    released = release_skill_proposal(
+        proposal_id,
+        owner=owner,
+        conflict=error,
+        revision=revision,
+        review_hash=review_hash,
+        last_error=last_error,
+    )
+    return {
+        "success": False,
+        "error": error,
+        "proposal": released,
+        "current_revision": released.get("revision"),
+        "current_review_hash": released.get("review_hash"),
+    }
 
 
 def _digest(value: Any) -> str:

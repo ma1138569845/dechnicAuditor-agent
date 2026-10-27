@@ -57,6 +57,8 @@ def create_skill_proposal(
             None,
         )
         if existing is not None:
+            if existing.get("status") == "claiming":
+                return ProposalCreateResult("claimed", dict(existing))
             existing["evidence"] = [*existing.get("evidence", []), *candidate.get("evidence", [])]
             existing["revision"] = int(existing.get("revision", 1)) + 1
             existing["updated_at"] = timestamp
@@ -160,8 +162,22 @@ def get_skill_proposal_api_snapshot(
     return {"proposals": proposals, "count": len(proposals), "queue": queue}
 
 
-def get_skill_proposal(proposal_id: str) -> dict[str, Any] | None:
-    return next((item for item in read_skill_proposal_records(status="all") if item.get("id") == proposal_id), None)
+def get_skill_proposal(
+    proposal_id: str,
+    *,
+    now: float | None = None,
+    config: SkillLearningConfig | None = None,
+) -> dict[str, Any] | None:
+    return next(
+        (
+            item
+            for item in read_skill_proposal_records(
+                status="all", now=now, config=config
+            )
+            if item.get("id") == proposal_id
+        ),
+        None,
+    )
 
 
 def update_skill_proposal_review(
@@ -178,7 +194,13 @@ def update_skill_proposal_review(
 
 
 def claim_skill_proposal(
-    proposal_id: str, *, owner: str, lease_seconds: int = 120, now: float | None = None
+    proposal_id: str,
+    *,
+    owner: str,
+    expected_revision: int | None = None,
+    expected_review_hash: str | None = None,
+    lease_seconds: int = 120,
+    now: float | None = None,
 ) -> dict[str, Any] | None:
     timestamp = time.time() if now is None else now
     with _store_lock():
@@ -189,10 +211,18 @@ def claim_skill_proposal(
             record["status"] = "expired"
             _move_to_history(record)
             return {"status": "expired"}
+        if (
+            (expected_revision is not None and record.get("revision") != expected_revision)
+            or (
+                expected_review_hash is not None
+                and record.get("review_hash") != expected_review_hash
+            )
+        ):
+            return {"status": "review_hash_mismatch", "proposal": dict(record)}
         lease_until = float(record.get("lease_until", 0))
-        claimed_by = record.get("claimed_by")
-        if record.get("status") == "claiming" and claimed_by != owner and lease_until > timestamp:
+        if record.get("status") == "claiming" and lease_until > timestamp:
             return None
+        record.pop("last_error", None)
         record.update(
             status="claiming",
             claimed_by=owner,
@@ -204,23 +234,44 @@ def claim_skill_proposal(
 
 
 def release_skill_proposal(
-    proposal_id: str, *, owner: str, conflict: str | None = None
+    proposal_id: str,
+    *,
+    owner: str,
+    conflict: str | None = None,
+    revision: int | None = None,
+    review_hash: str | None = None,
+    last_error: str | None = None,
 ) -> dict[str, Any]:
     with _store_lock():
         record = _read_active(proposal_id)
-        if record is None or record.get("claimed_by") not in {None, owner}:
+        if (
+            record is None
+            or record.get("status") != "claiming"
+            or record.get("claimed_by") != owner
+        ):
             return {"status": "conflict"}
         record["status"] = "pending"
         record.pop("claimed_by", None)
         record.pop("lease_until", None)
         if conflict:
             record["conflict"] = conflict
+        if revision is not None:
+            record["revision"] = revision
+        if review_hash is not None:
+            record["review_hash"] = review_hash
+        if last_error is not None:
+            record["last_error"] = last_error
         _write_active(record)
         return record
 
 
 def finish_skill_proposal(
-    proposal_id: str, *, status: str, review_hash: str, now: float | None = None
+    proposal_id: str,
+    *,
+    status: str,
+    review_hash: str,
+    owner: str | None = None,
+    now: float | None = None,
 ) -> dict[str, Any]:
     timestamp = time.time() if now is None else now
     with _store_lock():
@@ -233,9 +284,17 @@ def finish_skill_proposal(
         record = _read_active(proposal_id)
         if record is None or status not in {"applied", "rejected", "expired"}:
             return {"status": "conflict"}
+        if owner is not None and (
+            record.get("status") != "claiming"
+            or record.get("claimed_by") != owner
+            or float(record.get("lease_until", 0)) < timestamp
+        ):
+            return {"status": "conflict"}
         if record.get("review_hash") != review_hash:
             return {"status": "conflict", "proposal": record}
         record.update(status=status, updated_at=timestamp)
+        record.pop("claimed_by", None)
+        record.pop("lease_until", None)
         _move_to_history(record)
         return record
 
