@@ -997,11 +997,12 @@ def _cmd_skills(rid, params, session, name, arg):
     allowed = getattr(commands.resolve_command("skills"), "desktop_subcommands", None) or ()
     if not sub or sub[0].lower() not in allowed:
         return None
+    from hermes_cli.skills_proposals import skill_review_surface_available
     from tools import write_approval as wa
     # The gate being off must not strand writes that are already staged (gateway parity): still
     # answer when a pile exists, and point at the toggle when there is nothing to review.
-    if (sub[0].lower() not in {"approval", "mode"} and not wa.write_approval_enabled(wa.SKILLS)
-            and wa.pending_count(wa.SKILLS) == 0):
+    if (sub[0].lower() not in {"approval", "mode"}
+            and not skill_review_surface_available(wa.write_approval_enabled(wa.SKILLS))):
         return _exec_out(rid, "Skill write approval is off (skills.write_approval). "
                               "Enable it with /skills approval on, then review staged writes "
                               "with /skills pending.")

@@ -921,11 +921,12 @@ class GatewaySlashCommandsMixin(
         by ``skills.write_approval`` but still answers when staged writes exist after the gate is off
         (never stranded). ``diff`` is truncated for chat."""
         from hermes_cli.write_approval_commands import handle_pending_subcommand
+        from hermes_cli.skills_proposals import skill_review_surface_available
         from tools import write_approval as wa
         args = event.get_command_args().strip().split()
         sub = args[0].lower() if args else ""
         gate_off = not wa.write_approval_enabled(wa.SKILLS) and sub not in {"approval", "mode"}
-        if gate_off and wa.pending_count(wa.SKILLS) == 0:
+        if gate_off and not skill_review_surface_available(False):
             return t("gateway.skills.gate_off")
         out = handle_pending_subcommand(
             wa.SKILLS, args, set_mode_fn=self._write_approval_setter("skills", event))

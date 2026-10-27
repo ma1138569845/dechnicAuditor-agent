@@ -44,6 +44,10 @@ def handle_pending_subcommand(
     if not args:
         return f"{_fmt_state(subsystem)}\n\n" + _fmt_pending_list(subsystem)
     sub, rest = args[0].lower(), args[1:]
+    if subsystem == wa.SKILLS:
+        proposal_result = _handle_skill_proposal_subcommand(sub, rest)
+        if proposal_result is not None:
+            return proposal_result
     if sub == "pending":
         return _fmt_pending_list(subsystem)
     if sub in {"approve", "apply"}:
@@ -55,6 +59,68 @@ def handle_pending_subcommand(
     if sub in {"approval", "mode"}:  # 'mode' kept as a back-compat alias
         return _set_approval(subsystem, rest, set_mode_fn)
     return None  # not ours — caller handles
+
+
+def _handle_skill_proposal_subcommand(sub: str, rest: list[str]) -> Optional[str]:
+    from hermes_cli.skills_proposals import (
+        execute_skill_proposal_command,
+        format_skill_proposal_detail,
+        format_skill_proposal_list,
+    )
+    from tools.skill_proposals import get_skill_proposal, list_skill_proposals
+
+    proposals = [
+        item
+        for item in list_skill_proposals()
+        if item.get("schema_version") == 2
+    ]
+    if sub == "pending":
+        legacy_count = len(wa.list_pending(wa.SKILLS))
+        if not proposals and not legacy_count:
+            return "No pending skills writes or proposals."
+        sections = []
+        if proposals:
+            sections.append(format_skill_proposal_list(proposals))
+        if legacy_count:
+            sections.append(_fmt_pending_list(wa.SKILLS))
+        return "\n\n".join(sections)
+    if sub not in {"show", "diff", "approve", "apply", "reject", "deny", "drop"}:
+        return None
+    if not rest:
+        return f"Usage: /skills {sub} <id>"
+    target = rest[0]
+    if target.lower() == "all" and sub in {"approve", "apply"}:
+        if proposals:
+            return "reviewed_revision_required: approve proposals one at a time after reading the diff."
+        return None
+    if target.lower() == "all" and sub in {"reject", "deny", "drop"}:
+        if proposals:
+            return "reviewed_revision_required: reject proposals one at a time after reading the diff."
+        return None
+    proposal = get_skill_proposal(target)
+    if proposal is None:
+        return None
+    if sub in {"show", "diff"}:
+        return format_skill_proposal_detail(proposal)
+    if proposal.get("schema_version") != 2:
+        if sub in {"approve", "apply"}:
+            return (
+                "legacy_pending_requires_explicit_edit: reject this legacy write and "
+                "recreate it through an explicit user edit."
+            )
+        return None
+    revision = None
+    if len(rest) > 1:
+        try:
+            revision = int(rest[1])
+        except ValueError:
+            revision = None
+    code, stdout, stderr = execute_skill_proposal_command(
+        sub,
+        target,
+        reviewed_revision=revision,
+    )
+    return stdout or stderr or (f"Skill proposal command failed with exit code {code}.")
 
 
 def _usage(subsystem: str) -> str:

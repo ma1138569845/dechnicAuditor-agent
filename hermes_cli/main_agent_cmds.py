@@ -188,6 +188,14 @@ def cmd_monitoring(args):
 def cmd_skills(args):
     from hermes_cli.main import _require_tty
     action = getattr(args, "skills_action", None)
+    if action == "proposals":
+        from hermes_cli.skills_proposals import run_skill_proposal_command
+        return run_skill_proposal_command(
+            args.proposals_action,
+            getattr(args, "proposal_id", None),
+            reviewed_revision=getattr(args, "revision", None),
+            profile=getattr(args, "profile", None),
+        )
     if action == "config":
         _require_tty("skills config")
         from hermes_cli.skills_config import skills_command as skills_config_command
