@@ -130,6 +130,17 @@ def get_skill_proposal_queue_state(*, now: float | None = None) -> dict[str, Any
     }
 
 
+def get_skill_proposal_api_snapshot(
+    *, status: str = "pending", now: float | None = None
+) -> dict[str, Any]:
+    """List and queue counters from one locked read of this profile's store."""
+    timestamp = time.time() if now is None else now
+    with _store_lock():
+        proposals = read_skill_proposal_records(status=status, now=timestamp)
+        queue = get_skill_proposal_queue_state(now=timestamp)
+    return {"proposals": proposals, "count": len(proposals), "queue": queue}
+
+
 def get_skill_proposal(proposal_id: str) -> dict[str, Any] | None:
     return next((item for item in read_skill_proposal_records(status="all") if item.get("id") == proposal_id), None)
 

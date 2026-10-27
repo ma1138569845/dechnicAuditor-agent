@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, SecretStr, StrictBool, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictInt, field_validator
 
 
 class ConfigUpdate(BaseModel):
@@ -499,6 +499,20 @@ class SkillContentUpdate(BaseModel):
     name: str
     content: str
     profile: Optional[str] = None
+
+class SkillProposalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: StrictInt = Field(ge=1)
+    review_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    base_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+class SkillProposalReject(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_hash: Optional[str] = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
 
 class ToolsetToggle(BaseModel):
     enabled: bool

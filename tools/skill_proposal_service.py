@@ -169,6 +169,7 @@ def approve_skill_proposal(
         return {
             "success": False,
             "error": "review_hash_mismatch",
+            "current_revision": current.get("revision"),
             "current_review_hash": current.get("review_hash"),
         }
     claimed = claim_skill_proposal(proposal_id, owner="approval", now=now)

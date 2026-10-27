@@ -8,14 +8,16 @@ seam so ``monkeypatch.setattr(<owning module>, ...)`` keeps working.
 """
 
 import asyncio
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from hermes_cli.web_deps import late
 from hermes_cli.web_server_profiles import _hub_action_name, _installed_hub_identifiers
 from hermes_cli.web_models import (
-    SkillContentUpdate, SkillCreate, SkillInstallRequest, SkillToggle, SkillUninstallRequest,
+    SkillContentUpdate, SkillCreate, SkillInstallRequest, SkillProposalDecision,
+    SkillProposalReject, SkillToggle, SkillUninstallRequest,
     SkillsUpdateRequest)
 from hermes_cli.web_routers._common import (
     _profile_scope, config_write_scope, http_failure, log as _log, require, scoped_to_thread,
@@ -442,3 +444,152 @@ async def update_skill_content(body: SkillContentUpdate, profile: Optional[str] 
         raise HTTPException(status_code=status, detail=err)
     _clear_skills_prompt_cache()
     return result
+
+
+_PROPOSAL_STATUSES = Literal[
+    "pending", "claiming", "all", "history", "applied", "rejected", "expired"
+]
+
+
+def _proposal_problem(
+    status_code: int,
+    error: str,
+    *,
+    message: str | None = None,
+    **extra,
+) -> JSONResponse:
+    payload = {"error": error, **extra}
+    if message:
+        payload["message"] = message
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+def _approval_failure(result: dict) -> JSONResponse:
+    error = str(result.get("error") or "approval_failed")
+    proposal = result.get("proposal") if isinstance(result.get("proposal"), dict) else {}
+    status_code = 422 if error in {"blocked_by_lint", "blocked_by_security"} else 409
+    if error == "not_found":
+        status_code = 404
+    extra = {
+        key: value
+        for key, value in (
+            ("current_revision", result.get("current_revision") or proposal.get("revision")),
+            ("current_review_hash", result.get("current_review_hash") or proposal.get("review_hash")),
+        )
+        if value is not None
+    }
+    return _proposal_problem(status_code, error, **extra)
+
+
+@router.get("/api/skills/proposals")
+async def list_skill_proposal_api(
+    status: _PROPOSAL_STATUSES = "pending", profile: Optional[str] = None
+):
+    def _run():
+        from tools.skill_proposals import get_skill_proposal_api_snapshot
+
+        return get_skill_proposal_api_snapshot(status=status)
+
+    return await scoped_to_thread(profile, _run)
+
+
+@router.get("/api/skills/proposals/{proposal_id}")
+async def get_skill_proposal_api(
+    proposal_id: str, profile: Optional[str] = None
+):
+    def _run():
+        from tools.skill_proposals import get_skill_proposal
+
+        return get_skill_proposal(proposal_id)
+
+    proposal = await scoped_to_thread(profile, _run)
+    if proposal is None:
+        return _proposal_problem(404, "not_found")
+    return proposal
+
+
+@router.post("/api/skills/proposals/{proposal_id}/approve")
+async def approve_skill_proposal_api(
+    proposal_id: str,
+    body: SkillProposalDecision,
+    profile: Optional[str] = None,
+):
+    def _run():
+        from tools.skill_manager_tool import apply_skill_proposal
+        from tools.skill_proposal_service import approve_skill_proposal
+        from tools.skill_proposals import get_skill_proposal
+
+        proposal = get_skill_proposal(proposal_id)
+        if proposal is None:
+            return {"success": False, "error": "not_found"}
+        if proposal.get("schema_version") != 2:
+            return {
+                "success": False,
+                "error": "legacy_pending_requires_explicit_edit",
+            }
+        result = approve_skill_proposal(
+            proposal_id,
+            revision=body.revision,
+            review_hash=body.review_hash,
+            base_hash=body.base_hash,
+            apply_fn=apply_skill_proposal,
+        )
+        if result.get("success"):
+            _clear_skills_prompt_cache()
+        return result
+
+    result = await scoped_to_thread(profile, _run)
+    if result.get("success"):
+        return {"ok": True, "proposal": result.get("proposal")}
+    if result.get("error") == "legacy_pending_requires_explicit_edit":
+        return _proposal_problem(409, str(result["error"]))
+    return _approval_failure(result)
+
+
+@router.post("/api/skills/proposals/{proposal_id}/reject")
+async def reject_skill_proposal_api(
+    proposal_id: str,
+    body: SkillProposalReject,
+    profile: Optional[str] = None,
+):
+    def _run():
+        from tools import write_approval as wa
+        from tools.skill_proposal_service import reject_skill_proposal
+        from tools.skill_proposals import get_skill_proposal
+
+        proposal = get_skill_proposal(proposal_id)
+        if proposal is None:
+            return 404, {"error": "not_found"}
+        if proposal.get("schema_version") != 2:
+            if body.model_fields_set:
+                return 422, {
+                    "error": "legacy_reject_body_must_be_empty"
+                }
+            removed = wa.discard_pending(wa.SKILLS, proposal_id)
+            return (
+                (200, {"ok": True, "legacy_pending_id": proposal_id})
+                if removed
+                else (404, {"error": "not_found"})
+            )
+        if not body.review_hash:
+            return 422, {"error": "review_hash_required"}
+        result = reject_skill_proposal(
+            proposal_id, review_hash=body.review_hash
+        )
+        if result.get("success"):
+            return 200, {"ok": True, "proposal": result.get("proposal")}
+        return 409, {
+            "error": str(result.get("error") or "rejection_failed"),
+            **(
+                {
+                    "current_review_hash": result.get("proposal", {}).get(
+                        "review_hash"
+                    )
+                }
+                if isinstance(result.get("proposal"), dict)
+                else {}
+            ),
+        }
+
+    status_code, payload = await scoped_to_thread(profile, _run)
+    return JSONResponse(status_code=status_code, content=payload)
