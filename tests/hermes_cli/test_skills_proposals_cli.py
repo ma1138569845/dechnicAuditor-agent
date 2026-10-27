@@ -97,11 +97,77 @@ def test_proposals_parser_exposes_reviewed_revision_and_profile():
             "work",
         ]
     )
+    pruned = parser.parse_args(["skills", "proposals", "prune", "--profile", "work"])
 
     assert listed.profile == "work"
     assert shown.proposal_id == "skp_1"
     assert approved.revision == 3
     assert approved.proposals_action == "approve"
+    assert pruned.proposals_action == "prune"
+    assert pruned.profile == "work"
+
+
+def test_prune_command_moves_expired_v2_and_keeps_v1_and_recent_history(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    from hermes_cli.skills_proposals import run_skill_proposal_command
+
+    pending = tmp_path / "pending" / "skills"
+    history = pending / ".history"
+    history.mkdir(parents=True)
+    now = time.time()
+
+    def write(path, record):
+        path.write_text(json.dumps(record), encoding="utf-8")
+
+    write(
+        pending / "skp_expired.json",
+        {
+            "schema_version": 2,
+            "id": "skp_expired",
+            "status": "pending",
+            "expires_at": now - 1,
+            "updated_at": now - 2,
+        },
+    )
+    write(
+        pending / "legacy.json",
+        {
+            "id": "legacy",
+            "status": "pending",
+            "created_at": now - 60 * 86400,
+            "payload": {"action": "create", "name": "legacy"},
+        },
+    )
+    write(
+        history / "recent.json",
+        {
+            "schema_version": 2,
+            "id": "recent",
+            "status": "applied",
+            "updated_at": now - 10 * 86400,
+        },
+    )
+    write(
+        history / "old.json",
+        {
+            "schema_version": 2,
+            "id": "old",
+            "status": "rejected",
+            "updated_at": now - 31 * 86400,
+        },
+    )
+
+    exit_code = run_skill_proposal_command("prune", None)
+
+    assert exit_code == 0
+    assert "expired=1" in capsys.readouterr().out
+    assert not (pending / "skp_expired.json").exists()
+    assert (history / "skp_expired.json").exists()
+    assert (pending / "legacy.json").exists()
+    assert (history / "recent.json").exists()
+    assert not (history / "old.json").exists()
 
 
 def test_v1_records_are_visible_but_cannot_use_v2_approve(

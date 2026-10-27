@@ -105,6 +105,10 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
         "--revision", type=int, required=True, help="Revision shown by `proposals show`"
     )
     proposal_reject.add_argument("-p", "--profile", default=None, help="Profile to update")
+    proposal_prune = proposal_subparsers.add_parser(
+        "prune", help="Expire stale proposals and delete v2 history past retention"
+    )
+    proposal_prune.add_argument("-p", "--profile", default=None, help="Profile to prune")
 
     skills_update = skills_subparsers.add_parser("update", help="Update installed hub skills")
     skills_update.add_argument(

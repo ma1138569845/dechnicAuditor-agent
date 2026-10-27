@@ -302,7 +302,8 @@ def finish_skill_proposal(
 def prune_proposal_store(*, now: float | None = None) -> dict[str, int]:
     timestamp = time.time() if now is None else now
     config = get_skill_learning_config()
-    moved = 0
+    expired = 0
+    deleted = 0
     with _store_lock():
         for path in _active_files():
             record = _read_json(path)
@@ -311,13 +312,18 @@ def prune_proposal_store(*, now: float | None = None) -> dict[str, int]:
             if float(record.get("expires_at", timestamp + 1)) <= timestamp:
                 record["status"] = "expired"
                 _move_to_history(record)
-                moved += 1
+                expired += 1
         cutoff = timestamp - config.history_retention_days * 86400
         for path in _history_dir().glob("*.json"):
             record = _read_json(path)
-            if isinstance(record, dict) and float(record.get("updated_at", timestamp)) < cutoff:
+            if (
+                isinstance(record, dict)
+                and record.get("schema_version") == 2
+                and float(record.get("updated_at", timestamp)) < cutoff
+            ):
                 path.unlink()
-    return {"expired": moved}
+                deleted += 1
+    return {"expired": expired, "deleted": deleted}
 
 
 def _valid_v2(record: Mapping[str, Any]) -> bool:

@@ -13,6 +13,7 @@ from tools.skill_proposals import (
     get_skill_proposal,
     get_skill_proposal_queue_state,
     list_skill_proposals,
+    prune_proposal_store,
 )
 
 
@@ -174,6 +175,16 @@ def execute_skill_proposal_command(
     }.get(action, action)
     if normalized == "list":
         return 0, format_skill_proposal_list(list_skill_proposals()), ""
+    if normalized == "prune":
+        pruned = prune_proposal_store()
+        return (
+            0,
+            (
+                "Pruned skill proposals: "
+                f"expired={pruned.get('expired', 0)}, deleted={pruned.get('deleted', 0)}."
+            ),
+            "",
+        )
     if not target:
         return 2, "", f"proposal id is required for {normalized}"
     if target.lower() == "all" and normalized == "approve":
