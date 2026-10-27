@@ -10,7 +10,7 @@ seam so ``monkeypatch.setattr(<owning module>, ...)`` keeps working.
 import asyncio
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from hermes_cli.web_deps import late
@@ -444,6 +444,42 @@ async def update_skill_content(body: SkillContentUpdate, profile: Optional[str] 
         raise HTTPException(status_code=status, detail=err)
     _clear_skills_prompt_cache()
     return result
+
+
+@router.get("/api/skills/audit")
+async def get_skill_health_audit(
+    days: int = Query(default=30, ge=1, le=365),
+    profile: Optional[str] = None,
+):
+    """Read-only skill-library health snapshot for the selected profile."""
+
+    def _run():
+        from hermes_constants import (
+            PROFILE_ID_RE,
+            get_default_hermes_root,
+            get_hermes_home,
+            reset_hermes_home_override,
+            set_hermes_home_override,
+        )
+        from tools.skill_health import build_skill_health_report
+
+        if profile in {None, "", "current", "default"}:
+            home = get_hermes_home()
+        else:
+            if not PROFILE_ID_RE.fullmatch(profile):
+                raise HTTPException(status_code=400, detail="Invalid profile name")
+            home = get_default_hermes_root() / "profiles" / profile
+            if not home.is_dir():
+                raise HTTPException(status_code=404, detail=f"Profile '{profile}' does not exist")
+        token = set_hermes_home_override(home)
+        try:
+            return build_skill_health_report(days=days)
+        finally:
+            reset_hermes_home_override(token)
+
+    # This audit reads no credentials or terminal policy, so binding only the
+    # profile home is sufficient and avoids first-run identity seeding.
+    return await asyncio.to_thread(_run)
 
 
 _PROPOSAL_STATUSES = Literal[

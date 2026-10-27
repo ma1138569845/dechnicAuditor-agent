@@ -997,6 +997,12 @@ def _cmd_skills(rid, params, session, name, arg):
     allowed = getattr(commands.resolve_command("skills"), "desktop_subcommands", None) or ()
     if not sub or sub[0].lower() not in allowed:
         return None
+    if sub[0].lower() == "audit":
+        from hermes_cli.skills_audit import health_audit_requested, run_skill_health_audit
+
+        if health_audit_requested(sub[1:]):
+            _code, stdout, stderr = run_skill_health_audit(sub[1:])
+            return _exec_out(rid, stdout or stderr or _SKILLS_USAGE)
     from hermes_cli.skills_proposals import skill_review_surface_available
     from tools import write_approval as wa
     # The gate being off must not strand writes that are already staged (gateway parity): still

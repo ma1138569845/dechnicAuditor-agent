@@ -383,10 +383,10 @@ const DESKTOP_COMMAND_SPECS: readonly DesktopCommandSpec[] = [
     // sidebar owns the command. The sidebar manages installed skills; it does
     // not expose the write-approval queue (#98330).
     name: '/skills',
-    description: 'Review staged skill writes and approval mode',
+    description: 'Review staged skill writes, approval mode, and library health',
     surface: exec(),
     argumentMode: 'options',
-    desktopSubcommands: ['pending', 'approve', 'reject', 'diff', 'approval']
+    desktopSubcommands: ['pending', 'approve', 'reject', 'diff', 'approval', 'audit']
   }
 ]
 

@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from hermes_cli import web_server
@@ -263,3 +264,69 @@ def test_over_limit_v1_queue_is_visible_without_being_rewritten(
     )
     assert blocked["error"] == "proposal_inbox_full"
     assert {path: path.read_bytes() for path in paths} == before
+
+
+def test_health_audit_get_is_profile_scoped_and_read_only(
+    tmp_path, monkeypatch
+):
+    import hashlib
+    import socket
+    from pathlib import Path
+
+    def protected_digest(root: Path) -> str:
+        digest = hashlib.sha256()
+        for path in sorted(root.rglob("*")):
+            parts = path.relative_to(root).parts
+            protected = (
+                path.name in {"config.yaml", ".usage.json", ".curator_ledger.jsonl"}
+                or bool(parts and parts[0] in {"skills", "pending", "cron"})
+            )
+            if path.is_file() and protected:
+                digest.update(path.relative_to(root).as_posix().encode())
+                digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    skill = tmp_path / "skills" / "audit-report"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: audit-report\ndescription: Audit reports.\n---\n\nUse it.\n",
+        encoding="utf-8",
+    )
+    _make_other_profile(tmp_path)
+    before = protected_digest(tmp_path)
+
+    def network_forbidden(*args, **kwargs):
+        raise AssertionError("health audit API attempted network access")
+
+    # Keep Starlette's local socketpair portal working while forbidding outbound connections.
+    monkeypatch.setattr(socket, "create_connection", network_forbidden)
+    client = _client()
+
+    response = client.get("/api/skills/audit?days=30&profile=default")
+    other = client.get("/api/skills/audit?days=30&profile=other")
+
+    assert response.status_code == 200
+    assert response.json()["library"]["total"] == 1
+    assert other.status_code == 200
+    assert other.json()["library"]["total"] == 0
+    assert protected_digest(tmp_path) == before
+
+
+@pytest.mark.parametrize("days", [0, 366])
+def test_health_audit_rejects_out_of_range_days(monkeypatch, days):
+    monkeypatch.setattr(
+        "tools.skill_health.build_skill_health_report",
+        lambda **kwargs: pytest.fail("invalid days must not enumerate"),
+    )
+
+    response = _client().get(f"/api/skills/audit?days={days}")
+
+    assert response.status_code == 422
+
+
+def test_health_audit_rejects_invalid_and_missing_profiles():
+    client = _client()
+
+    assert client.get("/api/skills/audit?days=30&profile=..%2Fescape").status_code == 400
+    assert client.get("/api/skills/audit?days=30&profile=missing-profile").status_code == 404

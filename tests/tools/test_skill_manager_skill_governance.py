@@ -214,7 +214,7 @@ def test_apply_refuses_to_overwrite_a_target_created_after_review(
 
     assert result["error"] == "target_changed"
     assert called == []
-    assert (user_dir / "SKILL.md").read_text(encoding="utf-8") == user_content
+    assert (user_dir / "SKILL.md").read_text(encoding="utf-8-sig") == user_content
 
 
 def _existing_skill(tmp_path, name="existing"):
@@ -467,3 +467,56 @@ def test_read_paths_only_touch_usage_not_skill_content_or_proposals(
 
     assert compute_base_hash(existing) == before
     assert list_skill_proposals() == []
+
+
+def test_approved_auto_create_is_curator_managed_but_foreground_learn_is_not(
+    tmp_path, monkeypatch, background_context
+):
+    from tools import skill_usage
+    from tools.skill_proposals import get_skill_proposal
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    _mode(monkeypatch, "propose")
+    staged = json.loads(
+        skill_manage(
+            action="create",
+            name="audit-report",
+            content=SKILL_MD,
+            proposal_evidence={
+                "kind": "user_request",
+                "message_refs": [2],
+                "reason": "remember this report procedure",
+            },
+        )
+    )
+    applied = json.loads(apply_skill_proposal(get_skill_proposal(staged["pending_id"])))
+
+    assert applied["success"] is True
+    assert skill_usage.load_usage()["audit-report"]["created_by"] == "agent"
+    assert "audit-report" in skill_usage.list_agent_created_skill_names()
+
+    context = SkillWriteIntentContext(
+        intent=SkillWriteIntent.USER_LEARN,
+        origin="user_learn",
+        attended=True,
+        task_id="turn-learn",
+        session_id="session-learn",
+        review_run_id=None,
+        review_message_refs=frozenset(),
+        review_snapshot_digest=None,
+    )
+    token = bind_skill_write_context(context)
+    try:
+        learned = json.loads(
+            skill_manage(
+                action="create",
+                name="learned-report",
+                content=SKILL_MD.replace("audit-report", "learned-report"),
+            )
+        )
+    finally:
+        reset_skill_write_context(token)
+
+    assert learned["success"] is True
+    assert skill_usage.load_usage()["learned-report"]["created_by"] == "learn"
+    assert "learned-report" not in skill_usage.list_agent_created_skill_names()

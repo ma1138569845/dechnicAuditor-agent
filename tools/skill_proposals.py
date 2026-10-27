@@ -9,16 +9,25 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import TYPE_CHECKING, Any, Iterator, Mapping
 
 from hermes_constants import get_hermes_home
-from tools.skill_learning_config import SkillLearningConfig, get_skill_learning_config
 from tools.skill_usage import skill_file_lock
 from utils import atomic_json_write
+
+if TYPE_CHECKING:
+    from tools.skill_learning_config import SkillLearningConfig
 
 
 _HASH_RE = r"^[0-9a-f]{64}$"
 _HASH_FIELDS = ("fingerprint", "base_hash", "review_hash", "review_snapshot_digest")
+
+
+def get_skill_learning_config(config: Mapping[str, Any] | None = None) -> SkillLearningConfig:
+    """Late-bound seam retained for tests and normal store callers."""
+    from tools.skill_learning_config import get_skill_learning_config as _get
+
+    return _get(config)
 
 
 @dataclass(frozen=True)
@@ -91,10 +100,12 @@ def read_skill_proposal_records(
     status: str = "pending",
     update_conflicts: bool = False,
     now: float | None = None,
+    config: SkillLearningConfig | None = None,
 ) -> list[dict[str, Any]]:
     del update_conflicts  # Read paths never mutate conflict metadata.
     timestamp = time.time() if now is None else now
-    config = get_skill_learning_config()
+    if config is None:
+        config = get_skill_learning_config()
     active, _broken = _scan(config, timestamp)
     history = _read_history()
     expired_v1 = [item for item in active if item["schema_version"] == 1 and item["status"] == "expired"]
@@ -113,9 +124,12 @@ def read_skill_proposal_records(
     return [dict(item) for item in views[status]]
 
 
-def get_skill_proposal_queue_state(*, now: float | None = None) -> dict[str, Any]:
+def get_skill_proposal_queue_state(
+    *, now: float | None = None, config: SkillLearningConfig | None = None
+) -> dict[str, Any]:
     timestamp = time.time() if now is None else now
-    config = get_skill_learning_config()
+    if config is None:
+        config = get_skill_learning_config()
     active, broken = _scan(config, timestamp)
     pending = [item for item in active if item["status"] in {"pending", "claiming"}]
     counts = _capacity_counts(pending)
@@ -131,13 +145,18 @@ def get_skill_proposal_queue_state(*, now: float | None = None) -> dict[str, Any
 
 
 def get_skill_proposal_api_snapshot(
-    *, status: str = "pending", now: float | None = None
+    *,
+    status: str = "pending",
+    now: float | None = None,
+    config: SkillLearningConfig | None = None,
 ) -> dict[str, Any]:
     """List and queue counters from one locked read of this profile's store."""
     timestamp = time.time() if now is None else now
     with _store_lock():
-        proposals = read_skill_proposal_records(status=status, now=timestamp)
-        queue = get_skill_proposal_queue_state(now=timestamp)
+        proposals = read_skill_proposal_records(
+            status=status, now=timestamp, config=config
+        )
+        queue = get_skill_proposal_queue_state(now=timestamp, config=config)
     return {"proposals": proposals, "count": len(proposals), "queue": queue}
 
 
@@ -207,7 +226,7 @@ def finish_skill_proposal(
     with _store_lock():
         history = _history_path(proposal_id)
         if history.exists():
-            existing = json.loads(history.read_text(encoding="utf-8"))
+            existing = json.loads(history.read_text(encoding="utf-8-sig"))
             if existing.get("status") == status:
                 return existing
             return {"status": "conflict", "proposal": existing}

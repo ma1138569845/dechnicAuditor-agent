@@ -91,13 +91,14 @@ describe('desktop slash command curation', () => {
     expect(desktopSlashCommandArgumentMode('/lcm')).toBe('text')
   })
 
-  it('hands the /skills write-approval subcommands to the backend, keeping the hub mutations off the wire', () => {
+  it('hands /skills review and read-only audit subcommands to the backend, keeping hub mutations off the wire', () => {
     // #98330: the registry declares `desktop_subcommands` on /skills so the
-    // review slice (pending/approve/reject/diff/approval) is exec-routed
+    // review slice and read-only audit are exec-routed
     // while the CLI-hub mutations (search/install/…) stay refused — an
     // allowlisted invocation execs, everything else renders the gate message.
     expect(isDesktopSlashCommand('/skills', 'pending')).toBe(true)
     expect(isDesktopSlashCommand('/skills', '  approve 9f2c1a ')).toBe(true)
+    expect(isDesktopSlashCommand('/skills', 'audit --days 30')).toBe(true)
 
     for (const sub of ['reject 9f2c1a', 'diff 9f2c1a', 'approval on']) {
       expect(isDesktopSlashCommand('/skills', sub)).toBe(true)
@@ -110,7 +111,7 @@ describe('desktop slash command curation', () => {
     expect(desktopSubcommandUnavailableMessage('/skills', 'install gif-search')).toContain(
       'not available in the desktop app'
     )
-    expect(desktopSubcommandUnavailableMessage('/skills', 'audit')).toContain('not available in the desktop app')
+    expect(desktopSubcommandUnavailableMessage('/skills', 'audit --days 30')).toBeNull()
     expect(desktopSubcommandUnavailableMessage('/skills', '')).toContain('needs a subcommand here')
     expect(desktopSubcommandUnavailableMessage('/skills', '   ')).toContain('needs a subcommand here')
     expect(desktopSubcommandUnavailableMessage('/skills', 'pending')).toBeNull()

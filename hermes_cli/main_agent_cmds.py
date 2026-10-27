@@ -188,6 +188,24 @@ def cmd_monitoring(args):
 def cmd_skills(args):
     from hermes_cli.main import _require_tty
     action = getattr(args, "skills_action", None)
+    if action == "audit" and getattr(args, "days", None) is not None:
+        if getattr(args, "name", None) or getattr(args, "deep", False):
+            print(
+                "skills_audit_ambiguous_arguments: use either --days or name/--deep",
+                file=sys.stderr,
+            )
+            return 2
+        from hermes_cli.skills_audit import run_skill_health_audit_days
+
+        code, stdout, stderr = run_skill_health_audit_days(
+            args.days,
+            as_json=bool(getattr(args, "json", False)),
+        )
+        if stdout:
+            print(stdout)
+        if stderr:
+            print(stderr, file=sys.stderr)
+        return code
     if action == "proposals":
         from hermes_cli.skills_proposals import run_skill_proposal_command
         return run_skill_proposal_command(

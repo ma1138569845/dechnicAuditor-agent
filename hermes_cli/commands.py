@@ -249,18 +249,15 @@ COMMAND_REGISTRY: list[CommandDef] = [
                args_hint="[list|disable|enable] [name...]", cli_only=True, argument_mode="options"),
     CommandDef("toolsets", "List available toolsets", "Tools & Skills",
                cli_only=True, desktop="terminal"),
-    CommandDef("skills", "Search, install, inspect, or manage skills",
+    CommandDef("skills", "Search, install, audit, inspect, or manage skills",
                "Tools & Skills", cli_only=True,
                gateway_config_gate="skills.write_approval",
                subcommands=("search", "browse", "inspect", "install", "audit",
                             "pending", "approve", "reject", "diff", "approval"),
-               # Desktop exposes only the write-approval review slice — the
-               # same surface the gateway handler offers.  The hub mutations
-               # (search/browse/inspect/install/audit) run a full interactive
-               # CLI hub that must not be reachable from a desktop exec
-               # (#98330 review).
+               # Desktop exposes the write-approval review slice plus the
+               # read-only health audit. Mutating hub commands stay CLI-side.
                desktop_subcommands=("pending", "approve", "reject", "diff",
-                                    "approval")),
+                                    "approval", "audit")),
     CommandDef("memory", "Review pending memory writes / toggle the approval gate",
                "Tools & Skills", args_hint="[pending|approve|reject|approval] [id|on|off]",
                subcommands=("pending", "approve", "reject", "approval")),

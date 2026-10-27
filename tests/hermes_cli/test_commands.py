@@ -41,17 +41,16 @@ class TestCommandRegistry:
                     assert resolve_command(alias).name == cmd.name or alias == cmd.name, \
                         f"Alias '{alias}' of '{cmd.name}' shadows canonical '{target.name}'"
 
-    def test_skills_desktop_meta_limits_exec_to_review_subcommands(self):
-        # #98330: /skills mixes desktop-relevant write-approval review verbs with CLI-hub
-        # mutations; desktop_subcommands exposes only the review slice to the desktop
-        # surface (completion + exec) without widening the whole family.
+    def test_skills_desktop_meta_limits_exec_to_review_and_read_only_audit(self):
+        # /skills mixes desktop-relevant proposal review and read-only health
+        # audit with CLI-hub mutations; the allowlist must not widen the family.
         skills = resolve_command("skills")
         assert skills is not None
         assert skills.desktop is None
         assert command_desktop_meta(skills) == {
             "argument_mode": "options",
             "desktop": None,
-            "desktop_subcommands": ["pending", "approve", "reject", "diff", "approval"],
+            "desktop_subcommands": ["pending", "approve", "reject", "diff", "approval", "audit"],
         }
         assert set(skills.desktop_subcommands or ()) <= set(skills.subcommands)
 

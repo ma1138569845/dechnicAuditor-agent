@@ -6,7 +6,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from hermes_cli.config import load_config_readonly
+def load_config_readonly() -> Mapping[str, Any]:
+    """Late-bound loader keeps this module import side-effect free."""
+    from hermes_cli.config import load_config_readonly as _load
+
+    return _load()
 
 
 @dataclass(frozen=True)

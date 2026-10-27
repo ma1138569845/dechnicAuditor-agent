@@ -112,9 +112,22 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
     _flag(skills_update, "--force",
         help="Overwrite skills you have edited locally (they are skipped by default)")
 
-    skills_audit = skills_subparsers.add_parser("audit", help="Re-scan installed hub skills")
+    skills_audit = skills_subparsers.add_parser(
+        "audit",
+        help="Re-scan installed hub skills, or audit library health with --days",
+    )
     skills_audit.add_argument("name", nargs="?", help="Specific skill to audit (default: all)")
     _flag(skills_audit, "--deep", help="Run AST-level analysis on Python files (opt-in diagnostic)")
+    skills_audit.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Run the read-only skill health audit for the last 1..365 days",
+    )
+    add_json_flag(
+        skills_audit,
+        "Output health-audit JSON (only applies with --days)",
+    )
 
     skills_uninstall = skills_subparsers.add_parser(
         "uninstall", help="Remove a hub-installed skill")
