@@ -454,9 +454,12 @@ async def get_skill_health_audit(
     """Read-only skill-library health snapshot for the selected profile."""
 
     def _run():
+        from hermes_cli.profiles import (
+            get_profile_dir,
+            profile_exists,
+            validate_profile_name,
+        )
         from hermes_constants import (
-            PROFILE_ID_RE,
-            get_default_hermes_root,
             get_hermes_home,
             reset_hermes_home_override,
             set_hermes_home_override,
@@ -466,11 +469,13 @@ async def get_skill_health_audit(
         if profile in {None, "", "current", "default"}:
             home = get_hermes_home()
         else:
-            if not PROFILE_ID_RE.fullmatch(profile):
+            try:
+                validate_profile_name(profile)
+            except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid profile name")
-            home = get_default_hermes_root() / "profiles" / profile
-            if not home.is_dir():
+            if not profile_exists(profile):
                 raise HTTPException(status_code=404, detail=f"Profile '{profile}' does not exist")
+            home = get_profile_dir(profile)
         token = set_hermes_home_override(home)
         try:
             return build_skill_health_report(days=days)

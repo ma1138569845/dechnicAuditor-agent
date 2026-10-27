@@ -424,6 +424,36 @@ def _catalog_rows(
     return rows, evidence_complete
 
 
+def _metadata_chars(catalog: Sequence[Mapping[str, Any]]) -> int:
+    """Characters the rendered skills index spends on each visible metadata row."""
+    from agent.skill_utils import TIER_PROJECT, extract_skill_description
+
+    categories: set[str] = set()
+    entries: set[tuple[str, str]] = set()
+    total = 0
+    for item in catalog:
+        name = str(item.get("load_name") or item.get("name") or "").strip()
+        if not name:
+            continue
+        relative = Path(str(item.get("relative_path") or ""))
+        category = "/".join(relative.parts[:-1]) or "general"
+        key = (category, name)
+        if key in entries:
+            continue
+        entries.add(key)
+        categories.add(category)
+        description = extract_skill_description(
+            {"description": item.get("description") or ""}
+        )
+        if item.get("tier") == TIER_PROJECT:
+            description = f"[project] {description}".strip()
+        total += len("    - ") + len(name)
+        if description:
+            total += len(": ") + len(description)
+    total += sum(len("  ") + len(category) + len(":") for category in categories)
+    return total
+
+
 def _growth_windows(
     rows: Sequence[Mapping[str, Any]],
     ledger_entries: Sequence[Mapping[str, Any]],
@@ -450,17 +480,48 @@ def _growth_windows(
     }
 
 
-def _target_name(record: Mapping[str, Any]) -> str:
+def _target_names(record: Mapping[str, Any]) -> set[str]:
     target = record.get("target") if isinstance(record.get("target"), Mapping) else {}
     operation = record.get("operation") if isinstance(record.get("operation"), Mapping) else {}
-    return str(target.get("name") or operation.get("name") or "")
+    names = {
+        str(value)
+        for value in (
+            target.get("name"),
+            *(
+                target.get("names", [])
+                if isinstance(target.get("names"), list)
+                else [target.get("names")]
+            ),
+        )
+        if value
+    }
+    operations = (
+        operation.get("operations", [])
+        if operation.get("action") == "batch"
+        else [operation]
+    )
+    names.update(
+        str(item.get("name"))
+        for item in operations
+        if isinstance(item, Mapping) and item.get("name")
+    )
+    return names
 
 
-def _anchor_key(record: Mapping[str, Any]) -> str:
+def _anchor_keys(record: Mapping[str, Any]) -> set[str]:
     operation = record.get("operation") if isinstance(record.get("operation"), Mapping) else {}
-    if operation.get("action") != "patch":
-        return ""
-    return str(operation.get("anchor_key") or "")
+    operations = (
+        operation.get("operations", [])
+        if operation.get("action") == "batch"
+        else [operation]
+    )
+    return {
+        str(item.get("anchor_key"))
+        for item in operations
+        if isinstance(item, Mapping)
+        and item.get("action") == "patch"
+        and item.get("anchor_key")
+    }
 
 
 def _rate(numerator: int, denominator: int) -> float | None:
@@ -481,8 +542,11 @@ def _proposal_metrics(
         if record.get("status") in {"pending", "claiming"}
     ]
     terminal = statuses["applied"] + statuses["rejected"] + statuses["expired"]
-    targets = Counter(name for record in pending if (name := _target_name(record)))
-    anchors = Counter(key for record in pending if (key := _anchor_key(record)))
+    targets: Counter[str] = Counter()
+    anchors: Counter[str] = Counter()
+    for record in pending:
+        targets.update(_target_names(record))
+        anchors.update(_anchor_keys(record))
     handling = [
         float(record["updated_at"]) - float(record["created_at"])
         for record in records
@@ -499,14 +563,23 @@ def _proposal_metrics(
         if isinstance(item, Mapping) and item.get("id")
     }
     delayed_targets = {
+        name for name in targets if name not in library_names or name in stale_names
+    } | {
         name
-        for name in targets
-        if name not in library_names or name in stale_names
+        for record in pending
+        if record.get("conflict") == "target_changed"
+        for name in _target_names(record)
     }
     delayed_anchors = {
         key
         for record in pending
-        if (key := _anchor_key(record)) and _target_name(record) in delayed_targets
+        if record.get("conflict") == "anchor_stale"
+        for key in _anchor_keys(record)
+    } | {
+        key
+        for record in pending
+        if _target_names(record) & delayed_targets
+        for key in _anchor_keys(record)
     }
     return {
         "pending": len(pending),
@@ -566,15 +639,7 @@ def build_skill_health_report(*, days: int = 30, now: float | None = None) -> di
         )
     )
 
-    unique_paths = {_path_key(row["path"]) for row in rows}
-    metadata_chars = 0
-    for key in unique_paths:
-        if not key:
-            continue
-        try:
-            metadata_chars += len(Path(key).read_text(encoding="utf-8-sig", errors="replace"))
-        except OSError:
-            continue
+    metadata_chars = _metadata_chars(catalog)
 
     status_counts = Counter(row["status"] for row in rows)
     proposals = _proposal_metrics(

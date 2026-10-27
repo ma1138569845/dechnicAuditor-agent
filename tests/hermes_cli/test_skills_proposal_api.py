@@ -330,3 +330,30 @@ def test_health_audit_rejects_invalid_and_missing_profiles():
 
     assert client.get("/api/skills/audit?days=30&profile=..%2Fescape").status_code == 400
     assert client.get("/api/skills/audit?days=30&profile=missing-profile").status_code == 404
+
+
+def test_health_audit_uses_canonical_live_profile_resolution(tmp_path, monkeypatch):
+    from hermes_constants import mark_named_profile_deleted
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    profiles = tmp_path / "profiles"
+    ghost = profiles / "ghost-shell"
+    ghost.mkdir(parents=True)
+    tombstoned = profiles / "deleted-profile"
+    tombstoned.mkdir()
+    (tombstoned / "config.yaml").write_text("{}\n", encoding="utf-8")
+    mark_named_profile_deleted(tombstoned)
+    reserved = profiles / "hermes"
+    reserved.mkdir()
+    (reserved / "config.yaml").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "tools.skill_health.build_skill_health_report",
+        lambda **kwargs: pytest.fail("invalid profile must not be audited"),
+    )
+    client = _client()
+
+    assert client.get("/api/skills/audit?days=30&profile=ghost-shell").status_code == 404
+    assert client.get(
+        "/api/skills/audit?days=30&profile=deleted-profile"
+    ).status_code == 404
+    assert client.get("/api/skills/audit?days=30&profile=hermes").status_code == 400

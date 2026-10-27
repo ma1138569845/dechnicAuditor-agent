@@ -4,6 +4,7 @@ import socket
 from pathlib import Path
 
 from tools.skill_health import build_skill_health_report
+from tools.skill_health import _proposal_metrics
 
 
 def _tree_digest(root: Path) -> str:
@@ -53,6 +54,28 @@ def test_insufficient_usage_is_review_not_stale(tmp_path, monkeypatch):
     assert row["status"] == "REVIEW"
     assert "usage_evidence_incomplete" in row["reasons"]
     assert report["evidence_complete"] is False
+
+
+def test_metadata_chars_measure_prompt_index_metadata_not_skill_body(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    skill_md = _write_skill(tmp_path, "audit-report", body="Short body.") / "SKILL.md"
+
+    first = build_skill_health_report(days=30, now=1_800_000_000.0)
+    skill_md.write_text(
+        skill_md.read_text(encoding="utf-8-sig").replace(
+            "Short body.", "Long body. " + ("detail " * 10_000)
+        ),
+        encoding="utf-8",
+    )
+    second = build_skill_health_report(days=30, now=1_800_000_000.0)
+
+    assert first["library"]["metadata_chars"] > 0
+    assert second["library"]["metadata_chars"] == first["library"]["metadata_chars"]
+    assert second["library"]["metadata_chars"] < len(
+        skill_md.read_text(encoding="utf-8-sig")
+    )
 
 
 def test_stale_is_only_a_recommendation(tmp_path, monkeypatch):
@@ -122,6 +145,56 @@ def test_duplicate_paths_and_unreadable_skills_are_broken_not_repaired(
     assert {row["status"] for row in report["recommendations"]} == {"BROKEN"}
     assert all("duplicate_discovery_path" in row["reasons"] for row in report["recommendations"])
     assert _tree_digest(tmp_path) == before
+
+
+def test_proposal_funnel_counts_each_batch_target_anchor_and_conflict():
+    records = [
+        {
+            "id": "batch-target",
+            "status": "pending",
+            "conflict": "target_changed",
+            "target": {"name": "alpha", "names": ["alpha", "beta"]},
+            "operation": {
+                "action": "batch",
+                "operations": [
+                    {"action": "patch", "name": "alpha", "anchor_key": "sha256:a"},
+                    {"action": "patch", "name": "beta", "anchor_key": "sha256:b"},
+                ],
+            },
+        },
+        {
+            "id": "batch-anchor",
+            "status": "pending",
+            "conflict": "anchor_stale",
+            "target": {"name": "alpha", "names": ["alpha"]},
+            "operation": {
+                "action": "batch",
+                "operations": [
+                    {"action": "patch", "name": "alpha", "anchor_key": "sha256:c"},
+                    {"action": "patch", "name": "beta", "anchor_key": "sha256:d"},
+                ],
+            },
+        },
+        {
+            "id": "plain",
+            "status": "claiming",
+            "target": {"name": "alpha"},
+            "operation": {"action": "patch", "name": "alpha", "anchor_key": "sha256:c"},
+        },
+    ]
+
+    metrics = _proposal_metrics(
+        records,
+        {"broken_count": 0},
+        library_names={"alpha", "beta"},
+        stale_names=set(),
+    )
+
+    assert metrics["pending"] == 3
+    assert metrics["max_pending_per_target"] == 3
+    assert metrics["max_pending_per_anchor"] == 2
+    assert metrics["stale_targets"] == 2
+    assert metrics["stale_anchors"] == 4
 
 
 def test_protected_skills_keep_with_bounded_reasons(tmp_path, monkeypatch):
