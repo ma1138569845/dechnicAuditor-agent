@@ -1,17 +1,19 @@
 """Background memory/skill review — fork the agent to evaluate the turn. After every turn
 ``AIAgent.run_conversation`` may spawn a daemon thread that replays the conversation snapshot in a
-forked :class:`AIAgent` and asks "should any skill/memory be saved or updated?". Writes go
-straight to the memory + skill stores; the main conversation and prompt cache are never touched.
+forked :class:`AIAgent` and asks whether evidence warrants a memory write or skill proposal.
+Skill mutations enter the pending proposal store; the main conversation and prompt cache are never touched.
 The fork inherits the parent's live runtime (provider, model, credentials, cached system prompt)
 so it hits the same prefix cache, and runs under a dispatch-side tool whitelist."""
 
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import os
 import threading
+import uuid
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -29,6 +31,7 @@ class _BackgroundReviewRun:
     """Per-review cancellation and request-completion handshake."""
 
     def __init__(self) -> None:
+        self.review_run_id = "review_" + uuid.uuid4().hex
         self.cancel_requested = threading.Event()
         self.request_done = threading.Event()
         self._lock = threading.Lock()
@@ -362,6 +365,46 @@ def _digest_history(messages_snapshot: list[dict], tail: int = 24) -> list[dict]
     return [{"role": "user", "content": digest}] + keep
 
 
+def build_review_skill_context(
+    agent: Any,
+    messages_snapshot: list[dict],
+    review_run: Optional[_BackgroundReviewRun],
+    *,
+    explicit: bool,
+):
+    """Build the immutable provenance envelope for exactly this review snapshot."""
+    from dataclasses import replace
+
+    from tools.skill_intent import SkillWriteIntent, normal_skill_context
+
+    snapshot = list(messages_snapshot or [])
+    encoded = json.dumps(
+        snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+    context = normal_skill_context(
+        task_id=str(
+            getattr(agent, "_current_task_id", "")
+            or getattr(agent, "_current_turn_id", "")
+            or ""
+        ),
+        session_id=str(getattr(agent, "session_id", "") or ""),
+        attended=explicit,
+    ).with_intent(SkillWriteIntent.BACKGROUND_REVIEW)
+    return replace(
+        context,
+        review_run_id=str(
+            getattr(review_run, "review_run_id", "") or "review_" + uuid.uuid4().hex
+        ),
+        review_message_refs=frozenset(
+            index
+            for index, message in enumerate(snapshot, start=1)
+            if isinstance(message, dict)
+        ),
+        review_snapshot_digest=digest,
+    )
+
+
 # Review prompts. AIAgent exposes them as class attributes (``_MEMORY_REVIEW_PROMPT`` etc.) so
 # per-agent overrides work; the text lives here.
 # Shared by the memory-only and combined review prompts: the memory tool has two targets and the
@@ -445,10 +488,19 @@ _DO_NOT_CAPTURE_BLOCK = (
     "work' as a standalone constraint.\n\n"
 )
 
+_SKILL_EVIDENCE_BLOCK = (
+    "Prefer no proposal. Activity alone is not evidence. Propose only when the review "
+    "snapshot contains a verifiable user_request, user_correction, skill_incomplete, "
+    "or repeated_class occurrence. A normal successful task, a transient failure, an "
+    "unresolved failure, or your own judgement that an idea may be useful is not "
+    "evidence. If no qualifying evidence exists, reply exactly: Nothing to propose. "
+    "When evidence exists, call skill_manage with proposal_evidence. A staged result "
+    "means the proposal is queued; it does not mean the skill was updated.\n\n"
+)
+
 _SKILL_REVIEW_PROMPT = (
-    "Review the conversation above and update the skill library. Be ACTIVE — most sessions produce "
-    "at least one skill update, even if small. A pass that does nothing is a missed learning "
-    "opportunity, not a neutral outcome.\n\n"
+    _SKILL_EVIDENCE_BLOCK +
+    "Review the conversation above and decide whether the skill library needs a proposal.\n\n"
     "Target shape of the library: CLASS-LEVEL skills, each with a SKILL.md of always-on rules and a "
     "small `references/` set of topical depth. Not a flat list of narrow one-session skills, and "
     "not an umbrella hoarding a references/ file per session. This shapes HOW you update, not "
@@ -510,18 +562,17 @@ _SKILL_REVIEW_PROMPT = (
     "task, the skill that governs that task needs to carry the lesson.\n\n"
     "If you notice two existing skills that overlap, note it in your reply — the background "
     "curator handles consolidation at scale. Never delete a skill here.\n\n"
-    "Do NOT capture" + _DO_NOT_CAPTURE_BLOCK +
-    "'Nothing to save.' is a real option but should NOT be the default. If the session ran "
-    "smoothly with no corrections and produced no new technique, just say 'Nothing to save.' and "
-    "stop. Otherwise, act."
+    "Do NOT capture as skills" + _DO_NOT_CAPTURE_BLOCK +
+    "If no qualifying evidence exists, reply exactly: Nothing to propose. Otherwise make at "
+    "most one focused proposal backed by proposal_evidence."
 )
 
 _COMBINED_REVIEW_PROMPT = (
     "Review the conversation above and update two things:\n\n"
     "**Memory**: " + _MEMORY_ROUTING_BLOCK +
-    "**Skills**: how to do this class of task. Be ACTIVE — most sessions produce at least one "
-    "skill update. A pass that does nothing is a missed learning opportunity, not a neutral "
-    "outcome.\n\n"
+    _SKILL_EVIDENCE_BLOCK +
+    "**Skills**: how to do this class of task. A skill proposal is optional and requires "
+    "the evidence described above.\n\n"
     "Target shape of the skill library: CLASS-LEVEL skills with a SKILL.md of always-on rules and a "
     "small `references/` set of topical depth — not narrow one-session skills, and not an umbrella "
     "hoarding a references/ file per session.\n\n" + _LESSON_LAYER_BLOCK +
@@ -564,8 +615,8 @@ _COMBINED_REVIEW_PROMPT = (
     "If you notice overlapping existing skills, mention it — the background curator handles "
     "consolidation. Never delete a skill here.\n\n"
     "Do NOT capture as skills" + _DO_NOT_CAPTURE_BLOCK +
-    "Act on whichever of the two dimensions has real signal. If genuinely nothing stands out on "
-    "either, say 'Nothing to save.' and stop — but don't reach for that conclusion as a default."
+    "If memory has a real signal but skill evidence does not, report only the memory result. "
+    "If neither has qualifying evidence, reply exactly: Nothing to propose."
 )
 
 
@@ -669,7 +720,16 @@ def _action_lines(data: dict, detail: dict, verbose: bool) -> list[str]:
     if data.get("staged"):
         # The fork's own review summary is never published back, so an unattended-review
         # consolidation proposal must surface here or it is silently lost (#105921).
-        return [data["message"]] if data.get("proposal_staged") and data.get("message") else []
+        pending_id = data.get("pending_id")
+        message = data.get("message")
+        receipt_complete = (
+            data.get("proposal_staged") is True
+            and isinstance(pending_id, str)
+            and bool(pending_id.strip())
+            and isinstance(message, str)
+            and bool(message.strip())
+        )
+        return [message] if receipt_complete else []
     message = data.get("message", "")
     target = data.get("target", "") or detail.get("target", "")
     is_skill = detail.get("tool") == "skill_manage"
@@ -1183,11 +1243,9 @@ def _run_review_fork(
     try:
         if review_run is None or review_run.begin_request(st.review_agent):
             # Routed -> digest (cache cold anyway); same model -> full snapshot (warm cache reads).
-            from tools.skill_intent import SkillWriteIntent, normal_skill_context
-            review_context = normal_skill_context(
-                session_id=str(getattr(agent, "session_id", "") or ""),
-                attended=explicit,
-            ).with_intent(SkillWriteIntent.BACKGROUND_REVIEW)
+            review_context = build_review_skill_context(
+                agent, messages_snapshot, review_run, explicit=explicit
+            )
             st.review_agent.run_conversation(
                 user_message=(
                     prompt + "\n\nYou can only call " + memory_phrase_prompt +
@@ -1195,7 +1253,6 @@ def _run_review_fork(
                     "at runtime — do not attempt them." + prompt_extra
                 ),
                 conversation_history=_digest_history(messages_snapshot) if _routed else messages_snapshot,
-                skill_write_intent=SkillWriteIntent.BACKGROUND_REVIEW,
                 skill_write_context=review_context,
             )
     finally:
@@ -1350,6 +1407,7 @@ __all__ = [
     "_MEMORY_REVIEW_PROMPT",
     "_SKILL_REVIEW_PROMPT",
     "build_memory_write_metadata",
+    "build_review_skill_context",
     "load_background_review_settings",
     "spawn_background_review_thread",
     "summarize_background_review_actions",

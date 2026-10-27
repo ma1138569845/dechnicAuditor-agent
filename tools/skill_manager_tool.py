@@ -749,6 +749,11 @@ def _govern_skill_mutation(
     result = submit_skill_proposal(
         operation, list(evidence_result.normalized), context
     )
+    if result.get("proposal_staged") is True:
+        result["staged"] = True
+        result["message"] = (
+            f"Proposal {result['pending_id']} queued; skill unchanged."
+        )
     if not result.get("success"):
         result.setdefault("not_staged", True)
     return json.dumps(result, ensure_ascii=False)
