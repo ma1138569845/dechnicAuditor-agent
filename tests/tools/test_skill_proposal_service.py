@@ -7,6 +7,7 @@ from tools.skill_proposal_service import (
     reject_skill_proposal,
     submit_skill_proposal,
 )
+from tools.skill_proposals import get_skill_proposal
 
 
 def _background_context() -> SkillWriteIntentContext:
@@ -87,6 +88,13 @@ def test_target_change_releases_claim_and_keeps_pending_conflict(tmp_path, monke
     assert result["error"] == "target_changed"
     assert result["proposal"]["status"] == "pending"
     assert result["proposal"]["conflict"] == "target_changed"
+    assert result["proposal"]["revision"] == staged["revision"] + 1
+    assert result["proposal"]["review_hash"] != staged["review_hash"]
+    refreshed = get_skill_proposal(staged["pending_id"], now=1_001.0)
+    assert refreshed is not None
+    assert refreshed["revision"] == result["proposal"]["revision"]
+    assert refreshed["review_hash"] == result["proposal"]["review_hash"]
+    assert refreshed["conflict"] == "target_changed"
 
 
 def test_apply_failure_returns_pending_not_applied(tmp_path, monkeypatch):
@@ -110,6 +118,62 @@ def test_apply_failure_returns_pending_not_applied(tmp_path, monkeypatch):
     assert result["error"] == "apply_failed"
     assert result["proposal"]["status"] == "pending"
     assert result["proposal"]["last_error"] == "disk full"
+
+
+def test_validation_blocker_requires_a_fresh_review_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    staged = _stage_alpha()
+    calls = []
+    monkeypatch.setattr(
+        "tools.skill_proposal_service.validate_proposed_operation",
+        lambda operation: "blocked_by_lint",
+    )
+
+    result = approve_skill_proposal(
+        staged["pending_id"],
+        revision=staged["revision"],
+        review_hash=staged["review_hash"],
+        base_hash=staged["base_hash"],
+        apply_fn=lambda proposal: calls.append(proposal) or {"success": True},
+        now=1_001.0,
+    )
+
+    assert result["error"] == "review_refresh_required"
+    assert calls == []
+    assert result["proposal"]["conflict"] == "review_refresh_required"
+    assert result["proposal"]["last_error"] == "blocked_by_lint"
+    assert result["proposal"]["revision"] == staged["revision"] + 1
+    assert result["proposal"]["review_hash"] != staged["review_hash"]
+    refreshed = get_skill_proposal(staged["pending_id"], now=1_001.0)
+    assert refreshed is not None
+    assert refreshed["revision"] == result["proposal"]["revision"]
+    assert refreshed["review_hash"] == result["proposal"]["review_hash"]
+    assert refreshed["last_error"] == "blocked_by_lint"
+
+
+def test_apply_anchor_stale_persists_conflict_for_refresh(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    staged = _stage_alpha()
+
+    result = approve_skill_proposal(
+        staged["pending_id"],
+        revision=staged["revision"],
+        review_hash=staged["review_hash"],
+        base_hash=staged["base_hash"],
+        apply_fn=lambda proposal: {"success": False, "error": "anchor_stale"},
+        now=1_001.0,
+    )
+
+    assert result["error"] == "anchor_stale"
+    assert result["proposal"]["status"] == "pending"
+    assert result["proposal"]["conflict"] == "anchor_stale"
+    assert result["proposal"]["revision"] == staged["revision"] + 1
+    assert result["proposal"]["review_hash"] != staged["review_hash"]
+    refreshed = get_skill_proposal(staged["pending_id"], now=1_001.0)
+    assert refreshed is not None
+    assert refreshed["conflict"] == "anchor_stale"
+    assert refreshed["revision"] == result["proposal"]["revision"]
+    assert refreshed["review_hash"] == result["proposal"]["review_hash"]
 
 
 def test_reject_checks_the_review_hash_and_moves_only_v2_to_history(
