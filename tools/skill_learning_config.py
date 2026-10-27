@@ -44,11 +44,12 @@ def _bounded_int(
     low: int,
     high: int,
     warnings: list[str],
+    prefix: str = "skills.auto_learning",
 ) -> int:
     value = raw.get(key, default)
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
         warnings.append(
-            f"skills.auto_learning.{key} must be {low}..{high}; using {default}"
+            f"{prefix}.{key} must be {low}..{high}; using {default}"
         )
         return default
     return value
@@ -159,6 +160,7 @@ def get_skill_learning_config(
             1,
             10,
             warnings,
+        "skills.auto_learning.reminders",
         ),
         cooldown_hours=_bounded_int(
             reminders,
@@ -167,6 +169,7 @@ def get_skill_learning_config(
             1,
             168,
             warnings,
+        "skills.auto_learning.reminders",
         ),
         warnings=tuple(warnings),
     )

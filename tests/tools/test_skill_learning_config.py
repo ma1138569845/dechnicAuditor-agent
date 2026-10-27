@@ -132,6 +132,39 @@ def test_non_mapping_skills_and_invalid_reminder_mode_fall_back_safely():
     assert any("reminders.mode" in warning for warning in invalid_reminder.warnings)
 
 
+def test_invalid_reminder_limits_report_their_nested_config_path():
+    cfg = get_skill_learning_config({
+        "skills": {
+            "auto_learning": {
+                "reminders": {
+                    "max_attempts_per_proposal": 11,
+                    "cooldown_hours": 169,
+                }
+            }
+        }
+    })
+
+    assert cfg.max_attempts_per_proposal == 3
+    assert cfg.cooldown_hours == 24
+    assert any(
+        "skills.auto_learning.reminders.max_attempts_per_proposal" in warning
+        for warning in cfg.warnings
+    )
+    assert any(
+        "skills.auto_learning.reminders.cooldown_hours" in warning
+        for warning in cfg.warnings
+    )
+    malformed_skills = get_skill_learning_config({"skills": []})
+    assert malformed_skills.mode == "propose"
+    assert any("skills must be a mapping" in warning for warning in malformed_skills.warnings)
+
+    invalid_reminder = get_skill_learning_config({
+        "skills": {"auto_learning": {"reminders": {"mode": "popup"}}}
+    })
+    assert invalid_reminder.reminders_mode == "badge_only"
+    assert any("reminders.mode" in warning for warning in invalid_reminder.warnings)
+
+
 @pytest.mark.parametrize(
     ("key", "invalid"),
     [
