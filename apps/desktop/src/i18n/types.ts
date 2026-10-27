@@ -1909,6 +1909,61 @@ catalog: CatalogTranslations
   skills: {
     tabSkills: string
     tabToolsets: string
+    proposals: {
+      tabInstalled: string
+      tabPending: (count: number) => string
+      autoLearningPendingReview: string
+      title: string
+      queueLabel: string
+      loading: string
+      loadFailed: string
+      retry: string
+      emptyTitle: string
+      emptyDescription: string
+      capacityTitle: string
+      capacityOver: (pending: number, max: number) => string
+      targetCapacityOver: (count: number) => string
+      earliestExpires: (date: string) => string
+      brokenRecords: (count: number) => string
+      targetChanged: string
+      targetChangedHelp: string
+      securityUnavailable: string
+      securitySafe: string
+      securityVerdict: (verdict: string) => string
+      lintWarnings: (count: number) => string
+      lintErrors: (count: number) => string
+      evidence: (count: number) => string
+      evidenceKind: Record<'repeated_class' | 'skill_incomplete' | 'user_correction' | 'user_request', string>
+      possibleDuplicate: (id: string) => string
+      revision: (revision: number) => string
+      approve: string
+      reject: string
+      confirmApproveTitle: (target: string) => string
+      confirmApproveBody: (revision: number) => string
+      confirmRejectTitle: (target: string) => string
+      confirmRejectBody: string
+      approved: string
+      rejected: string
+      approveFailed: string
+      rejectFailed: string
+      reviewRefreshRequired: string
+      legacyPending: string
+      legacyPendingBody: string
+      reviewAsExplicitEdit: string
+      expired: string
+      expiredDescription: string
+      detailLoadFailed: string
+      noSelectionTitle: string
+      noSelectionDescription: string
+      diff: string
+      diffLine: (kind: string, line: number) => string
+      createdAt: (date: string) => string
+      lastSeenAt: (date: string) => string
+      expiresAt: (date: string) => string
+      reviewHash: string
+      baseHash: string
+      actionLabel: (action: string) => string
+    }
     configuringProfile: string
     all: string
     searchSkills: string

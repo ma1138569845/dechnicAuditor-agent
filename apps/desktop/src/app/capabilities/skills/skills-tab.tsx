@@ -1,9 +1,12 @@
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { getSkillProposals } from '@/api/skills'
 import { ArchiveSkillConfirmDialog } from '@/app/learning/archive-skill-confirm-dialog'
 import { CodeEditor } from '@/components/chat/code-editor'
 import { Button } from '@/components/ui/button'
 import { Loader } from '@/components/ui/loader'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { editLearningNode, getLearningNode, type ProfileScope, profileScopeKey, setSkillEnabled } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { queryClient } from '@/lib/query-client'
@@ -17,6 +20,8 @@ import { CatalogSwitch } from '../catalog/catalog-switch'
 import { SkillCatalog } from '../catalog/skill-catalog'
 import { UpdateSkillsButton } from '../catalog/update-skills-button'
 
+import { PendingProposals } from './pending-proposals'
+import { skillProposalsQueryKey } from './proposal-data'
 import { SkillDetail } from './skill-detail'
 import { skillsQueryKey, usageOf } from './skills-data'
 
@@ -57,6 +62,16 @@ function ScopedSkillsTab({
   const [skillDraft, setSkillDraft] = useState('')
   const [skillSaving, setSkillSaving] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<null | string>(null)
+  const [view, setView] = useState<'installed' | 'pending'>('installed')
+
+  const proposalQuery = useQuery({
+    queryKey: skillProposalsQueryKey(profile, 'pending'),
+    queryFn: () => getSkillProposals(profile, 'pending'),
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+    staleTime: 15_000
+  })
 
   // eslint-disable-next-line no-restricted-syntax -- lifecycle guard drops stale async completions; it does not mirror an atom
   useEffect(() => {
@@ -228,90 +243,136 @@ function ScopedSkillsTab({
     <Loader className="mx-auto my-2 size-6 text-(--ui-text-tertiary)" label={t.skills.loading} type="rose-curve" />
   ) : null
 
+  const pendingCount = proposalQuery.data?.queue.pending_count ?? 0
+
+  const proposalError =
+    proposalQuery.error instanceof Error
+      ? proposalQuery.error
+      : proposalQuery.error
+        ? new Error(String(proposalQuery.error))
+        : null
+
   return (
     <>
-      <SkillCatalog
-        actions={
-          <>
-            <UpdateSkillsButton profile={profile} />
-            <ListStripMenu
-              items={[
-                {
-                  disabled: controlsDisabled || !skills.some(skill => skill.enabled && usageOf(skill) === 0),
-                  label: t.skills.disableUnused,
-                  onSelect: () =>
-                    void applyEnabled(
-                      skills.filter(skill => skill.enabled && usageOf(skill) === 0),
-                      false,
-                      true
-                    )
-                }
-              ]}
-              label={t.skills.tabSkills}
-              toggle={bulkSwitch}
-            />
-          </>
-        }
-        installedPending={installedPending || Boolean(installedError)}
-        notice={notice}
-        onQueryChange={onQueryChange}
-        profile={profile}
-        query={query}
-        renderInstalledAction={skill => (
-          <CatalogSwitch
-            aria-label={skill.name}
-            checked={skill.enabled}
-            disabled={controlsDisabled}
-            onCheckedChange={enabled => void applyEnabled([skill], enabled)}
-            size="xs"
+      <div className="flex h-full min-h-0 flex-col">
+        <div
+          aria-label={t.skills.proposals.title}
+          className="flex shrink-0 flex-wrap items-center gap-3 px-3 pb-2"
+          role="group"
+        >
+          <SegmentedControl
+            onChange={setView}
+            options={[
+              { id: 'installed', label: t.skills.proposals.tabInstalled },
+              { id: 'pending', label: t.skills.proposals.tabPending(pendingCount) }
+            ]}
+            sizing="content"
+            value={view}
           />
-        )}
-        renderInstalledDetail={skill => (
-          <>
-            {usageOf(skill) > 0 && (
-              <p className="text-xs text-(--ui-text-tertiary)">{t.skills.usageCount(usageOf(skill))}</p>
-            )}
-            <SkillDetail
-              onArchive={() => {
-                if (!saving.current) {
-                  setArchiveTarget(skill.name)
-                }
-              }}
-              onEdit={() => void openSkillEditor(skill.name)}
+          {pendingCount > 0 && (
+            <span className="text-[0.68rem] text-muted-foreground">{t.skills.proposals.autoLearningPendingReview}</span>
+          )}
+        </div>
+
+        <div className="min-h-0 flex-1">
+          {view === 'installed' ? (
+            <SkillCatalog
+              actions={
+                <>
+                  <UpdateSkillsButton profile={profile} />
+                  <ListStripMenu
+                    items={[
+                      {
+                        disabled: controlsDisabled || !skills.some(skill => skill.enabled && usageOf(skill) === 0),
+                        label: t.skills.disableUnused,
+                        onSelect: () =>
+                          void applyEnabled(
+                            skills.filter(skill => skill.enabled && usageOf(skill) === 0),
+                            false,
+                            true
+                          )
+                      }
+                    ]}
+                    label={t.skills.tabSkills}
+                    toggle={bulkSwitch}
+                  />
+                </>
+              }
+              installedPending={installedPending || Boolean(installedError)}
+              notice={notice}
+              onQueryChange={onQueryChange}
               profile={profile}
-              skill={skill}
-            />
-            <p className="text-xs text-(--ui-text-tertiary)">{t.skills.changesApplyNewSessions}</p>
-            {skillEditor?.name === skill.name && (
-              <DetailPane
-                actions={
-                  <Button disabled={skillSaving} onClick={() => void saveSkillEdit()} size="xs">
-                    {skillSaving ? t.common.saving : t.common.save}
-                  </Button>
-                }
-                id="skill-editor"
-                onClose={closeSkillEditor}
-                title={
-                  <span className="text-[0.68rem] font-normal text-muted-foreground/60">
-                    {skillEditor.name}/SKILL.md
-                  </span>
-                }
-              >
-                <CodeEditor
-                  disabled={skillSaving}
-                  filePath="SKILL.md"
-                  initialValue={skillDraft}
-                  key={skillEditor.name}
-                  onCancel={closeSkillEditor}
-                  onChange={setSkillDraft}
-                  onSave={() => void saveSkillEdit()}
+              query={query}
+              renderInstalledAction={skill => (
+                <CatalogSwitch
+                  aria-label={skill.name}
+                  checked={skill.enabled}
+                  disabled={controlsDisabled}
+                  onCheckedChange={enabled => void applyEnabled([skill], enabled)}
+                  size="xs"
                 />
-              </DetailPane>
-            )}
-          </>
-        )}
-        skills={skills}
-      />
+              )}
+              renderInstalledDetail={skill => (
+                <>
+                  {usageOf(skill) > 0 && (
+                    <p className="text-xs text-(--ui-text-tertiary)">{t.skills.usageCount(usageOf(skill))}</p>
+                  )}
+                  <SkillDetail
+                    onArchive={() => {
+                      if (!saving.current) {
+                        setArchiveTarget(skill.name)
+                      }
+                    }}
+                    onEdit={() => void openSkillEditor(skill.name)}
+                    profile={profile}
+                    skill={skill}
+                  />
+                  <p className="text-xs text-(--ui-text-tertiary)">{t.skills.changesApplyNewSessions}</p>
+                  {skillEditor?.name === skill.name && (
+                    <DetailPane
+                      actions={
+                        <Button disabled={skillSaving} onClick={() => void saveSkillEdit()} size="xs">
+                          {skillSaving ? t.common.saving : t.common.save}
+                        </Button>
+                      }
+                      id="skill-editor"
+                      onClose={closeSkillEditor}
+                      title={
+                        <span className="text-[0.68rem] font-normal text-muted-foreground/60">
+                          {skillEditor.name}/SKILL.md
+                        </span>
+                      }
+                    >
+                      <CodeEditor
+                        disabled={skillSaving}
+                        filePath="SKILL.md"
+                        initialValue={skillDraft}
+                        key={skillEditor.name}
+                        onCancel={closeSkillEditor}
+                        onChange={setSkillDraft}
+                        onSave={() => void saveSkillEdit()}
+                      />
+                    </DetailPane>
+                  )}
+                </>
+              )}
+              skills={skills}
+            />
+          ) : (
+            <PendingProposals
+              data={proposalQuery.data}
+              error={proposalError}
+              onExplicitEdit={skill => {
+                onQueryChange?.(skill)
+                setView('installed')
+              }}
+              onRetry={() => void proposalQuery.refetch()}
+              pending={proposalQuery.isPending}
+              profile={profile}
+            />
+          )}
+        </div>
+      </div>
       {archiveTarget && (
         <ArchiveSkillConfirmDialog
           onApply={() => {
