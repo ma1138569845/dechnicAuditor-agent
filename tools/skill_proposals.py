@@ -58,9 +58,9 @@ def create_skill_proposal(
         counts = _capacity_counts(active)
         if counts["total"] >= config.max_pending:
             return ProposalCreateResult("profile_full")
-        target = _target_name(candidate)
-        if counts["targets"].get(target, 0) >= config.max_pending_per_target:
-            return ProposalCreateResult("target_full")
+        for target in _target_names(candidate):
+            if counts["targets"].get(target, 0) >= config.max_pending_per_target:
+                return ProposalCreateResult("target_full")
         anchor = _anchor(candidate)
         if anchor and counts["anchors"].get(anchor, 0) >= config.max_pending_per_anchor:
             return ProposalCreateResult("anchor_occupied")
@@ -132,6 +132,19 @@ def get_skill_proposal_queue_state(*, now: float | None = None) -> dict[str, Any
 
 def get_skill_proposal(proposal_id: str) -> dict[str, Any] | None:
     return next((item for item in read_skill_proposal_records(status="all") if item.get("id") == proposal_id), None)
+
+
+def update_skill_proposal_review(
+    proposal_id: str, *, review_hash: str
+) -> dict[str, Any] | None:
+    """Update only the derived review hash after a fingerprint merge."""
+    with _store_lock():
+        record = _read_active(proposal_id)
+        if record is None:
+            return None
+        record["review_hash"] = review_hash
+        _write_active(record)
+        return dict(record)
 
 
 def claim_skill_proposal(
@@ -271,8 +284,8 @@ def _capacity_counts(records: list[dict[str, Any]]) -> dict[str, Any]:
     targets: dict[str, int] = {}
     anchors: dict[tuple[str, str, str], int] = {}
     for record in records:
-        target = _target_name(record)
-        targets[target] = targets.get(target, 0) + 1
+        for target in _target_names(record):
+            targets[target] = targets.get(target, 0) + 1
         anchor = _anchor(record)
         if anchor:
             anchors[anchor] = anchors.get(anchor, 0) + 1
@@ -281,6 +294,15 @@ def _capacity_counts(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _target_name(record: Mapping[str, Any]) -> str:
     return str(record.get("target", {}).get("name") or record.get("operation", {}).get("name") or "")
+
+
+def _target_names(record: Mapping[str, Any]) -> list[str]:
+    target = record.get("target", {})
+    names = target.get("names") if isinstance(target, Mapping) else None
+    if isinstance(names, list) and names:
+        return [str(name) for name in names if name]
+    name = _target_name(record)
+    return [name] if name else []
 
 
 def _anchor(record: Mapping[str, Any]) -> tuple[str, str, str] | None:

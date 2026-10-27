@@ -18,8 +18,15 @@ def _refusal(message: str, **extra: Any) -> dict[str, Any]:
 
 
 def _is_background_review() -> bool:
-    """True inside the autonomous curator review fork; False on any lookup failure."""
+    """True inside the autonomous review fork; the legacy origin is only a fallback."""
     try:
+        from tools.skill_intent import (
+            SkillWriteIntent,
+            current_skill_write_context,
+            has_skill_write_context,
+        )
+        if has_skill_write_context():
+            return current_skill_write_context().intent is SkillWriteIntent.BACKGROUND_REVIEW
         from tools.skill_provenance import is_background_review
         return bool(is_background_review())
     except Exception:

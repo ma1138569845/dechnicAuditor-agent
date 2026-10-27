@@ -69,6 +69,10 @@ def current_skill_write_context() -> SkillWriteIntentContext:
     return value
 
 
+def has_skill_write_context() -> bool:
+    return _SKILL_WRITE_CONTEXT.get(_ABSENT) is not _ABSENT
+
+
 def bind_skill_write_context(context: SkillWriteIntentContext) -> Token:
     if not isinstance(context, SkillWriteIntentContext):
         raise TypeError("skill write context must be SkillWriteIntentContext")

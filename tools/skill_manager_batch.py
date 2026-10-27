@@ -217,7 +217,8 @@ _ADVISORY_KEYS = ("lint_warnings", "lint_hint")
 
 
 def _skill_manage_batch(operations, default_name: str | None = None, task_id: str | None = None,
-                        session_id: str | None = None) -> str:
+                        session_id: str | None = None,
+                        proposal_evidence: dict | None = None) -> str:
     """Apply operations atomically: every touched skill is snapshotted first and any
     failure rolls ALL of them back (batch-created skills are removed). ``delete`` is
     only legal as the SOLE op (its recoverable-archive path doesn't compose with
@@ -237,10 +238,21 @@ def _skill_manage_batch(operations, default_name: str | None = None, task_id: st
         if not nm:
             return tool_error("operations[0] (delete) needs a 'name'.", success=False)
         return _smt.skill_manage(action="delete", name=nm, task_id=task_id, session_id=session_id,
-                                 absorbed_into=operations[0].get("absorbed_into"))
+                                 absorbed_into=operations[0].get("absorbed_into"),
+                                 proposal_evidence=proposal_evidence)
     names, err = _validate_batch_ops(operations, default_name, tool_error)
     if err is not None:
         return err
+    operations = [
+        {**operation, "name": names[index]}
+        for index, operation in enumerate(operations)
+    ]
+    if guard := _smt._background_review_batch_proposal_guard(operations, default_name):
+        return guard
+    if governed := _smt._govern_skill_mutation(
+        "batch", default_name or "", {"operations": operations}, proposal_evidence
+    ):
+        return governed
     if not _smt._skill_gate_bypass.get():
         # Approval gate for the WHOLE batch as one pending write.
         def _staging(wa):

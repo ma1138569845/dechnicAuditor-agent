@@ -45,6 +45,7 @@ def test_old_review_hash_cannot_approve_after_evidence_merge(tmp_path, monkeypat
     )
 
     assert second["revision"] == 2
+    assert second["review_hash"] != first["review_hash"]
     assert result["error"] == "review_hash_mismatch"
     assert result["current_review_hash"] == second["review_hash"]
 
@@ -113,7 +114,11 @@ def test_reject_checks_the_review_hash_and_moves_only_v2_to_history(
 ):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     staged = submit_skill_proposal(
-        {"action": "create", "name": "alpha", "content": "---\nname: alpha\ndescription: alpha\n---\n"},
+        {
+            "action": "create",
+            "name": "alpha",
+            "content": "---\nname: alpha\ndescription: alpha\n---\n\nUse the procedure.\n",
+        },
         [{"kind": "user_request", "message_refs": [2], "reason": "remember"}],
         _background_context(),
         now=1_000.0,
