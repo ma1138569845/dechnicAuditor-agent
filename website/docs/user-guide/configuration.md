@@ -842,6 +842,33 @@ skills:
 
 When on, any flagged `skill_manage` write surfaces as an approval prompt with the scanner's rationale. Accepted writes land; denied writes return an explanatory error to the agent.
 
+### Automatic skill learning
+
+Background skill learning is proposal-first by default. The self-improvement review may collect evidence and prepare a change, but it cannot make that change visible to future sessions until you approve it:
+
+```yaml
+skills:
+  auto_learning:
+    mode: propose                 # propose | off | auto
+    proposal_ttl_days: 14
+    max_pending: 25
+    max_pending_per_target: 5
+    max_pending_per_anchor: 1
+    history_retention_days: 30
+    reminders:
+      mode: badge_only
+      max_attempts_per_proposal: 3
+      cooldown_hours: 24
+```
+
+- `propose` (default): background review only creates pending proposals. They stay outside the active skill library until approved.
+- `off`: background review does not create skill proposals. Explicit `/learn`, ordinary foreground tool writes, and authenticated Desktop edits are unchanged.
+- `auto`: advanced mode; evidence-backed background changes may write directly after the normal lint and security checks. This can accumulate skills without review and is not recommended for most installations.
+
+Only the exact lowercase strings `propose`, `off`, and `auto` are accepted. YAML booleans, numbers, truthy strings such as `on` or `yes`, and case variants fall back to `propose`; the reader exposes a warning explaining the rejected value. This prevents YAML truthiness from silently enabling direct writes.
+
+`auto_learning` is independent from `write_approval` below. `write_approval` still controls ordinary foreground `skill_manage` writes, while `/learn` and authenticated Desktop edits remain direct user actions. When both settings apply, the stricter result wins.
+
 ### Write approval for skill writes
 
 Independent of the content scanner above, `skills.write_approval` gates **every** agent skill write (create / edit / patch / delete / supporting files) behind your explicit approval — the same approve/deny mechanism as dangerous commands:

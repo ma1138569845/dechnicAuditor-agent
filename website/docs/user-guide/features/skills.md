@@ -665,13 +665,42 @@ applied**, with an error naming the key the text sits in and where to move it.
 The targeted `patch` is preferred for updates — it's more token-efficient than a full rewrite because only the changed text appears in the tool call.
 :::
 
+### Controlling automatic skill learning (`skills.auto_learning`)
+
+Background learning is proposal-first by default. The [background
+self-improvement review](./memory.md#controlling-memory-writes-write_approval)
+may identify a reusable lesson, but it must put the proposed change in the pending
+queue instead of updating the active skill library:
+
+```yaml
+skills:
+  auto_learning:
+    mode: propose   # propose | off | auto
+```
+
+| Mode | Background review | Foreground Agent writes | `/learn` | Authenticated Desktop edit |
+| --- | --- | --- | --- | --- |
+| `propose` (default) | Creates a pending proposal only | Still follows `write_approval` | Writes directly after target, lint, and security checks | Writes directly |
+| `off` | Does not create a skill proposal | Still follows `write_approval` | Writes directly | Writes directly |
+| `auto` (advanced) | May write directly when evidence and validation pass | Still follows `write_approval` | Writes directly | Writes directly |
+
+`auto` can accumulate changes without an approval step, so it is not recommended for
+most users. The mode accepts only the exact lowercase strings `propose`, `off`, and
+`auto`. Booleans, numbers, truthy strings such as `on` or `yes`, and case variants
+fall back to `propose` and produce a configuration warning; they are never aliases
+for `auto`.
+
+The queue defaults to a 14-day proposal TTL, 25 pending proposals per profile,
+5 per target, 1 per patch anchor, and 30 days of history. Notifications default to
+badge-only and do not steal focus. See [Skill Settings](../configuration.md#automatic-skill-learning)
+for the full configuration block.
+
 ### Gating agent skill writes (`skills.write_approval`)
 
-By default the agent writes skills freely — including from the [background
-self-improvement review](./memory.md#controlling-memory-writes-write_approval)
-that runs after a turn. If you'd rather approve every skill write first
-(small models that misjudge what they learned, secure environments, or just
-wanting eyes on the self-improvement loop), turn on the write-approval gate:
+`skills.write_approval` is a separate gate for ordinary foreground Agent writes.
+It remains off by default, while automatic background learning defaults to
+`propose`. Turn on write approval if you want every foreground `skill_manage`
+mutation to require approval as well:
 
 ```yaml
 skills:
