@@ -12,6 +12,7 @@ from typing import Any
 
 from hermes_constants import get_hermes_home
 from tools.skill_intent import SkillWriteIntentContext
+from tools.skill_evidence import validate_proposal_evidence
 from tools.skill_linter import lint_content
 from tools.skill_proposals import (
     claim_skill_proposal,
@@ -84,6 +85,10 @@ def submit_skill_proposal(
     *,
     now: float | None = None,
 ) -> dict[str, Any]:
+    evidence_result = validate_proposal_evidence(evidence, context)
+    if not evidence_result.ok:
+        return {"success": False, "error": evidence_result.error}
+    evidence = list(evidence_result.normalized)
     snapshot = build_proposal_snapshot(operation, evidence, context, now=now)
     validation = _validate_candidate(snapshot["operation"])
     if validation is not None:
