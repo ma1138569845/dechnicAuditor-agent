@@ -101,7 +101,7 @@ def list_pending(subsystem: str) -> list[dict[str, Any]]:
         except Exception:
             logger.warning("Skipping unreadable pending record: %s", p)
     records.sort(key=lambda r: r.get("created_at", 0))
-    return records
+    return [record for record in records if not _is_v2_skill_proposal(subsystem, record)]
 
 
 def get_pending(subsystem: str, pending_id: str) -> Optional[dict[str, Any]]:
@@ -111,7 +111,9 @@ def get_pending(subsystem: str, pending_id: str) -> Optional[dict[str, Any]]:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-        return data if isinstance(data, dict) else None
+        if not isinstance(data, dict) or _is_v2_skill_proposal(subsystem, data):
+            return None
+        return data
     except Exception:
         return None
 
@@ -121,6 +123,9 @@ def discard_pending(subsystem: str, pending_id: str) -> bool:
     try:
         path = _pending_path(subsystem, pending_id)
         if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+            if isinstance(data, dict) and _is_v2_skill_proposal(subsystem, data):
+                return False
             path.unlink()
             return True
     except Exception as e:  # pragma: no cover
@@ -134,8 +139,22 @@ def pending_count(subsystem: str) -> int:
     if not d.exists():
         return 0
     with suppress(Exception):
-        return sum(1 for _ in d.glob("*.json"))
+        return sum(1 for path in d.glob("*.json") if not _path_is_v2_skill_proposal(subsystem, path))
     return 0
+
+
+def _is_v2_skill_proposal(subsystem: str, record: dict[str, Any]) -> bool:
+    return subsystem == SKILLS and record.get("schema_version") == 2
+
+
+def _path_is_v2_skill_proposal(subsystem: str, path: Path) -> bool:
+    if subsystem != SKILLS:
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return False
+    return isinstance(data, dict) and data.get("schema_version") == 2
 
 
 # --- Write origin ---
