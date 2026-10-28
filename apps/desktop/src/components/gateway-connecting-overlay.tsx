@@ -14,10 +14,6 @@ import { $onboardingDecided } from '@/store/onboarding-presence'
 import { $gatewayState } from '@/store/session'
 import { isMainWindow } from '@/store/windows'
 
-// Decode mechanics live in the shared <DecodeText> primitive
-// (components/ui/decode-text.tsx). "CONN" stays legible via prefix={4}.
-const TEXT = 'CONNECTING'
-
 // Exit choreography (ms): text fades down + out, hold, then the overlay fades.
 const TEXT_OUT_MS = 360
 const POST_TEXT_HOLD_MS = 300
@@ -80,8 +76,11 @@ function SlowSetupStart({ onExit }: { onExit: () => void }) {
 }
 
 function ConnectingOverlayView({ decoding, onExit, phase }: ConnectingOverlayViewProps) {
+  const { t } = useI18n()
   const leaving = phase !== 'live'
   const overlayHidden = phase === 'overlay-out' || phase === 'gone'
+  const text = t.common.connectingShort
+  const prefix = Math.min(4, Math.ceil(text.length / 2))
 
   return (
     <div
@@ -105,8 +104,8 @@ function ConnectingOverlayView({ decoding, onExit, phase }: ConnectingOverlayVie
           )}
           cursor
           loop
-          prefix={4}
-          text={TEXT}
+          prefix={prefix}
+          text={text}
         />
       )}
     </div>

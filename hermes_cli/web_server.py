@@ -800,6 +800,7 @@ from hermes_cli.web_routers import (
     delegation as _delegation_routes,
     webapp_access as _webapp_access_routes,
     ui_preferences as _ui_preferences_routes,
+    energy_audit as _energy_audit_routes,
 )
 
 import hermes_cli.web_routers.desktop_plugins as _desktop_plugin_routes
@@ -845,6 +846,7 @@ app.include_router(_shared_metrics_routes.router)
 app.include_router(_delegation_routes.router)
 app.include_router(_webapp_access_routes.router, dependencies=[_Depends(_route_on("web_access"))])
 app.include_router(_ui_preferences_routes.router, dependencies=[_Depends(_route_on("ui_preferences"))])
+app.include_router(_energy_audit_routes.router)
 
 # Plugin API routes and the dashboard auth routes (/login, /auth/*, /api/auth/*)
 # mount before the SPA catch-all so /{full_path:path} doesn't swallow them. Auth
@@ -907,98 +909,6 @@ async def office_preview_stop(body: OfficePreviewStopRequest):
         raise HTTPException(status_code=500, detail=f"Office preview tool unavailable: {exc}") from exc
 
     return await run_in_threadpool(close_office_preview, body.file_path)
-
-
-# ---------------------------------------------------------------------------
-# Energy audit report generation endpoints
-# ---------------------------------------------------------------------------
-
-class EnergyAuditProjectsRequest(BaseModel):
-    keyword: str
-
-
-class EnergyAuditGenerateRequest(BaseModel):
-    project_name: str
-    audit_type: str = "公共机构"
-    output_dir: Optional[str] = None
-    mode: str = "template"
-    reference_dir: Optional[str] = None
-
-
-class EnergyAuditImitateRequest(BaseModel):
-    project_name: str
-    chapter: str
-    section: str = ""
-    institution_category: str = ""
-    specific_type: str = ""
-    audit_type: str = ""
-    extra_context: str = ""
-    top_k: int = 5
-    refresh_from_pg: bool = False
-
-
-@app.post("/api/energy-audit/projects")
-async def energy_audit_projects(body: EnergyAuditProjectsRequest):
-    """Search energy-audit projects by name (for the composer form autocomplete).
-
-    Returns {"ok": true, "projects": [...]} or an {error, message} envelope.
-    The error envelope uses HTTP 200 so the form can surface the friendly
-    message without a hard rejection, mirroring the office-preview endpoints.
-    """
-    try:
-        from tools.energy_audit_tool import rest_search_energy_audit_projects
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Energy audit tool unavailable: {exc}") from exc
-
-    return await run_in_threadpool(rest_search_energy_audit_projects, body.keyword)
-
-
-@app.post("/api/energy-audit/generate")
-async def energy_audit_generate(body: EnergyAuditGenerateRequest):
-    """Generate an energy-audit report .docx from PG data for a project name.
-
-    Returns {"ok": true, "file_path": "..."} on success or an {error, message}
-    envelope on failure (HTTP 200, matching the office-preview convention).
-    """
-    try:
-        from tools.energy_audit_tool import rest_generate_energy_audit_report
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Energy audit tool unavailable: {exc}") from exc
-
-    return await run_in_threadpool(
-        rest_generate_energy_audit_report,
-        body.project_name,
-        body.audit_type,
-        body.output_dir,
-        body.mode,
-        body.reference_dir,
-    )
-
-
-@app.post("/api/energy-audit/imitate")
-async def energy_audit_imitate(body: EnergyAuditImitateRequest):
-    """Retrieve reference reports and imitate a chapter paragraph for a project.
-
-    Returns {"ok": true, "paragraph": "...", ...} or an {error, message}
-    envelope (HTTP 200, matching the other energy-audit endpoints).
-    """
-    try:
-        from tools.energy_audit_imitate_tool import rest_imitate_energy_audit_paragraph
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=f"Energy audit imitate tool unavailable: {exc}") from exc
-
-    return await run_in_threadpool(
-        rest_imitate_energy_audit_paragraph,
-        body.project_name,
-        body.chapter,
-        body.section,
-        body.institution_category,
-        body.specific_type,
-        body.audit_type,
-        body.extra_context,
-        body.top_k,
-        body.refresh_from_pg,
-    )
 
 
 mount_spa(app)

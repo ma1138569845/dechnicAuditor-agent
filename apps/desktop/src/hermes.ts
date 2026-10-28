@@ -223,3 +223,78 @@ export function generateEnergyAuditReport(params: {
     timeoutMs: imitate ? ENERGY_AUDIT_IMITATE_TIMEOUT_MS : ENERGY_AUDIT_GENERATE_TIMEOUT_MS
   })
 }
+
+export interface EnergyAuditDatabaseValues {
+  host: string
+  port: string
+  database: string
+  user: string
+  sslmode: string
+}
+
+export interface EnergyAuditSettingsResponse {
+  profile: string
+  values: Partial<EnergyAuditDatabaseValues>
+  sources: Record<string, string>
+  password_set: boolean
+  env_vars: Record<string, string>
+  env_overrides: string[]
+}
+
+export interface EnergyAuditSettingsUpdate extends EnergyAuditDatabaseValues {
+  password?: string
+}
+
+export interface EnergyAuditConnectionTest {
+  ok: boolean
+  code: string
+  message: string
+  stages: Record<string, string>
+  settings?: EnergyAuditSettingsResponse
+}
+
+export interface EnergyAuditResetResponse extends EnergyAuditSettingsResponse {
+  ok: boolean
+  password_preserved: boolean
+}
+
+function energyAuditScoped(profile?: null | string) {
+  return profileScoped(profile)
+}
+
+export function getEnergyAuditSettings(profile?: null | string): Promise<EnergyAuditSettingsResponse> {
+  return window.hermesDesktop.api<EnergyAuditSettingsResponse>({
+    ...energyAuditScoped(profile),
+    path: '/api/energy-audit/settings',
+    method: 'GET'
+  })
+}
+
+export function saveEnergyAuditSettings(
+  update: EnergyAuditSettingsUpdate,
+  profile?: null | string
+): Promise<EnergyAuditSettingsResponse> {
+  return window.hermesDesktop.api<EnergyAuditSettingsResponse>({
+    ...energyAuditScoped(profile),
+    path: '/api/energy-audit/settings',
+    method: 'PUT',
+    body: update
+  })
+}
+
+export function testEnergyAuditConnection(profile?: null | string): Promise<EnergyAuditConnectionTest> {
+  return window.hermesDesktop.api<EnergyAuditConnectionTest>({
+    ...energyAuditScoped(profile),
+    path: '/api/energy-audit/test-connection',
+    method: 'POST',
+    timeoutMs: 20_000
+  })
+}
+
+export function resetEnergyAuditSettings(profile?: null | string): Promise<EnergyAuditResetResponse> {
+  return window.hermesDesktop.api<EnergyAuditResetResponse>({
+    ...energyAuditScoped(profile),
+    path: '/api/energy-audit/reset-settings',
+    method: 'POST'
+  })
+}

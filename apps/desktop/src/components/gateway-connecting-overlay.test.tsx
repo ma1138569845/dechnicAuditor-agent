@@ -1,6 +1,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { I18nProvider } from '@/i18n'
 import { $desktopBoot } from '@/store/boot'
 import { $gatewaySwitching } from '@/store/gateway-switch'
 import { $desktopOnboarding } from '@/store/onboarding'
@@ -181,6 +182,35 @@ describe('first-run starting screen', () => {
   afterEach(() => {
     $introView.set('off')
     vi.useRealTimers()
+  })
+
+  it('shows the Chinese connecting label', async () => {
+    const originalMatchMedia = window.matchMedia
+
+    window.matchMedia = vi.fn().mockReturnValue({
+      addEventListener: vi.fn(),
+      matches: true,
+      removeEventListener: vi.fn()
+    }) as unknown as typeof window.matchMedia
+
+    setGatewayState('open')
+    markOnboardingDecided()
+
+    try {
+      await act(async () => {
+        render(
+          <I18nProvider configClient={null} initialLocale="zh">
+            <GatewayConnectingOverlay />
+          </I18nProvider>
+        )
+      })
+      await act(async () => $introView.set('starting'))
+
+      expect(screen.getByText('正在连接')).toBeTruthy()
+      expect(screen.queryByText('CONNECTING')).toBeNull()
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
   })
 
   it('comes back over a booted app while Run onboarding again opens its chat, then leaves', async () => {

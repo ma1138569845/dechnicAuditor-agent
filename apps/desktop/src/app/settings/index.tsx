@@ -51,6 +51,7 @@ import { BILLING_VIEWS, BillingSettings, type BillingSubView } from './billing'
 import { deriveBillingView, useBillingState, useSubscriptionState } from './billing/use-billing-state'
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
+import { EnergyAuditSettings } from './energy-audit-settings'
 import { GatewaySettings } from './gateway-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
@@ -86,6 +87,7 @@ const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   'vault',
   'notifications',
   'onlyoffice',
+  'energy-audit',
   'billing',
   'sessions',
   'plugins',
@@ -403,6 +405,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
               ]
             : []),
           {
+            active: activeView === 'energy-audit',
+            icon: Network,
+            id: 'energy-audit',
+            label: t.settings.nav.energyAudit,
+            onSelect: () => setActiveView('energy-audit')
+          },
+          {
             active: activeView === 'keybinds',
             icon: Keyboard,
             id: 'keybinds',
@@ -592,6 +601,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     />
   ) : activeView === 'onlyoffice' ? (
     <OnlyOfficeSettings />
+  ) : activeView === 'energy-audit' ? (
+    <EnergyAuditSettings />
   ) : activeView === 'providers' ? (
     <ProvidersSettings
       key={scopeProfile}

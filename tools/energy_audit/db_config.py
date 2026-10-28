@@ -48,8 +48,9 @@ def _from_env(key: str) -> tuple[Optional[str], Optional[str]]:
         val = get_secret(var)
         if _non_blank(val):
             return str(val).strip(), var
-    # A non-secret process override is an explicit deployment value for the
-    # profile currently being served and remains visible after a reset.
+    # Dashboard requests install a profile secret scope before resolution. Passwords stay
+    # inside that scope, but a non-secret process override is an explicit deployment value
+    # for the profile currently being served and must remain visible after reset.
     if key != "password":
         for var in (ea_var, db_var):
             val = os.environ.get(var)
@@ -81,7 +82,7 @@ def _from_hermes_config(section: str, key: str) -> Optional[str]:
         if not path or not path.exists():
             return None
         import hermes_yaml as yaml
-        with open(path, encoding='utf-8') as f:
+        with open(path, encoding='utf-8-sig') as f:
             cfg = yaml.safe_load(f) or {}
         val = ((cfg.get('energy_audit') or {}).get(section) or {}).get(key)
         if _non_blank(val):
@@ -97,7 +98,7 @@ def _from_local_config(section: str, key: str) -> Optional[str]:
         if not _LOCAL_CONFIG_YAML.exists():
             return None
         import hermes_yaml as yaml
-        with open(_LOCAL_CONFIG_YAML, encoding='utf-8') as f:
+        with open(_LOCAL_CONFIG_YAML, encoding='utf-8-sig') as f:
             cfg = yaml.safe_load(f) or {}
         val = (cfg.get(section) or {}).get(key)
         if _non_blank(val):
@@ -108,7 +109,7 @@ def _from_local_config(section: str, key: str) -> Optional[str]:
 
 
 def _resolve_pg_field(key: str, overrides: dict) -> tuple[Optional[str], Optional[str]]:
-    """Resolve one PG field and report the source that supplied it."""
+    """Resolve one PG field and report the source that actually supplied it."""
     val = overrides.get(key)
     if _non_blank(val):
         return str(val).strip(), "override"
@@ -159,7 +160,13 @@ def get_pg_config(overrides: Optional[dict] = None) -> dict:
 
 
 def describe_pg_config(overrides: Optional[dict] = None) -> dict:
-    """Describe effective PG settings without ever returning the password."""
+    """Describe effective PG settings without ever returning the password.
+
+    ``values`` contains only non-secret fields; ``sources`` records which rung
+    of the precedence ladder supplied each field (including ``password``).
+    ``env_vars`` and ``env_overrides`` let the settings UI explain that an
+    environment value will still win after saved non-secret fields are reset.
+    """
     overrides = overrides or {}
     values: dict[str, str] = {}
     sources: dict[str, str] = {}
