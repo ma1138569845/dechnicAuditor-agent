@@ -209,10 +209,9 @@ def _resolve_skill_dir(name: str, category: str | None = None) -> Path:
 
 
 def _iter_skill_dirs(root: Path):
-    from agent.skill_utils import is_excluded_skill_path
-    for skill_md in root.rglob("SKILL.md"):
-        if not is_excluded_skill_path(skill_md):
-            yield skill_md.parent
+    from agent.skill_utils import iter_skill_index_files
+    for skill_md in iter_skill_index_files(root, "SKILL.md"):
+        yield skill_md.parent
 
 
 def _read_frontmatter_name(skill_md: Path) -> Optional[str]:
@@ -652,12 +651,17 @@ def _remove_file(name: str, file_path: str) -> dict[str, Any]:
 # Set while replaying an approved staged skill write so skill_manage() does not re-gate it.
 _skill_gate_bypass: _ctxvars.ContextVar[bool] = _ctxvars.ContextVar(
     "skill_gate_bypass", default=False)
+_skill_governance_bypass: _ctxvars.ContextVar[bool] = _ctxvars.ContextVar(
+    "skill_governance_bypass", default=False
+)
 
 
 def _run_write_gate(build_staging):
     """Shared write gate: None to proceed, else a JSON tool result (blocked/staged).
     ``build_staging(wa) -> (payload, gist)`` runs only when staging. Fails open if
     write_approval cannot be imported."""
+    if _skill_governance_bypass.get():
+        return None
     try:
         from tools import write_approval as wa
     except Exception:
@@ -686,8 +690,134 @@ def _apply_skill_write_gate(action, name, **payload_kwargs):
     return _run_write_gate(_staging)
 
 
+def _govern_skill_mutation(
+    action: str,
+    name: str,
+    payload_kwargs: dict[str, Any],
+    proposal_evidence: dict[str, Any] | None,
+) -> str | None:
+    """Stage background-review writes as proposals before the legacy approval gate."""
+    if _skill_governance_bypass.get():
+        return None
+    from tools.skill_intent import SkillWriteIntent, current_skill_write_context
+
+    context = current_skill_write_context()
+    if context.intent is not SkillWriteIntent.BACKGROUND_REVIEW:
+        return None
+    from tools.skill_evidence import validate_proposal_evidence
+    from tools.skill_learning_config import get_skill_learning_config
+
+    config = get_skill_learning_config()
+    if config.mode == "off":
+        return json.dumps(
+            {
+                "success": False,
+                "error": "skill_learning_disabled",
+                "message": "Background skill learning is disabled (skills.auto_learning.mode=off).",
+            },
+            ensure_ascii=False,
+        )
+    evidence_items = [] if proposal_evidence is None else [dict(proposal_evidence)]
+    evidence_result = validate_proposal_evidence(evidence_items, context)
+    if config.mode == "auto" and evidence_result.ok:
+        return None
+    if not evidence_result.ok:
+        return json.dumps(
+            {
+                "success": False,
+                "not_staged": True,
+                "error": (
+                    "evidence_required"
+                    if proposal_evidence is None
+                    else evidence_result.error or "evidence_required"
+                ),
+            },
+            ensure_ascii=False,
+        )
+    operation_payload = {
+        key: value
+        for key, value in payload_kwargs.items()
+        if key != "proposal_evidence"
+    }
+    operation = (
+        {"action": "batch", "operations": operation_payload.get("operations", [])}
+        if action == "batch"
+        else {"action": action, "name": name, **operation_payload}
+    )
+    from tools.skill_proposal_service import submit_skill_proposal
+
+    result = submit_skill_proposal(
+        operation, list(evidence_result.normalized), context
+    )
+    if result.get("proposal_staged") is True:
+        result["staged"] = True
+        result["message"] = (
+            f"Proposal {result['pending_id']} queued; skill unchanged."
+        )
+    if not result.get("success"):
+        result.setdefault("not_staged", True)
+    return json.dumps(result, ensure_ascii=False)
+
+
+def _background_review_proposal_guard(
+    action: str, name: str, payload_kwargs: dict[str, Any]
+) -> str | None:
+    """Apply existing safety guards before a background mutation becomes a proposal."""
+    from tools.skill_intent import SkillWriteIntent, current_skill_write_context
+
+    if (
+        _skill_governance_bypass.get()
+        or current_skill_write_context().intent is not SkillWriteIntent.BACKGROUND_REVIEW
+    ):
+        return None
+    if guard := _background_review_preflight(action, name):
+        return json.dumps(guard, ensure_ascii=False)
+    if action == "delete":
+        if guard := _curator_consolidation_delete_guard(name, payload_kwargs.get("absorbed_into")):
+            return json.dumps(guard, ensure_ascii=False)
+        return None
+    if action == "create":
+        return None
+    existing = _find_skill(name)
+    if existing is None:
+        return json.dumps(_err(_skill_not_found_error(name)), ensure_ascii=False)
+    skill_dir = Path(existing["path"])
+    file_path = str(payload_kwargs.get("file_path") or "SKILL.md")
+    if action == "edit" or (action == "patch" and file_path == "SKILL.md"):
+        target = skill_dir / "SKILL.md"
+    elif action in {"patch", "write_file", "remove_file"}:
+        target, err = _resolve_supporting_file(skill_dir, file_path)
+        if err:
+            return json.dumps(err, ensure_ascii=False)
+    else:
+        return None
+    if action == "remove_file" and (target is None or not target.is_file()):
+        return json.dumps(_err(f"File '{file_path}' not found in skill '{name}'."), ensure_ascii=False)
+    if target is not None and target.exists():
+        if guard := _background_review_read_before_write_guard(
+            name, target, action, file_path
+        ):
+            return json.dumps(guard, ensure_ascii=False)
+    return None
+
+
+def _background_review_batch_proposal_guard(operations, default_name: str | None) -> str | None:
+    created = set()
+    for operation in operations:
+        name = str(operation.get("name") or default_name or "")
+        if not name or name in created:
+            continue
+        if guard := _background_review_proposal_guard(
+            str(operation.get("action") or ""), name, operation
+        ):
+            return guard
+        if operation.get("action") == "create":
+            created.add(name)
+    return None
+
+
 _FLAT_OP_KEYS = ("content", "category", "file_path", "file_content", "old_string", "new_string",
-                 "absorbed_into", "operations")
+                 "absorbed_into", "operations", "proposal_evidence")
 
 
 def _skill_manage_from(payload: dict[str, Any], **extra) -> str:
@@ -705,6 +835,70 @@ def apply_skill_pending(payload: dict[str, Any]) -> str:
         return _skill_manage_from(payload)
     finally:
         _skill_gate_bypass.reset(token)
+
+
+def apply_skill_proposal(proposal: dict[str, Any] | None) -> str:
+    """Replay one reviewed v2 proposal under its original provenance and final base guard."""
+    if not isinstance(proposal, dict) or proposal.get("schema_version") != 2:
+        return json.dumps({"success": False, "error": "invalid_proposal"}, ensure_ascii=False)
+    operation = proposal.get("operation")
+    if not isinstance(operation, dict):
+        return json.dumps({"success": False, "error": "invalid_proposal"}, ensure_ascii=False)
+    from tools.skill_intent import (
+        SkillWriteIntent,
+        SkillWriteIntentContext,
+        bind_skill_write_context,
+        reset_skill_write_context,
+    )
+    from tools.skill_proposal_candidate import (
+        operation_base_hashes,
+        operation_target_names,
+        validate_proposed_operation,
+    )
+
+    names = operation_target_names(operation)
+    if not names:
+        return json.dumps({"success": False, "error": "invalid_proposal"}, ensure_ascii=False)
+    with _skill_mutation_locks(names):
+        expected = operation.get("base_hashes")
+        current = operation_base_hashes(operation)
+        if not isinstance(expected, dict):
+            expected = (
+                {names[0]: str(proposal.get("base_hash") or "")}
+                if len(names) == 1
+                else None
+            )
+        if current != expected:
+            return json.dumps({"success": False, "error": "target_changed"}, ensure_ascii=False)
+        if validation := validate_proposed_operation(operation):
+            return json.dumps({"success": False, "error": validation}, ensure_ascii=False)
+        provenance = proposal.get("provenance") if isinstance(proposal.get("provenance"), dict) else {}
+        refs = {
+            ref
+            for evidence in proposal.get("evidence", [])
+            if isinstance(evidence, dict)
+            for ref in evidence.get("message_refs", [])
+            if isinstance(ref, int)
+        }
+        context = SkillWriteIntentContext(
+            intent=SkillWriteIntent.BACKGROUND_REVIEW,
+            origin=str(provenance.get("origin") or "background_review"),
+            attended=False,
+            task_id=str(provenance.get("task_id") or ""),
+            session_id=str(provenance.get("session_id") or ""),
+            review_run_id=provenance.get("review_run_id"),
+            review_message_refs=frozenset(refs),
+            review_snapshot_digest=proposal.get("review_snapshot_digest"),
+        )
+        context_token = bind_skill_write_context(context)
+        governance_token = _skill_governance_bypass.set(True)
+        gate_token = _skill_gate_bypass.set(True)
+        try:
+            return _skill_manage_from(operation)
+        finally:
+            _skill_gate_bypass.reset(gate_token)
+            _skill_governance_bypass.reset(governance_token)
+            reset_skill_write_context(context_token)
 
 
 def _act_patch(a):
@@ -733,12 +927,23 @@ def _record_success(action, name, result, *, file_path, absorbed_into, task_id,
     """Best-effort post-mutation side effects (never break the tool): ledger, prompt-cache
     clear, curator telemetry (which fires ``on_skill_lifecycle`` for plugins)."""
     with suppress(Exception):
+        from tools.skill_intent import SkillWriteIntent, current_skill_write_context
         from tools import skill_ledger as _ledger
+        context = current_skill_write_context()
+        effective_task_id = context.task_id or task_id
+        effective_session_id = context.session_id or session_id
         _post = _find_skill(name)
         # delete: consolidation vs prune, and whether the recoverable archive handled it
         _evidence = ({"absorbed_into": absorbed_into, "archived": bool(result.get("_archived"))}
                      if action == "delete" else {})
-        _evidence.update({k: v for k, v in (("session_id", session_id), ("file_path", file_path)) if v})
+        _evidence.update(
+            {
+                **{k: v for k, v in (("session_id", effective_session_id), ("file_path", file_path)) if v},
+                "origin": context.origin,
+                "intent": context.intent.value,
+                **({"review_run_id": context.review_run_id} if context.review_run_id else {}),
+            }
+        )
         _ledger.record_mutation(
             action, name, before=ledger_before if ledger_before is not None else [],
             after_root=_post["path"] if _post else None, evidence=_evidence)
@@ -755,41 +960,56 @@ def _record_success(action, name, result, *, file_path, absorbed_into, task_id,
         # and `hermes curator restore` promises the skill can be brought back. Route through the recoverable
         # archive primitive instead of permanent rmtree so a misjudged consolidation can be undone (#29912).
         # Foreground, user-directed deletes keep their existing hard-delete semantics.
-        from tools.skill_provenance import is_background_review
         if action == "create":
-            record_created(name, agent_created=is_background_review(),
-                           task_id=task_id, session_id=session_id)
+            record_created(
+                name,
+                agent_created=context.intent is SkillWriteIntent.BACKGROUND_REVIEW,
+                task_id=effective_task_id,
+                session_id=effective_session_id,
+            )
         elif action in {"patch", "edit", "write_file", "remove_file"}:
-            bump_patch(name, action=action, task_id=task_id, session_id=session_id)
+            bump_patch(
+                name,
+                action=action,
+                task_id=effective_task_id,
+                session_id=effective_session_id,
+            )
         elif action == "delete" and not result.get("_archived"):
             forget(name)
 
 
 def skill_manage(
-    action: str, name: str, content: str | None = None, category: str | None = None, file_path: str | None = None,
+    action: str = "", name: str = "", content: str | None = None, category: str | None = None, file_path: str | None = None,
     file_content: str | None = None, old_string: str | None = None, new_string: str | None = None,
     replace_all: bool = False, absorbed_into: str | None = None, task_id: str | None = None,
-    session_id: str | None = None, operations=None) -> str:
+    session_id: str | None = None, operations=None,
+    proposal_evidence: dict[str, Any] | None = None) -> str:
     """Dispatch to the action handler -> JSON string. ``operations`` (atomic batch shape,
     see _skill_manage_batch) overrides the flat fields."""
     if operations is not None:
         return _skill_manage_batch(
-            operations, default_name=name or None, task_id=task_id, session_id=session_id)
-    if (preflight := _background_review_preflight(action, name)) is not None:
-        return json.dumps(preflight, ensure_ascii=False)
-    # Approval gate: skills are too large to review inline, so they always stage regardless
-    # of origin; bypassed when replaying an approved staged write.
+            operations,
+            default_name=name or None,
+            task_id=task_id,
+            session_id=session_id,
+            proposal_evidence=proposal_evidence,
+        )
     args = dict(content=content, category=category, file_path=file_path, file_content=file_content,
                 old_string=old_string, new_string=new_string, replace_all=replace_all,
-                absorbed_into=absorbed_into)
-    if (gate_result := _apply_skill_write_gate(action, name, **args)) is not None:
-        return gate_result
+                absorbed_into=absorbed_into, proposal_evidence=proposal_evidence)
     if (shape_err := _op_shape_error(action, args)) is not None:
         return tool_error(shape_err, success=False)
     # Validate before the lock is keyed on the name, so a rejected name never touches .locks/
     # (create takes a bare name; the other actions also accept ``category/name``).
     if (name_err := _validate_name(name if action == "create" or not name else Path(name).name)) is not None:
         return json.dumps(_err(name_err), ensure_ascii=False)
+    if (guard := _background_review_proposal_guard(action, name, args)) is not None:
+        return guard
+    if (governed := _govern_skill_mutation(action, name, args, proposal_evidence)) is not None:
+        return governed
+    # The legacy gate remains an independent latch for NORMAL/USER_LEARN and auto mode.
+    if (gate_result := _apply_skill_write_gate(action, name, **args)) is not None:
+        return gate_result
     # A mutation is read-modify-write even when its action eventually delegates
     # to a helper: guards, ledger capture, patch matching, validation, rollback,
     # and the atomic replacement all belong to the same ownership window.
@@ -849,6 +1069,24 @@ _FILE_PATH = {
         "slash, never absolute; first segment references/, templates/, scripts/, or assets/."
     ),
 }  # stated once (write_file); patch/remove_file point at it
+_PROPOSAL_EVIDENCE = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": [
+                "user_request",
+                "user_correction",
+                "skill_incomplete",
+                "repeated_class",
+            ],
+        },
+        "message_refs": {"type": "array", "items": {"type": "integer"}},
+        "reason": {"type": "string"},
+    },
+    "required": ["kind", "message_refs", "reason"],
+}
 
 
 def _op_schema(action: str, props: dict, required: tuple) -> dict:
@@ -912,6 +1150,7 @@ SKILL_MANAGE_SCHEMA = {
                     }, ()),
                 ]},
             },
+            "proposal_evidence": _PROPOSAL_EVIDENCE,
             # Also accepted, never advertised: the legacy flat single-op fields.
         },
         "required": ["operations"],

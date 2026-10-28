@@ -62,6 +62,7 @@ export interface SendCommandDispatchResponse {
   display?: string
   message: string
   notice?: string
+  skill_intent_ticket?: string
   type: 'send'
 }
 
@@ -103,7 +104,7 @@ export function parseCommandDispatch(raw: unknown): CommandDispatchResponse | nu
 
     case 'send':
       return typeof row.message === 'string'
-        ? { display: str(row.display), message: row.message, notice: str(row.notice), type: 'send' }
+        ? { display: str(row.display), message: row.message, notice: str(row.notice), skill_intent_ticket: str(row.skill_intent_ticket), type: 'send' }
         : null
 
     case 'skill':

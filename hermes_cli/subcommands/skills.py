@@ -76,15 +76,62 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
         "check", help="Check installed hub skills for updates")
     skills_check.add_argument("name", nargs="?", help="Specific skill to check (default: all)")
 
+    skills_proposals = skills_subparsers.add_parser(
+        "proposals", help="Review pending agent-generated skill proposals"
+    )
+    proposal_subparsers = skills_proposals.add_subparsers(
+        dest="proposals_action", required=True
+    )
+    proposal_list = proposal_subparsers.add_parser("list", help="List pending proposals")
+    proposal_list.add_argument("-p", "--profile", default=None, help="Profile to inspect")
+    proposal_show = proposal_subparsers.add_parser(
+        "show", help="Show one proposal and its exact approval command"
+    )
+    proposal_show.add_argument("proposal_id")
+    proposal_show.add_argument("-p", "--profile", default=None, help="Profile to inspect")
+    proposal_approve = proposal_subparsers.add_parser(
+        "approve", help="Approve the exact revision you reviewed"
+    )
+    proposal_approve.add_argument("proposal_id")
+    proposal_approve.add_argument(
+        "--revision", type=int, required=True, help="Revision shown by `proposals show`"
+    )
+    proposal_approve.add_argument("-p", "--profile", default=None, help="Profile to update")
+    proposal_reject = proposal_subparsers.add_parser(
+        "reject", help="Reject the exact revision you reviewed"
+    )
+    proposal_reject.add_argument("proposal_id")
+    proposal_reject.add_argument(
+        "--revision", type=int, required=True, help="Revision shown by `proposals show`"
+    )
+    proposal_reject.add_argument("-p", "--profile", default=None, help="Profile to update")
+    proposal_prune = proposal_subparsers.add_parser(
+        "prune", help="Expire stale proposals and delete v2 history past retention"
+    )
+    proposal_prune.add_argument("-p", "--profile", default=None, help="Profile to prune")
+
     skills_update = skills_subparsers.add_parser("update", help="Update installed hub skills")
     skills_update.add_argument(
         "name", nargs="?", help="Specific skill to update (default: all outdated skills)")
     _flag(skills_update, "--force",
         help="Overwrite skills you have edited locally (they are skipped by default)")
 
-    skills_audit = skills_subparsers.add_parser("audit", help="Re-scan installed hub skills")
+    skills_audit = skills_subparsers.add_parser(
+        "audit",
+        help="Re-scan installed hub skills, or audit library health with --days",
+    )
     skills_audit.add_argument("name", nargs="?", help="Specific skill to audit (default: all)")
     _flag(skills_audit, "--deep", help="Run AST-level analysis on Python files (opt-in diagnostic)")
+    skills_audit.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Run the read-only skill health audit for the last 1..365 days",
+    )
+    add_json_flag(
+        skills_audit,
+        "Output health-audit JSON (only applies with --days)",
+    )
 
     skills_uninstall = skills_subparsers.add_parser(
         "uninstall", help="Remove a hub-installed skill")

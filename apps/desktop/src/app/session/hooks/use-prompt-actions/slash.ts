@@ -480,16 +480,24 @@ export function useSlashCommand(deps: SlashCommandDeps) {
           // rather than re-reading the globals — a session switch between
           // dispatch and this branch would otherwise queue the kickoff on
           // whichever chat is now in front (#63352).
-          const queued = options?.fromQueue
+          const skillIntentTicket =
+            dispatch.type === 'send' ? dispatch.skill_intent_ticket : undefined
+
+          // A trusted ticket must reach the backend admission that owns it.
+          // Putting it in the persisted client queue would both expire it and
+          // make replay look like a fresh user intent.
+          const queued = skillIntentTicket
             ? 'idle'
-            : queueKickoffIfSessionBusy({
-                displayText,
-                foregroundBusy: busyRef.current,
-                id: submissionId,
-                sessionId,
-                storedSessionId,
-                text: message
-              })
+            : options?.fromQueue
+              ? 'idle'
+              : queueKickoffIfSessionBusy({
+                  displayText,
+                  foregroundBusy: busyRef.current,
+                  id: submissionId,
+                  sessionId,
+                  storedSessionId,
+                  text: message
+                })
 
           if (queued !== 'idle') {
             renderSlashOutput(BUSY_KICKOFF_TEXT[queued])
@@ -511,7 +519,8 @@ export function useSlashCommand(deps: SlashCommandDeps) {
             storedSessionId,
             displayText,
             submission_id: submissionId,
-            destination
+            destination,
+            skillIntentTicket
           })
         }
 

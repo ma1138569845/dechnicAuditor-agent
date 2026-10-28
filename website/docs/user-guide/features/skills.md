@@ -665,13 +665,48 @@ applied**, with an error naming the key the text sits in and where to move it.
 The targeted `patch` is preferred for updates — it's more token-efficient than a full rewrite because only the changed text appears in the tool call.
 :::
 
+### Controlling automatic skill learning (`skills.auto_learning`)
+
+Background learning is proposal-first by default. The [background
+self-improvement review](./memory.md#controlling-memory-writes-write_approval)
+may identify a reusable lesson, but it must put the proposed change in the pending
+queue instead of updating the active skill library:
+
+```yaml
+skills:
+  auto_learning:
+    mode: propose   # propose | off | auto
+```
+
+| Mode | Background review | Foreground Agent writes | `/learn` | Authenticated Desktop edit |
+| --- | --- | --- | --- | --- |
+| `propose` (default) | Creates a pending proposal only | Still follows `write_approval` | Writes directly after target, lint, and security checks | Writes directly |
+| `off` | Does not create a skill proposal | Still follows `write_approval` | Writes directly | Writes directly |
+| `auto` (advanced) | May write directly when evidence and validation pass | Still follows `write_approval` | Writes directly | Writes directly |
+
+`auto` can accumulate changes without an approval step, so it is not recommended for
+most users. The mode accepts only the exact lowercase strings `propose`, `off`, and
+`auto`. Booleans, numbers, truthy strings such as `on` or `yes`, and case variants
+fall back to `propose` and produce a configuration warning; they are never aliases
+for `auto`.
+
+The queue defaults to a 14-day proposal TTL, 25 pending proposals per profile,
+5 per target, 1 per patch anchor, and 30 days of history. Notifications default to
+badge-only and do not steal focus. See [Skill Settings](../configuration.md#automatic-skill-learning)
+for the full configuration block.
+
+`propose` does not disable learning: background review can still produce a
+proposal, but the skill becomes active only after approval. `/learn` is an
+explicit user-requested write and remains direct; `/refine` replays background
+review and is therefore proposal-only. Authenticated Desktop edits follow the
+same explicit-user rule.
+
 ### Gating agent skill writes (`skills.write_approval`)
 
-By default the agent writes skills freely — including from the [background
-self-improvement review](./memory.md#controlling-memory-writes-write_approval)
-that runs after a turn. If you'd rather approve every skill write first
-(small models that misjudge what they learned, secure environments, or just
-wanting eyes on the self-improvement loop), turn on the write-approval gate:
+`skills.write_approval` is a separate gate for ordinary foreground Agent writes.
+It remains off by default, while automatic background learning defaults to
+`propose`. Turn on write approval if you want every foreground `skill_manage`
+mutation to require approval as well:
 
 ```yaml
 skills:
@@ -697,6 +732,47 @@ The review surface works in the interactive CLI and on messaging platforms
 (diff output is truncated for chat bubbles — read the full diff on the CLI or
 in the pending JSON file). Memory writes have the same gate under
 `memory.write_approval` — see [Controlling memory writes](./memory.md#controlling-memory-writes-write_approval).
+
+The old `skills.write_approval` gate remains supported. New proposal-first
+learning and the legacy gate are cumulative: when both can intercept a write,
+the stricter path wins. Existing staged files stay reviewable when the gate is
+switched off.
+
+### Skill library health audit
+
+`hermes skills audit --days 30` produces a profile-scoped, read-only view of
+the live skill library. Add `--json` for stable machine-readable output:
+
+```bash
+hermes skills audit --days 30
+hermes skills audit --days 30 --json
+/skills audit --days 30
+```
+
+The report covers installed/active/stale/archived/broken counts, metadata cost
+and recent growth, the pending/applied/rejected/expired proposal funnel,
+approval/rejection/expiration rates, handling time, queue concentration, stale
+targets/anchors, and possible duplicates. Every skill gets one recommendation:
+
+| Status | Meaning |
+| --- | --- |
+| `KEEP` | Recent use or a protection signal: pinned, cron-referenced, user-owned, external, hub-installed, or locally modified. |
+| `REVIEW` | Usage evidence is incomplete or the skill is too new to judge. |
+| `STALE` | An agent-managed skill has enough evidence of long inactivity. This is advice only. |
+| `BROKEN` | Discovery found an unreadable skill or duplicate loading path. Nothing is repaired automatically. |
+
+The command never archives, deletes, edits, prunes, fixes, or reconfigures a
+skill. It also does not write proposal history, Curator state, config, a
+session snapshot, or telemetry, and it performs no network requests.
+
+`--days` accepts only integers from 1 through 365 and is mutually exclusive
+with a skill name or `--deep`. Without `--days`, `hermes skills audit [name]
+[--deep]` keeps its original Skills Hub security-scan behavior. The same
+health snapshot is available at `GET /api/skills/audit?days=30&profile=...`.
+
+To roll back the proposal-first policy, set `skills.auto_learning.mode` to
+`off` or `auto` without deleting the pending directory. The tagged backup
+created during the migration remains a whole-tree fallback.
 
 > The separate `skills.guard_agent_created` setting is a content scanner
 > (dangerous-pattern heuristics), not an approval gate — the two are
@@ -727,6 +803,8 @@ hermes skills list --source hub                   # List hub-installed skills
 hermes skills check                               # Check installed hub skills for upstream updates
 hermes skills update                              # Reinstall hub skills with upstream changes when needed
 hermes skills audit                               # Re-scan all hub skills for security
+hermes skills audit --days 30                     # Read-only library health audit
+hermes skills audit --days 30 --json              # Stable JSON report
 hermes skills uninstall k8s                       # Remove a hub skill
 hermes skills reset google-workspace              # Un-stick a bundled skill from "user-modified" (see below)
 hermes skills reset google-workspace --restore    # Also restore the bundled version, deleting your local edits

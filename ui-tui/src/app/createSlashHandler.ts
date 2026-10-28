@@ -185,14 +185,29 @@ export function createSlashHandler(ctx: SlashHandlerContext): SlashHandler {
       // projection and goes through unchanged. No client-side fallback here:
       // the TUI spawns its gateway from this same checkout, so the two can't
       // version-skew (unlike the desktop, which can meet an older backend).
-      const sendDispatch = (display: string | undefined, message: string) => {
+      const sendDispatch = (
+        display: string | undefined,
+        message: string,
+        skillIntentTicket?: string
+      ) => {
         const shown = display?.trim()
 
+        const submitOpts =
+          submission || skillIntentTicket
+            ? { attachments: submission?.attachments, skillIntentTicket }
+            : undefined
+
         if (submission) {
-          return send(message, true, shown || undefined, submission.expand, { attachments: submission.attachments })
+          return send(message, true, shown || undefined, submission.expand, submitOpts)
         }
 
-        return shown ? send(message, true, shown) : send(message)
+        if (shown) {
+          return submitOpts
+            ? send(message, true, shown, undefined, submitOpts)
+            : send(message, true, shown)
+        }
+
+        return submitOpts ? send(message, true, undefined, undefined, submitOpts) : send(message)
       }
 
       if (d.type === 'skill') {
@@ -206,7 +221,9 @@ export function createSlashHandler(ctx: SlashHandlerContext): SlashHandler {
           sys(d.notice)
         }
 
-        return d.message?.trim() ? sendDispatch(d.display, d.message) : sys(`/${parsed.name}: empty message`)
+        return d.message?.trim()
+          ? sendDispatch(d.display, d.message, d.skill_intent_ticket)
+          : sys(`/${parsed.name}: empty message`)
       }
 
       if (d.type === 'prefill') {

@@ -221,6 +221,13 @@ def test_background_review_releases_clients_without_closing_shared_session(monke
         "run_conversation",
         "release_clients",
     ]
+    run_kwargs = events[1][1]
+    review_context = run_kwargs["skill_write_context"]
+    assert review_context.intent.value == "background_review"
+    assert review_context.session_id == "test-session"
+    assert review_context.review_run_id.startswith("review_")
+    assert review_context.review_message_refs == frozenset({1})
+    assert review_context.review_snapshot_digest.startswith("sha256:")
 
 
 def test_background_review_fork_opts_out_of_session_finalization(monkeypatch):

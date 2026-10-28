@@ -187,6 +187,18 @@ def admit_api_steps(adapter, **kwargs):
         # The request's Relay metadata rides the admission to the turn it describes (main passed it
         # to ``run_conversation``); it is client JSON, so it is part of the exact-retry identity.
         payload['api_turn_v1']['relay_metadata'] = kwargs['relay_metadata']
+    context = kwargs.get('skill_write_context')
+    if context is not None:
+        from tools.skill_intent import SkillWriteIntentContext
+        if not isinstance(context, SkillWriteIntentContext):
+            raise RuntimeStoreError('invalid_params')
+        payload['api_turn_v1']['skill_write_context'] = {
+            "intent": context.intent.value, "origin": context.origin, "attended": context.attended,
+            "task_id": context.task_id, "session_id": context.session_id,
+            "review_run_id": context.review_run_id,
+            "review_message_refs": sorted(context.review_message_refs),
+            "review_snapshot_digest": context.review_snapshot_digest,
+        }
     request_id = kwargs.get('request_id') or kwargs.get('active_run_id') or uuid.uuid4().hex
     if not isinstance(kwargs['user_message'], list):
         return (yield from _admit_api_payload(authority, adapter, sid, request_id, payload, settings, declared_key, kwargs))
@@ -441,7 +453,28 @@ def prepare_api_execution(authority, ref, payload):
     return {'adapter': adapter, 'settings': settings, 'history': data['history'] if data else None,
             'content': content, 'turn_author': data.get('turn_author') if data else None,
             'relay_metadata': data.get('relay_metadata') if data else None,
-            'resume_unanswered': bool(data and data.get('resume_unanswered'))}
+            'resume_unanswered': bool(data and data.get('resume_unanswered')),
+            'skill_write_context': _restore_skill_context(data) if data else None}
+
+
+def _restore_skill_context(data):
+    raw = data.get('skill_write_context') if isinstance(data, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    from tools.skill_intent import SkillWriteIntent, SkillWriteIntentContext
+    try:
+        intent = SkillWriteIntent(raw.get('intent'))
+    except ValueError:
+        return None
+    refs = raw.get('review_message_refs') or []
+    if not isinstance(refs, list) or not all(isinstance(item, int) for item in refs):
+        return None
+    return SkillWriteIntentContext(
+        intent=intent, origin=str(raw.get('origin') or 'foreground'), attended=bool(raw.get('attended')),
+        task_id=str(raw.get('task_id') or ''), session_id=str(raw.get('session_id') or ''),
+        review_run_id=raw.get('review_run_id'), review_message_refs=frozenset(refs),
+        review_snapshot_digest=raw.get('review_snapshot_digest'),
+    )
 
 
 def _api_observers(authority, session_id):

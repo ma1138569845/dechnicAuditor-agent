@@ -1239,6 +1239,70 @@ export interface SkillInfo {
   provenance?: 'agent' | 'bundled' | 'external' | 'hub'
 }
 
+export type SkillProposalStatus = 'applied' | 'claiming' | 'expired' | 'pending' | 'rejected'
+
+export interface SkillProposalEvidence {
+  kind: 'repeated_class' | 'skill_incomplete' | 'user_correction' | 'user_request'
+  message_refs: number[]
+  reason: string
+}
+
+export interface SkillProposalDecision {
+  revision: number
+  review_hash: string
+  base_hash: string
+}
+
+export interface SkillProposalSummary {
+  schema_version: 1 | 2
+  id: string
+  status: SkillProposalStatus
+  revision: number
+  review_hash: null | string
+  base_hash: null | string
+  created_at: number
+  last_seen_at: number
+  expires_at: number
+  evidence_count: number
+  target: { skill: string; names?: string[] }
+  operation: { action: string; file_path?: string; name?: string }
+  preview: {
+    summary: string
+    diff?: string
+    lint: Array<{ severity: string; message?: string; rule?: string }>
+    security?: { verdict: string; findings: Array<Record<string, unknown>> }
+  }
+  conflict: null | string
+  legacy_reason?: 'legacy_pending_requires_explicit_edit'
+  related?: {
+    possible_duplicates: Array<{ id: string; reason: string }>
+    overlap_count: number
+  }
+}
+
+export interface SkillProposalQueueState {
+  pending_count: number
+  max_pending: number
+  over_limit: boolean
+  targets_over_limit: Array<{
+    target: string
+    pending_count: number
+    max_pending: number
+  }>
+  earliest_expires_at: number | null
+  broken_count: number
+}
+
+export interface SkillProposalListResponse {
+  proposals: SkillProposalSummary[]
+  count: number
+  queue: SkillProposalQueueState
+}
+
+export interface SkillProposalDetail extends SkillProposalSummary {
+  evidence: SkillProposalEvidence[]
+}
+
 /** One entry of the built-in optional-skills catalog (optional-skills/ in the
  *  repo) — official skills that ship with Hermes but install on demand. */
 export interface OfficialSkillInfo {

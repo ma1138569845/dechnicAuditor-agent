@@ -1,0 +1,7 @@
+[
+  "../escape.md",
+  "C:\\Windows\\system.ini",
+  "\\\\server\\share\\secret.md",
+  "references/ok\u0000.txt",
+  "references/line\nbreak.md"
+]

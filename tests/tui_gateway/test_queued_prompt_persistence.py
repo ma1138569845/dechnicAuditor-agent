@@ -105,6 +105,49 @@ def test_busy_accept_writes_the_queued_user_row_immediately(monkeypatch, tmp_pat
         db.close()
 
 
+def test_busy_accept_keeps_skill_intent_in_memory_for_the_drained_turn(
+    monkeypatch, tmp_path
+):
+    from tools.skill_intent import SkillWriteIntent, normal_skill_context
+
+    db = SessionDB(db_path=tmp_path / "state.db")
+    sid, key = _desktop_session(monkeypatch, db)
+    session = server._sessions[sid]
+    learned = normal_skill_context(
+        task_id="turn-1", session_id=key
+    ).with_intent(SkillWriteIntent.USER_LEARN)
+    captured = {}
+    try:
+        _busy(session)
+        response = server._handle_busy_submit(
+            "r1",
+            sid,
+            session,
+            "expanded learn prompt",
+            "ws-1",
+            queued=True,
+            skill_write_context=learned,
+            display_kind=None,
+        )
+        assert response["result"]["status"] == "queued"
+        assert session["queued_prompt"]["skill_write_context"] is learned
+
+        with session["history_lock"]:
+            session["running"] = False
+            server._clear_inflight_turn(session)
+        monkeypatch.setattr(
+            server,
+            "_run_prompt_submit",
+            lambda _rid, _sid, _session, _text, **kwargs: captured.update(kwargs),
+        )
+
+        assert server._drain_queued_prompt("r2", sid, session) is True
+        assert captured["skill_write_context"] is learned
+    finally:
+        server._sessions.pop(sid, None)
+        db.close()
+
+
 def test_queued_turn_replays_as_its_own_turn_after_the_live_turn(monkeypatch, tmp_path):
     """The accept-time row lands BEFORE the in-flight turn's assistant rows (raw [uA, uB, aA]);
     the drain must re-place it at the transcript end, so the repaired projection keeps FOUR

@@ -672,7 +672,18 @@ def _prompt_builtin(module: str, fn: str, kw: str = ""):
 
     def cmd(rid, params, session, name, arg):
         build = getattr(_tools_mod(module), fn)
-        return _ok(rid, {"type": "send", "message": build(**{kw: arg}) if kw else build(arg)})
+        message = build(**{kw: arg}) if kw else build(arg)
+        payload = {"type": "send", "message": message}
+        if name == "learn":
+            from tools.skill_intent import SkillWriteIntent
+            from tui_gateway.skill_intent_tickets import resolve_ticket_profile, ticket_store
+            payload["skill_intent_ticket"] = ticket_store.issue(
+                str((session or {}).get("session_key") or params.get("session_id") or ""),
+                resolve_ticket_profile(params, session or {}),
+                message,
+                SkillWriteIntent.USER_LEARN,
+            )
+        return _ok(rid, payload)
     return cmd
 
 
@@ -986,11 +997,18 @@ def _cmd_skills(rid, params, session, name, arg):
     allowed = getattr(commands.resolve_command("skills"), "desktop_subcommands", None) or ()
     if not sub or sub[0].lower() not in allowed:
         return None
+    if sub[0].lower() == "audit":
+        from hermes_cli.skills_audit import health_audit_requested, run_skill_health_audit
+
+        if health_audit_requested(sub[1:]):
+            _code, stdout, stderr = run_skill_health_audit(sub[1:])
+            return _exec_out(rid, stdout or stderr or _SKILLS_USAGE)
+    from hermes_cli.skills_proposals import skill_review_surface_available
     from tools import write_approval as wa
     # The gate being off must not strand writes that are already staged (gateway parity): still
     # answer when a pile exists, and point at the toggle when there is nothing to review.
-    if (sub[0].lower() not in {"approval", "mode"} and not wa.write_approval_enabled(wa.SKILLS)
-            and wa.pending_count(wa.SKILLS) == 0):
+    if (sub[0].lower() not in {"approval", "mode"}
+            and not skill_review_surface_available(wa.write_approval_enabled(wa.SKILLS))):
         return _exec_out(rid, "Skill write approval is off (skills.write_approval). "
                               "Enable it with /skills approval on, then review staged writes "
                               "with /skills pending.")

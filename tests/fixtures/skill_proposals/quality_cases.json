@@ -1,0 +1,9 @@
+[
+  {"name": "ordinary_success", "expected": "no_proposal"},
+  {"name": "transient_failure", "expected": "no_proposal"},
+  {"name": "model_self_assessment", "expected": "no_proposal"},
+  {"name": "user_correction", "expected": "proposal"},
+  {"name": "real_skill_gap", "expected": "proposal"},
+  {"name": "repeated_class", "expected": "proposal"},
+  {"name": "semantic_similarity_only", "expected": "possible_duplicate"}
+]

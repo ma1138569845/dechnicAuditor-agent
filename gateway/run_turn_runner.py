@@ -959,6 +959,8 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
             api = api_execution.get()
             if api is not None and api.get('relay_metadata') and _accepts_keyword(agent.run_conversation, "relay_metadata"):
                 kwargs["relay_metadata"] = api['relay_metadata']  # main: api_server forwards body.metadata
+            if api is not None and api.get('skill_write_context') is not None:
+                kwargs["skill_write_context"] = api['skill_write_context']
             if _accepts_keyword(agent.run_conversation, "turn_author"):
                 # Sent on every transport: a provider gating durable writes needs the bot flag in a DM too.
                 from gateway.session_ingress import admission_author
@@ -979,6 +981,12 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
                 kwargs["persist_user_display_metadata"] = ctx.persist_user_display_metadata
             if ctx.moa_config is not None:
                 kwargs["moa_config"] = ctx.moa_config
+            from tools.skill_intent_resolve import parse_skill_write_intent, resolve_skill_write_context
+            parsed_intent = parse_skill_write_intent(ctx.skill_write_intent)
+            if parsed_intent is not None and "skill_write_context" not in kwargs:
+                kwargs["skill_write_context"] = resolve_skill_write_context(
+                    parsed_intent, task_id=str(ctx.session_id or ""), session_id=str(ctx.session_id or "")
+                )
             from gateway.session_onboarding import arm_onboarding_turn
             prelude = arm_onboarding_turn(agent, self._approval_owner, agent_history)
             if prelude is not None and _accepts_keyword(agent.run_conversation, "prelude"):

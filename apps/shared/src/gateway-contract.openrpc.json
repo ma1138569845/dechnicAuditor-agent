@@ -11915,6 +11915,18 @@
             ],
             "default": null,
             "title": "Status"
+          },
+          "skill_intent_ticket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Skill Intent Ticket"
           }
         },
         "required": [
@@ -32003,6 +32015,18 @@
             ],
             "default": null,
             "title": "Rebind Survivor Row Ids"
+          },
+          "skill_intent_ticket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Skill Intent Ticket"
           }
         },
         "required": [
@@ -41394,6 +41418,18 @@
             ],
             "default": null,
             "title": "Status"
+          },
+          "skill_intent_ticket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Skill Intent Ticket"
           }
         },
         "title": "SlashExecResult",

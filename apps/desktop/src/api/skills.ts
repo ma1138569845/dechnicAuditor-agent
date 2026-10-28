@@ -1,3 +1,4 @@
+import { normalizeSkillProposalDetail, normalizeSkillProposalList } from '@/app/capabilities/skills/proposal-data'
 import type {
   OfficialSkillInfo,
   SkillHubPreview,
@@ -5,6 +6,9 @@ import type {
   SkillHubSearchResponse,
   SkillHubSourcesResponse,
   SkillInfo,
+  SkillProposalDecision,
+  SkillProposalDetail,
+  SkillProposalListResponse,
   StarmapGraph
 } from '@/types/hermes'
 import type { ActionResponse } from '@/types/hermes'
@@ -15,6 +19,50 @@ export function getSkills(profile?: ProfileScope): Promise<SkillInfo[]> {
   return window.hermesDesktop.api<SkillInfo[]>({
     ...capabilityScoped(profile),
     path: '/api/skills'
+  })
+}
+
+export function getSkillProposals(profile?: ProfileScope, status = 'pending'): Promise<SkillProposalListResponse> {
+  return window.hermesDesktop
+    .api<unknown>({
+      ...capabilityScoped(profile),
+      path: `/api/skills/proposals?status=${encodeURIComponent(status)}`
+    })
+    .then(normalizeSkillProposalList)
+}
+
+export function getSkillProposal(id: string, profile?: ProfileScope): Promise<SkillProposalDetail> {
+  return window.hermesDesktop
+    .api<unknown>({
+      ...capabilityScoped(profile),
+      path: `/api/skills/proposals/${encodeURIComponent(id)}`
+    })
+    .then(normalizeSkillProposalDetail)
+}
+
+export function approveSkillProposal(
+  id: string,
+  decision: SkillProposalDecision,
+  profile?: ProfileScope
+): Promise<unknown> {
+  return window.hermesDesktop.api<unknown>({
+    ...capabilityScoped(profile),
+    path: `/api/skills/proposals/${encodeURIComponent(id)}/approve`,
+    method: 'POST',
+    body: {
+      revision: decision.revision,
+      review_hash: decision.review_hash,
+      base_hash: decision.base_hash
+    }
+  })
+}
+
+export function rejectSkillProposal(id: string, reviewHash: null | string, profile?: ProfileScope): Promise<unknown> {
+  return window.hermesDesktop.api<unknown>({
+    ...capabilityScoped(profile),
+    path: `/api/skills/proposals/${encodeURIComponent(id)}/reject`,
+    method: 'POST',
+    body: reviewHash === null ? {} : { review_hash: reviewHash }
   })
 }
 

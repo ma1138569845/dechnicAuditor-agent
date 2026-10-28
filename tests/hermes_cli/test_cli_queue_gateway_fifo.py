@@ -194,7 +194,7 @@ def test_an_adopted_queued_prompt_never_submits_a_second_admission():
         cli._drain_process_notifications("cli-idle")
         client.script = [frame("message.complete", {"text": "again", "status": "complete"}, admission="adm-1")]
         item = cli._pending_input.get_nowait()
-        user_input, _, seeded = cli._tui_unwrap_input(item)
+        user_input, _, seeded, _ = cli._tui_unwrap_input(item)
         assert seeded and user_input == text
         # Even if a sanitizer still rewrote it (chat() strips lone surrogates), identity decides.
         user_input = _strip_leaked_bracketed_paste_wrappers(user_input)
@@ -234,7 +234,7 @@ def _run_adopted(cli, conn):
     from hermes_cli.gateway_agent import GatewayAgent
     from tests.hermes_cli.test_gateway_agent import SID
     item = cli._pending_input.get_nowait()
-    text, _, seeded = cli._tui_unwrap_input(item)
+    text, _, seeded, _ = cli._tui_unwrap_input(item)
     assert seeded and item.admission_id
     agent = GatewayAgent(connection=conn, session_id=SID)
     agent._pending_cli_user_message = {"role": "user", "content": text}

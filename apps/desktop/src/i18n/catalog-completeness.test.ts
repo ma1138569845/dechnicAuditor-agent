@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { TRANSLATIONS } from './catalog'
+import { BUNDLED_LOCALES, TRANSLATIONS } from './catalog'
 import { deOverrides } from './de'
 import { esOverrides } from './es'
 import { frOverrides } from './fr'
@@ -40,6 +40,7 @@ const catalogLeaves = (locale: BundledLocale) =>
   )
 
 const english = catalogLeaves('en')
+const proposalPaths = [...english.keys()].filter(path => path.startsWith('skills.proposals.'))
 
 it.each(['de', 'es', 'fr', 'ja', 'ru', 'zh', 'zh-hant', 'ar'] as const)(
   '%s renders localized retirement copy instead of English fallback',
@@ -48,6 +49,21 @@ it.each(['de', 'es', 'fr', 'ja', 'ru', 'zh', 'zh-hant', 'ar'] as const)(
     expect(TRANSLATIONS[locale].updates.discontinuedBody).not.toBe(TRANSLATIONS.en.updates.discontinuedBody)
   }
 )
+
+it('defines the proposal namespace in English', () => {
+  expect(proposalPaths.length).toBeGreaterThan(0)
+})
+
+it.each(BUNDLED_LOCALES)('%s resolves every skill proposal runtime key', locale => {
+  const catalog = catalogLeaves(locale)
+
+  for (const path of proposalPaths) {
+    expect({ path, kind: kindOf(catalog.get(path)) }, `${locale}:${path}`).toEqual({
+      path,
+      kind: kindOf(english.get(path))
+    })
+  }
+})
 
 describe.each(COMPLETE_LOCALES)('%s desktop catalog', locale => {
   const catalog = catalogLeaves(locale)

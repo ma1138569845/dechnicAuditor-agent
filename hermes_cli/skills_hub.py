@@ -1633,6 +1633,19 @@ def _first_positional(args):
     return args[0] if args and not args[0].startswith("--") else None
 
 
+def _slash_audit(args, c):
+    from hermes_cli.skills_audit import health_audit_requested, run_skill_health_audit
+
+    if health_audit_requested(args):
+        _code, stdout, stderr = run_skill_health_audit(args)
+        if stdout:
+            c.print(stdout, markup=False)
+        if stderr:
+            c.print(stderr, style="red", markup=False)
+        return
+    do_audit(name=_first_positional(args), console=c, deep="--deep" in args)
+
+
 # Slash commands run inside prompt_toolkit where input() hangs, so install/uninstall/reset
 # always skip confirmation — typing the command is implicit consent. `--now` invalidates the
 # prompt cache immediately (costs more money); the default defers to the next session.
@@ -1653,8 +1666,7 @@ _SLASH_ACTIONS = {
     "update": lambda args, c: do_update(
         name=next((a for a in args if not a.startswith("--")), None), console=c,
         force="--force" in args),
-    "audit": lambda args, c: do_audit(name=_first_positional(args), console=c,
-                                      deep="--deep" in args),
+    "audit": _slash_audit,
     "uninstall": lambda args, c: do_uninstall(
         args[0], console=c, skip_confirm=True, invalidate_cache="--now" in args),
     "reset": lambda args, c: do_reset(
@@ -1721,6 +1733,7 @@ def _print_skills_help(console: Console) -> None:
         "  [cyan]check[/] [name]                Check hub skills for upstream updates\n"
         "  [cyan]update[/] [name]               Update hub skills with upstream changes\n"
         "  [cyan]audit[/] [name]                Re-scan hub skills for security\n"
+        "  [cyan]audit --days[/] <1..365>       Read-only skill-library health audit\n"
         "  [cyan]uninstall[/] <name>            Remove a hub-installed skill\n"
         "  [cyan]list-modified[/]               List bundled skills you've edited (kept by update)\n"
         "  [cyan]diff[/] <name>                 Diff your copy of a bundled skill vs the stock version\n"

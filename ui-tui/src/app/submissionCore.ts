@@ -69,6 +69,7 @@ interface SubmitPromptOpts {
   destination?: SubmissionDestination
   queueItem?: QueueItem
   behindTurn?: boolean
+  skillIntentTicket?: string
 }
 
 type PendingOwner = ReturnType<typeof pendingInputOwner>
@@ -107,6 +108,7 @@ function prepareQueueItem(
   }
 
   item.attachments ??= opts.attachments?.map(attachment => ({ ...attachment }))
+  item.skillIntentTicket ??= opts.skillIntentTicket
 
   if (opts.behindTurn) {
     item.queued = true
@@ -124,7 +126,8 @@ function submitParams(
   item: QueueItem | undefined,
   submitText: string,
   attachments: SubmitPromptOpts['attachments'],
-  voice: boolean
+  voice: boolean,
+  skillIntentTicket?: string
 ) {
   return {
     session_id: sid,
@@ -132,6 +135,9 @@ function submitParams(
     ...((item?.attachments ?? attachments)?.length ? { attachments: item?.attachments ?? attachments } : {}),
     ...(item?.controlMethod ? { execution_generation: item.executionGeneration } : {}),
     ...(item && !item.controlMethod ? { submission_id: item.submissionId, queued: item.queued !== false } : {}),
+    ...(skillIntentTicket
+      ? { queued: true, skill_intent_ticket: skillIntentTicket }
+      : {}),
     // A busy correction (steer/redirect) is not a turn: it never claims the voice route.
     ...(!item?.controlMethod && voice && { voice_turn: true })
   }
@@ -143,6 +149,7 @@ function submitParams(
 export function readmitAsPrompt(item: QueueItem): void {
   delete item.controlMethod
   delete item.executionGeneration
+  delete item.skillIntentTicket
   item.legacyAttempted = false
   item.queued = true
   savePendingInput(item)
@@ -362,7 +369,9 @@ export function submitPrompt(
 
   const readmit = (item: QueueItem) => {
     readmitAsPrompt(item)
+    const { skillIntentTicket: _spentTicket, ...retryOpts } = opts
     submitPrompt(text, deps, showUserMessage, displayOverride, {
+      ...retryOpts,
       behindTurn: true,
       destination,
       queueItem: item,
@@ -395,7 +404,14 @@ export function submitPrompt(
     deps.gw
       .request<PromptSubmitResponse>(
         item?.controlMethod ?? 'prompt.submit',
-        submitParams(sid, item, submitText, opts.attachments, voiceTranscript === submitText.trim())
+        submitParams(
+          sid,
+          item,
+          submitText,
+          opts.attachments,
+          voiceTranscript === submitText.trim(),
+          item?.skillIntentTicket ?? opts.skillIntentTicket
+        )
       )
       .then(r => {
         if (item?.controlMethod) {

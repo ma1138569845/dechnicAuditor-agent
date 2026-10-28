@@ -31,6 +31,8 @@ export interface QueueItem {
   executionGeneration?: number
   preparedText?: string
   legacyAttempted?: boolean
+  /** Ephemeral dispatcher proof; pendingInputs never serializes this field. */
+  skillIntentTicket?: string
   settle?: (accepted: boolean) => void
 }
 
@@ -64,6 +66,7 @@ export function takeQueueItem(queue: QueueItem[], index: number, editedDisplay?:
     inFlight: _i,
     legacyAttempted: _l,
     preparedText: _p,
+    skillIntentTicket: _ticket,
     settle: _s,
     submissionId: _id,
     ...kept

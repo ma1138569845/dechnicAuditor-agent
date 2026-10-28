@@ -884,7 +884,10 @@ class GatewayInboundMixin(GatewayInboundHooksMixin, GatewayInboundTranscriptionM
 
         req = event.get_command_args().strip()
         _ack = t("gateway.learn.ack_described") if req else t("gateway.learn.ack_conversation")
-        return await self._hm_rewrite_turn_to_prompt(event, source, "learn", _ack, lambda: build_learn_prompt(req))
+        result = await self._hm_rewrite_turn_to_prompt(event, source, "learn", _ack, lambda: build_learn_prompt(req))
+        if result == (False, None):
+            event.skill_write_intent = "user_learn"
+        return result
 
     async def _hm_cmd_plan(self, event, source, _quick_key):
         from agent.plan_prompt import build_plan_prompt

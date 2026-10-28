@@ -857,14 +857,44 @@ def is_skill_description_truncated_for_prompt(frontmatter: dict[str, Any]) -> bo
 
 
 def iter_skill_index_files(skills_dir: Path, filename: str):
-    """Walk skills_dir yielding sorted paths matching *filename*; prunes
-    EXCLUDED_SKILL_DIRS and support dirs of skill roots."""
+    """Yield sorted paths matching *filename* under skills_dir.
+
+    Directory symlinks are followed, but a directory identity is visited only once
+    so a symlink cycle cannot loop forever.
+    """
+    root = Path(skills_dir)
     matches: list[str] = []
-    for root, dirs, files in os.walk(str(skills_dir), followlinks=True):
-        has_skill_md = "SKILL.md" in files
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_SKILL_DIRS and not (has_skill_md and d in SKILL_SUPPORT_DIRS)]
-        if filename in files:
-            matches.append(os.path.join(root, filename))
+    seen: set[tuple[int, int] | str] = set()
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            stat = os.stat(current, follow_symlinks=True)
+            identity: tuple[int, int] | str = (stat.st_dev, stat.st_ino)
+            if identity[1] == 0:
+                identity = os.path.normcase(os.path.realpath(current))
+        except OSError:
+            identity = os.path.normcase(os.path.realpath(current))
+        if identity in seen:
+            continue
+        seen.add(identity)
+
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue
+        names = {entry.name for entry in entries}
+        if filename in names:
+            matches.append(str(Path(current) / filename))
+        has_skill_md = "SKILL.md" in names
+        children = [
+            Path(entry.path)
+            for entry in entries
+            if entry.is_dir(follow_symlinks=True)
+            and entry.name not in EXCLUDED_SKILL_DIRS
+            and not (has_skill_md and entry.name in SKILL_SUPPORT_DIRS)
+        ]
+        stack.extend(sorted(children, reverse=True))
     yield from map(Path, sorted(matches))
 
 

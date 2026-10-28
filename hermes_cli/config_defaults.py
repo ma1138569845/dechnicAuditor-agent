@@ -1479,6 +1479,22 @@ DEFAULT_CONFIG = {
         # review fork. true = ALWAYS stage (SKILL.md too large for an inline prompt): /skills
         # pending, /skills diff <id>, /skills approve|reject <id>.
         "write_approval": False,
+        # Background learning is proposal-first by default. `off` disables background skill
+        # proposals; `auto` restores direct background writes after the same lint/security checks.
+        # Invalid or truthy values fall back to `propose`; see tools/skill_learning_config.py.
+        "auto_learning": {
+            "mode": "propose",
+            "proposal_ttl_days": 14,
+            "max_pending": 25,
+            "max_pending_per_target": 5,
+            "max_pending_per_anchor": 1,
+            "history_retention_days": 30,
+            "reminders": {
+                "mode": "badge_only",
+                "max_attempts_per_proposal": 3,
+                "cooldown_hours": 24,
+            },
+        },
         # Audit ledger: every skill mutation appends to ~/.hermes/skills/.curator_ledger.jsonl with
         # before/after hashes (blobs under ~/.hermes/.curator_backups/blobs/); powers `hermes
         # curator ledger` / `rollback <entry-id>`. Never a gate — failures can't block.

@@ -1798,6 +1798,8 @@ def run_conversation(
     turn_author: Optional[dict[str, Any]] = None,
     title_user_message: Optional[str] = None,
     prelude: Optional[Prelude] = None,
+    skill_write_intent: Any = None,
+    skill_write_context: Any = None,
 ) -> dict[str, Any]:
     """Run one turn (see ``_run_conversation_turn``) and export the current-turn boundary.
 
@@ -1809,37 +1811,53 @@ def run_conversation(
     from agent.turn_context import export_current_turn_boundary
     from agent.voice_turn_route import end_voice_turn_route
     from tools.vision_tools_history_budget import native_turn_images
+    from tools.skill_intent import bind_skill_write_context, current_skill_write_context, reset_skill_write_context
+    from tools.skill_intent_resolve import resolve_skill_write_context
+
+    if skill_write_context is not None or skill_write_intent is not None:
+        active_skill_context = resolve_skill_write_context(
+            skill_write_intent,
+            skill_write_context,
+            task_id=str(task_id or ""),
+            session_id=str(getattr(agent, "session_id", None) or ""),
+        )
+    else:
+        active_skill_context = current_skill_write_context()
+    skill_token = bind_skill_write_context(active_skill_context)
 
     # Steer / redirect / interrupt set this mid-turn; the result reports whether the turn ran untouched.
     agent._turn_user_intervened = False
     # Images attached natively to this user turn stay visible to vision_analyze for the turn, so
     # it does not embed the same pixels a second time into the same request (#76411).
-    with native_turn_images(user_message):
-        try:
-            result = _run_conversation_turn(
-                agent,
-                user_message,
-                system_message=system_message,
-                conversation_history=conversation_history,
-                task_id=task_id,
-                stream_callback=stream_callback,
-                persist_user_message=persist_user_message,
-                persist_user_timestamp=persist_user_timestamp,
-                persist_user_display_kind=persist_user_display_kind,
-                persist_user_display_metadata=persist_user_display_metadata,
-                persist_user_platform_id=persist_user_platform_id,
-                moa_config=moa_config,
-                turn_author=turn_author,
-                title_user_message=title_user_message,
-                prelude=prelude,
-            )
-        finally:
-            end_voice_turn_route(agent)
-    result = export_current_turn_boundary(agent, result, user_message)
-    if isinstance(result, dict):
-        result["user_intervened"] = bool(getattr(agent, "_turn_user_intervened", False))
-    _close_durable_failed_turn(agent, result)
-    return result
+    try:
+        with native_turn_images(user_message):
+            try:
+                result = _run_conversation_turn(
+                    agent,
+                    user_message,
+                    system_message=system_message,
+                    conversation_history=conversation_history,
+                    task_id=task_id,
+                    stream_callback=stream_callback,
+                    persist_user_message=persist_user_message,
+                    persist_user_timestamp=persist_user_timestamp,
+                    persist_user_display_kind=persist_user_display_kind,
+                    persist_user_display_metadata=persist_user_display_metadata,
+                    persist_user_platform_id=persist_user_platform_id,
+                    moa_config=moa_config,
+                    turn_author=turn_author,
+                    title_user_message=title_user_message,
+                    prelude=prelude,
+                )
+            finally:
+                end_voice_turn_route(agent)
+        result = export_current_turn_boundary(agent, result, user_message)
+        if isinstance(result, dict):
+            result["user_intervened"] = bool(getattr(agent, "_turn_user_intervened", False))
+        _close_durable_failed_turn(agent, result)
+        return result
+    finally:
+        reset_skill_write_context(skill_token)
 
 
 _FAILED_TURN_ERROR_MAX_CHARS = 2000

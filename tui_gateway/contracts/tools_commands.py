@@ -293,6 +293,7 @@ class CommandDispatchResult(Result):
     display: str | None = None
     name: str | None = None
     status: str | None = None
+    skill_intent_ticket: str | None = None
 
 
 method("command.dispatch", params=CommandDispatchParams, result=CommandDispatchResult,
@@ -318,6 +319,7 @@ class SlashExecResult(Result):
     display: str | None = None
     name: str | None = None
     status: str | None = None
+    skill_intent_ticket: str | None = None
 
 
 method("slash.exec", params=SlashExecParams, result=SlashExecResult,
