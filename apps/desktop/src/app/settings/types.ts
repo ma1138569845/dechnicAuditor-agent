@@ -10,6 +10,7 @@ export type SettingsView =
   | 'connections'
   | 'gateway'
   | 'keybinds'
+  | 'energy-audit'
   | 'keys'
   | 'notifications'
   | 'onlyoffice'

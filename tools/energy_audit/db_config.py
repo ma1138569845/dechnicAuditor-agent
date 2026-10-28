@@ -16,7 +16,9 @@ prod - serial number - 5
 
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
+
+from agent.secret_scope import get_secret
 
 # 配置键 → (EA_PG_* 环境变量, 旧版 DB_* 环境变量, 内置默认值)
 _KEYS = {
@@ -35,13 +37,26 @@ def _non_blank(value) -> bool:
     return value is not None and str(value).strip() != ''
 
 
-def _from_env(key: str) -> Optional[str]:
+def _from_env(key: str) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(value, env_var)`` for the first non-blank EA/legacy variable.
+
+    Credentials go through the profile-scoped resolver so a backend serving
+    multiple profiles never falls back to the launch profile's ``.env``.
+    """
     ea_var, db_var, _ = _KEYS[key]
     for var in (ea_var, db_var):
-        val = os.environ.get(var)
+        val = get_secret(var)
         if _non_blank(val):
-            return str(val).strip()
-    return None
+            return str(val).strip(), var
+    # Dashboard requests install a profile secret scope before resolution. Passwords stay
+    # inside that scope, but a non-secret process override is an explicit deployment value
+    # for the profile currently being served and must remain visible after reset.
+    if key != "password":
+        for var in (ea_var, db_var):
+            val = os.environ.get(var)
+            if _non_blank(val):
+                return str(val).strip(), var
+    return None, None
 
 
 def _hermes_config_path() -> Optional[Path]:
@@ -66,8 +81,8 @@ def _from_hermes_config(section: str, key: str) -> Optional[str]:
         path = _hermes_config_path()
         if not path or not path.exists():
             return None
-        import yaml
-        with open(path, encoding='utf-8') as f:
+        import hermes_yaml as yaml
+        with open(path, encoding='utf-8-sig') as f:
             cfg = yaml.safe_load(f) or {}
         val = ((cfg.get('energy_audit') or {}).get(section) or {}).get(key)
         if _non_blank(val):
@@ -82,8 +97,8 @@ def _from_local_config(section: str, key: str) -> Optional[str]:
     try:
         if not _LOCAL_CONFIG_YAML.exists():
             return None
-        import yaml
-        with open(_LOCAL_CONFIG_YAML, encoding='utf-8') as f:
+        import hermes_yaml as yaml
+        with open(_LOCAL_CONFIG_YAML, encoding='utf-8-sig') as f:
             cfg = yaml.safe_load(f) or {}
         val = (cfg.get(section) or {}).get(key)
         if _non_blank(val):
@@ -93,7 +108,31 @@ def _from_local_config(section: str, key: str) -> Optional[str]:
     return None
 
 
-def get_pg_config(overrides: Optional[Dict] = None) -> Dict:
+def _resolve_pg_field(key: str, overrides: dict) -> tuple[Optional[str], Optional[str]]:
+    """Resolve one PG field and report the source that actually supplied it."""
+    val = overrides.get(key)
+    if _non_blank(val):
+        return str(val).strip(), "override"
+
+    val, _ = _from_env(key)
+    if _non_blank(val):
+        return str(val).strip(), "environment"
+
+    val = _from_hermes_config("database", key)
+    if _non_blank(val):
+        return str(val).strip(), "profile_config"
+
+    val = _from_local_config("database", key)
+    if _non_blank(val):
+        return str(val).strip(), "package_config"
+
+    val = _KEYS[key][2]
+    if _non_blank(val):
+        return str(val).strip(), "default"
+    return None, None
+
+
+def get_pg_config(overrides: Optional[dict] = None) -> dict:
     """解析 PG 连接配置，返回 psycopg2.connect 可直接使用的字典。
 
     Args:
@@ -105,18 +144,10 @@ def get_pg_config(overrides: Optional[Dict] = None) -> Dict:
     """
     overrides = overrides or {}
     resolved = {}
-    for key, (_, _, default) in _KEYS.items():
-        val = overrides.get(key)
-        if not _non_blank(val):
-            val = _from_env(key)
-        if not _non_blank(val):
-            val = _from_hermes_config('database', key)
-        if not _non_blank(val):
-            val = _from_local_config('database', key)
-        if not _non_blank(val):
-            val = default
-        if _non_blank(val):
-            resolved[key] = str(val).strip()
+    for key in _KEYS:
+        val, _ = _resolve_pg_field(key, overrides)
+        if val is not None:
+            resolved[key] = val
 
     if 'password' not in resolved:
         raise RuntimeError(
@@ -128,7 +159,44 @@ def get_pg_config(overrides: Optional[Dict] = None) -> Dict:
     return resolved
 
 
-def _file_value(overrides: Dict, env_var: str, key: str) -> Optional[str]:
+def describe_pg_config(overrides: Optional[dict] = None) -> dict:
+    """Describe effective PG settings without ever returning the password.
+
+    ``values`` contains only non-secret fields; ``sources`` records which rung
+    of the precedence ladder supplied each field (including ``password``).
+    ``env_vars`` and ``env_overrides`` let the settings UI explain that an
+    environment value will still win after saved non-secret fields are reset.
+    """
+    overrides = overrides or {}
+    values: dict[str, str] = {}
+    sources: dict[str, str] = {}
+    env_vars: dict[str, str] = {}
+    env_overrides = []
+
+    for key in _KEYS:
+        val, source = _resolve_pg_field(key, overrides)
+        if source == "environment":
+            _, env_var = _from_env(key)
+            if env_var:
+                env_vars[key] = env_var
+                # Password is credential provenance, not a non-secret default override.
+                if key != "password":
+                    env_overrides.append(key)
+        if source:
+            sources[key] = source
+        if val is not None and key != "password":
+            values[key] = val
+
+    return {
+        "values": values,
+        "sources": sources,
+        "password_set": "password" in sources,
+        "env_vars": env_vars,
+        "env_overrides": env_overrides,
+    }
+
+
+def _file_value(overrides: dict, env_var: str, key: str) -> Optional[str]:
     """按 overrides → 环境变量 → Hermes config → 本地 config 顺序取 file 段配置值。"""
     val = overrides.get(key)
     if not _non_blank(val):
@@ -142,11 +210,12 @@ def _file_value(overrides: Dict, env_var: str, key: str) -> Optional[str]:
 
 def _db_host() -> Optional[str]:
     """解析数据库主机（不要求 password），供文件服务地址回退使用。"""
-    return (_from_env('host') or _from_hermes_config('database', 'host')
+    env_host, _ = _from_env('host')
+    return (env_host or _from_hermes_config('database', 'host')
             or _from_local_config('database', 'host') or _KEYS['host'][2])
 
 
-def get_file_base_url(overrides: Optional[Dict] = None) -> str:
+def get_file_base_url(overrides: Optional[dict] = None) -> str:
     """解析文件服务基础地址（拼接 ts_attachment.attach_url 相对路径 → 完整 URL）。
 
     优先级（高 → 低）：

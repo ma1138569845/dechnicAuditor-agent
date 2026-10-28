@@ -365,6 +365,7 @@ catalog: CatalogTranslations
     confirm: string
     connect: string
     connecting: string
+    connectingShort: string
     continue: string
     bots: string
     copied: string
@@ -611,6 +612,7 @@ catalog: CatalogTranslations
       providerLocalModels: string
       gateway: string
       onlyoffice: string
+      energyAudit: string
       connections: string
       apiKeys: string
       keybinds: string
@@ -1328,6 +1330,43 @@ catalog: CatalogTranslations
       saveFailed: string
       applyFailed: string
       clearFailed: string
+    }
+    energyAudit: {
+      loading: string
+      failedLoad: string
+      title: string
+      intro: string
+      passwordSet: string
+      passwordMissing: string
+      envOverride: (detail: string) => string
+      envOverrideSeparator: string
+      hostTitle: string
+      hostDesc: string
+      portTitle: string
+      portDesc: string
+      databaseTitle: string
+      databaseDesc: string
+      userTitle: string
+      userDesc: string
+      sslTitle: string
+      sslDesc: string
+      passwordTitle: string
+      passwordDesc: string
+      passwordPlaceholder: string
+      passwordSetPlaceholder: string
+      sourceLabel: (source: string) => string
+      save: string
+      test: string
+      reset: string
+      resetConfirm: string
+      savedTitle: string
+      savedMessage: string
+      resetTitle: string
+      resetMessage: string
+      saveFailed: string
+      testFailed: string
+      resetFailed: string
+      testOk: string
     }
     keys: {
       loading: string
