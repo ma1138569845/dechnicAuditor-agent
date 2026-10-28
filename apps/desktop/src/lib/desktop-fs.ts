@@ -1,4 +1,4 @@
-import { hermesApi } from '@/api/client'
+import { hermesApi, sessionFileOwnerScope } from '@/api/client'
 import type {
   HermesConnection,
   HermesReadDirResult,
@@ -6,6 +6,7 @@ import type {
   HermesReadFileTextResult,
   HermesSelectPathsOptions
 } from '@/global'
+import { hostHas } from '@/lib/host-capabilities'
 import { $connection } from '@/store/session'
 
 export interface DesktopFsRemotePicker {
@@ -43,7 +44,7 @@ export function desktopFsCacheKey(connection: HermesConnection | null = $connect
 }
 
 export function isDesktopFsRemoteMode() {
-  return $connection.get()?.mode === 'remote'
+  return $connection.get()?.mode === 'remote' || !hostHas('nativeHostFiles')
 }
 
 // Active profile for FS/git REST calls. Without it the Electron api bridge
@@ -52,8 +53,31 @@ export function desktopFsProfile(): string | undefined {
   return $connection.get()?.profile || undefined
 }
 
-function fsPath(endpoint: string, filePath: string) {
-  return `/api/fs/${endpoint}?path=${encodeURIComponent(filePath)}`
+/** The chat a gateway file belongs to. A Docker agent's `/workspace` is that session's own
+ *  sandbox, so a gateway read names it; a local (native) read has no use for it. */
+export interface DesktopFsSessionScope {
+  sessionId?: null | string
+}
+
+interface FsRoute {
+  owner: { connectionId?: string; profile?: string }
+  sessionId?: string
+}
+
+/** Where a gateway file request goes. A session id travels only with the profile (and
+ *  connection) that owns it: a Bot or pooled chat's owner can differ from the window's. With
+ *  no known owner the request names no session and goes to the window's profile. */
+function fsRoute(scope?: DesktopFsSessionScope): FsRoute {
+  const sessionId = scope?.sessionId || undefined
+  const owner = sessionId ? sessionFileOwnerScope(sessionId) : null
+
+  return owner ? { owner, sessionId } : { owner: { profile: desktopFsProfile() } }
+}
+
+function fsPath(endpoint: string, filePath: string, sessionId?: string) {
+  const session = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''
+
+  return `/api/fs/${endpoint}?path=${encodeURIComponent(filePath)}${session}`
 }
 
 function bridge() {
@@ -66,10 +90,8 @@ function bridge() {
   return desktop
 }
 
-function remoteFsApi<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-  return hermesApi<T>(
-    body ? { body, method: 'POST', path, profile: desktopFsProfile() } : { path, profile: desktopFsProfile() }
-  )
+function remoteFsApi<T>(path: string, body?: Record<string, unknown>, owner = fsRoute().owner): Promise<T> {
+  return hermesApi<T>(body ? { ...owner, body, method: 'POST', path } : { ...owner, path })
 }
 
 /** True when a bridge read returned the main process's structured "file is not
@@ -108,7 +130,10 @@ export async function readDesktopDir(path: string): Promise<HermesReadDirResult>
   return remoteFsApi<HermesReadDirResult>(fsPath('list', path))
 }
 
-export async function readDesktopFileText(path: string): Promise<HermesReadFileTextResult> {
+export async function readDesktopFileText(
+  path: string,
+  scope?: DesktopFsSessionScope
+): Promise<HermesReadFileTextResult> {
   if (!isDesktopFsRemoteMode()) {
     const result = await bridge().readFileText(path)
 
@@ -119,14 +144,21 @@ export async function readDesktopFileText(path: string): Promise<HermesReadFileT
     return result
   }
 
-  return remoteFsApi<HermesReadFileTextResult>(fsPath('read-text', path))
+  const route = fsRoute(scope)
+
+  return remoteFsApi<HermesReadFileTextResult>(fsPath('read-text', path, route.sessionId), undefined, route.owner)
 }
 
 // Save UTF-8 text back to a file. Local writes go through the hardened Electron
 // IPC; remote writes hit the dashboard's POST /api/fs/write-text (same path
 // hardening, parent-must-exist, size cap) so the editor behaves identically in
 // both modes. Stale-on-disk detection is the caller's job (re-read before save).
-export async function writeDesktopFileText(path: string, content: string): Promise<{ path: string }> {
+// A gateway save names the session the file was read for, so it lands where that read did.
+export async function writeDesktopFileText(
+  path: string,
+  content: string,
+  scope?: DesktopFsSessionScope
+): Promise<{ path: string }> {
   const desktop = bridge()
 
   if (!isDesktopFsRemoteMode()) {
@@ -137,7 +169,13 @@ export async function writeDesktopFileText(path: string, content: string): Promi
     return desktop.writeTextFile(path, content)
   }
 
-  const result = await remoteFsApi<{ ok?: boolean; path?: string }>('/api/fs/write-text', { content, path })
+  const route = fsRoute(scope)
+
+  const result = await remoteFsApi<{ ok?: boolean; path?: string }>(
+    '/api/fs/write-text',
+    { content, path, ...(route.sessionId ? { session_id: route.sessionId } : {}) },
+    route.owner
+  )
 
   return { path: result.path || path }
 }
@@ -150,7 +188,7 @@ export async function createRemoteDir(path: string): Promise<string> {
   return result.path || path
 }
 
-export async function readDesktopFileDataUrl(path: string): Promise<string> {
+export async function readDesktopFileDataUrl(path: string, scope?: DesktopFsSessionScope): Promise<string> {
   if (!isDesktopFsRemoteMode()) {
     const result = await bridge().readFileDataUrl(path)
 
@@ -161,7 +199,13 @@ export async function readDesktopFileDataUrl(path: string): Promise<string> {
     return result
   }
 
-  const result = await remoteFsApi<string | { dataUrl?: string }>(fsPath('read-data-url', path))
+  const route = fsRoute(scope)
+
+  const result = await remoteFsApi<string | { dataUrl?: string }>(
+    fsPath('read-data-url', path, route.sessionId),
+    undefined,
+    route.owner
+  )
 
   return typeof result === 'string' ? result : result.dataUrl || ''
 }

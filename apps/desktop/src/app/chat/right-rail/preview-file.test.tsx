@@ -1,12 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { setAlwaysExternalLinks } from '@/store/external-links'
-import { $previewTabs } from '@/store/preview'
-
 import { startOfficePreview } from '@/hermes'
 import { I18nProvider } from '@/i18n'
 import { readDesktopFileDataUrl, readDesktopFileText } from '@/lib/desktop-fs'
+import { setAlwaysExternalLinks } from '@/store/external-links'
+import { $previewTabs } from '@/store/preview'
 
 import { LocalFilePreview, MarkdownPreview } from './preview-file'
 
@@ -20,6 +19,7 @@ vi.mock('@/lib/desktop-fs', () => ({
   desktopFileDiff: vi.fn(async () => ''),
   desktopFsCacheKey: vi.fn(() => 'test-cache-key'),
   desktopGitRoot: vi.fn(async () => null),
+  isDesktopFsRemoteMode: vi.fn(() => false),
   readDesktopFileDataUrl: vi.fn(async () => ''),
   readDesktopFileText: vi.fn(async () => ({
     binary: false,
@@ -47,7 +47,7 @@ vi.mock('mammoth', () => ({
 // existing HTML-selection tests. Tests that need a live editor override this
 // with a resolved URL.
 vi.mock('@/hermes', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/hermes')>()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     startOfficePreview: vi.fn(() => {

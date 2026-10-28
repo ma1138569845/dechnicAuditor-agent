@@ -95,12 +95,17 @@ export function OnlyOfficeSettings() {
   })
 
   const save = async (apply: boolean) => {
+    const onlyoffice = window.hermesDesktop?.settings?.onlyoffice
+    if (!onlyoffice) {
+      return
+    }
+
     setSaving(true)
 
     try {
       const next = apply
-        ? await window.hermesDesktop.settings.onlyoffice.apply(payload())
-        : await window.hermesDesktop.settings.onlyoffice.set(payload())
+        ? await onlyoffice.apply(payload())
+        : await onlyoffice.set(payload())
 
       acceptState(next)
       notify({
@@ -116,10 +121,15 @@ export function OnlyOfficeSettings() {
   }
 
   const clear = async () => {
+    const onlyoffice = window.hermesDesktop?.settings?.onlyoffice
+    if (!onlyoffice) {
+      return
+    }
+
     setClearing(true)
 
     try {
-      const next = await window.hermesDesktop.settings.onlyoffice.clear()
+      const next = await onlyoffice.clear()
       acceptState(next)
       notify({ kind: 'success', title: o.clearedTitle, message: o.clearedMessage })
     } catch (err) {

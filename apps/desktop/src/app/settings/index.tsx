@@ -18,8 +18,8 @@ import {
   Globe,
   Info,
   Keyboard,
-  Network,
   KeyRound,
+  Network,
   RefreshCw,
   Search,
   Settings2,
@@ -71,11 +71,13 @@ import { SettingsSubpageHeader } from './subpage-navigation'
 import { resolveSettingsSubpage, settingsSubpageIcon, settingsSubpages } from './subpages'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 import { vaultOwnerKey, VaultSettings } from './vault-settings'
+import { useWebAccessAvailable, WebAccessSettings } from './web-access-settings'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   ...SECTIONS.map(s => `config:${s.id}` as SettingsViewId),
   'providers',
   'gateway',
+  'web-access',
   // Legacy alias: the Connections page merged into Gateways. Kept in the enum
   // so saved `?tab=connections` deep links still resolve (redirected below).
   'connections',
@@ -245,6 +247,15 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }
 
+  const webAccessAvailable = useWebAccessAvailable()
+
+  // Where the nav hides Web Access, its deep link lands on Gateways, like the Connections alias.
+  useEffect(() => {
+    if (activeView === 'web-access' && !webAccessAvailable) {
+      setActiveView('gateway')
+    }
+  }, [activeView, setActiveView, webAccessAvailable])
+
   const navGroups: OverlayNavGroup[] = useMemo(
     () =>
       (
@@ -379,6 +390,18 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             label: t.settings.nav.connections,
             onSelect: () => setActiveView('connections')
           },
+          // Serving the Webapp from THIS machine: only the native app on its local connection.
+          ...(webAccessAvailable
+            ? [
+                {
+                  active: activeView === 'web-access',
+                  icon: Network,
+                  id: 'web-access',
+                  label: t.settings.gateway.webAccess.title,
+                  onSelect: () => setActiveView('web-access')
+                }
+              ]
+            : []),
           {
             active: activeView === 'keybinds',
             icon: Keyboard,
@@ -460,6 +483,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       providerView,
       subpage,
       t,
+      webAccessAvailable,
       setActiveView,
       openProviderView,
       openKeysView,
@@ -581,6 +605,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     <KeysSettings view={keysView} />
   ) : activeView === 'billing' ? (
     <BillingSettings />
+  ) : activeView === 'web-access' ? (
+    <WebAccessSettings />
   ) : activeView === 'plugins' ? (
     <PluginSettingsPane
       entries={plugins.entries}

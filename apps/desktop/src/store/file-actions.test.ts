@@ -3,17 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { $notifications, clearNotifications } from '@/store/notifications'
 
 vi.mock('@/lib/media', () => ({
-  downloadGatewayMediaFile: vi.fn()
+  downloadGatewayFileWithFeedback: vi.fn()
 }))
 
 vi.mock('@/lib/desktop-fs', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/lib/desktop-fs')>()
+  const actual = (await importOriginal()) as Record<string, unknown>
 
   return { ...actual, revealDesktopPath: vi.fn() }
 })
 
 const media = await import('@/lib/media')
-const downloadGatewayMediaFile = vi.mocked(media.downloadGatewayMediaFile)
+const downloadGatewayFileWithFeedback = vi.mocked(media.downloadGatewayFileWithFeedback)
 const desktopFs = await import('@/lib/desktop-fs')
 const revealDesktopPath = vi.mocked(desktopFs.revealDesktopPath)
 
@@ -73,42 +73,15 @@ describe('shouldOfferLocalReveal', () => {
 })
 
 describe('downloadRemoteFile', () => {
-  const saveGatewayFile = vi.fn()
-
   beforeEach(() => {
-    clearNotifications()
-    saveGatewayFile.mockReset()
-    vi.stubGlobal('hermesDesktop', { saveGatewayFile })
+    downloadGatewayFileWithFeedback.mockReset()
   })
 
-  afterEach(() => {
-    clearNotifications()
-    vi.unstubAllGlobals()
-  })
-
-  it('saves a remote gateway file through the native download bridge', async () => {
-    saveGatewayFile.mockResolvedValue({ path: '/Users/me/Downloads/notes.md', saved: true })
+  it('uses the shared gateway download flow', async () => {
+    downloadGatewayFileWithFeedback.mockResolvedValue(undefined)
 
     await downloadRemoteFile('/home/linux/project/notes.md')
 
-    expect(saveGatewayFile).toHaveBeenCalledWith(expect.objectContaining({ path: '/home/linux/project/notes.md' }))
-    expect($notifications.get()[0]?.message).toBe('Saved')
-  })
-
-  it('stays quiet when the save dialog is canceled', async () => {
-    saveGatewayFile.mockResolvedValue({ canceled: true, saved: false })
-
-    await downloadRemoteFile('/home/linux/project/notes.md')
-
-    expect($notifications.get()).toEqual([])
-  })
-
-  it('toasts when the gateway download fails', async () => {
-    vi.stubGlobal('hermesDesktop', {})
-
-    await downloadRemoteFile('/home/linux/project/notes.md')
-
-    expect($notifications.get()[0]?.kind).toBe('error')
-    expect($notifications.get()[0]?.title).toBe('Download failed')
+    expect(downloadGatewayFileWithFeedback).toHaveBeenCalledWith('/home/linux/project/notes.md')
   })
 })

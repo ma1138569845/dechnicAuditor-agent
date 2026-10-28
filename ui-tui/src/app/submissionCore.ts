@@ -127,7 +127,8 @@ function submitParams(
   submitText: string,
   attachments: SubmitPromptOpts['attachments'],
   voice: boolean,
-  skillIntentTicket?: string
+  skillIntentTicket: string | undefined,
+  clarifyBatch: boolean
 ) {
   return {
     session_id: sid,
@@ -139,7 +140,9 @@ function submitParams(
       ? { queued: true, skill_intent_ticket: skillIntentTicket }
       : {}),
     // A busy correction (steer/redirect) is not a turn: it never claims the voice route.
-    ...(!item?.controlMethod && voice && { voice_turn: true })
+    ...(!item?.controlMethod && voice && { voice_turn: true }),
+    // Ink renders a whole question set as one form; undeclared, the owner asks one card per question.
+    ...(!item?.controlMethod && clarifyBatch && { clarify_batch: true })
   }
 }
 
@@ -410,7 +413,8 @@ export function submitPrompt(
           submitText,
           opts.attachments,
           voiceTranscript === submitText.trim(),
-          item?.skillIntentTicket ?? opts.skillIntentTicket
+          item?.skillIntentTicket ?? opts.skillIntentTicket,
+          deps.gw.clarifyBatch === true
         )
       )
       .then(r => {
