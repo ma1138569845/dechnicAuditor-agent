@@ -1351,6 +1351,10 @@ catalog: CatalogTranslations
       userDesc: string
       sslTitle: string
       sslDesc: string
+      fileTitle: string
+      fileDesc: string
+      filePlaceholder: string
+      fileUnsupported: string
       passwordTitle: string
       passwordDesc: string
       passwordPlaceholder: string

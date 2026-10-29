@@ -20,6 +20,9 @@ def profiles(tmp_path, monkeypatch):
         "    host: default-host\n"
         "    port: 5432\n"
         "    password: default-config-secret\n"
+        "  file:\n"
+        "    base_url: https://default-files.example.test/images/\n"
+        "    host: default-file-host\n"
         "  imitate:\n"
         "    reference_dir: keep-default\n",
         encoding="utf-8",
@@ -37,6 +40,9 @@ def profiles(tmp_path, monkeypatch):
         "    user: audit-user\n"
         "    sslmode: require\n"
         "    password: profile-config-secret\n"
+        "  file:\n"
+        "    base_url: https://audit-files.example.test/images/\n"
+        "    host: audit-file-host\n"
         "  imitate:\n"
         "    reference_dir: keep-profile\n",
         encoding="utf-8",
@@ -49,6 +55,16 @@ def profiles(tmp_path, monkeypatch):
     monkeypatch.delenv("EA_PG_USER", raising=False)
     monkeypatch.delenv("EA_PG_SSLMODE", raising=False)
     monkeypatch.delenv("EA_PG_PASSWORD", raising=False)
+    for variable in ("EA_FILE_BASE_URL", "EA_FILE_SCHEME", "EA_FILE_HOST", "EA_FILE_PORT"):
+        monkeypatch.delenv(variable, raising=False)
+    package_config = tmp_path / "package-config.yaml"
+    package_config.write_text(
+        "file:\n  base_url: https://package-files.example.test/images/\n",
+        encoding="utf-8",
+    )
+    from tools.energy_audit import db_config
+
+    monkeypatch.setattr(db_config, "_LOCAL_CONFIG_YAML", package_config)
     return root, profile
 
 
@@ -80,6 +96,35 @@ def test_settings_are_profile_scoped_and_never_return_password(client, profiles)
     assert "default-env-secret" not in str(default)
 
 
+def test_file_settings_are_profile_scoped_and_report_source(client, profiles):
+    _root, _profile = profiles
+
+    audit = client.get("/api/energy-audit/settings", params={"profile": "audit"})
+    default = client.get("/api/energy-audit/settings")
+
+    assert audit.status_code == 200, audit.text
+    assert audit.json()["file"] == {
+        "base_url": "https://audit-files.example.test/images",
+        "source": "profile_config",
+        "environment_override": False,
+    }
+    assert default.json()["file"]["base_url"] == "https://default-files.example.test/images"
+
+
+def test_file_settings_report_environment_override(client, profiles, monkeypatch):
+    _root, _profile = profiles
+    monkeypatch.setenv("EA_FILE_BASE_URL", "https://env-files.example.test/images/")
+
+    resp = client.get("/api/energy-audit/settings", params={"profile": "audit"})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["file"] == {
+        "base_url": "https://env-files.example.test/images",
+        "source": "environment",
+        "environment_override": True,
+    }
+
+
 def test_reset_removes_only_non_secret_profile_fields_and_keeps_passwords(client, profiles):
     _root, profile = profiles
     resp = client.post("/api/energy-audit/reset-settings", params={"profile": "audit"})
@@ -96,6 +141,8 @@ def test_reset_removes_only_non_secret_profile_fields_and_keeps_passwords(client
     assert "sslmode:" not in raw
     assert "password: profile-config-secret" in raw
     assert "reference_dir: keep-profile" in raw
+    assert "base_url: https://audit-files.example.test/images/" not in raw
+    assert "host: audit-file-host" in raw
     assert "EA_PG_PASSWORD=profile-env-secret" in (profile / ".env").read_text(encoding="utf-8")
     assert body["env_overrides"] == []
 
@@ -122,6 +169,7 @@ def test_save_writes_non_secrets_to_config_and_password_only_to_env(client, prof
             "database": "saved-db",
             "user": "saved-user",
             "sslmode": "require",
+            "file_base_url": "https://saved-files.example.test/audit/images/",
             "password": "typed-secret",
         },
     )
@@ -131,10 +179,62 @@ def test_save_writes_non_secrets_to_config_and_password_only_to_env(client, prof
     raw = (profile / "config.yaml").read_text(encoding="utf-8")
     assert "host: saved-host" in raw
     assert "password:" not in raw
+    assert "base_url: https://saved-files.example.test/audit/images/" in raw
+    assert resp.json()["file"]["base_url"] == "https://saved-files.example.test/audit/images"
     assert "reference_dir: keep-profile" in raw
     assert "EA_PG_PASSWORD=typed-secret" in (profile / ".env").read_text(encoding="utf-8")
     assert resp.json()["password_set"] is True
     assert resp.json()["sources"]["password"] == "environment"
+
+
+def test_saving_blank_file_url_clears_only_saved_base_url(client, profiles):
+    _root, profile = profiles
+
+    resp = client.put(
+        "/api/energy-audit/settings",
+        params={"profile": "audit"},
+        json={
+            "host": "saved-host",
+            "port": "5433",
+            "database": "saved-db",
+            "user": "saved-user",
+            "sslmode": "require",
+            "file_base_url": "",
+            "password": "",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    raw = (profile / "config.yaml").read_text(encoding="utf-8")
+    assert "base_url: https://audit-files.example.test/images/" not in raw
+    assert "host: audit-file-host" in raw
+    assert resp.json()["file"] == {
+        "base_url": "https://package-files.example.test/images",
+        "source": "package_config",
+        "environment_override": False,
+    }
+
+
+def test_invalid_file_url_does_not_mutate_profile_config(client, profiles):
+    _root, profile = profiles
+    original = (profile / "config.yaml").read_text(encoding="utf-8")
+
+    resp = client.put(
+        "/api/energy-audit/settings",
+        params={"profile": "audit"},
+        json={
+            "host": "changed-host",
+            "port": "5433",
+            "database": "changed-db",
+            "user": "changed-user",
+            "sslmode": "require",
+            "file_base_url": "ftp://files.example.test/images/",
+            "password": "",
+        },
+    )
+
+    assert resp.status_code == 400, resp.text
+    assert (profile / "config.yaml").read_text(encoding="utf-8") == original
 
 
 def test_connection_test_maps_failures_to_safe_diagnostics(client, profiles, monkeypatch):

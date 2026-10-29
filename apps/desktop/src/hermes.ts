@@ -236,6 +236,11 @@ export interface EnergyAuditSettingsResponse {
   profile: string
   values: Partial<EnergyAuditDatabaseValues>
   sources: Record<string, string>
+  file?: {
+    base_url: string
+    source: string
+    environment_override: boolean
+  }
   password_set: boolean
   env_vars: Record<string, string>
   env_overrides: string[]
@@ -243,6 +248,7 @@ export interface EnergyAuditSettingsResponse {
 
 export interface EnergyAuditSettingsUpdate extends EnergyAuditDatabaseValues {
   password?: string
+  file_base_url?: string
 }
 
 export interface EnergyAuditConnectionTest {

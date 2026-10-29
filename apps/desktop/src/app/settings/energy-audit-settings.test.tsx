@@ -39,6 +39,11 @@ const LOADED: EnergyAuditSettingsResponse = {
   profile: 'audit',
   values: { host: 'db.internal', port: '5432', database: 'audit', user: 'reader', sslmode: 'require' },
   sources: { host: 'profile_config', password: 'environment' },
+  file: {
+    base_url: 'https://files.example.test/images',
+    source: 'profile_config',
+    environment_override: false
+  },
   password_set: true,
   env_vars: { password: 'EA_PG_PASSWORD' },
   env_overrides: ['host']
@@ -81,6 +86,54 @@ describe('EnergyAuditSettings', () => {
         'audit'
       )
     })
+  })
+
+  it('saves the attachment service URL separately from the database host', async () => {
+    render(<EnergyAuditSettings />)
+    const fileUrl = await screen.findByLabelText('Attachment file service URL')
+    fireEvent.change(fileUrl, { target: { value: 'https://new-files.example.test/images/' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          host: 'db.internal',
+          file_base_url: 'https://new-files.example.test/images/',
+          password: ''
+        }),
+        'audit'
+      )
+    })
+  })
+
+  it('shows when EA_FILE_BASE_URL controls the effective attachment address', async () => {
+    getSettings.mockResolvedValueOnce({
+      ...LOADED,
+      env_overrides: [],
+      file: {
+        base_url: 'https://environment.example.test/images',
+        source: 'environment',
+        environment_override: true
+      }
+    })
+    render(<EnergyAuditSettings />)
+
+    expect(
+      await screen.findByText(
+        'A process environment value still overrides Attachment file service URL. Saving or resetting does not change those effective values.'
+      )
+    ).toBeTruthy()
+  })
+
+  it('disables attachment URL editing when an older backend omits file settings', async () => {
+    getSettings.mockResolvedValueOnce({ ...LOADED, file: undefined })
+    render(<EnergyAuditSettings />)
+
+    const fileUrl = await screen.findByLabelText('Attachment file service URL')
+    expect((fileUrl as HTMLInputElement).disabled).toBe(true)
+    expect(
+      screen.getByText('This backend does not support configuring the attachment file service URL.')
+    ).toBeTruthy()
   })
 
   it('ignores settings loaded for the previous profile', async () => {

@@ -31,6 +31,12 @@ _KEYS = {
 }
 
 _LOCAL_CONFIG_YAML = Path(__file__).resolve().parent / 'config.yaml'
+_FILE_ENV_VARS = {
+    'base_url': 'EA_FILE_BASE_URL',
+    'scheme': 'EA_FILE_SCHEME',
+    'host': 'EA_FILE_HOST',
+    'port': 'EA_FILE_PORT',
+}
 
 
 def _non_blank(value) -> bool:
@@ -208,6 +214,30 @@ def _file_value(overrides: dict, env_var: str, key: str) -> Optional[str]:
     return str(val).strip() if _non_blank(val) else None
 
 
+def _file_value_source(key: str) -> Optional[str]:
+    """Return the source for a configured file field, without exposing its value."""
+    if _non_blank(os.environ.get(_FILE_ENV_VARS[key])):
+        return 'environment'
+    if _non_blank(_from_hermes_config('file', key)):
+        return 'profile_config'
+    if _non_blank(_from_local_config('file', key)):
+        return 'package_config'
+    return None
+
+
+def _file_config_source(base_url: str) -> str:
+    """Describe the rung supplying the resolved URL or its composed file settings."""
+    source = _file_value_source('base_url')
+    if source:
+        return source
+    if not base_url:
+        return ''
+    for candidate in ('environment', 'profile_config', 'package_config'):
+        if any(_file_value_source(key) == candidate for key in ('scheme', 'host', 'port')):
+            return candidate
+    return 'default'
+
+
 def _db_host() -> Optional[str]:
     """解析数据库主机（不要求 password），供文件服务地址回退使用。"""
     env_host, _ = _from_env('host')
@@ -245,3 +275,13 @@ def get_file_base_url(overrides: Optional[dict] = None) -> str:
     if explicit_port:
         url += f":{explicit_port}"
     return url.rstrip('/')
+
+
+def describe_file_config() -> dict[str, str | bool]:
+    """Describe the effective file service URL without exposing unrelated config."""
+    base_url = get_file_base_url()
+    return {
+        'base_url': base_url,
+        'source': _file_config_source(base_url),
+        'environment_override': _non_blank(os.environ.get('EA_FILE_BASE_URL')),
+    }

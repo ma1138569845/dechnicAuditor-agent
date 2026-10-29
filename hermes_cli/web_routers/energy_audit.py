@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -49,6 +50,29 @@ class EnergyAuditSettingsUpdate(BaseModel):
     user: str
     sslmode: str = "prefer"
     password: str = ""
+    file_base_url: Optional[str] = None
+
+
+def _describe_energy_audit_settings() -> dict[str, Any]:
+    from tools.energy_audit import db_config
+
+    return {**db_config.describe_pg_config(), "file": db_config.describe_file_config()}
+
+
+def _validated_file_base_url(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return ""
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            raise ValueError
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid file base url") from exc
+    return value
 
 
 def _safe_diagnostic(exc: BaseException) -> dict[str, str]:
@@ -78,7 +102,7 @@ def _safe_diagnostic(exc: BaseException) -> dict[str, str]:
 def _test_connection() -> dict[str, Any]:
     from tools.energy_audit import db_config
 
-    settings = db_config.describe_pg_config()
+    settings = _describe_energy_audit_settings()
     if not settings["password_set"]:
         return {
             "ok": False,
@@ -145,8 +169,6 @@ def _reset_settings() -> dict[str, Any]:
         get_config_path,
         read_user_config_raw,
     )
-    from tools.energy_audit import db_config
-
     config_path = get_config_path()
     raw = read_user_config_raw(config_path)
     energy = raw.get("energy_audit")
@@ -159,21 +181,22 @@ def _reset_settings() -> dict[str, Any]:
                 database.pop(key, None)
             if not database:
                 energy.pop("database", None)
+        file_config = energy.get("file")
+        if isinstance(file_config, dict):
+            file_config.pop("base_url", None)
+            if not file_config:
+                energy.pop("file", None)
         if not energy:
             raw.pop("energy_audit", None)
-        # Deliberate deletion of only the non-secret database fields. save_config refuses
+        # Deliberate deletion of only saved non-secret settings. save_config refuses
         # omitted mapping paths, while this wrapper is the sanctioned full-state replacement.
         atomic_config_replace(config_path, raw)
 
-    settings = db_config.describe_pg_config()
+    settings = _describe_energy_audit_settings()
     return {
         "ok": True,
         "password_preserved": preserved,
-        "values": settings["values"],
-        "sources": settings["sources"],
-        "password_set": settings["password_set"],
-        "env_vars": settings["env_vars"],
-        "env_overrides": settings["env_overrides"],
+        **settings,
     }
 
 
@@ -193,9 +216,8 @@ def _save_settings(update: EnergyAuditSettingsUpdate) -> dict[str, Any]:
         save_env_value,
     )
     from hermes_cli.web_routers._common import is_redacted_credential_preview
-    from tools.energy_audit import db_config
-
     password = update.password.strip()
+    file_base_url = _validated_file_base_url(update.file_base_url)
     if is_redacted_credential_preview(password):
         raise ValueError("redacted credential")
     if password and env_write_refusal("EA_PG_PASSWORD", "set"):
@@ -225,30 +247,40 @@ def _save_settings(update: EnergyAuditSettingsUpdate) -> dict[str, Any]:
     if values["sslmode"] not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
         raise ValueError("invalid sslmode")
 
+    if file_base_url is not None:
+        file_config = energy.get("file")
+        if file_config is None:
+            file_config = {}
+        if not isinstance(file_config, dict):
+            raise ValueError("file config is not a mapping")
+        if file_base_url:
+            file_config["base_url"] = file_base_url
+            energy["file"] = file_config
+        else:
+            file_config.pop("base_url", None)
+            if file_config:
+                energy["file"] = file_config
+            else:
+                energy.pop("file", None)
+
     database.update(values)
     if password:
         save_env_value("EA_PG_PASSWORD", password)
         database.pop("password", None)
     atomic_config_replace(config_path, raw)
 
-    settings = db_config.describe_pg_config()
+    settings = _describe_energy_audit_settings()
     return {
         "ok": True,
         "profile_env": str(get_env_path()),
-        "values": settings["values"],
-        "sources": settings["sources"],
-        "password_set": settings["password_set"],
-        "env_vars": settings["env_vars"],
-        "env_overrides": settings["env_overrides"],
+        **settings,
     }
 
 
 @router.get("/api/energy-audit/settings")
 async def energy_audit_settings(profile: Optional[str] = None):
     def _read():
-        from tools.energy_audit import db_config
-
-        return db_config.describe_pg_config()
+        return _describe_energy_audit_settings()
 
     return {"profile": (profile or "current").strip() or "current", **await config_scoped_to_thread(profile, _read)}
 
@@ -285,8 +317,10 @@ async def energy_audit_save_settings(
                     detail = "不能保存已脱敏的密码预览，请重新输入完整密码。"
                 elif reason == "managed credential":
                     detail = "密码由管理员托管，不能在这里修改。其他字段也未保存。"
+                elif reason == "invalid file base url":
+                    detail = "附件文件服务地址必须是包含主机名的 HTTP 或 HTTPS URL。"
                 else:
-                    detail = "数据库连接参数无效，请检查主机、端口、数据库、用户和 SSL 模式。"
+                    detail = "数据库或附件服务配置无效，请检查地址和连接参数。"
                 raise HTTPException(status_code=400, detail=detail) from exc
 
     import asyncio

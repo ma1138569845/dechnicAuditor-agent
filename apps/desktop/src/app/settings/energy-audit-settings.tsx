@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   type EnergyAuditDatabaseValues,
   type EnergyAuditSettingsResponse,
+  type EnergyAuditSettingsUpdate,
   getEnergyAuditSettings,
   resetEnergyAuditSettings,
   saveEnergyAuditSettings,
@@ -41,6 +42,7 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
   const [busy, setBusy] = useState<'save' | 'reset' | null>(null)
   const [testing, setTesting] = useState(false)
   const [values, setValues] = useState(EMPTY_VALUES)
+  const [fileBaseUrl, setFileBaseUrl] = useState('')
   const [password, setPassword] = useState('')
   const [settings, setSettings] = useState<EnergyAuditSettingsResponse | null>(null)
   const [testMessage, setTestMessage] = useState('')
@@ -50,6 +52,7 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
   const accept = useCallback((next: EnergyAuditSettingsResponse) => {
     setSettings(next)
     setValues({ ...EMPTY_VALUES, ...next.values })
+    setFileBaseUrl(next.file?.base_url ?? '')
     setPassword('')
   }, [])
 
@@ -79,7 +82,13 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
     setBusy('save')
 
     try {
-      const next = await saveEnergyAuditSettings({ ...values, password }, profile)
+      const update: EnergyAuditSettingsUpdate = { ...values, password }
+
+      if (settings?.file) {
+        update.file_base_url = fileBaseUrl
+      }
+
+      const next = await saveEnergyAuditSettings(update, profile)
 
       if (generation !== requestGeneration.current) {
         return
@@ -150,12 +159,12 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
   }
 
   if (loading) {
-    return <SettingsSkeleton sections={[{ rows: 6 }]} />
+    return <SettingsSkeleton sections={[{ rows: 7 }]} />
   }
 
   const source = (key: string) => (settings?.sources[key] ? copy.sourceLabel(settings.sources[key]) : undefined)
 
-  const overrideDetail = (settings?.env_overrides ?? [])
+  const overrideDetails = (settings?.env_overrides ?? [])
     .map(key =>
       key === 'host'
         ? copy.hostTitle
@@ -167,7 +176,12 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
               ? copy.userTitle
               : copy.sslTitle
     )
-    .join(copy.envOverrideSeparator)
+
+  if (settings?.file?.environment_override) {
+    overrideDetails.push(copy.fileTitle)
+  }
+
+  const overrideDetail = overrideDetails.join(copy.envOverrideSeparator)
 
   return (
     <SettingsContent>
@@ -185,7 +199,7 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
         </p>
       </div>
 
-      {settings?.env_overrides.length ? (
+      {overrideDetail ? (
         <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[length:var(--conversation-caption-font-size)]">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <div>{copy.envOverride(overrideDetail)}</div>
@@ -248,6 +262,23 @@ export function EnergyAuditSettings({ profile: profileOverride }: { profile?: nu
           description={copy.passwordDesc}
           hint={source('password')}
           title={copy.passwordTitle}
+        />
+        <ListRow
+          action={
+            <Input
+              aria-label={copy.fileTitle}
+              autoComplete="url"
+              className={CONTROL_TEXT}
+              disabled={!settings?.file}
+              onChange={event => setFileBaseUrl(event.target.value)}
+              placeholder={copy.filePlaceholder}
+              type="url"
+              value={fileBaseUrl}
+            />
+          }
+          description={settings?.file ? copy.fileDesc : copy.fileUnsupported}
+          hint={settings?.file?.source ? copy.sourceLabel(settings.file.source) : undefined}
+          title={copy.fileTitle}
         />
       </div>
 
