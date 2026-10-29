@@ -134,6 +134,11 @@ PUBLIC_BUILDING_TOP_METRICS: Dict[str, Tuple[Tuple[str, str, str], ...]] = {
 
 # 山东公共建筑：只有二档，指标字段使用 eA/eB/eC 的明确语义名。
 SHANDONG_PUBLIC_BUILDING_METRICS: Dict[str, Tuple[Tuple[str, str, str, str, str], ...]] = {
+    "agency_office": (
+        ("unit_area_heating_energy", "单位建筑面积供暖能耗", "kgce_per_m2", "kgce/(m²·a)", "two"),
+        ("unit_area_non_heating_electricity", "单位建筑面积非供暖电耗", "kwh_per_m2", "kWh/(m²·a)", "two"),
+        ("unit_area_total_electricity", "单位建筑面积总等效电耗（含供暖）", "kwh_per_m2", "kWh/(m²·a)", "two"),
+    ),
     "business_office": (
         ("unit_area_heating_energy", "单位建筑面积供暖能耗", "kgce_per_m2", "kgce/(m²·a)", "two"),
         ("unit_area_non_heating_electricity", "单位建筑面积非供暖电耗", "kwh_per_m2", "kWh/(m²·a)", "two"),
@@ -148,6 +153,11 @@ SHANDONG_PUBLIC_BUILDING_METRICS: Dict[str, Tuple[Tuple[str, str, str, str, str]
         ("per_bed_non_heating_electricity", "单位床位非供暖电耗", "k10_kwh_per_bed", "10³ kWh/(床·a)", "two"),
     ),
 }
+
+SHANDONG_AGENCY_DISCLOSURE = (
+    "DB37/T 5077-2016标准已于2024-10-09废止；"
+    "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+)
 
 ZHEJIANG_PUBLIC_INSTITUTION_METRICS: Dict[str, Tuple[Tuple[str, str, str, str], ...]] = {
     "agency": (
@@ -746,17 +756,62 @@ def review_shandong_public_building_payload(
                 title="山东公共建筑子类无效",
                 actual=f"subtype={subtype or '空'}",
                 suggestion=(
-                    "确认 public_building.subtype 为 business_office / hotel / hospital；"
-                    "机关办公不得套用 DB37/T 5078"
+                    "确认 public_building.subtype 为 agency_office / business_office / "
+                    "hotel / hospital"
                 ),
             )
         ]
 
     standard = {
+        "agency_office": "DB37/T 5077-2016",
         "business_office": "DB37/T 5078-2024",
         "hotel": "DB37/T 5076-2024",
         "hospital": "DB37/T 5079-2024",
     }[subtype]
+    if subtype == "agency_office":
+        legacy = (
+            indicators
+            if any(
+                key in indicators
+                for key in (
+                    "standard_status",
+                    "legacy_override",
+                    "abolished_at",
+                    "standard_disclosure",
+                )
+            )
+            else section
+        )
+        if (
+            str(legacy.get("standard_status") or "") != "废止"
+            or legacy.get("legacy_override") is not True
+            or str(legacy.get("abolished_at") or "") != "2024-10-09"
+        ):
+            findings.append(
+                Finding(
+                    code="V2.SD_PB.LEGACY_METADATA",
+                    category="对标合理性",
+                    severity=SEV_P0,
+                    title="机关办公 5077 过渡状态元数据不完整",
+                    expected="standard_status=废止, legacy_override=true, abolished_at=2024-10-09",
+                    actual=(
+                        f"standard_status={legacy.get('standard_status') or '空'}, "
+                        f"legacy_override={legacy.get('legacy_override')!r}, "
+                        f"abolished_at={legacy.get('abolished_at') or '空'}"
+                    ),
+                )
+            )
+        if str(legacy.get("standard_disclosure") or "") != SHANDONG_AGENCY_DISCLOSURE:
+            findings.append(
+                Finding(
+                    code="V2.SD_PB.LEGACY_DISCLOSURE",
+                    category="对标合理性",
+                    severity=SEV_P0,
+                    title="机关办公 5077 缺少固定废止披露",
+                    expected=SHANDONG_AGENCY_DISCLOSURE,
+                    actual=str(legacy.get("standard_disclosure") or "空"),
+                )
+            )
     results = section.get("results")
     if not isinstance(results, list) or not results:
         return [
@@ -911,6 +966,19 @@ def review_shandong_public_building_payload(
                     actual=str(benchmark.get("标准") or ""),
                 )
             )
+    if subtype == "agency_office":
+        findings.append(
+            Finding(
+                code="V2.SD_PB.LEGACY_OVERRIDE",
+                category="对标合理性",
+                severity=SEV_P2,
+                title="机关办公采用已废止标准作过渡兼容",
+                actual="DB37/T 5077-2016",
+                suggestion=(
+                    "保留固定废止披露；后续取得现行替代标准后重新计算并更新标准包"
+                ),
+            )
+        )
     if (
         "DB33" in json.dumps(indicators, ensure_ascii=False)
         and not any(f.code == "V2.SD_PB.DB33" for f in findings)

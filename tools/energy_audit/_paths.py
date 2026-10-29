@@ -6,7 +6,7 @@
 优先级（3 层降级）：
   Layer 1: 环境变量 HERMES_AGENT_HOME
   Layer 2: 包已安装（pip install -e .）—— 借 import 系统反推
-  Layer 3: 从本文件 __file__ 向上爬，匹配 pyproject.toml + tools/energy_audit/
+  Layer 3: 从本文件 __file__ 向上爬，匹配 tools/energy_audit/
 
 若三层全部失败，抛出 RuntimeError 并打印可操作的诊断信息（$PWD、
 $HERMES_AGENT_HOME、__file__），由调用方决定是否降级到 CWD 或退出。
@@ -18,16 +18,16 @@ import os
 import sys
 from pathlib import Path
 
-_MARKER_PROJECT = "pyproject.toml"
 _MARKER_PACKAGE = "energy_audit"
 _PACKAGE_PARENT = "energy_audit"  # 用于判定路径是否落在正确子树下
 
 
 def _is_valid_root(candidate: Path) -> bool:
     """True 当且仅当 candidate 既是项目根，又包含本包目录。"""
+    package = candidate / "tools" / _MARKER_PACKAGE
     return (
-        (candidate / _MARKER_PROJECT).is_file()
-        and (candidate / "tools" / _MARKER_PACKAGE).is_dir()
+        package.is_dir()
+        and (package / "__init__.py").is_file()
     )
 
 

@@ -22,6 +22,57 @@
     "gasoline_kgce_per_kg": 1.4714,
     "diesel_kgce_per_kg": 1.4571
   },
+  "db37_t_5077_2016": {
+    "title": "机关办公建筑能耗限额标准",
+    "status": "废止",
+    "legacy_override": true,
+    "abolished_at": "2024-10-09",
+    "table": "表7.0.3",
+    "columns": ["A1", "A2", "B1", "B2", "C1", "C2"],
+    "correction": {
+      "standard_annual_use_hours": 2500,
+      "standard_area_per_person": 10,
+      "hours_formula": "alpha1 = 0.3 + 0.7 * H / 2500",
+      "density_formula": "alpha2 = 0.7 + 0.3 * 10 / A"
+    },
+    "kgce_coefficients": {
+      "raw_coal_kgce_per_kg": 0.7143,
+      "natural_gas_kgce_per_m3": 1.29971,
+      "lpg_kgce_per_kg": 1.7143,
+      "lng_kgce_per_kg": 1.757,
+      "gasoline_kgce_per_kg": 1.4714,
+      "diesel_kgce_per_kg": 1.4571,
+      "fuel_oil_kgce_per_kg": 1.4286,
+      "heat_kgce_per_mj": 0.0341,
+      "electricity_kgce_per_kwh": 0.3
+    },
+    "equivalent_heat_coefficients_kwh_per_gj": {
+      "hot_water_95_70": 64.0,
+      "hot_water_50_40": 39.0,
+      "saturated_steam_1_0_mpa": 110.0,
+      "saturated_steam_0_4_mpa": 96.0,
+      "saturated_steam_0_3_mpa": 91.0
+    },
+    "rows": {
+      "济南": [8.7, 4.8, 60, 41, 86, 56],
+      "青岛": [8.0, 4.3, 56, 37, 80, 50],
+      "淄博": [8.7, 4.8, 62, 43, 86, 56],
+      "枣庄": [8.4, 4.4, 57, 38, 82, 52],
+      "东营": [9.0, 4.9, 62, 43, 87, 57],
+      "烟台": [8.2, 4.3, 54, 35, 80, 50],
+      "潍坊": [9.1, 4.9, 62, 43, 87, 57],
+      "济宁": [8.6, 4.5, 61, 42, 85, 55],
+      "泰安": [8.5, 4.5, 60, 41, 85, 55],
+      "威海": [8.2, 4.3, 54, 35, 80, 50],
+      "日照": [8.2, 4.3, 54, 35, 80, 50],
+      "莱芜": [8.8, 4.8, 60, 41, 85, 55],
+      "临沂": [8.5, 4.5, 59, 40, 84, 54],
+      "德州": [9.0, 4.9, 62, 43, 87, 57],
+      "聊城": [8.5, 4.5, 60, 41, 86, 56],
+      "滨州": [9.2, 4.9, 62, 43, 88, 58],
+      "菏泽": [8.4, 4.4, 59, 40, 85, 55]
+    }
+  },
   "db37_t_5078_2024": {
     "title": "商务办公建筑能耗限额标准",
     "status": "现行",

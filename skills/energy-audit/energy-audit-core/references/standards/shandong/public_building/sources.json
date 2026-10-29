@@ -38,8 +38,10 @@
       "abolished_at": "2024-10-09",
       "source_url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=DFBD1BA05696A532E05397BE0A0ABAFE",
       "http_status": 200,
-      "local_pdf": null,
-      "policy": "不得作为现行能源审计定额依据"
+      "local_pdf": "sources/DB37_T_5077_2016.pdf",
+      "sha256": "df4cfbc870328574ee4865413c9bae68c978c515a4fd40be80ea5768382ec03b",
+      "table": "表7.0.3",
+      "policy": "无现行替代标准时，仅允许山东公共建筑 B=机关办公作受控过渡兼容沿用；报告必须披露废止状态和废止日期。"
     }
   ]
 }

@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 山东 | 公共机构 | `energy-audit-core/references/standards-values.md` + `coefficient-caliber.md` | **在用** | DB37/T 2672/2671/2673/3780/3781/4452；电力 0.31（等价值） |
 | 浙江 | 公共建筑 | `energy-audit-core/references/standards/zhejiang/` | **v0.1 已核验（2026-10-20）** | DB33/T 736-2021、DB33/T 760-2023、浙江省用（取）水定额（2019）；电力 0.1229（当量值）；原文逐表核对 |
-| 山东 | 公共建筑 | `energy-audit-core/references/standards/shandong/public_building/` | **已核验并接入（2026-10-23）** | DB37/T 5076/5078/5079-2024；商务办公、宾馆酒店、医院；只有约束值/先进值；DB37/T 5077-2016 已废止 |
+| 山东 | 公共建筑 | `energy-audit-core/references/standards/shandong/public_building/` | **已核验并接入（2026-10-29）** | DB37/T 5076/5078/5079-2024；DB37/T 5077-2016 仅用于机关办公受控过渡；只有约束值/先进值 |
 | 浙江 | 公共机构 | `energy-audit-core/references/standards/zhejiang/public_institution/` | **已核验并接入（2026-10-23）** | DB33/T 736/737/738-2021；行政机关、场馆、普通高校、二级及以上医疗机构；约束值/基准值/引导值三档 |
 
 ## 二、选择键
@@ -43,6 +43,7 @@ province（山东 / 浙江 / …）
 | DB37/T 5076-2024 | 是（山东公共建筑包 `sources/`） | 已核验表7.0.2-1～3、16 市二档值、第8章修正 | 已录入 `quota-values.md/json` |
 | DB37/T 5078-2024 | 是（山东公共建筑包 `sources/`） | 已核验表7.0.2、16 市二档值、第8章修正 | 已录入 `quota-values.md/json` |
 | DB37/T 5079-2024 | 是（山东公共建筑包 `sources/`） | 已核验表7.0.2-1～4、eA/eB/eC、第8章修正 | 已录入 `quota-values.md/json` |
+| DB37/T 5077-2016 | 是（山东公共建筑包 `sources/DB37_T_5077_2016.pdf`） | 已于 2024-10-09 废止；已核验第5～8章、表7.0.3、17 个历史地区、修正公式和折标系数 | 仅允许山东公共建筑 `B=机关办公` 受控过渡；已录入 `quota-values.md/json`，报告必须披露废止状态 |
 | DB33/T 736-2021 | 是（`E:\工作目录\长三院\审计报告\`） | 已核验表1~表4、第5章统计范围、6.3 修正、附录A | 已录入 `quota-values.md` |
 | DB33/T 760-2023 | 是（同上） | 已核验表1、5.1~5.3、附录A | 已录入 `quota-values.md` |
 | DB33/T 737-2021 | 是（浙江公共机构包 `sources/`） | 已核验表1、表2、适用范围与附录A | 已录入 `public_institution/quota-values.md/json` |

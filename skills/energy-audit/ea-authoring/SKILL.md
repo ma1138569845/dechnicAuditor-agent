@@ -1,11 +1,11 @@
 ---
 name: ea-authoring
 description: "按报告族装配能源审计报告章节并生成 Word 产物（author 角色专用）；第5章补写分析叙述、不重算数值."
-version: 2.1.0
-author: 马天远
 license: MIT
-platforms: [windows]
 metadata:
+  version: 2.1.0
+  author: 马天远
+  platforms: [windows]
   hermes:
     tags: [energy-audit, authoring, report-assembly, word]
 ---

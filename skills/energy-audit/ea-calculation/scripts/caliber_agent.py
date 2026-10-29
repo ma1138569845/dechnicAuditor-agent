@@ -73,6 +73,10 @@ try:
         ReportFamilyUnsupported,
         resolve_report_family,
     )
+    from tools.energy_audit.dept_dict import (
+        DictionaryCodeError,
+        resolve_unit_codes,
+    )
     from tools.energy_audit.indicators import (
         YearlyEnergyData,
         calc_unit_area_non_heating_energy,
@@ -371,26 +375,28 @@ def _load_raw_project_data(project_name: str) -> dict:
         return json.load(fh)
 
 
+def _public_building_codes(base) -> dict:
+    """从平台一级/二级码解析公共建筑类型，不读取名称猜测。"""
+    try:
+        return resolve_unit_codes(
+            getattr(base, "unit_func", "") or "",
+            getattr(base, "children_func", "") or "",
+            unit_type="公共建筑",
+            province=getattr(base, "province", "") or "",
+        )
+    except DictionaryCodeError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def _infer_public_subtype(base, pb: dict) -> str:
-    raw = str(pb.get("subtype") or "").strip().lower()
-    if raw in ("hotel", "饭店", "公寓", "宾馆", "酒店"):
-        return "hotel"
-    if raw in ("venue", "场馆"):
-        return "venue"
-    if raw in ("office", "办公"):
-        return "office"
-    text = f"{getattr(base, 'institution_category', '')}{getattr(base, 'specific_type', '')}"
-    if any(k in text for k in ("公寓", "饭店", "宾馆", "酒店")):
-        return "hotel"
-    if any(k in text for k in ("场馆", "图书馆", "博物馆", "体育馆", "科技馆")):
-        return "venue"
-    return "office"
+    return _public_building_codes(base)["public_building_subtype"]
 
 
 def build_public_building_spec(proj: AuditProject, raw: dict) -> dict:
     base = proj.base
     pb = (raw.get("public_building") or {}) if isinstance(raw, dict) else {}
     subtype = _infer_public_subtype(base, pb)
+    resolved = _public_building_codes(base)
     area = float(getattr(base, "building_area", 0) or 0)
     if area <= 0:
         area = sum(float(getattr(b, "area", 0) or 0) for b in (proj.buildings or []))
@@ -433,10 +439,12 @@ def build_public_building_spec(proj: AuditProject, raw: dict) -> dict:
 
     return {
         "subtype": subtype,
-        "level": pb.get("level") or "city",
-        "venue_type": pb.get("venue_type") or "culture",
-        "star": str(pb.get("star") or "3"),
-        "water_category": str(pb.get("water_category") or pb.get("star") or "3"),
+        "level": resolved.get("agency_level") or "",
+        "venue_type": resolved.get("venue_type") or "",
+        "star": resolved.get("star") or "",
+        "water_category": str(
+            pb.get("water_category") or resolved.get("star") or ""
+        ),
         "area_m2": area,
         "underground_parking_spaces": float(pb.get("underground_parking_spaces") or 0),
         "people": people,
@@ -488,46 +496,13 @@ def _raw_building_sum(raw: dict, field: str) -> float:
 
 
 def _shandong_public_building_subtype(base, config: dict) -> str:
-    raw = str(config.get("subtype") or "").strip().lower()
-    aliases = {
-        "business_office": "business_office",
-        "business-office": "business_office",
-        "商务办公": "business_office",
-        "商务写字楼": "business_office",
-        "hotel": "hotel",
-        "酒店": "hotel",
-        "宾馆": "hotel",
-        "饭店": "hotel",
-        "hospital": "hospital",
-        "医院": "hospital",
-    }
-    if raw in aliases:
-        return aliases[raw]
-
-    text = (
-        f"{getattr(base, 'institution_category', '')}"
-        f"{getattr(base, 'specific_type', '')}"
-    )
-    if "机关办公" in text:
-        raise ValueError(
-            "机关办公不适用山东公共建筑 DB37/T 5078-2024；"
-            "机关项目应按公共机构报告族处理"
-        )
-    if "商务办公" in text or "商务写字楼" in text:
-        return "business_office"
-    if any(token in text for token in ("酒店", "宾馆", "饭店")):
-        return "hotel"
-    if "医院" in text:
-        return "hospital"
-    raise ValueError(
-        "山东公共建筑必须明确 public_building.subtype="
-        "business_office / hotel / hospital，拒绝按名称静默猜测"
-    )
+    return _public_building_codes(base)["public_building_subtype"]
 
 
 def build_shandong_public_building_spec(proj: AuditProject, raw: dict) -> dict:
     base = proj.base
     config = (raw.get("public_building") or {}) if isinstance(raw, dict) else {}
+    resolved = _public_building_codes(base)
     subtype = _shandong_public_building_subtype(base, config)
 
     area = float(
@@ -688,6 +663,21 @@ def build_shandong_public_building_spec(proj: AuditProject, raw: dict) -> dict:
                 )
                 or 0
             ),
+            "heating_heat_equivalent_electricity_kwh_per_gj": float(
+                _pick_value(
+                    override.get(
+                        "heating_heat_equivalent_electricity_kwh_per_gj"
+                    ),
+                    merged.get(
+                        "heating_heat_equivalent_electricity_kwh_per_gj"
+                    ),
+                    config.get(
+                        "heating_heat_equivalent_electricity_kwh_per_gj"
+                    ),
+                    0,
+                )
+                or 0
+            ),
             "gasoline_kg": float(
                 _pick_value(merged.get("petrol_kg"), ey.petrol_kg, 0) or 0
             ),
@@ -747,17 +737,9 @@ def build_shandong_public_building_spec(proj: AuditProject, raw: dict) -> dict:
         "heating_area_m2": heating_area,
         "beds": beds,
         "people": people,
-        "star": _pick_value(config.get("star"), ""),
-        "hospital_level": _pick_value(
-            config.get("hospital_level"),
-            getattr(base, "children_func", ""),
-            "",
-        ),
-        "hospital_specialty": _pick_value(
-            config.get("hospital_specialty"),
-            getattr(base, "specific_type", ""),
-            "",
-        ),
+        "star": resolved.get("star") or "",
+        "hospital_level": resolved.get("hospital_level") or "",
+        "hospital_specialty": resolved.get("hospital_specialty") or "",
         "correction": correction,
         "years": years,
     }
@@ -1035,6 +1017,7 @@ def _standard_metric_node(
 
 def _shandong_metrics(subtype: str) -> list[dict]:
     table = {
+        "agency_office": "表7.0.3（5077）",
         "business_office": "表7.0.2（5078）",
         "hotel": "表7.0.2（5076）",
         "hospital": "表7.0.2（5079）",
@@ -1060,6 +1043,14 @@ def _shandong_metrics(subtype: str) -> list[dict]:
             "key": "per_bed_non_heating_electricity",
             "label": "单位床位非供暖电耗",
             "unit": "10³ kWh/(床·a)",
+            "tier_labels": ["约束值", "先进值"],
+            "anchor": table,
+        })
+    elif subtype == "agency_office":
+        metrics.append({
+            "key": "unit_area_total_electricity",
+            "label": "单位建筑面积总等效电耗（含供暖）",
+            "unit": "kWh/(m²·a)",
             "tier_labels": ["约束值", "先进值"],
             "anchor": table,
         })
@@ -1117,6 +1108,24 @@ def build_shandong_public_building_indicators_json(
             latest["grade"]["unit_area_non_heating_electricity"],
         ),
     }
+    if spec["subtype"] == "agency_office":
+        out["unit_area_total_electricity"] = {
+            "kwh_per_m2": latest["values"]["unit_area_total_electricity"],
+            "benchmark": _pb_benchmark(
+                latest["quota"]["unit_area_total_electricity"],
+                ["约束值", "先进值"],
+                standard,
+                source,
+                latest["grade"]["unit_area_total_electricity"],
+            ),
+        }
+        out["standard_status"] = latest["standard_status"]
+        out["legacy_override"] = latest["legacy_override"]
+        out["abolished_at"] = latest["abolished_at"]
+        out["standard_disclosure"] = (
+            "DB37/T 5077-2016标准已于2024-10-09废止；"
+            "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+        )
     if spec["subtype"] == "hospital":
         out["per_bed_non_heating_electricity"] = {
             "k10_kwh_per_bed": latest["values"]["per_bed_non_heating_electricity"],
@@ -1411,6 +1420,7 @@ def run_shandong_public_building_caliber(
         standard_id=latest["standard_id"],
         standard_title=quota[
             {
+                "agency_office": "db37_t_5077_2016",
                 "business_office": "db37_t_5078_2024",
                 "hotel": "db37_t_5076_2024",
                 "hospital": "db37_t_5079_2024",

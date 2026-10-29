@@ -156,6 +156,23 @@ def detect_family_context(docx_path: str):
     return resolve_report_family({"unit_type": "公共机构", "province": ""})
 
 
+def detect_public_building_subtype(docx_path: str) -> str:
+    """从报告邻近的 indicators.json 读取公共建筑子类，供标准路由断言。"""
+    path = Path(docx_path).resolve()
+    for parent in [path.parent, *path.parents]:
+        indicators_path = parent / "indicators.json"
+        if not indicators_path.is_file():
+            continue
+        try:
+            with open(indicators_path, encoding="utf-8") as fh:
+                indicators = json.load(fh)
+            section = indicators.get("public_building") or {}
+            return str(section.get("subtype") or "").strip()
+        except (OSError, json.JSONDecodeError):
+            return ""
+    return ""
+
+
 def detect_family(docx_path: str) -> str:
     return detect_family_context(docx_path).family
 
@@ -228,17 +245,37 @@ def public_building_checks(text: str):
     return checks, details
 
 
-def shandong_public_building_checks(text: str):
+def shandong_public_building_checks(text: str, subtype: str = ""):
     """山东公共建筑交付断言：DB37 二档口径，禁止混入 DB33/浙江三档。"""
     tn = norm(text)
     standard_hits = [
-        standard for standard in ("DB37/T5076-2024", "DB37/T5078-2024", "DB37/T5079-2024")
+        standard
+        for standard in (
+            "DB37/T5076-2024",
+            "DB37/T5077-2016",
+            "DB37/T5078-2024",
+            "DB37/T5079-2024",
+        )
         if standard in tn
     ]
+    expected_standard = {
+        "agency_office": "DB37/T5077-2016",
+        "business_office": "DB37/T5078-2024",
+        "hotel": "DB37/T5076-2024",
+        "hospital": "DB37/T5079-2024",
+    }.get(subtype)
+    legacy_disclosure = norm(
+        "DB37/T 5077-2016标准已于2024-10-09废止；"
+        "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+    )
     checks = {
         "sd_pb_ch2_title": "第2章建筑概况" in tn and "公共机构概况" not in tn,
         "sd_pb_standards": bool(standard_hits),
         "sd_pb_single_standard": len(standard_hits) == 1,
+        "sd_pb_subtype_standard": (
+            expected_standard in standard_hits
+            if expected_standard else bool(standard_hits)
+        ),
         "sd_pb_metrics": (
             "单位建筑面积供暖能耗" in tn
             and "单位建筑面积非供暖电耗" in tn
@@ -247,6 +284,14 @@ def shandong_public_building_checks(text: str):
         "sd_pb_hospital_metric": (
             "单位床位非供暖电耗" in tn
             if "DB37/T5079-2024" in standard_hits else True
+        ),
+        "sd_pb_agency_metric": (
+            "单位建筑面积总等效电耗" in tn
+            if "DB37/T5077-2016" in standard_hits else True
+        ),
+        "sd_pb_legacy_disclosure": (
+            legacy_disclosure in tn
+            if "DB37/T5077-2016" in standard_hits else True
         ),
         "sd_pb_two_tiers": (
             "约束值" in tn and "先进值" in tn
@@ -262,12 +307,18 @@ def shandong_public_building_checks(text: str):
     if not checks["sd_pb_standards"]:
         details["sd_pb_standards"] = (
             "至少引用一个适用标准：DB37/T 5078（商务办公）、"
-            "DB37/T 5076（酒店）或 DB37/T 5079（医院）"
+            "DB37/T 5077（机关办公过渡）、DB37/T 5076（酒店）"
+            "或 DB37/T 5079（医院）"
         )
     if not checks["sd_pb_single_standard"]:
         details["sd_pb_single_standard"] = (
             "一份山东公共建筑报告只能引用一个适用子类标准；"
             f"当前检出 {len(standard_hits)} 个"
+        )
+    if not checks["sd_pb_subtype_standard"]:
+        details["sd_pb_subtype_standard"] = (
+            f"{subtype or '当前子类'} 应使用 {expected_standard or '对应的 DB37 标准'}，"
+            f"实际检出 {'、'.join(standard_hits) or '无标准'}"
         )
     if not checks["sd_pb_metrics"]:
         details["sd_pb_metrics"] = (
@@ -277,6 +328,16 @@ def shandong_public_building_checks(text: str):
     if not checks["sd_pb_hospital_metric"]:
         details["sd_pb_hospital_metric"] = (
             "医院报告使用 DB37/T 5079 时还必须披露 eC「单位床位非供暖电耗」"
+        )
+    if not checks["sd_pb_agency_metric"]:
+        details["sd_pb_agency_metric"] = (
+            "机关办公报告使用 DB37/T 5077 时必须披露"
+            "「单位建筑面积总等效电耗（含供暖）」"
+        )
+    if not checks["sd_pb_legacy_disclosure"]:
+        details["sd_pb_legacy_disclosure"] = (
+            "机关办公报告使用 DB37/T 5077 时必须逐字披露："
+            "该标准已于2024-10-09废止，因暂无现行替代标准作过渡兼容沿用"
         )
     if not checks["sd_pb_two_tiers"]:
         details["sd_pb_two_tiers"] = (
@@ -1740,6 +1801,7 @@ def _apx2_table_ok(sect_detail) -> bool:
 
 def run(docx: str, pdf: str = None, family: str = "auto"):
     family_context = detect_family_context(docx)
+    public_building_subtype = detect_public_building_subtype(docx)
     if family == "auto":
         family = family_context.family
     z = zipfile.ZipFile(docx)
@@ -1961,7 +2023,9 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
             checks[key] = True
             details.pop(key, None)
         if family_context.is_shandong_public_building:
-            pb_checks, pb_details = shandong_public_building_checks(text)
+            pb_checks, pb_details = shandong_public_building_checks(
+                text, subtype=public_building_subtype
+            )
         else:
             pb_checks, pb_details = public_building_checks(text)
         checks.update(pb_checks)

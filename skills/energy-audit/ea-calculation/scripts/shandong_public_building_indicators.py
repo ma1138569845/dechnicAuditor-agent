@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""山东公共建筑能耗限额指标计算（DB37/T 5076/5078/5079-2024）。
+"""山东公共建筑能耗限额指标计算（DB37/T 5076/5077/5078/5079）。
 
 输入使用普通 dict，便于 caliber_agent 从 AuditProject 适配。所有定额值只从
 `standards/shandong/public_building/quota-values.json` 读取。
+
+DB37/T 5077-2016 已于 2024-10-09 废止，仅对山东公共建筑 B=机关办公作
+受控过渡兼容沿用，并在结果中显式返回废止状态。
 """
 from __future__ import annotations
 
@@ -29,6 +32,8 @@ SHANDONG_CITIES = (
     "泰安", "威海", "日照", "临沂", "德州", "聊城", "滨州", "菏泽",
 )
 
+SHANDONG_5077_CITIES = SHANDONG_CITIES + ("莱芜",)
+
 
 def load_quota_values(path: str | Path | None = None) -> dict[str, Any]:
     quota_path = Path(path) if path else DEFAULT_QUOTA_PATH
@@ -53,12 +58,15 @@ def _norm_city(value: Any) -> str:
     return text
 
 
-def infer_city(project: dict[str, Any]) -> str:
+def infer_city(
+    project: dict[str, Any],
+    cities: tuple[str, ...] = SHANDONG_CITIES,
+) -> str:
     city = _norm_city(project.get("city"))
-    if city in SHANDONG_CITIES:
+    if city in cities:
         return city
     address = str(project.get("address") or "")
-    for candidate in SHANDONG_CITIES:
+    for candidate in cities:
         if candidate in address:
             return candidate
     raise ValueError("无法识别山东项目所在市；必须提供 city 或在 address 中写明地市")
@@ -80,7 +88,23 @@ def _multiply_tiers(tiers: list[float], factor: float) -> list[float]:
 def _correction_factor(project: dict[str, Any], year: dict[str, Any], subtype: str) -> tuple[float, dict[str, Any]]:
     merged = dict(project.get("correction") or {})
     merged.update(year.get("correction") or {})
-    if subtype == "business_office":
+    if subtype == "agency_office":
+        hours = _f(
+            merged.get("annual_use_hours")
+            or project.get("annual_use_hours")
+        )
+        area_per_person = _f(merged.get("area_per_person"))
+        if hours > 0 and area_per_person > 0:
+            alpha1 = 0.3 + 0.7 * hours / 2500.0
+            alpha2 = 0.7 + 0.3 * 10.0 / area_per_person
+            return alpha1 * alpha2, {
+                "alpha1_use_hours": round(alpha1, 6),
+                "alpha2_people_density": round(alpha2, 6),
+                "annual_use_hours": hours,
+                "area_per_person": area_per_person,
+                "applied": True,
+            }
+    elif subtype == "business_office":
         hours = _f(merged.get("annual_use_hours"))
         area_per_person = _f(merged.get("area_per_person"))
         if hours > 0 and area_per_person > 0:
@@ -129,11 +153,7 @@ def _hospital_level(project: dict[str, Any]) -> str:
     名称、单位全称和机构类别都不参与猜测。平台二级码 A/B/C 可映射为
     一级/二级/三级；其他字段则只接受标准中的中文规范值。
     """
-    raw = str(
-        project.get("hospital_level")
-        or project.get("children_func")
-        or ""
-    ).strip().upper()
+    raw = str(project.get("hospital_level") or "").strip().upper()
     if raw in ("A", "一级", "1", "ONE"):
         return "一级"
     if raw in ("B", "二级", "二级及以下", "2", "TWO"):
@@ -142,8 +162,8 @@ def _hospital_level(project: dict[str, Any]) -> str:
         level = "三级"
     else:
         raise ValueError(
-            "医院项目必须明确 hospital_level（三级/二级及以下；"
-            "平台 children_func 可用 C/B），不得默认为二级"
+            "医院项目必须明确 hospital_level（三级/二级及以下），"
+            "不得从旧 children_func=C/B 猜等级或默认为二级"
         )
 
     specialty = str(
@@ -185,27 +205,40 @@ def compute_project(
 ) -> list[dict[str, Any]]:
     quota = quota or load_quota_values()
     subtype = str(project.get("subtype") or "").strip()
-    if subtype not in ("business_office", "hotel", "hospital"):
+    if subtype not in (
+        "agency_office",
+        "business_office",
+        "hotel",
+        "hospital",
+    ):
         raise ValueError(
-            "山东公共建筑 subtype 必须是 business_office / hotel / hospital；"
-            "office 含义不明确，机关办公不进入 DB37/T 5078 包"
+            "山东公共建筑 subtype 必须是 agency_office / business_office / "
+            "hotel / hospital"
         )
 
-    city = infer_city(project)
     coeff = quota["coefficients"]
-    if subtype == "business_office":
+    if subtype == "agency_office":
+        block = quota["db37_t_5077_2016"]
+        city = infer_city(project, SHANDONG_5077_CITIES)
+        row = block["rows"][city]
+        standard_id = "DB37/T 5077-2016"
+        table = block["table"]
+    elif subtype == "business_office":
         block = quota["db37_t_5078_2024"]
+        city = infer_city(project)
         row = block["rows"][city]
         standard_id = "DB37/T 5078-2024"
         table = block["table"]
     elif subtype == "hotel":
         block = quota["db37_t_5076_2024"]
+        city = infer_city(project)
         star = _hotel_star(project)
         row = block["rows"][star][city]
         standard_id = "DB37/T 5076-2024"
         table = block["tables"][star]
     else:
         block = quota["db37_t_5079_2024"]
+        city = infer_city(project)
         level = _hospital_level(project)
         if level == "一级":
             raise ValueError("DB37/T 5079-2024 不适用于一级医院")
@@ -245,6 +278,14 @@ def compute_project(
                 project.get("heating_electricity_kgce_per_kwh"),
             )
         )
+        if (
+            subtype == "agency_office"
+            and heating_electricity > 0
+            and heating_coefficient <= 0
+        ):
+            heating_coefficient = _f(
+                block["kgce_coefficients"]["electricity_kgce_per_kwh"]
+            )
         warnings: list[str] = []
         if explicit_heating_kgce > 0:
             heating_kgce = explicit_heating_kgce
@@ -259,12 +300,21 @@ def compute_project(
                     "按 DB37/T 5076/5078/5079 应使用当年全国平均"
                     "火力发电标准煤耗，不得回退到固定 0.1229"
                 )
-            heating_kgce = (
-                heating_electricity * heating_coefficient
-                + heating_gas * _f(coeff["natural_gas_kgce_per_m3"])
-                + heat_gj * _f(coeff["heat_kgce_per_gj"])
-                + heating_coal * _f(coeff["raw_coal_kgce_per_kg"])
-            )
+            if subtype == "agency_office":
+                kgce_coeff = block["kgce_coefficients"]
+                heating_kgce = (
+                    heating_electricity * heating_coefficient
+                    + heating_gas * _f(kgce_coeff["natural_gas_kgce_per_m3"])
+                    + heat_gj * 1000.0 * _f(kgce_coeff["heat_kgce_per_mj"])
+                    + heating_coal * _f(kgce_coeff["raw_coal_kgce_per_kg"])
+                )
+            else:
+                heating_kgce = (
+                    heating_electricity * heating_coefficient
+                    + heating_gas * _f(coeff["natural_gas_kgce_per_m3"])
+                    + heat_gj * _f(coeff["heat_kgce_per_gj"])
+                    + heating_coal * _f(coeff["raw_coal_kgce_per_kg"])
+                )
 
         electricity = _f(year.get("electricity_kwh"))
         gas = _f(year.get("gas_m3"))
@@ -285,6 +335,26 @@ def compute_project(
             + _f(year.get("cleaned_coal_kg")) * _f(coeff["cleaned_coal_equivalent_kwh_per_kg"])
             + _f(year.get("other_equivalent_electricity_kwh"))
         )
+        heat_equivalent_coefficient = _f(
+            year.get(
+                "heating_heat_equivalent_electricity_kwh_per_gj",
+                project.get("heating_heat_equivalent_electricity_kwh_per_gj"),
+            )
+        )
+        if subtype == "agency_office" and heat_gj > 0 and heat_equivalent_coefficient <= 0:
+            raise ValueError(
+                f"{year.get('year')} 年存在外购热量 {heat_gj:g} GJ，"
+                "但未提供 heating_heat_equivalent_electricity_kwh_per_gj；"
+                "应按 DB37/T 5077-2016 表6.0.3 的供回水温度或蒸汽压力"
+                "选用等效电系数，不得默认按热量理论值折算"
+            )
+        heating_equivalent = (
+            heating_electricity
+            * _f(coeff["electricity_equivalent_kwh_per_kwh"], 1.0)
+            + heating_gas * _f(coeff["natural_gas_equivalent_kwh_per_m3"])
+            + heat_gj * heat_equivalent_coefficient
+            + heating_coal * _f(coeff["raw_coal_equivalent_kwh_per_kg"])
+        )
 
         e_a = heating_kgce / heat_area
         # 5079-2024 第 6.0.4 条的 F 明写为“医院建筑供暖面积”；
@@ -295,6 +365,11 @@ def compute_project(
             "unit_area_heating_energy": round(e_a, 2),
             "unit_area_non_heating_electricity": round(e_b, 2),
         }
+        if subtype == "agency_office":
+            values["unit_area_total_electricity"] = round(
+                (equivalent + heating_equivalent) / area,
+                2,
+            )
         if subtype == "hospital":
             values["per_bed_non_heating_electricity"] = round(
                 equivalent / beds / 1000.0, 2
@@ -317,13 +392,20 @@ def compute_project(
             grades["per_bed_non_heating_electricity"] = _grade_two(
                 values["per_bed_non_heating_electricity"], corrected_e_c
             )
+        elif subtype == "agency_office":
+            corrected_total = _multiply_tiers(row[4:6], factor)
+            quota_values["unit_area_total_electricity"] = corrected_total
+            grades["unit_area_total_electricity"] = _grade_two(
+                values["unit_area_total_electricity"],
+                corrected_total,
+            )
 
         if not heating_gas and not heat_gj and heating_electricity <= 0:
             warnings.append("未提供可分项识别的供暖能源，eA 可能为 0")
         if factor == 1.0 and not correction.get("applied", False):
             warnings.append("修正参数不完整，本次按未修正限额对标")
 
-        results.append({
+        result = {
             "year": year.get("year"),
             "subtype": subtype,
             "city": city,
@@ -338,6 +420,10 @@ def compute_project(
                     {"per_bed_non_heating_electricity": corrected_e_c}
                     if subtype == "hospital" else {}
                 ),
+                **(
+                    {"unit_area_total_electricity": corrected_total}
+                    if subtype == "agency_office" else {}
+                ),
             },
             "quota_raw": {
                 "unit_area_heating_energy": row[0:2],
@@ -345,6 +431,10 @@ def compute_project(
                 **(
                     {"per_bed_non_heating_electricity": row[4:6]}
                     if subtype == "hospital" else {}
+                ),
+                **(
+                    {"unit_area_total_electricity": row[4:6]}
+                    if subtype == "agency_office" else {}
                 ),
             },
             "grade": grades,
@@ -363,7 +453,18 @@ def compute_project(
                 "eC_unit": "10^3 kWh/(bed·a)" if subtype == "hospital" else None,
                 "warnings": warnings,
             },
-        })
+        }
+        if subtype == "agency_office":
+            result.update({
+                "legacy_override": True,
+                "standard_status": block["status"],
+                "abolished_at": block["abolished_at"],
+            })
+            warnings.append(
+                "DB37/T 5077-2016 已于 2024-10-09 废止；"
+                "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用"
+            )
+        results.append(result)
     if not results:
         raise ValueError("没有年度能耗数据")
     return results

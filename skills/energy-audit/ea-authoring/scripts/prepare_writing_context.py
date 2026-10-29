@@ -108,6 +108,38 @@ def _load_report_family_contracts():
         raise ImportError("无法加载报告族路由") from exc
 
 
+def _load_dictionary_contracts():
+    """从 repo 的 tools/energy_audit 加载唯一单位类型字典解析器。"""
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path,
+            "tools",
+            "energy_audit",
+            "dept_dict.py",
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "writing_context_dept_dict", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module.resolve_unit_codes, module.DictionaryCodeError
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit.dept_dict import (  # type: ignore
+            DictionaryCodeError,
+            resolve_unit_codes,
+        )
+        return resolve_unit_codes, DictionaryCodeError
+    except ImportError as exc:
+        raise ImportError("无法加载单位类型字典解析器") from exc
+
+
 (
     CHAPTER6_SECTIONS,
     chapter6_route_for_equipment,
@@ -117,6 +149,10 @@ def _load_report_family_contracts():
     resolve_report_family,
     ReportFamilyUnsupported,
 ) = _load_report_family_contracts()
+(
+    resolve_unit_codes,
+    DictionaryCodeError,
+) = _load_dictionary_contracts()
 CHAPTER6_PREFIX = {
     "air_heating": "6.1",
     "lighting": "6.1",
@@ -443,24 +479,65 @@ def resolve_project_family(base: dict, ind: dict):
     return resolve_report_family(base or {})
 
 
+def resolve_public_building_type(base: dict) -> dict:
+    """按平台单位类型、省份、一级码和二级码解析公共建筑。"""
+    return resolve_unit_codes(
+        str((base or {}).get("unit_func") or ""),
+        str((base or {}).get("children_func") or ""),
+        unit_type="公共建筑",
+        province=str((base or {}).get("province") or ""),
+    )
+
+
 def public_building_subtype(base: dict, ind: dict) -> str:
-    pb = (ind or {}).get("public_building") or {}
-    subtype = str(pb.get("subtype") or "").strip().lower()
-    if subtype in (
-        "office", "venue", "hotel",
-        "business_office", "hospital",
+    del ind
+    return resolve_public_building_type(base)["public_building_subtype"]
+
+
+def public_building_dictionary_rows(resolved: dict) -> list[tuple[str, str]]:
+    """把字典解析结果转成写章时必须遵守的元数据。"""
+    subtype_labels = {
+        "hotel": (
+            "宾馆酒店"
+            if resolved.get("dictionary_type") == "public_build_type"
+            else "旅游饭店"
+        ),
+        "agency_office": "机关办公",
+        "business_office": "商务办公",
+        "hospital": "医院",
+    }
+    star_labels = {"5": "五星级", "4": "四星级", "3": "三星级"}
+    hospital_level_labels = {"3": "三级", "<=2": "二级及以下"}
+    hospital_specialty_labels = {"general": "综合", "specialty": "专科"}
+    agency_level_labels = {
+        "province": "省级",
+        "city": "市级",
+        "county": "县级及以下",
+    }
+    venue_type_labels = {
+        "science": "科技馆",
+        "culture": "文化馆",
+        "museum": "博物馆",
+    }
+    subtype = str(resolved.get("public_building_subtype") or "")
+    rows = [
+        ("dictionary_type", str(resolved.get("dictionary_type") or "")),
+        (
+            "public_building_subtype",
+            f"{subtype}（{subtype_labels.get(subtype, '')}）",
+        ),
+    ]
+    for key, labels in (
+        ("star", star_labels),
+        ("hospital_level", hospital_level_labels),
+        ("hospital_specialty", hospital_specialty_labels),
+        ("agency_level", agency_level_labels),
+        ("venue_type", venue_type_labels),
     ):
-        return subtype
-    text = f"{(base or {}).get('institution_category', '')}{(base or {}).get('specific_type', '')}"
-    if "商务办公" in text:
-        return "business_office"
-    if any(k in text for k in ("公寓", "饭店", "宾馆", "酒店")):
-        return "hotel"
-    if "医院" in text:
-        return "hospital"
-    if any(k in text for k in ("场馆", "图书馆", "博物馆", "体育馆", "科技馆")):
-        return "venue"
-    return "office"
+        value = str(resolved.get(key) or "")
+        if value:
+            rows.append((key, f"{value}（{labels.get(value, '')}）"))
+    return rows
 
 
 def public_building_blueprint_path(region: str = "浙江") -> str:
@@ -711,7 +788,14 @@ def main(argv=None) -> int:
     is_shandong_pb = family.is_shandong_public_building
     is_zhejiang_pb = family.is_zhejiang_public_building
     is_zhejiang_pi = family.is_zhejiang_public_institution
-    pb_subtype = public_building_subtype(base, ind) if is_pb else ""
+    try:
+        pb_resolved = resolve_public_building_type(base) if is_pb else {}
+    except DictionaryCodeError as exc:
+        print(f"[错误] {exc}")
+        return 1
+    pb_subtype = (
+        str(pb_resolved.get("public_building_subtype") or "") if is_pb else ""
+    )
     anchors = load_std_anchors()          # ★来源锚点（定额可溯源性判定，见 resolve_anchor）
     md_dir = os.path.join(pdir, "chapter_md")
     os.makedirs(md_dir, exist_ok=True)
@@ -745,6 +829,35 @@ def main(argv=None) -> int:
          f"| 机构类型 | {ind.get('institution_type') or base.get('institution_category') or '【待补充】'} | data.json / indicators.json |")),
         f"| 报告族 | {family.label} | data.json → base.unit_type + base.province / indicators.json |",
         f"| 标准包 | {family.standard_pack or 'energy-audit-core/references/standards-values.md（山东公共机构）'} | 报告族路由 |",
+    ]
+    if is_pb:
+        lines += [
+            f"| {key} | {value} | data.json → base.unit_func + base.children_func |"
+            for key, value in public_building_dictionary_rows(pb_resolved)
+        ]
+        standard_id = {
+            "agency_office": "DB37/T 5077-2016",
+            "business_office": "DB37/T 5078-2024",
+            "hotel": (
+                "DB37/T 5076-2024"
+                if is_shandong_pb
+                else "DB33/T 760-2023"
+            ),
+            "hospital": "DB37/T 5079-2024",
+        }.get(pb_subtype)
+        if standard_id:
+            lines.append(f"| standard_id | {standard_id} | 标准路由 |")
+        if is_shandong_pb and pb_subtype == "agency_office":
+            lines += [
+                "| standard_status | 废止 | DB37/T 5077-2016 |",
+                "| legacy_override | true | 批准规则 |",
+                "",
+                (
+                    "> DB37/T 5077-2016标准已于2024-10-09废止；"
+                    "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+                ),
+            ]
+    lines += [
         "",
         "## 二、关键数字（正文引用必须与此一致）",
         "",
@@ -1101,14 +1214,18 @@ def main(argv=None) -> int:
             "",
             "- 第2章章名：**建筑概况**；不得出现“公共机构概况”。",
             "- 第6章：按公共建筑章节骨架组织，不套山东公共机构 6.1.1~6.1.6。",
-            "- 标准归属：商务办公用 DB37/T 5078-2024；三星/四星/五星酒店分别用 "
+            "- 标准归属：商务办公用 DB37/T 5078-2024；机关办公用 "
+            "DB37/T 5077-2016（废止过渡）；三星/四星/五星酒店分别用 "
             "DB37/T 5076-2024 表7.0.2-1～3；医院用 DB37/T 5079-2024，"
             "并按三级综合/三级专科/二级及以下综合/二级及以下专科分表。",
             "- 指标只允许 `eA` 单位建筑面积供暖能耗、`eB` 单位建筑面积非供暖电耗；"
             "医院另用 `eC` 单位床位非供暖电耗。",
             "- 评价只有 **约束值、先进值** 两档；禁止出现“基准值/引导值”。",
             "- 折标系数从山东公共建筑包读取；不得出现 DB33、736、760 或浙江蓝本。",
-            "- 机关办公不属本包；酒店缺星级、医院缺等级或综合/专科属性时停止计算并补采。",
+            "- DB37/T 5077-2016 已于 2024-10-09 废止，仅限山东公共建筑 "
+            "`B=机关办公` 作过渡兼容，并必须写明废止及沿用原因；不得用于其他地区、"
+            "其他子类或替代成 5076/5078/5079。酒店缺星级、医院缺等级或综合/专科"
+            "属性时停止计算并补采。",
             "- 写作指南：`ea-authoring/references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。",
             "",
         ]

@@ -40,13 +40,36 @@ DOCX_ASSERTS = load_module(
 )
 
 
-def write_project(path: Path, *, unit_type: str, province: str):
+def write_project(
+    path: Path,
+    *,
+    unit_type: str,
+    province: str,
+    unit_func: str | None = None,
+    children_func: str | None = None,
+    public_building_subtype: str | None = None,
+):
     (path / "chapter_md").mkdir(parents=True)
+    if unit_func is None:
+        if unit_type == "公共建筑" and "浙江" in province:
+            unit_func = "zj_hotel"
+            children_func = "zj_hotel_5" if children_func is None else children_func
+        elif unit_type == "公共建筑":
+            unit_func = "C"
+            children_func = "" if children_func is None else children_func
+        elif unit_type == "公共机构" and "浙江" in province:
+            unit_func = "zj_college"
+            children_func = "" if children_func is None else children_func
+        else:
+            unit_func = "E"
+            children_func = "A" if children_func is None else children_func
     data = {
         "base": {
             "unit_name": "长三角研究院创新大厦AB座",
             "unit_type": unit_type,
             "province": province,
+            "unit_func": unit_func,
+            "children_func": children_func or "",
             "building_area": 95000,
             "people_count": 1238,
             "institution_category": "科研办公",
@@ -54,16 +77,27 @@ def write_project(path: Path, *, unit_type: str, province: str):
         "images": [],
     }
     if unit_type == "公共建筑" and "山东" in province:
+        subtype = public_building_subtype or "business_office"
         indicators = {
             "family": "公共建筑",
             "region": "山东",
             "year": 2024,
             "public_building": {
-                "subtype": "business_office",
+                "subtype": subtype,
                 "region": "山东",
                 "results": [{"year": 2024}],
             },
         }
+        if subtype == "agency_office":
+            indicators.update({
+                "standard_status": "废止",
+                "legacy_override": True,
+                "abolished_at": "2024-10-09",
+                "standard_disclosure": (
+                    "DB37/T 5077-2016标准已于2024-10-09废止；"
+                    "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+                ),
+            })
     elif unit_type == "公共机构" and "浙江" in province:
         indicators = {
             "family": "公共机构",
@@ -79,7 +113,10 @@ def write_project(path: Path, *, unit_type: str, province: str):
         indicators = {
             "family": "公共建筑",
             "year": 2024,
-            "public_building": {"subtype": "office"},
+                "public_building": {
+                    "subtype": public_building_subtype or "hotel",
+                    "star": "5",
+                },
         }
     (path / "data.json").write_text(
         json.dumps(data, ensure_ascii=False), encoding="utf-8"
@@ -164,6 +201,63 @@ class WritingContextFamilyTests(unittest.TestCase):
             self.assertIn("评价统一为约束值、基准值、引导值三档", context)
             self.assertIn("电力折标为 0.1229 kgce/kWh", context)
             self.assertIn("无浙江公共机构专属蓝本", context)
+
+    def test_shandong_agency_office_context_discloses_obsolete_5077(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            write_project(
+                project,
+                unit_type="公共建筑",
+                province="山东",
+                unit_func="B",
+                children_func="",
+                public_building_subtype="agency_office",
+            )
+
+            code = WRITING_CONTEXT.main([str(project), "--quiet"])
+
+            self.assertEqual(code, 0)
+            context = (project / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("| dictionary_type | public_build_type |", context)
+            self.assertIn(
+                "| public_building_subtype | agency_office（机关办公） |",
+                context,
+            )
+            self.assertIn("| standard_id | DB37/T 5077-2016 |", context)
+            self.assertIn("| standard_status | 废止 |", context)
+            self.assertIn("| legacy_override | true |", context)
+            self.assertIn(
+                "DB37/T 5077-2016标准已于2024-10-09废止；"
+                "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。",
+                context,
+            )
+
+    def test_zhejiang_public_building_context_exposes_dictionary_and_star(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            write_project(
+                project,
+                unit_type="公共建筑",
+                province="浙江",
+                unit_func="zj_hotel",
+                children_func="zj_hotel_5",
+                public_building_subtype="hotel",
+            )
+
+            code = WRITING_CONTEXT.main([str(project), "--quiet"])
+
+            self.assertEqual(code, 0)
+            context = (project / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("| dictionary_type | zj_public_build_type |", context)
+            self.assertIn(
+                "| public_building_subtype | hotel（旅游饭店） |",
+                context,
+            )
+            self.assertIn("| star | 5（五星级） |", context)
 
 
 class AssemblyFamilyContractTests(unittest.TestCase):
@@ -304,6 +398,24 @@ class PublicBuildingAssertionContractTests(unittest.TestCase):
 
 
 class RegionalStandardAssertionTests(unittest.TestCase):
+    def test_docx_asserts_detect_public_building_subtype_from_indicators(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            write_project(
+                project,
+                unit_type="公共建筑",
+                province="山东",
+                unit_func="B",
+                children_func="",
+                public_building_subtype="agency_office",
+            )
+
+            subtype = DOCX_ASSERTS.detect_public_building_subtype(
+                str(project / "report.docx")
+            )
+
+            self.assertEqual(subtype, "agency_office")
+
     def test_valid_shandong_public_building_report_passes(self):
         checks, details = DOCX_ASSERTS.shandong_public_building_checks(
             "第2章 建筑概况 第5章 能源资源消费指标 单位建筑面积供暖能耗 "
@@ -346,6 +458,37 @@ class RegionalStandardAssertionTests(unittest.TestCase):
             "单位床位非供暖电耗 DB37/T 5079-2024 约束值 先进值 0.1229"
         )
         self.assertTrue(all(checks.values()), details)
+
+    def test_shandong_agency_office_5077_report_passes_with_disclosure(self):
+        checks, details = DOCX_ASSERTS.shandong_public_building_checks(
+            "第2章 建筑概况 单位建筑面积供暖能耗 单位建筑面积非供暖电耗 "
+            "单位建筑面积总等效电耗（含供暖） DB37/T 5077-2016 "
+            "DB37/T 5077-2016标准已于2024-10-09废止；"
+            "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。 "
+            "约束值 先进值 电力折标系数 0.1229",
+            subtype="agency_office",
+        )
+
+        self.assertTrue(all(checks.values()), details)
+
+    def test_shandong_agency_office_requires_obsolete_standard_disclosure(self):
+        checks, _ = DOCX_ASSERTS.shandong_public_building_checks(
+            "第2章 建筑概况 单位建筑面积供暖能耗 单位建筑面积非供暖电耗 "
+            "单位建筑面积总等效电耗（含供暖） DB37/T 5077-2016 "
+            "约束值 先进值 0.1229",
+            subtype="agency_office",
+        )
+
+        self.assertFalse(checks["sd_pb_legacy_disclosure"])
+
+    def test_shandong_5077_is_rejected_for_another_subtype(self):
+        checks, _ = DOCX_ASSERTS.shandong_public_building_checks(
+            "第2章 建筑概况 单位建筑面积供暖能耗 单位建筑面积非供暖电耗 "
+            "DB37/T 5077-2016 约束值 先进值 0.1229",
+            subtype="business_office",
+        )
+
+        self.assertFalse(checks["sd_pb_subtype_standard"])
 
     def test_valid_zhejiang_public_institution_report_passes(self):
         checks, details = DOCX_ASSERTS.zhejiang_public_institution_checks(

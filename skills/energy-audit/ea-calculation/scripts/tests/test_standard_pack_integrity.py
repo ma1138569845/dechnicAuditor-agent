@@ -22,6 +22,8 @@ SHANDONG_CITIES = {
     "泰安", "威海", "日照", "临沂", "德州", "聊城", "滨州", "菏泽",
 }
 
+SHANDONG_5077_CITIES = SHANDONG_CITIES | {"莱芜"}
+
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
@@ -64,6 +66,17 @@ class ShandongPublicBuildingPackIntegrityTests(unittest.TestCase):
             for row in type_rows.values():
                 self.assertEqual(len(row), 6)
 
+    def test_5077_transition_preserves_all_seventeen_source_rows(self):
+        block = self.quota["db37_t_5077_2016"]
+        self.assertEqual(block["status"], "废止")
+        self.assertTrue(block["legacy_override"])
+        self.assertEqual(block["abolished_at"], "2024-10-09")
+        self.assertEqual(set(block["rows"]), SHANDONG_5077_CITIES)
+        self.assertEqual(block["rows"]["日照"], [8.2, 4.3, 54, 35, 80, 50])
+        self.assertEqual(block["rows"]["莱芜"], [8.8, 4.8, 60, 41, 85, 55])
+        for row in block["rows"].values():
+            self.assertEqual(len(row), 6)
+
     def test_shandong_uses_two_tiers_and_the_current_equivalent_coefficient(self):
         self.assertEqual(
             self.quota["coefficients"]["electricity_equivalent_kgce_per_kwh"],
@@ -82,6 +95,19 @@ class ShandongPublicBuildingPackIntegrityTests(unittest.TestCase):
                 self.assertTrue(pdf_path.is_file(), local_pdf)
                 self.assertEqual(source.get("sha256"), sha256(pdf_path))
             self.assertEqual(source.get("http_status"), 200)
+
+    def test_5077_source_is_packaged_with_its_declared_hash(self):
+        sources = load_json(SHANDONG / "sources.json")
+        source = next(
+            item
+            for item in sources["standards"]
+            if item["id"] == "DB37/T 5077-2016"
+        )
+        self.assertEqual(
+            source["sha256"],
+            "df4cfbc870328574ee4865413c9bae68c978c515a4fd40be80ea5768382ec03b",
+        )
+        self.assertTrue((SHANDONG / source["local_pdf"]).is_file())
 
 
 class ZhejiangPublicInstitutionPackIntegrityTests(unittest.TestCase):

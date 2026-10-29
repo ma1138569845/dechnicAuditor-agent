@@ -30,7 +30,10 @@ from tools.energy_audit.project_data import (
 )
 from tools.energy_audit.indicators import compute_project_indicators, COEFFICIENT_RANGES
 from tools.energy_audit.institution_classifier import classify_institution
-from tools.energy_audit.dept_dict import classify_from_codes as _classify_from_codes
+from tools.energy_audit.dept_dict import (
+    DictionaryCodeError,
+    resolve_unit_codes,
+)
 from tools.energy_audit.file_resolver import (
     enrich_energy_saving_images,
     enrich_management_info,
@@ -46,6 +49,88 @@ _FIELD_TYPE_UNIT = {
     '20': '公共建筑',
     '30': '工业企业',
 }
+
+
+def province_default_for_unit_type(unit_type: str) -> str:
+    """公共建筑不能继承旧项目的山东默认值。"""
+    return '' if str(unit_type or '').strip() == '公共建筑' else '山东'
+
+
+def _add_dictionary_collection_gaps(result: Dict[str, Any]) -> None:
+    """把地区字典路由必需、但数据库未提供的字段列入补采清单。"""
+    customer = (
+        (result or {}).get('found', {}).get('customer_info', {}) or {}
+    )
+    field_type = str(customer.get('field_type') or '').strip()
+    unit_type = _FIELD_TYPE_UNIT.get(field_type, '')
+    province = str(customer.get('province') or '').strip()
+    if unit_type != '公共建筑' or province:
+        return
+
+    missing = result.setdefault('missing', [])
+    label = '所属省份（公共建筑类型路由必需）'
+    if label not in missing:
+        missing.append(label)
+
+
+def resolve_customer_codes(
+    customer: Dict[str, Any],
+) -> Tuple[str, Dict[str, str]]:
+    """按 ``field_type + province`` 解释平台单位类型码。
+
+    失败时仍返回原始码，并附带 ``error``，供采集链提示补采；公共建筑不得
+    回退到单位名分类器。
+    """
+    field_type = str((customer or {}).get('field_type') or '').strip()
+    unit_type = _FIELD_TYPE_UNIT.get(field_type, '')
+    province = str((customer or {}).get('province') or '').strip()
+    unit_func = str((customer or {}).get('customer_func') or '').strip().upper()
+    children_func = str(
+        (customer or {}).get('children_func') or ''
+    ).strip().upper()
+    try:
+        resolved = resolve_unit_codes(
+            unit_func,
+            children_func,
+            unit_type=unit_type,
+            province=province,
+        )
+        return resolved['category_label'], resolved
+    except DictionaryCodeError as exc:
+        print(
+            "[datacollection v2] ⚠️ 平台单位类型码未解析："
+            f"field_type={field_type or '空'!r}, unit_type={unit_type or '空'!r}, "
+            f"province={province or '空'!r}, customer_func={unit_func or '空'!r}, "
+            f"children_func={children_func or '空'!r}；{exc}"
+        )
+        return '', {
+            'unit_type': unit_type,
+            'region': province,
+            'customer_func': unit_func,
+            'children_func': children_func,
+            'category_label': '',
+            'children_label': '',
+            'family': 'public_building' if unit_type == '公共建筑' else 'public_institution',
+            'public_building_subtype': '',
+            'star': '',
+            'agency_level': '',
+            'venue_type': '',
+            'hospital_level': '',
+            'hospital_specialty': '',
+            'dictionary_type': '',
+            'dictionary_label': '',
+            'error': str(exc),
+        }
+
+
+def chapter6_code_context(resolved: Dict[str, str]) -> Tuple[str, str]:
+    """第6章只接收无命名空间歧义的旧公共机构码。"""
+    if str(resolved.get('unit_type') or '') == '公共建筑':
+        return '', ''
+    return (
+        str(resolved.get('customer_func') or ''),
+        str(resolved.get('children_func') or ''),
+    )
 
 
 # ============================================================
@@ -92,12 +177,14 @@ def collect_from_pg(project_name: str, version_code: str | None = None) -> Dict[
         project = found.get('project', {}) or {}
         unit_name = project.get('unit_name') or project_name
         classified_cat, _ = classify_institution(unit_name)
-        unit_func = str(customer.get('customer_func') or '').strip().upper()
-        children_func = str(customer.get('children_func') or '').strip().upper()
-        dict_cat, _ = _classify_from_codes(unit_func, children_func)
+        _add_dictionary_collection_gaps(result)
+        dict_cat, resolved_codes = resolve_customer_codes(customer)
+        is_public_building = resolved_codes.get('unit_type') == '公共建筑'
         institution_category = dict_cat or (
-            classified_cat if classified_cat != '未分类' else ''
+            '' if is_public_building
+            else (classified_cat if classified_cat != '未分类' else '')
         )
+        unit_func, children_func = chapter6_code_context(resolved_codes)
         found['equipment'] = _with_chapter6_routes(
             found.get('equipment', []),
             unit_func=unit_func,
@@ -1160,6 +1247,7 @@ def build_and_save_project(
     print(f"[datacollection v2] 正在从PG查询项目: {project_name}")
     if pg_result is None:
         pg_result = collect_from_pg(project_name, version_code=version_code)
+    _add_dictionary_collection_gaps(pg_result)
 
     found_count = len(pg_result['found'])
     missing_count = len(pg_result['missing'])
@@ -1196,20 +1284,26 @@ def build_and_save_project(
     # 学前教育/其他教育——单位名分类器做不到这一步。
     pg_unit_func = str(pg_customer.get('customer_func') or '').strip().upper()
     pg_children_func = str(pg_customer.get('children_func') or '').strip().upper()
-    dict_cat, dict_spec = _classify_from_codes(pg_unit_func, pg_children_func)
-    pg_institution_category = dict_cat or (classified_cat if classified_cat != '未分类' else '')
+    dict_cat, resolved_codes = resolve_customer_codes(pg_customer)
+    is_public_building = resolved_codes.get('unit_type') == '公共建筑'
+    pg_unit_type = resolved_codes.get('unit_type') or pg_unit_type
+    pg_institution_category = dict_cat or (
+        '' if is_public_building
+        else (classified_cat if classified_cat != '未分类' else '')
+    )
     # specific_type 保持"具体类型"语义（医院/大学/法院/机关），**不要**用字典二级码覆盖——
     # 二级码是"等级/分档"（一/二/三级、省/市/市级以下、教育 8 档），与"具体类型"不是一回事；
     # 报告与蓝本/同类报告匹配都按 specific_type 取。分档信息一律走 children_func（码）
     # + dept_dict.children_label() 现算，见 2026-09-20 修正。
-    pg_specific_type = classified_spec if classified_spec != '其他' else ''
-    if pg_unit_func and not dict_cat:
-        print(f"[datacollection v2] ⚠️ 平台单位类型码 customer_func={pg_unit_func!r} 未在字典中，"
-              f"已回退单位名分类器（请复核 tools/energy_audit/dept_dict.py）")
+    if is_public_building:
+        pg_specific_type = dict_cat
+    else:
+        pg_specific_type = classified_spec if classified_spec != '其他' else ''
+    routing_unit_func, routing_children_func = chapter6_code_context(resolved_codes)
     pg_equipment = _with_chapter6_routes(
         pg_equipment,
-        unit_func=pg_unit_func,
-        children_func=pg_children_func,
+        unit_func=routing_unit_func,
+        children_func=routing_children_func,
         institution_category=pg_institution_category,
         unit_name=unit_for_class,
     )
@@ -1441,7 +1535,8 @@ def build_and_save_project(
             province=sr.resolve('province',
                                 ('PG', pg_customer),
                                 ('Excel', excel_data),
-                                ('default', '山东')),
+                                ('default',
+                                 province_default_for_unit_type(pg_unit_type))),
             city=sr.resolve('city',
                             ('PG', pg_customer),
                             ('Excel', excel_data),

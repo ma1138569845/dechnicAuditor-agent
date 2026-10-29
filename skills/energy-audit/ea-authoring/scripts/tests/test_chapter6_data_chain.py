@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import sys
 import unittest
@@ -82,6 +83,16 @@ DEPT_DICT = install_module(
     "tools.energy_audit.dept_dict",
     ModuleType("tools.energy_audit.dept_dict"),
 )
+
+
+class DictionaryCodeError(ValueError):
+    pass
+
+
+DEPT_DICT.DictionaryCodeError = DictionaryCodeError
+DEPT_DICT.resolve_unit_codes = lambda *args, **kwargs: {
+    "category_label": "未分类",
+}
 DEPT_DICT.classify_from_codes = lambda *args, **kwargs: ("未分类", "")
 
 FILE_RESOLVER = install_module(
@@ -106,6 +117,23 @@ COLLECTOR = install_module(
         "tools.energy_audit.pg_collector",
     ),
 )
+
+
+class CollectorImportContractTests(unittest.TestCase):
+    def test_default_dictionary_stub_matches_collector_imports(self):
+        source = (
+            REPO_ROOT / "tools" / "energy_audit" / "pg_collector.py"
+        ).read_text(encoding="utf-8")
+        imported = set()
+        for node in ast.walk(ast.parse(source)):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "tools.energy_audit.dept_dict"
+            ):
+                imported.update(alias.name for alias in node.names)
+
+        self.assertTrue(imported)
+        self.assertLessEqual(imported, set(vars(DEPT_DICT)))
 
 
 class WaterAuxImageChainTests(unittest.TestCase):

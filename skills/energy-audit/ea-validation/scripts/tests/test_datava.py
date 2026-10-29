@@ -706,6 +706,79 @@ def _shandong_public_building_payload():
     }
 
 
+def _shandong_agency_office_payload():
+    disclosure = (
+        "DB37/T 5077-2016标准已于2024-10-09废止；"
+        "本项目因暂无现行替代标准，按批准规则作过渡兼容沿用。"
+    )
+    return {
+        "family": "公共建筑",
+        "region": "山东",
+        "institution_type": "public_building",
+        "building_area": 10000,
+        "people_count": 500,
+        "standard_status": "废止",
+        "legacy_override": True,
+        "abolished_at": "2024-10-09",
+        "standard_disclosure": disclosure,
+        "public_building": {
+            "subtype": "agency_office",
+            "region": "山东",
+            "results": [
+                {
+                    "year": 2024,
+                    "standard_id": "DB37/T 5077-2016",
+                    "values": {
+                        "unit_area_heating_energy": 8.0,
+                        "unit_area_non_heating_electricity": 55.0,
+                        "unit_area_total_electricity": 76.0,
+                    },
+                    "quota": {
+                        "unit_area_heating_energy": [8.7, 4.8],
+                        "unit_area_non_heating_electricity": [60.0, 41.0],
+                        "unit_area_total_electricity": [86.0, 56.0],
+                    },
+                    "grade": {
+                        "unit_area_heating_energy": "符合约束值",
+                        "unit_area_non_heating_electricity": "符合约束值",
+                        "unit_area_total_electricity": "符合约束值",
+                    },
+                }
+            ],
+        },
+        "unit_area_heating_energy": {
+            "kgce_per_m2": 8.0,
+            "benchmark": {
+                "约束值": 8.7,
+                "先进值": 4.8,
+                "标准": "DB37/T 5077-2016",
+                "来源": "表7.0.3",
+                "评价结果": "符合约束值",
+            },
+        },
+        "unit_area_non_heating_electricity": {
+            "kwh_per_m2": 55.0,
+            "benchmark": {
+                "约束值": 60.0,
+                "先进值": 41.0,
+                "标准": "DB37/T 5077-2016",
+                "来源": "表7.0.3",
+                "评价结果": "符合约束值",
+            },
+        },
+        "unit_area_total_electricity": {
+            "kwh_per_m2": 76.0,
+            "benchmark": {
+                "约束值": 86.0,
+                "先进值": 56.0,
+                "标准": "DB37/T 5077-2016",
+                "来源": "表7.0.3",
+                "评价结果": "符合约束值",
+            },
+        },
+    }
+
+
 def _zhejiang_public_institution_payload():
     return {
         "family": "公共机构",
@@ -811,6 +884,52 @@ def test_shandong_public_building_payload_is_clean():
     )
 
     assert findings == []
+
+
+def test_shandong_agency_office_5077_is_nonblocking_warning():
+    findings = v2.review_shandong_public_building_payload(
+        _shandong_agency_office_payload(),
+        _public_building_raw(province="山东"),
+    )
+
+    assert [finding.code for finding in findings] == [
+        "V2.SD_PB.LEGACY_OVERRIDE"
+    ]
+    assert findings[0].severity == SEV_P2
+
+
+def test_shandong_agency_office_requires_transition_disclosure():
+    payload = _shandong_agency_office_payload()
+    payload.pop("standard_disclosure")
+
+    findings = v2.review_shandong_public_building_payload(
+        payload,
+        _public_building_raw(province="山东"),
+    )
+
+    assert "V2.SD_PB.LEGACY_DISCLOSURE" in {
+        finding.code for finding in findings
+    }
+    assert any(
+        finding.code == "V2.SD_PB.LEGACY_DISCLOSURE"
+        and finding.severity == SEV_P0
+        for finding in findings
+    )
+
+
+def test_shandong_5077_cannot_be_used_by_another_subtype():
+    payload = _shandong_agency_office_payload()
+    payload["public_building"]["subtype"] = "business_office"
+
+    codes = {
+        finding.code
+        for finding in v2.review_shandong_public_building_payload(
+            payload,
+            _public_building_raw(province="山东"),
+        )
+    }
+
+    assert "V2.SD_PB.STANDARD" in codes
 
 
 def test_shandong_public_building_rejects_three_tiers_and_db33():

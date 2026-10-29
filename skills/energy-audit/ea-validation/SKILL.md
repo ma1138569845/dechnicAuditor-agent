@@ -1,11 +1,11 @@
 ---
 name: ea-validation
 description: "对能源审计项目做三模式数据验证与报告审查（datava 专用）；P0/P1/P2 分级裁决."
-version: 2.2.0
-author: 马天远
 license: MIT
-platforms: [windows]
 metadata:
+  version: 2.2.0
+  author: 马天远
+  platforms: [windows]
   hermes:
     tags: [energy-audit, validation, review, quality-gate]
 ---
@@ -187,15 +187,19 @@ V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indi
 | 报告族 | V2 指标来源 | 审查口径 |
 |---|---|---|
 | 山东公共机构 | 山东现行 `yearly[]` / 指标包 / 现算链 | 保持既有公共机构指标与 DB37 检查 |
-| 山东公共建筑 | `indicators.json → public_building.results[]` | eA 单位面积供暖能耗、eB 单位面积非供暖电耗；医院另查 eC；只允许约束值/先进值 |
+| 山东公共建筑 | `indicators.json → public_building.results[]` | 按 `A1～A3/B/C/D1～D4` 路由 5076/5077/5078/5079；eA/eB 必查，医院另查 eC，机关办公另查总等效电耗；只允许约束值/先进值 |
 | 浙江公共建筑（办公、场馆） | `indicators.json → public_building.results[]` | 单位建筑面积能耗、常规用能系统单位建筑面积电耗、人均综合能耗、人均电耗、单位用水量共 5 项 |
 | 浙江公共建筑（饭店） | `indicators.json → public_building.results[]` | 单位综合能耗（参考指标）、单位可比综合能耗、单位用水量共 3 项；水耗按入住率折算值对标 |
 | 浙江公共机构 | `indicators.json → public_institution.results[]` | DB33/T 736 机关/场馆、737 普通高校、738 二级及以上医院；约束值/基准值/引导值三档 |
 
 山东公共建筑检查为阻塞项：
 
-- 子类仅限商务办公、宾馆酒店、医院；机关办公不进入本包；
-- 标准必须匹配 DB37/T 5078/5076/5079-2024，不得出现 DB33；
+- 子类仅限机关办公、商务办公、宾馆酒店、医院，且必须由平台码解析；
+- `B=机关办公` 只允许 DB37/T 5077-2016；该标准已于 2024-10-09 废止，仅作批准过渡，
+  报告必须逐字写明废止日期及“暂无现行替代标准、按批准规则作过渡兼容沿用”；
+  DataVA 对该合规过渡给 P2 风险提示，不阻断；缺失固定披露、用于其他地区/子类或混入
+  5076/5078/5079 均记 P0；
+- 其他子类必须匹配 DB37/T 5076/5078/5079-2024，不得出现 DB33；
 - 限额数组必须恰好两项，评价只允许“达到先进值/符合约束值/超过约束值”；
 - 标准包电力折标为 0.1229，不得混入公共机构旧等价值 0.31。
 

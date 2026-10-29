@@ -1,11 +1,11 @@
 ---
 name: ea-calculation
 description: "按报告族计算能源审计指标、做地区定额对标并生成第5章（caliber 专用）."
-version: 1.4.0
-author: 马天远
 license: MIT
-platforms: [windows]
 metadata:
+  version: 1.4.0
+  author: 马天远
+  platforms: [windows]
   hermes:
     tags: [energy-audit, indicators, db37, db33, chapter5]
 ---
@@ -35,12 +35,26 @@ datava V2 INDICATOR_REVIEW 复核 → author装配报告
 | 报告族 | 计算路径 |
 |---|---|
 | 山东公共机构 | 现有 5 项指标链（本文件下半部分） |
-| 山东公共建筑 | `shandong_public_building_indicators.py` + `standard_chapter5.py`；DB37/T 5076/5078/5079-2024，约束值/先进值二档 |
+| 山东公共建筑 | `shandong_public_building_indicators.py` + `standard_chapter5.py`；按 `A/B/C/D` 路由 DB37/T 5076/5077/5078/5079，约束值/先进值二档 |
 | 浙江公共建筑 | `public_building_indicators.py` + `public_building_chapter5.py`，电力 0.1229 当量值 |
 | 浙江公共机构 | `zhejiang_public_institution_indicators.py` + `standard_chapter5.py`；DB33/T 736/737/738-2021，约束值/基准值/引导值三档 |
 | 其他 | 返回明确错误，不进入任何地区算法 |
 
 计算前先按 `data.json → base.unit_type + base.province` 固定报告族。不得把山东公共建筑的 `eA/eB/eC` 写成公共机构“单位建筑面积非供暖能耗”，也不得把浙江公共机构三档降成山东二档。
+
+山东公共建筑必须先经 `tools/energy_audit/dept_dict.py::resolve_unit_codes()` 解析平台码，
+不得从单位名或 `indicators.json` 反推子类：
+
+| 一级/二级码 | 规范子类 | 标准 |
+|---|---|---|
+| `A1/A2/A3` | `hotel`（宾馆酒店） | DB37/T 5076-2024 |
+| `B` | `agency_office`（机关办公） | DB37/T 5077-2016，废止过渡 |
+| `C` | `business_office`（商务办公） | DB37/T 5078-2024 |
+| `D1/D2/D3/D4` | `hospital`（医院） | DB37/T 5079-2024 |
+
+`B` 只允许使用 5077：必须保留“已于 2024-10-09 废止、因暂无现行替代标准作过渡兼容沿用”
+的固定披露；不得借用 5076/5078/5079。其他省份只复用公共建筑字典值（`public_build_type*`），
+没有登记标准包时停止计算。浙江公共建筑使用 `zj_public_build_type*`，旅游饭店必须提供星级码。
 
 ---
 

@@ -64,6 +64,13 @@ def load_module(name: str, path: Path):
     return module
 
 
+def load_dept_dict_module():
+    return load_module(
+        "dept_dict_under_test",
+        ROOT / "tools" / "energy_audit" / "dept_dict.py",
+    )
+
+
 def load_caliber_module():
     """加载计算入口，但用替身切断部署环境和图表依赖。"""
     report_family = types.ModuleType("tools.energy_audit.report_family")
@@ -113,6 +120,7 @@ def load_caliber_module():
     standard_chapter5.render = mock.Mock()
 
     substitutes = {
+        "tools.energy_audit.dept_dict": load_dept_dict_module(),
         "tools.energy_audit.report_family": report_family,
         "tools.energy_audit.project_data": project_data,
         "tools.energy_audit.indicators": indicators,
@@ -310,6 +318,105 @@ class CalculationEntryGuardTests(unittest.TestCase):
         self.module.run_public_building_caliber.assert_not_called()
 
 
+class PublicBuildingCodeRoutingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_caliber_module()
+
+    def _project(self, **base_fields):
+        fields = {
+            "unit_name": "某公共建筑",
+            "unit_type": "公共建筑",
+            "province": "浙江",
+            "unit_func": "",
+            "children_func": "",
+            "institution_category": "",
+            "specific_type": "",
+            "building_area": 10000,
+            "people_count": 100,
+            "beds_count": 0,
+            "city": "",
+            "address": "",
+            "clinic_num": 0,
+        }
+        fields.update(base_fields)
+        base = SimpleNamespace(**fields)
+        return SimpleNamespace(
+            base=base,
+            buildings=[],
+            energy_yearly=[],
+            energy_monthly=[],
+        )
+
+    def test_zhejiang_hotel_star_comes_from_platform_code(self):
+        project = self._project(
+            unit_func="zj_hotel",
+            children_func="zj_hotel_4",
+        )
+        spec = self.module.build_public_building_spec(project, {})
+        self.assertEqual(spec["subtype"], "hotel")
+        self.assertEqual(spec["star"], "4")
+
+    def test_zhejiang_public_building_without_codes_is_blocked(self):
+        project = self._project(unit_name="某办公建筑")
+        with self.assertRaisesRegex(ValueError, "customer_func"):
+            self.module.build_public_building_spec(project, {})
+
+    def test_shandong_b_routes_to_agency_office(self):
+        project = self._project(
+            province="山东",
+            unit_func="B",
+            children_func="",
+        )
+        self.assertEqual(
+            self.module._shandong_public_building_subtype(
+                project.base,
+                {},
+            ),
+            "agency_office",
+        )
+
+    def test_shandong_d3_sets_hospital_level_and_specialty_from_code(self):
+        project = self._project(
+            province="山东",
+            unit_func="D",
+            children_func="D3",
+        )
+        resolved = self.module._public_building_codes(project.base)
+        self.assertEqual(resolved["hospital_level"], "<=2")
+        self.assertEqual(resolved["hospital_specialty"], "general")
+
+    def test_shandong_agency_spec_carries_5077_correction_parameters(self):
+        project = self._project(
+            province="山东",
+            unit_func="B",
+            children_func="",
+        )
+        raw = {
+            "public_building": {
+                "area_m2": 10000,
+                "heating_area_m2": 10000,
+                "annual_use_hours": 2500,
+                "area_per_person": 10,
+            }
+        }
+        spec = self.module.build_shandong_public_building_spec(project, raw)
+        self.assertEqual(spec["subtype"], "agency_office")
+        self.assertEqual(spec["correction"]["annual_use_hours"], 2500)
+        self.assertEqual(spec["correction"]["area_per_person"], 10)
+
+    def test_shandong_agency_metrics_include_all_three_5077_columns(self):
+        metrics = self.module._shandong_metrics("agency_office")
+        self.assertEqual(
+            {metric["key"] for metric in metrics},
+            {
+                "unit_area_heating_energy",
+                "unit_area_non_heating_electricity",
+                "unit_area_total_electricity",
+            },
+        )
+
+
 class HotelWaterDenominatorTests(unittest.TestCase):
     def test_water_grade_keeps_the_standard_occupancy_adjustment(self):
         module = load_indicator_module()
@@ -398,6 +505,103 @@ class ShandongPublicBuildingCalculatorTests(unittest.TestCase):
         })
         with self.assertRaisesRegex(ValueError, "综合/专科"):
             self.module.compute_project(project)
+
+    def test_agency_office_uses_5077_and_reports_obsolete_status(self):
+        project = self._project(
+            electricity_kwh=50000,
+            gas_m3=5000,
+            heating_gas_m3=3000,
+        )
+        project.update({
+            "subtype": "agency_office",
+            "correction": {
+                "annual_use_hours": 2500,
+                "area_per_person": 10,
+            },
+        })
+        result = self.module.compute_project(project)[0]
+
+        self.assertEqual(result["standard_id"], "DB37/T 5077-2016")
+        self.assertEqual(result["standard_table"], "表7.0.3")
+        self.assertTrue(result["legacy_override"])
+        self.assertEqual(result["standard_status"], "废止")
+        self.assertEqual(result["abolished_at"], "2024-10-09")
+        self.assertEqual(
+            result["quota_raw"]["unit_area_heating_energy"],
+            [8.2, 4.3],
+        )
+        self.assertEqual(
+            result["quota_raw"]["unit_area_non_heating_electricity"],
+            [54, 35],
+        )
+        self.assertEqual(
+            result["quota_raw"]["unit_area_total_electricity"],
+            [80, 50],
+        )
+
+    def test_5077_correction_uses_annual_use_hours_and_ten_square_metres(self):
+        project = self._project(
+            electricity_kwh=50000,
+            heating_gas_m3=3000,
+        )
+        project.update({
+            "subtype": "agency_office",
+            "correction": {
+                "annual_use_hours": 1250,
+                "area_per_person": 20,
+            },
+        })
+        result = self.module.compute_project(project)[0]
+
+        self.assertEqual(result["correction"]["annual_use_hours"], 1250)
+        self.assertAlmostEqual(result["correction"]["alpha1_use_hours"], 0.65)
+        self.assertAlmostEqual(result["correction"]["alpha2_people_density"], 0.85)
+        self.assertAlmostEqual(result["correction"]["factor"], 0.5525)
+
+    def test_5077_heating_electricity_uses_the_fixed_equal_value_coefficient(self):
+        project = self._project(
+            electricity_kwh=50000,
+            heating_electricity_kwh=1000,
+        )
+        project["subtype"] = "agency_office"
+        result = self.module.compute_project(project)[0]
+
+        self.assertAlmostEqual(result["notes"]["heating_energy_kgce"], 300.0)
+
+    def test_5077_purchased_heat_requires_an_explicit_equivalent_coefficient(self):
+        project = self._project(
+            electricity_kwh=50000,
+            heating_heat_gj=100,
+        )
+        project["subtype"] = "agency_office"
+
+        with self.assertRaisesRegex(ValueError, "heating_heat_equivalent"):
+            self.module.compute_project(project)
+
+    def test_5077_purchased_heat_uses_the_supplied_equivalent_coefficient(self):
+        project = self._project(
+            electricity_kwh=50000,
+            heating_heat_gj=100,
+            heating_heat_equivalent_electricity_kwh_per_gj=64,
+        )
+        project["subtype"] = "agency_office"
+        result = self.module.compute_project(project)[0]
+
+        self.assertAlmostEqual(
+            result["values"]["unit_area_total_electricity"],
+            5.64,
+        )
+
+    def test_hospital_code_d4_uses_secondary_or_lower_specialty_table(self):
+        project = self._project(electricity_kwh=50000, heating_gas_m3=3000)
+        project.update({
+            "subtype": "hospital",
+            "hospital_level": "二级及以下",
+            "hospital_specialty": "专科",
+            "beds": 100,
+        })
+        result = self.module.compute_project(project)[0]
+        self.assertEqual(result["standard_table"], "表7.0.2-4")
 
 
 class ZhejiangPublicInstitutionCalculatorTests(unittest.TestCase):

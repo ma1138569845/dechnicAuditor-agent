@@ -124,11 +124,26 @@ pg_collector 能耗段 `dt==4 and field=='electricity_kwh'` →
 
 | 列 | 含义 | 字典 |
 |---|---|---|
-| `customer_func` | 一级单位类型 | `client_dept_type`：A 政务服务中心 / B 场馆机构 / C 医疗机构 / D 党政机关 / **E 教育机构** |
-| `children_func` | 二级类型 | `client_dept_type_<一级码>`（见下表） |
+| `customer_func` | 一级单位类型 | 必须先按 `field_type` 对应的 `unit_type + district_id` 对应的 `province` 选字典命名空间；同一字母在不同字典中含义不同 |
+| `children_func` | 二级类型 | 同命名空间的二级字典；缺必要二级码时停止计算并补采 |
 | `climate_type` | 气候区 A/B | ⚠️ **实测大面积误填为 A**（济南、聊城在内陆却记 A）→ **不作为取值依据**，气候区一律走内置表 `tools/energy_audit/climate_zone.py`（DB37/5026-2022 表3.0.1），该列只做交叉校验告警 |
 | `district_id` | 行政区划代码 | 如 370611；**气候区判定的首选依据**（地址常不含城市名、`ProjectBase.city` 常为空） |
 | `field_type` | 所属领域 | 全库 `10`（公共机构）；`20` 公共建筑、`30` 工业企业 |
+
+字典命名空间由 `tools/energy_audit/dept_dict.py::resolve_unit_codes()` 统一选择：
+
+| 报告族 | 省份 | 一级/二级字典 |
+|---|---|---|
+| 公共机构 | 浙江 | `zj_client_dept_type*` |
+| 公共机构 | 山东及其他非浙江 | `client_dept_type*` |
+| 公共建筑 | 浙江 | `zj_public_build_type*`（当前仅旅游饭店 `zj_hotel_3/4/5`） |
+| 公共建筑 | 山东及其他非浙江 | `public_build_type*` |
+
+公共建筑字典值为：`A1/A2/A3` 五星/四星/三星宾馆酒店，`B` 机关办公，`C` 商务办公，
+`D1/D2/D3/D4` 为三级综合/三级专科/二级及以下综合/二级及以下专科医院。
+其他省份公共建筑可复用这些码值，但**不得**因此直接套用山东标准包。
+公共建筑缺 `province`、一级码或必要二级码时必须停止后续标准路由并提示补采，
+不得按单位名猜成 `office`，也不得默认三星级。
 
 二级字典取值：
 
