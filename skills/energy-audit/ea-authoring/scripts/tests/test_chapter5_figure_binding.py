@@ -154,6 +154,24 @@ class Chapter5DocxAssertTests(unittest.TestCase):
         drawing = "<w:r><w:drawing/></w:r>" if image else ""
         return f"<w:p><w:r><w:t>{text}</w:t></w:r>{drawing}</w:p>"
 
+    def test_chapter_region_skips_numeric_toc_style(self):
+        def styled(style, text):
+            return (
+                f'<w:p><w:pPr><w:pStyle w:val="{style}"/></w:pPr>'
+                f"<w:r><w:t>{text}</w:t></w:r></w:p>"
+            )
+
+        toc5 = styled("26", "第5章 能源消耗分析1")
+        toc6 = styled("26", "第6章 用能系统运行分析2")
+        body5 = styled("3", "第5章 能源消耗分析")
+        caption = self.para("图5.1 能源资源流向图")
+        body6 = styled("3", "第6章 用能系统运行分析")
+        xml = f"<w:body>{toc5}{toc6}{body5}{caption}{body6}</w:body>"
+
+        region = ASSERTS_MOD._chapter_region(xml, 5)
+
+        self.assertEqual([caption], region)
+
     def run_assert(self, blocks):
         with mock.patch.object(ASSERTS_MOD, "_chapter_region", return_value=blocks):
             return ASSERTS_MOD.ch5_figures_ok("<w:body/>")

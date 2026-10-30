@@ -555,25 +555,32 @@ def ch2_22_region(doc_xml: str):
 def _chapter_region(doc_xml: str, chapter_no: int):
     """第 N 章区间：正文「第N章 …」标题之后 → 下一个「第N+1章」/「附录」之前。
 
-    目录缓存条目（pStyle 以 toc 开头）不计入，避免目录里的章名被当成正文标题。
+    目录缓存条目可能使用名称以 toc 开头的样式，也可能被 Word 保存为数字
+    styleId；取最后一个匹配的章标题，避免把目录条目当成正文起点。
     """
     blocks = re.findall(r"<w:p[ >].*?</w:p>|<w:tbl>.*?</w:tbl>", doc_xml, re.S)
     self_pat = re.compile(r"^第%d章" % chapter_no)
     next_pat = re.compile(r"^第\d+章|^附录")
-    start = None
+    starts = []
     for i, b in enumerate(blocks):
         if not b.startswith("<w:p"):
             continue
         if _pstyle(b).lower().startswith("toc"):
             continue
         t = norm(_ptext(b))
-        if start is None:
-            if self_pat.match(t):
-                start = i
+        if self_pat.match(t):
+            starts.append(i)
+    if not starts:
+        return []
+    start = starts[-1]
+    for i in range(start + 1, len(blocks)):
+        b = blocks[i]
+        if not b.startswith("<w:p"):
             continue
+        t = norm(_ptext(b))
         if next_pat.match(t) and not self_pat.match(t):
             return blocks[start + 1:i]
-    return blocks[start + 1:] if start is not None else []
+    return blocks[start + 1:]
 
 
 def ch2_22_structure_ok(doc_xml: str):
