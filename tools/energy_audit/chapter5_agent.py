@@ -984,7 +984,9 @@ def _generate_total_bar_chart(years, totals, name_cn, unit, output_dir, fname) -
     fig, ax = plt.subplots(figsize=(7, 4))
     bars = ax.bar(y_labels, totals, color='#4C8BF5', width=0.5)
     for b, v in zip(bars, totals):
-        ax.text(b.get_x() + b.get_width() / 2, b.get_height(), f'{v:.2f}',
+        # 0 值代表“该年未统计/无独立计量”，柱顶标“—”而不是 0.00，避免读成零消耗
+        label = f'{v:.2f}' if v > 0 else '—'
+        ax.text(b.get_x() + b.get_width() / 2, b.get_height(), label,
                 ha='center', va='bottom', fontsize=9)
     ax.set_title(chart_text(f'{y_labels[0]}年-{y_labels[-1]}年总{name_cn}量（单位：{unit}）'))
     ax.grid(True, alpha=0.3, axis='y')
@@ -1264,8 +1266,12 @@ def generate_charts(data: dict, config: dict,
     co = data.get('cost_data', {})
     cost_years = []
     for y in years:
-        if any(float((entry or {}).get('total', 0) or 0) > 0
-               for entry in (co.get(y) or {}).values()):
+        # 费用占比饼图只在该年有 ≥2 类费用时才有意义（单品种为满圆 100%，无信息量）
+        positive_costs = [
+            entry for entry in (co.get(y) or {}).values()
+            if float((entry or {}).get('total', 0) or 0) > 0
+        ]
+        if len(positive_costs) >= 2:
             cost_years.append(y)
             add_figure(
                 "cost_pie",

@@ -558,9 +558,30 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
     t.style = "Table Grid"
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
     if equal_width_cm:
+        # 防溢出（2026-10-29）：等宽列宽 × 列数不得超过纵向正文可用宽
+        # （21.0 - 3.17×2 = 14.66cm）；浙江公共建筑族建筑表 10 列时原 3.66cm/列会撑到 36.6cm。
+        equal_width_cm = min(equal_width_cm, 14.66 / n_cols)
         t.autofit = False
         for ci in range(n_cols):
             t.columns[ci].width = Cm(equal_width_cm)
+    elif n_cols >= 2:
+        # 按内容长度加权分配列宽（2026-10-29）：避免「主要技术参数」这类长文本列
+        # 被 Word 自动布局压成竖排单字、行高被撑爆（浙江公共建筑族表6.1 实测）。
+        lens = []
+        for ci in range(n_cols):
+            longest = max((len(str(r[ci])) if ci < len(r) else 0) for r in rows)
+            lens.append(min(max(longest, 3), 20))
+        total = float(sum(lens)) or 1.0
+        widths = [14.66 * L / total for L in lens]
+        MINW = 1.6
+        shortfall = sum(MINW - w for w in widths if w < MINW)
+        spare = sum(w - MINW for w in widths if w > MINW)
+        if shortfall > 0 and spare > 0:
+            k = max(0.0, (spare - shortfall) / spare)
+            widths = [w if w < MINW else MINW + (w - MINW) * k for w in widths]
+        t.autofit = False
+        for ci in range(n_cols):
+            t.columns[ci].width = Cm(widths[ci])
     for ri, data in enumerate(rows):
         row = t.rows[ri]
         row.height = Cm(row_height_cm)
@@ -574,6 +595,8 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
             cell = row.cells[ci]
             if equal_width_cm:
                 cell.width = Cm(equal_width_cm)
+            elif n_cols >= 2:
+                cell.width = Cm(widths[ci])
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             txt = data[ci] if ci < len(data) else ""
             if bold_first_row and ri == 0 and ci == 0:
@@ -606,12 +629,19 @@ def _build_cover(doc, unit, org, date_text):
     实测落款位置与样板相差 <0.3cm。
     改动前：单位名 22pt／报告名 26pt（行距 1.5）、落款 14pt 不加粗、间隔 8 空行。
     """
+    # 长单位名按语义断行，避免 Word 在行末留下单字孤行；每多一行减少 3 个空行，
+    # 使机构名和日期仍落在封面同一页。
+    unit_lines = [unit]
+    if len(unit) > 12 and "专家公寓" in unit and not unit.startswith("专家公寓"):
+        prefix, suffix = unit.split("专家公寓", 1)
+        if prefix:
+            unit_lines = [prefix, "专家公寓" + suffix]
     _para(doc, "", line=Pt(46), space_before=0, space_after=0)   # 首行留白（对齐样板 4.76cm）
-    for text in (unit, "能源审计报告"):
+    for text in (*unit_lines, "能源审计报告"):
         if text:
             _para(doc, text, size=30, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
                   line=Pt(50), space_before=0, space_after=0)
-    _spacers(doc, 23)
+    _spacers(doc, max(14, 23 - 3 * (len(unit_lines) - 1)))
     for text in (org, date_text):
         if text:
             _para(doc, text, size=16, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
@@ -1026,12 +1056,24 @@ def _add_image_para(doc, path, width_cm=12.0):
     # 其余图（流向图/柱状图/照片）维持 12cm 不变。
     if width_cm == 12.0 and "cost_pie_" in os.path.basename(str(path)):
         width_cm = 8.5
+    # 竖向照片防独占整页（2026-10-29）：单图高度不得超过 11cm，
+    # 否则两张竖构图（如院区平面图 + 主体建筑照片）无法同页，前页留下大片空白。
+    try:
+        from docx.image.image import Image as _DocxImage
+
+        _im = _DocxImage.from_file(path)
+        _h_cm = width_cm * _im.px_height / max(1, _im.px_width)
+        if _h_cm > 10.0:
+            width_cm = 10.0 * _im.px_width / max(1, _im.px_height)
+    except Exception:
+        pass
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     pf = p.paragraph_format
     pf.space_before = Pt(0)
     pf.space_after = Pt(0)
     pf.line_spacing = 1.5
+    pf.keep_with_next = True  # 图片与紧随其后的图注保持同页（2026-10-29）
     r = p.add_run()
     r.add_picture(path, width=Cm(width_cm))
     return p
@@ -1143,7 +1185,7 @@ def _render_chapter6_photos(doc, captions, images, project_dir):
             if not os.path.isfile(path):
                 print(f"WARN: 图文件不存在: {path}")
                 continue
-            _add_image_para(doc, path, width_cm=CHAPTER6_PHOTO_WIDTH_CM)
+            _add_image_para(doc, path, width_cm=12.0)
             inserted = True
         if not srcs:
             print(f"WARN: 图清单缺少: {caption}")
@@ -1270,13 +1312,19 @@ def _render_md(doc, md_path, ctx, appendix=False):
     figure_issues = ctx.get("figure_issues") or {}
     project_dir = ctx["project_dir"]
     listing = False  # 附录总目录清单区（'附录：' 之后、首个 '## ' 之前）
+    # 公共建筑族附录2 仅 3 列系数表，横向页会把表格拉宽 → 由 ctx 关闭横向（2026-10-29）
+    apx2_landscape = ctx.get("apx2_landscape", True)
     in_apx2 = False  # 附录2 横向节区段（2026-09-28）
     apx2_tables = 0  # 附录2 内已渲染的附表数（首张不另起页，避免出现空页）
+    apx1_tables = 0  # 附录1 内已渲染的附表数（逐月表每张单独起页）
     i = 0
     while i < len(lines):
         line = lines[i].strip()
         i += 1
         if not line:
+            continue
+        if line == "<!-- pagebreak -->":
+            _page_break(doc)
             continue
         if line.startswith("### "):
             _heading(doc, line[4:].strip(), 3)
@@ -1288,7 +1336,7 @@ def _render_md(doc, md_path, ctx, appendix=False):
                 if in_apx2 and not head.startswith(APX2_LANDSCAPE_HEADING):
                     _end_landscape_section(doc)   # 附录2 结束 → 切回纵向
                     in_apx2 = False
-                elif (not in_apx2) and head.startswith(APX2_LANDSCAPE_HEADING):
+                elif (not in_apx2) and apx2_landscape and head.startswith(APX2_LANDSCAPE_HEADING):
                     _start_landscape_section(doc)  # 附录2 开始 → 切横向
                     in_apx2 = True
                     apx2_tables = 0
@@ -1335,6 +1383,11 @@ def _render_md(doc, md_path, ctx, appendix=False):
                            equal_width_cm=3.66 if is_bldg else None,
                            row_height_cm=0.8 if (in_apx2 and bool(rows[0])
                                                  and rows[0][0].strip() == "月份") else 1.01)
+                # 表格下缘与后续正文、注释保留一个可读的短间距。
+                gap = doc.add_paragraph()
+                gap.paragraph_format.line_spacing = Pt(6)
+                gap.paragraph_format.space_before = Pt(0)
+                gap.paragraph_format.space_after = Pt(0)
         elif "[FORMULA" in line:
             _render_formula_line(doc, line, omml)
         elif line.startswith("**表") and line.endswith("**"):
@@ -1346,14 +1399,21 @@ def _render_md(doc, md_path, ctx, appendix=False):
             p_cap = _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
             p_cap.paragraph_format.keep_with_next = True
         elif appendix and re.match(r"^附表\d", line):
-            # 附录2 内每张附表另起一页（2026-09-28）：横向页可用高 15.9cm，
-            # 配合 0.8cm 行高，14 行 + 表题可整表放一页，避免"12月/合计行"被拆到次页。
-            # 首张不另起页——横向分节符本身已经换页，再加页会多出一张空白页。
-            if in_apx2 and apx2_tables > 0:
-                _page_break(doc)
-            if in_apx2:
-                apx2_tables += 1
-            _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+            if re.match(r"^附表1-", line):
+                p_cap = _para(doc, line, size=12, bold=True,
+                              align=WD_ALIGN_PARAGRAPH.CENTER)
+                if apx1_tables > 0:
+                    p_cap.paragraph_format.page_break_before = True
+                apx1_tables += 1
+            else:
+                # 附录2 内每张附表另起一页（2026-09-28）：横向页可用高 15.9cm，
+                # 配合 0.8cm 行高，14 行 + 表题可整表放一页，避免"12月/合计行"被拆到次页。
+                # 首张不另起页——横向分节符本身已经换页，再加页会多出一张空白页。
+                if in_apx2 and apx2_tables > 0:
+                    _page_break(doc)
+                if in_apx2:
+                    apx2_tables += 1
+                _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         elif line.startswith("**") and line.endswith("**") and len(line) > 4:
             _para(doc, line[2:-2].strip(), size=12, bold=True,
                   align=WD_ALIGN_PARAGRAPH.CENTER)
@@ -1600,6 +1660,8 @@ def build(project_dir, out_path=None, figure_policy="placeholder"):
         "omml": _load_omml(),
         "images": images,
         "figure_issues": figure_issues,
+        # 公共建筑族附录2 为 3 列系数表，保持纵向；其他族沿用 7 列宽表横向
+        "apx2_landscape": not getattr(family_context, "is_public_building", False),
     }
     _render_chapters(doc, project_dir, ctx)
     _render_appendix(doc, project_dir, ctx)
