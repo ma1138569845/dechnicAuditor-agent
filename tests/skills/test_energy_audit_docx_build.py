@@ -137,26 +137,27 @@ def built(tmp_path_factory):
 
 def test_cover_structure(built):
     paras = built.paragraphs
-    # 3 空行 + 单位(22pt bold) + 报告名(26pt bold) + 8 空行 + 机构(14pt) + 日期 + 分页
-    # （2026-09-22 定案：封面不再有期间副标题行；机构名不加前缀）
-    assert all(not p.text.strip() for p in paras[0:3])
-    p_unit = paras[3]
+    # 首行留白 + 单位(30pt bold) + 报告名(30pt bold) + 23 空行
+    # + 机构(16pt bold) + 日期(16pt bold)
+    # 2026-09-28 对齐淄博一四八样板；封面不再追加分页段落，
+    # 由下一段（信息表首标题）的 pageBreakBefore 负责换页。
+    assert not paras[0].text.strip()
+    p_unit = paras[1]
     assert p_unit.text == UNIT
     assert p_unit.alignment == WD_ALIGN_PARAGRAPH.CENTER
-    assert p_unit.runs[0].font.size.pt == 22 and p_unit.runs[0].font.bold is True
-    p_title = paras[4]
+    assert p_unit.runs[0].font.size.pt == 30 and p_unit.runs[0].font.bold is True
+    p_title = paras[2]
     assert p_title.text == "能源审计报告"
-    assert p_title.runs[0].font.size.pt == 26 and p_title.runs[0].font.bold is True
-    # 8 空行 + 机构 + 日期
-    assert all(not p.text.strip() for p in paras[5:13])
-    assert paras[13].text == ORG
-    assert paras[13].runs[0].font.size.pt == 14
-    assert paras[14].text == "2026年1月"
-    # 分页符
-    brs = [b.get(qn("w:type")) for b in paras[15]._p.findall(".//" + qn("w:br"))]
-    assert brs == ["page"]
+    assert p_title.runs[0].font.size.pt == 30 and p_title.runs[0].font.bold is True
+    # 23 空行 + 机构 + 日期
+    assert all(not p.text.strip() for p in paras[3:26])
+    assert paras[26].text == ORG
+    assert paras[26].runs[0].font.size.pt == 16
+    assert paras[27].text == "2026年1月"
+    assert paras[28].text == "能源审计机构信息表"
+    assert paras[28].paragraph_format.page_break_before is True
     # 封面段落字体：中文宋体
-    rf = paras[3].runs[0]._element.find(qn("w:rPr")).find(qn("w:rFonts"))
+    rf = paras[1].runs[0]._element.find(qn("w:rPr")).find(qn("w:rFonts"))
     assert rf.get(qn("w:eastAsia")) == "宋体"
     assert rf.get(qn("w:ascii")) == "Times New Roman"
 
@@ -207,7 +208,7 @@ def test_toc_page_and_field(built):
     assert toc_title.runs[0].font.size.pt == 15 and toc_title.runs[0].font.bold is True
     assert toc_title.alignment == WD_ALIGN_PARAGRAPH.CENTER
     xml = built.element.body.xml
-    assert 'TOC \\o "1-3"' in xml
+    assert 'TOC \\o "1-2"' in xml
     # 目录后为「下一页」分节符（前置节｜正文节分界，2026-09-22 定）；不得再有普通分页符
     assert len(built.sections) == 2
     toc_i = paras.index(toc_title)
