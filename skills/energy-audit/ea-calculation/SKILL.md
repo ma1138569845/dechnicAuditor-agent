@@ -1,11 +1,11 @@
 ---
 name: ea-calculation
 description: "按报告族计算能源审计指标、做地区定额对标并生成第5章（caliber 专用）."
+version: 1.4.0
+author: 马天远
 license: MIT
+platforms: [windows]
 metadata:
-  version: 1.4.0
-  author: 马天远
-  platforms: [windows]
   hermes:
     tags: [energy-audit, indicators, db37, db33, chapter5]
 ---

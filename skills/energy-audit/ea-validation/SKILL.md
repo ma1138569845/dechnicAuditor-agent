@@ -1,11 +1,11 @@
 ---
 name: ea-validation
 description: "对能源审计项目做三模式数据验证与报告审查（datava 专用）；P0/P1/P2 分级裁决."
+version: 2.2.0
+author: 马天远
 license: MIT
+platforms: [windows]
 metadata:
-  version: 2.2.0
-  author: 马天远
-  platforms: [windows]
   hermes:
     tags: [energy-audit, validation, review, quality-gate]
 ---
