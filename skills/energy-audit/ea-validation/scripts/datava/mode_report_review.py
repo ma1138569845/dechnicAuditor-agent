@@ -135,12 +135,25 @@ def _load_chapter6_router():
         spec.loader.exec_module(module)
         router = getattr(module, "chapter6_route_for_equipment", None)
         photo_slots = getattr(module, "equipment_photo_slots", None)
+        public_building_hvac = getattr(
+            module,
+            "equipment_requires_public_building_hvac_photo",
+            None,
+        )
         if callable(router):
-            return router, photo_slots if callable(photo_slots) else None
-    return None, None
+            return (
+                router,
+                photo_slots if callable(photo_slots) else None,
+                public_building_hvac if callable(public_building_hvac) else None,
+            )
+    return None, None, None
 
 
-_CHAPTER6_ROUTER, _EQUIPMENT_PHOTO_SLOTS = _load_chapter6_router()
+(
+    _CHAPTER6_ROUTER,
+    _EQUIPMENT_PHOTO_SLOTS,
+    _EQUIPMENT_REQUIRES_PUBLIC_BUILDING_HVAC_PHOTO,
+) = _load_chapter6_router()
 
 
 def _load_public_building_table_contracts():
@@ -1034,6 +1047,7 @@ def _missing_chapter6_photo_captions(
     equipment: Optional[Sequence[Dict[str, Any]]],
     images: Optional[Sequence[Dict[str, Any]]] = None,
     table_device_names: Optional[Sequence[str]] = None,
+    unit_type: str = "",
 ) -> List[str]:
     """返回已登记附件但缺少对应独立图注的项。
 
@@ -1059,6 +1073,13 @@ def _missing_chapter6_photo_captions(
         strict_reverse = (
             contract["category"] in STRICT_REVERSE_PHOTO_CATEGORIES
             or contract["image_source_ref"].startswith("water_aux.")
+            or (
+                unit_type == "公共建筑"
+                and callable(_EQUIPMENT_REQUIRES_PUBLIC_BUILDING_HVAC_PHOTO)
+                and _EQUIPMENT_REQUIRES_PUBLIC_BUILDING_HVAC_PHOTO(
+                    contract.get("equipment") or {}
+                )
+            )
         )
         if (
             not strict_reverse
@@ -1119,6 +1140,7 @@ def _chapter6_photo_section_mismatches(
                 project_base.get("institution_category") or ""
             ),
             unit_name=str(project_base.get("unit_name") or ""),
+            unit_type=str(project_base.get("unit_type") or ""),
         )
         record.update(canonical)
         stored_key = str(
@@ -1379,7 +1401,11 @@ def check_chapter6_structure(
             f"图片 {len(img_paras)} 张 / 图注 {len(captions)} 条",
             "图注数=图片数", f"{len(img_paras)}/{len(captions)}")
     missing_photo_captions = _missing_chapter6_photo_captions(
-        captions, equipment, images, _chapter6_table_device_names(ch6)
+        captions,
+        equipment,
+        images,
+        _chapter6_table_device_names(ch6),
+        str((base or {}).get("unit_type") or "").strip(),
     )
     if missing_photo_captions:
         add(

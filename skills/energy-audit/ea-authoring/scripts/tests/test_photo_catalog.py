@@ -658,6 +658,50 @@ class PhotoCatalogContextTests(unittest.TestCase):
                 context,
             )
 
+    def test_public_building_hvac_route_keeps_combustion_cooling_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = root / "absorption.png"
+            image.write_bytes(b"public-building-gas-absorption")
+            data = {
+                "base": {
+                    "unit_name": "测试公共建筑",
+                    "unit_short": "公共建筑",
+                    "unit_type": "公共建筑",
+                },
+                "images": [{
+                    "path": str(image),
+                    "file_id": 512,
+                    "category": "制冷设备",
+                }],
+                "equipment": [{
+                    "name": "吸收式溴化锂机组",
+                    "category": "空调",
+                    "gas_value": 1200,
+                    "img_ids": [512],
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            catalog = PHOTO_CATALOG.build_photo_catalog(data, root)
+            binding = next(
+                item
+                for item in catalog["candidates"][0]["bindings"]
+                if item["kind"] == "equipment"
+            )
+
+            self.assertEqual(
+                binding["photo_section_title"],
+                "空调与供暖系统",
+            )
+            self.assertEqual(
+                binding["routing_reason"],
+                "public_building_hvac_source",
+            )
+
     def test_stale_water_pump_route_is_recomputed_to_other_electric_equipment(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

@@ -29,7 +29,8 @@
   - **第6章**：`equipment[].img_fields[]` 中的每个附件 ID 都必须各有一条
     独立图注（单字段 `图6.N 设备名`；多字段 `图6.N 设备名+字段名`）；
     缺任何一条即返回告警码。信息机房与医疗设备按统一路由决定是否单列；
-    生活水泵照片目标为 6.1 其他用电设备，燃气设备照片目标为 6.4。
+    生活水泵照片目标为 6.1 其他用电设备，普通燃气设备照片目标为 6.4；
+    公共建筑四类供暖空调来源（含燃气/燃油型冷热源）目标为 6.1。
 
 分工：
   - 本脚本：装配**前**的三方一致（md 图注 ↔ 清单 ↔ 磁盘文件）+ 未引用照片提示；
@@ -100,6 +101,7 @@ def _load_photo_contract():
             module.chapter6_route_for_equipment,
             module.chapter6_water_aux_photo_items,
             module.equipment_photo_slots,
+            module.equipment_requires_public_building_hvac_photo,
         )
     try:
         from tools.energy_audit.project_data import (  # type: ignore
@@ -109,6 +111,7 @@ def _load_photo_contract():
             chapter6_route_for_equipment,
             chapter6_water_aux_photo_items,
             equipment_photo_slots,
+            equipment_requires_public_building_hvac_photo,
         )
         return (
             PHOTO_CATEGORIES,
@@ -117,6 +120,7 @@ def _load_photo_contract():
             chapter6_route_for_equipment,
             chapter6_water_aux_photo_items,
             equipment_photo_slots,
+            equipment_requires_public_building_hvac_photo,
         )
     except ImportError as exc:
         raise ImportError("无法加载照片分类与第6章设备小节路由") from exc
@@ -129,6 +133,7 @@ def _load_photo_contract():
     chapter6_route_for_equipment,
     chapter6_water_aux_photo_items,
     equipment_photo_slots,
+    equipment_requires_public_building_hvac_photo,
 ) = _load_photo_contract()
 
 
@@ -895,6 +900,7 @@ def _route_chapter6_equipment(equipment, base: dict) -> list:
                 (base or {}).get("institution_category") or ""
             ),
             unit_name=str((base or {}).get("unit_name") or ""),
+            unit_type=str((base or {}).get("unit_type") or ""),
         ))
         routed.append(record)
     return routed
@@ -914,6 +920,7 @@ def equipment_caption_coverage(
     captions,
     images=None,
     table_names=None,
+    unit_type=None,
 ) -> dict:
     """反向检查登记附件所需的图注及本地文件，两个结果独立返回。"""
     remaining_caption_keys = [
@@ -937,6 +944,12 @@ def equipment_caption_coverage(
         strict_reverse = (
             contract["category"] in STRICT_REVERSE_PHOTO_CATEGORIES
             or contract["image_source_ref"].startswith("water_aux.")
+            or (
+                str(unit_type or "").strip() == "公共建筑"
+                and equipment_requires_public_building_hvac_photo(
+                    contract["equipment"]
+                )
+            )
         )
         if (
             not strict_reverse
@@ -981,13 +994,20 @@ def equipment_caption_coverage(
     }
 
 
-def equipment_caption_gaps(equipment, captions, images=None, table_names=None) -> list:
+def equipment_caption_gaps(
+    equipment,
+    captions,
+    images=None,
+    table_names=None,
+    unit_type=None,
+) -> list:
     """兼容旧调用：只返回缺少图注的槽位。"""
     return equipment_caption_coverage(
         equipment,
         captions,
         images,
         table_names=table_names,
+        unit_type=unit_type,
     )["missing_captions"]
 
 
@@ -1000,6 +1020,7 @@ def equipment_caption_section_warnings(
     children_func: str = "",
     institution_category: str = "",
     unit_name: str = "",
+    unit_type: str = "",
 ) -> list:
     """告警第6章照片是否放在路由指定的系统小节。"""
     actual_by_num = {
@@ -1043,6 +1064,7 @@ def equipment_caption_section_warnings(
                 children_func=children_func,
                 institution_category=institution_category,
                 unit_name=unit_name,
+                unit_type=unit_type,
             )
         expected_key = str(route.get("photo_section_key") or "")
         actual_key = actual_by_num.get(caption_num, "")
@@ -1382,7 +1404,11 @@ def main(argv=None) -> int:
     used4 = set()
     used6 = set()
     coverage = equipment_caption_coverage(
-        equipment, caps6, images, table_names=table_device_names
+        equipment,
+        caps6,
+        images,
+        table_names=table_device_names,
+        unit_type=str(base.get("unit_type") or ""),
     )
     if coverage["missing_captions"]:
         warnings.append(
@@ -1402,6 +1428,7 @@ def main(argv=None) -> int:
         children_func=str(base.get("children_func") or ""),
         institution_category=str(base.get("institution_category") or ""),
         unit_name=str(base.get("unit_name") or ""),
+        unit_type=str(base.get("unit_type") or ""),
     ))
 
     for num, caption, desc in caps2:

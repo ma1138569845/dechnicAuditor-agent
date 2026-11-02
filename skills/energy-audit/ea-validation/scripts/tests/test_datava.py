@@ -1973,6 +1973,33 @@ def test_chapter6_photo_accepts_canonical_gas_route_for_stale_snapshot():
     assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
 
 
+def test_chapter6_public_building_hvac_photos_route_to_air_heating():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _block("（1）空调与供暖系统", 6),
+        _block("图6.1 吸收式溴化锂机组", 6),
+    ]
+    equipment = [{
+        "name": "吸收式溴化锂机组",
+        "category": "空调",
+        "gas_value": 1200,
+        "photo_section_key": "gas_system",
+        "photo_section_title": "用燃气系统",
+        "routing_reason": "recorded_combustion_equipment",
+    }]
+
+    codes = {
+        finding.code
+        for finding in v3.check_chapter6_structure(
+            blocks,
+            equipment=equipment,
+            base={"unit_type": "公共建筑"},
+        )
+    }
+
+    assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
 def test_chapter6_photo_section_check_pairs_duplicate_caption_names_one_to_one():
     blocks = [
         _block("6.1 用电系统运行分析", 6),
@@ -2004,6 +2031,53 @@ def test_chapter6_photo_section_check_pairs_duplicate_caption_names_one_to_one()
     }
 
     assert "V3.STRUCT.CHAPTER6_PHOTO_SECTION" not in codes
+
+
+def test_public_building_hvac_photo_contract_is_scoped_to_public_buildings():
+    blocks = [
+        _block("6.1 用电系统运行分析", 6),
+        _table_block(
+            6,
+            ("序号", "设备名称"),
+            (("1", "照明配电箱"),),
+        ),
+    ]
+    equipment = [
+        {
+            "name": "吸收式溴化锂机组",
+            "category": "空调",
+            "gas_value": 1200,
+            "img_ids": [801],
+        },
+        {"name": "冷冻水泵", "category": "输配设备", "img_ids": [802]},
+        {"name": "风机盘管", "category": "末端设备", "img_ids": [803]},
+        {"name": "冷却塔", "category": "其他设备", "img_ids": [804]},
+    ]
+
+    def coverage_for(unit_type: str) -> list:
+        return [
+            finding
+            for finding in v3.check_chapter6_structure(
+                blocks,
+                equipment=equipment,
+                images=[
+                    {"file_id": 801},
+                    {"file_id": 802},
+                    {"file_id": 803},
+                    {"file_id": 804},
+                ],
+                base={"unit_type": unit_type},
+            )
+            if finding.code == "V3.STRUCT.CHAPTER6_PHOTO_COVERAGE"
+        ]
+
+    public_building = coverage_for("公共建筑")
+    public_institution = coverage_for("公共机构")
+
+    assert public_building
+    for name in ("吸收式溴化锂机组", "冷冻水泵", "风机盘管", "冷却塔"):
+        assert name in public_building[0].detail
+    assert not public_institution
 
 
 def test_chapter6_photo_coverage_requires_each_equipment_with_img_ids():

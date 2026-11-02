@@ -3,8 +3,20 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(autouse=True)
+def restore_import_surface():
+    snapshot = dict(sys.modules)
+    yield
+    for name in tuple(sys.modules):
+        if name not in snapshot:
+            sys.modules.pop(name, None)
+    sys.modules.update(snapshot)
 
 
 def _module(name):

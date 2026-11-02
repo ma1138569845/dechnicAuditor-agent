@@ -299,6 +299,7 @@ def _attach_data_bindings(
                 children_func=str(base.get("children_func") or ""),
                 institution_category=str(base.get("institution_category") or ""),
                 unit_name=str(base.get("unit_name") or ""),
+                unit_type=str(base.get("unit_type") or ""),
             )
         fields = _equipment_photo_fields(equipment)
         use_field_label = len(fields) > 1

@@ -222,6 +222,39 @@ class CanonicalPhotoCategoryTests(unittest.TestCase):
             self.assertEqual(routed["photo_section_key"], "gas_system")
             self.assertEqual(routed["photo_category"], "燃气设备")
 
+    def test_public_building_keeps_all_hvac_source_photos_in_air_heating(self):
+        route = PROJECT_DATA.chapter6_route_for_equipment
+        source_devices = [
+            {
+                "category": "空调",
+                "name": "吸收式溴化锂机组",
+                "gas_value": 1200,
+            },
+            {"category": "输配设备", "name": "冷冻水泵"},
+            {"category": "末端设备", "name": "风机盘管"},
+            {"category": "其他设备", "name": "冷却塔"},
+            {"category": "其他设备", "name": "空调系统补水装置"},
+        ]
+
+        for equipment in source_devices:
+            with self.subTest(category=equipment["category"], name=equipment["name"]):
+                routed = route(equipment, unit_type="公共建筑")
+                self.assertEqual(routed["equipment_section_key"], "air_heating")
+                self.assertEqual(routed["photo_section_key"], "air_heating")
+
+    def test_public_institution_keeps_existing_gas_photo_route(self):
+        routed = PROJECT_DATA.chapter6_route_for_equipment(
+            {
+                "category": "空调",
+                "name": "吸收式溴化锂机组",
+                "gas_value": 1200,
+            },
+            unit_type="公共机构",
+        )
+
+        self.assertEqual(routed["equipment_section_key"], "gas_system")
+        self.assertEqual(routed["photo_section_key"], "gas_system")
+
     def test_chapter6_route_does_not_use_combustion_without_evidence(self):
         route = PROJECT_DATA.chapter6_route_for_equipment
 

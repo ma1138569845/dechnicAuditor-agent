@@ -56,6 +56,7 @@ def _load_chapter6_contracts():
                 module.CHAPTER6_SECTIONS,
                 module.chapter6_route_for_equipment,
                 module.equipment_photo_slots,
+                module.public_building_hvac_photo_rank,
             )
         parent = os.path.dirname(path)
         if parent == path:
@@ -66,11 +67,13 @@ def _load_chapter6_contracts():
             CHAPTER6_SECTIONS,
             chapter6_route_for_equipment,
             equipment_photo_slots,
+            public_building_hvac_photo_rank,
         )
         return (
             CHAPTER6_SECTIONS,
             chapter6_route_for_equipment,
             equipment_photo_slots,
+            public_building_hvac_photo_rank,
         )
     except ImportError as exc:
         raise ImportError("无法加载第6章设备小节路由") from exc
@@ -205,6 +208,7 @@ def _load_public_building_audit_basis_contracts():
     CHAPTER6_SECTIONS,
     chapter6_route_for_equipment,
     equipment_photo_slots,
+    public_building_hvac_photo_rank,
 ) = _load_chapter6_contracts()
 (
     resolve_report_family,
@@ -826,14 +830,27 @@ def equipment_photo_contract(data: dict) -> list:
         if im.get("file_id") not in (None, "")
     }
     base = data.get("base") or {}
+    equipment = list(data.get("equipment") or [])
+    if str(base.get("unit_type") or "").strip() == "公共建筑":
+        ranked = []
+        unranked = []
+        for index, eq in enumerate(equipment):
+            rank = public_building_hvac_photo_rank(eq)
+            if rank is None:
+                unranked.append(eq)
+            else:
+                ranked.append((rank, index, eq))
+        ranked.sort(key=lambda item: (item[0], item[1]))
+        equipment = [eq for _rank, _index, eq in ranked] + unranked
     rows = []
-    for eq in data.get("equipment") or []:
+    for eq in equipment:
         route = chapter6_route_for_equipment(
             eq,
             unit_func=str(base.get("unit_func") or ""),
             children_func=str(base.get("children_func") or ""),
             institution_category=str(base.get("institution_category") or ""),
             unit_name=str(base.get("unit_name") or ""),
+            unit_type=str(base.get("unit_type") or ""),
         )
         section_label = chapter6_section_label(
             route.get("photo_section_key", ""),
@@ -1291,6 +1308,13 @@ def main(argv=None) -> int:
     # 第6章设备配图硬清单：每张上传图保留其字段语义。单字段只用设备名，
     # 多字段必须写成“设备名+字段名”，防止设备图、铭牌图、泵体图串义。
     photo_rows = equipment_photo_contract(data)
+    photo_placement_rule = (
+        "公共建筑四类供暖空调来源照片放 6.1 空调与供暖系统"
+        "（含燃气/燃油冷热源）；其他燃气设备照片放 6.4。"
+        if str((data.get("base") or {}).get("unit_type") or "").strip()
+        == "公共建筑"
+        else "用水设施照片放 6.2，燃气设备照片放 6.4。"
+    )
     lines += [
         "",
         "### 第6章设备配图硬清单（每个图片字段逐项必写图注）",
@@ -1298,7 +1322,7 @@ def main(argv=None) -> int:
         "> 设备只有一个非空图片字段时写 `图6.N 设备名`；同一设备有多个"
         "非空图片字段时，逐张写 `图6.N 设备名+字段名称`（正文不出现“+”号）。"
         "按“目标小节”列落位：信息机房 >100 kW 才单列，医疗设备仅在二级、"
-        "三级医院单列；用水设施照片放 6.2，燃气设备照片放 6.4。"
+        f"三级医院单列；{photo_placement_rule}"
         "不能因为同一系统下已有另一张图就省略。",
         "",
     ]

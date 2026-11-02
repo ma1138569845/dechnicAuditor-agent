@@ -209,6 +209,19 @@ class Chapter6DeviceQueryChainTests(unittest.TestCase):
 
         self.assertEqual(devices["末端设备"], [{"id": 1}])
 
+    def test_collector_route_context_carries_public_building_unit_type(self):
+        routed = COLLECTOR._with_chapter6_routes(
+            [{
+                "category": "空调",
+                "name": "吸收式溴化锂机组",
+                "gas_value": 1200,
+            }],
+            unit_type="公共建筑",
+        )
+
+        self.assertEqual(routed[0]["equipment_section_key"], "air_heating")
+        self.assertEqual(routed[0]["photo_section_key"], "air_heating")
+
     def test_special_device_format_keeps_power_components_and_total(self):
         record = {
             "id": 9,

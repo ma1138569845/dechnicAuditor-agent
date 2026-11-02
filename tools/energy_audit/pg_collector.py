@@ -191,6 +191,7 @@ def collect_from_pg(project_name: str, version_code: str | None = None) -> Dict[
             children_func=children_func,
             institution_category=institution_category,
             unit_name=unit_name,
+            unit_type=str(resolved_codes.get('unit_type') or ''),
         )
         result["version_code"] = pg.version_code
         return result
@@ -1306,6 +1307,7 @@ def build_and_save_project(
         children_func=routing_children_func,
         institution_category=pg_institution_category,
         unit_name=unit_for_class,
+        unit_type=pg_unit_type,
     )
 
     # ---- 图片采集：单位整体外观（scene_img_id）/ 建筑外观（build_img）/ 计量器具照片（device_img）----
@@ -1596,11 +1598,13 @@ def build_and_save_project(
                 children_func=pg_children_func,
                 institution_category=pg_institution_category,
                 unit_name=unit_for_class,
+                unit_type=pg_unit_type,
             ),
             unit_func=pg_unit_func,
             children_func=pg_children_func,
             institution_category=pg_institution_category,
             unit_name=unit_for_class,
+            unit_type=pg_unit_type,
         ),
         shared_offices=_merge_shared_offices(pg_shared_offices, excel_data.get('shared_offices', [])),
         management=ManagementInfo(),
@@ -1833,6 +1837,7 @@ def _with_chapter6_routes(
     children_func: str = '',
     institution_category: str = '',
     unit_name: str = '',
+    unit_type: str = '',
 ) -> List[dict]:
     """给每条设备写入唯一的设备事实小节和照片目标小节。"""
     routed: List[dict] = []
@@ -1844,6 +1849,7 @@ def _with_chapter6_routes(
             children_func=children_func,
             institution_category=institution_category,
             unit_name=unit_name,
+            unit_type=unit_type,
         ))
         routed.append(record)
     return routed
@@ -1921,6 +1927,7 @@ def _merge_equipment(
     children_func: str = '',
     institution_category: str = '',
     unit_name: str = '',
+    unit_type: str = '',
 ) -> List[Equipment]:
     """同源重复行全部保留；跨源同名同类按出现顺序 nth-to-nth 合并附件。"""
     merged: List[dict] = []
@@ -1955,6 +1962,7 @@ def _merge_equipment(
             children_func=children_func,
             institution_category=institution_category,
             unit_name=unit_name,
+            unit_type=unit_type,
         ))
         routed.append(_dataclass_from_dict(Equipment, record))
     return routed

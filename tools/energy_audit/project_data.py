@@ -196,6 +196,13 @@ INFORMATION_ROOM_STRONG_KEYWORDS = (
     '网络设备',
     '存储设备',
 )
+PUBLIC_BUILDING_HVAC_PHOTO_SOURCES = {
+    '空调': 0,
+    '输配设备': 1,
+    '末端设备': 2,
+    '其他设备': 3,
+}
+PUBLIC_BUILDING_HVAC_AUX_KEYWORDS = ('冷却塔', '空调系统补水装置')
 MEDICAL_INSTITUTION_KEYWORDS = ('医疗', '医院')
 MEDICAL_EQUIPMENT_KEYWORDS = (
     '医疗设备', '医疗', 'CT', 'X光', 'X射线', '磁共振', 'MRI', 'DSA',
@@ -235,6 +242,41 @@ def is_medical_equipment_record(record: Dict[str, Any]) -> bool:
         any(keyword in text for keyword in MEDICAL_EQUIPMENT_KEYWORDS)
         or any(keyword in lowered for keyword in ('medical', 'radiology'))
     )
+
+
+def public_building_hvac_photo_rank(record: dict[str, Any]) -> Optional[int]:
+    """公共建筑供暖空调照片来源的固定顺序；不属于四类来源时返回 ``None``。
+
+    来源口径：
+    0 冷热源统计表（设备分类“空调”）
+    1 供暖空调输配系统（设备分类“输配设备”）
+    2 末端设备表（设备分类“末端设备”）
+    3 其他设备表中名称含“冷却塔”或“空调系统补水装置”的设备
+    """
+    equipment = dict(record or {})
+    category = str(equipment.get('category') or '').strip()
+    rank = PUBLIC_BUILDING_HVAC_PHOTO_SOURCES.get(category)
+    if rank is None:
+        return None
+    if category != '其他设备':
+        return rank
+
+    name = (
+        equipment.get('name')
+        or equipment.get('other_device_name')
+        or equipment.get('device_name')
+        or ''
+    )
+    compact_name = re.sub(r'\s+', '', str(name))
+    return rank if any(
+        keyword in compact_name
+        for keyword in PUBLIC_BUILDING_HVAC_AUX_KEYWORDS
+    ) else None
+
+
+def equipment_requires_public_building_hvac_photo(record: dict[str, Any]) -> bool:
+    """该设备是否属于公共建筑 6.1（1）的强制配图来源。"""
+    return public_building_hvac_photo_rank(record) is not None
 
 
 def is_medical_institution(
@@ -426,7 +468,8 @@ def photo_category_for_equipment(
 
 
 # 第6章设备事实小节与照片目标小节的单一字典。
-# 设备正文按“设备事实”落位；同一照片可优先进入更具体的 6.2 用水 / 6.4 燃气。
+# 公共机构照片可优先进入更具体的 6.2 用水 / 6.4 燃气；公共建筑供暖空调
+# 四类来源统一进入 6.1，燃气/燃油型冷热源也不例外。
 CHAPTER6_SECTIONS = {
     'air_heating': {
         'equipment_title': '空调与供暖系统',
@@ -621,11 +664,25 @@ def chapter6_route_for_equipment(
     children_func: str = '',
     institution_category: str = '',
     unit_name: str = '',
+    unit_type: str = '',
 ) -> Dict[str, str]:
     """设备记录 → 第6章设备事实小节与照片目标小节的唯一路由。"""
     record = dict(equipment or {})
     category = str(record.get('category') or '').strip()
     name = str(record.get('name') or record.get('device_name') or '').strip()
+
+    # 公共建筑将四类供暖空调台账作为 6.1（1）的固定数据源；燃气/燃油
+    # 冷热源也先按设备事实归入供暖空调系统，避免照片被 6.4 截走。
+    # 公共机构继续沿用现有燃气设备路由。
+    if (
+        str(unit_type or '').strip() == '公共建筑'
+        and equipment_requires_public_building_hvac_photo(record)
+    ):
+        return _chapter6_route(
+            'air_heating',
+            photo_category='制冷设备',
+            routing_reason='public_building_hvac_source',
+        )
 
     if category == '变配电':
         return _chapter6_route(

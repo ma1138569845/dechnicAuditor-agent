@@ -2,6 +2,8 @@ import base64
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,6 +78,49 @@ class PhotoProject:
         return json.loads(
             (self.root / "report_images.json").read_text(encoding="utf-8")
         )["images"]
+
+
+class PhotoContractLoadingTests(unittest.TestCase):
+    def test_package_import_fallback_keeps_public_building_hvac_predicate(self):
+        script = f"""
+import importlib.util
+import sys
+from pathlib import Path
+from unittest import mock
+
+repo = Path.cwd()
+sys.path.insert(0, str(repo))
+path = Path({str(ROOT.parents[3] / "skills" / "energy-audit" / "ea-authoring" / "scripts" / "prepare_report_photos.py")!r})
+spec = importlib.util.spec_from_file_location("photos_fallback_test", path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+original_is_file = Path.is_file
+
+def package_layout(candidate):
+    if candidate.name == "project_data.py":
+        return False
+    return original_is_file(candidate)
+
+with mock.patch.object(Path, "is_file", package_layout):
+    contract = module._load_photo_contract()
+
+assert len(contract) == 7
+assert contract[6]({{"name": "冷热源机房", "category": "空调"}})
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=ROOT.parents[3],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+        )
+
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=completed.stderr or completed.stdout,
+        )
 
 
 class PrepareReportPhotosCh4Tests(unittest.TestCase):
@@ -443,6 +488,54 @@ class PhotoSemanticReuseTests(unittest.TestCase):
 
 
 class Chapter6FieldCaptionTests(unittest.TestCase):
+    def test_public_building_context_routes_gas_cooling_source_to_hvac(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "chapter_md").mkdir()
+            image = root / "chiller.png"
+            image.write_bytes(PNG)
+            data = {
+                "base": {
+                    "unit_name": "测试公共建筑",
+                    "unit_short": "公共建筑",
+                    "unit_type": "公共建筑",
+                    "province": "浙江",
+                    "unit_func": "zj_hotel",
+                    "children_func": "zj_hotel_5",
+                },
+                "public_building": {"subtype": "hotel"},
+                "images": [{
+                    "file_id": 901,
+                    "path": str(image),
+                    "category": "制冷设备",
+                }],
+                "equipment": [{
+                    "name": "吸收式溴化锂机组",
+                    "category": "空调",
+                    "gas_value": 1200,
+                    "img_ids": [901],
+                }],
+            }
+            (root / "data.json").write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            rc = WRITING_CONTEXT.main([str(root), "--quiet"])
+
+            self.assertEqual(rc, 0)
+            context = (root / "chapter_md" / "_context.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(
+                "公共建筑四类供暖空调来源照片放 6.1 空调与供暖系统",
+                context,
+            )
+            self.assertNotIn(
+                "用水设施照片放 6.2，燃气设备照片放 6.4。",
+                context,
+            )
+
     def test_one_image_field_requires_one_caption_per_attachment(self):
         equipment = [{
             "name": "数据中心/信息中心",
@@ -496,6 +589,49 @@ class Chapter6FieldCaptionTests(unittest.TestCase):
 
         self.assertEqual(len(rows), 2)
         self.assertEqual([row[5] for row in rows], ["801", "802"])
+
+    def test_public_building_photo_contract_uses_the_four_source_order(self):
+        data = {
+            "base": {
+                "unit_short": "测试公共建筑",
+                "unit_type": "公共建筑",
+            },
+            "images": [
+                {"file_id": 801, "path": r"C:\images\801.png"},
+                {"file_id": 802, "path": r"C:\images\802.png"},
+                {"file_id": 803, "path": r"C:\images\803.png"},
+                {"file_id": 804, "path": r"C:\images\804.png"},
+            ],
+            "equipment": [
+                {
+                    "name": "风机盘管",
+                    "category": "末端设备",
+                    "img_ids": [804],
+                },
+                {
+                    "name": "冷却塔",
+                    "category": "其他设备",
+                    "img_ids": [803],
+                },
+                {
+                    "name": "冷冻水泵",
+                    "category": "输配设备",
+                    "img_ids": [802],
+                },
+                {
+                    "name": "冷水机组",
+                    "category": "空调",
+                    "img_ids": [801],
+                },
+            ],
+        }
+
+        rows = WRITING_CONTEXT.equipment_photo_contract(data)
+
+        self.assertEqual(
+            [row[1] for row in rows],
+            ["冷水机组", "冷冻水泵", "风机盘管", "冷却塔"],
+        )
 
     def test_same_caption_consumes_attachments_in_attachment_order(self):
         with tempfile.TemporaryDirectory() as td:
@@ -574,6 +710,40 @@ class Chapter6FieldCaptionTests(unittest.TestCase):
         )
 
         self.assertEqual(gaps, ["数据中心/信息中心"])
+
+    def test_public_building_hvac_sources_are_checked_when_table_rows_are_missing(self):
+        equipment = [
+            {
+                "name": "冷水机组",
+                "category": "空调",
+                "img_ids": [910],
+            },
+            {
+                "name": "冷冻水泵",
+                "category": "输配设备",
+                "img_ids": [911],
+            },
+            {
+                "name": "风机盘管",
+                "category": "末端设备",
+                "img_ids": [912],
+            },
+            {
+                "name": "冷却塔",
+                "category": "其他设备",
+                "img_ids": [913],
+            },
+        ]
+
+        gaps = PHOTOS.equipment_caption_gaps(
+            equipment,
+            [],
+            [{"file_id": file_id} for file_id in (910, 911, 912, 913)],
+            table_names=["照明灯具"],
+            unit_type="公共建筑",
+        )
+
+        self.assertEqual(gaps, ["冷水机组", "冷冻水泵", "风机盘管", "冷却塔"])
 
     def test_ordinary_device_not_in_table_keeps_legacy_skip(self):
         equipment = [{
