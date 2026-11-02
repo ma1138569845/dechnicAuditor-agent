@@ -142,6 +142,28 @@ def _load_chapter6_router():
 
 _CHAPTER6_ROUTER, _EQUIPMENT_PHOTO_SLOTS = _load_chapter6_router()
 
+
+def _load_public_building_table_contracts():
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "tools" / "energy_audit" / "public_building_table.py"
+        if not candidate.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location(
+            "report_review_public_building_table",
+            candidate,
+        )
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    raise ImportError("无法加载公共建筑建筑信息统计表字段目录")
+
+
+_PUBLIC_BUILDING_TABLE = _load_public_building_table_contracts()
+
 _CN_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 
 RE_CHAPTER = re.compile(r"^第\s*([0-9]+|[一二三四五六七八九])\s*章")
@@ -456,12 +478,21 @@ def check_ch5_narrative(blocks: Sequence[Block]) -> List[Finding]:
     return findings
 
 
-def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
+def check_building_tables(
+    blocks: Sequence[Block],
+    *,
+    public_building: bool = False,
+    building_names: Sequence[str] = (),
+) -> List[Finding]:
     """建筑基本信息表结构（2026-09-20 新增，对齐公司正式报告口径）。
 
     识别：首格含「建筑名称/建筑物名称」（或「项目」表头且前 3 行出现建筑名称）。
-    要求：4 列键值对、无表头行、全表不加粗。
+    公共机构：4 列键值对、无表头行、全表不加粗。
+    公共建筑：仅第2章固定 16 字段、4 列、8 行，并校验表题、顺序和模板占位符。
     """
+    if public_building:
+        return _check_public_building_tables(blocks, building_names)
+
     findings: List[Finding] = []
     issues: List[str] = []
     ch8_idx = None
@@ -505,7 +536,7 @@ def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
             issues.append("%s 建筑表出现表头行（应为无表头行）" % loc)
         bold = False
         for c in rows[0].cells:
-            for p in c.paragraphs:
+            for p in getattr(c, "paragraphs", ()):
                 for r in p.runs:
                     if r.bold:
                         bold = True
@@ -524,6 +555,133 @@ def check_building_tables(blocks: Sequence[Block]) -> List[Finding]:
             )
         )
     return findings
+
+
+def _check_public_building_tables(
+    blocks: Sequence[Block],
+    building_names: Sequence[str],
+) -> List[Finding]:
+    candidates = []
+    for block_index, block in enumerate(blocks):
+        if (
+            block.kind != "tbl"
+            or getattr(block, "obj", None) is None
+            or block.chapter != 2
+        ):
+            continue
+        try:
+            rows = block.obj.rows
+            if not rows:
+                continue
+            first_cell = rows[0].cells[0].text.strip()
+        except Exception:
+            continue
+        previous = None
+        for position in range(block_index - 1, -1, -1):
+            if (
+                blocks[position].kind == "p"
+                and blocks[position].text.strip()
+            ):
+                previous = blocks[position].text.strip()
+                break
+        normalized_previous = re.sub(r"\s+", "", previous or "")
+        caption_names_table = bool(
+            re.fullmatch(r"表2\.\d+.+?建筑信息统计", normalized_previous)
+        )
+        if (
+            first_cell not in {"建筑名称", "建筑物名称"}
+            and not caption_names_table
+        ):
+            continue
+        candidates.append((block_index, block, rows, previous))
+
+    issues: List[str] = []
+    if not candidates:
+        issues.append("第2章未识别到建筑信息统计表")
+    expected_count = len([name for name in building_names if str(name).strip()])
+    if expected_count and len(candidates) != expected_count:
+        issues.append(
+            f"建筑信息统计表 {len(candidates)} 张，应为 {expected_count} 张"
+        )
+
+    table_numbers: List[int] = []
+    caption_names: List[str] = []
+    for table_index, (_block_index, _block, rows, previous) in enumerate(
+        candidates, 1
+    ):
+        if len(rows) != 8:
+            issues.append(f"第{table_index}表 {len(rows)} 行（应为8行）")
+        if any(len(row.cells) != 4 for row in rows):
+            issues.append(f"第{table_index}表不是4列")
+
+        cells = [cell.text.strip() for row in rows for cell in row.cells]
+        if any(not cell for cell in cells):
+            issues.append(f"第{table_index}表存在空白单元格（缺值应写“—”）")
+
+        labels: List[str] = []
+        for row in rows:
+            if len(row.cells) > 0:
+                labels.append(re.sub(r"\s+", "", row.cells[0].text))
+            if len(row.cells) > 2:
+                labels.append(re.sub(r"\s+", "", row.cells[2].text))
+        issues.extend(
+            f"第{table_index}表{issue}"
+            for issue in _PUBLIC_BUILDING_TABLE.missing_or_misordered_fields(
+                labels
+            )
+        )
+        if len(labels) != 16:
+            issues.append(f"第{table_index}表 {len(labels)} 个字段（应为16个）")
+        if any(
+            run.bold
+            for row in rows
+            for cell in row.cells
+            for paragraph in getattr(cell, "paragraphs", ())
+            for run in paragraph.runs
+        ):
+            issues.append(f"第{table_index}表存在加粗文本")
+        if any("{{" in cell and "}}" in cell for cell in cells):
+            issues.append(f"第{table_index}表含未解析占位符")
+
+        caption = re.sub(r"\s+", "", previous or "")
+        match = re.fullmatch(r"表2\.(\d+)(.+?)建筑信息统计", caption)
+        if not match:
+            issues.append(f"第{table_index}表题缺失、与表格不相邻或命名不符")
+        else:
+            table_numbers.append(int(match.group(1)))
+            caption_names.append(match.group(2))
+
+    if candidates and len(table_numbers) == len(candidates):
+        if table_numbers != list(range(1, len(candidates) + 1)):
+            issues.append("表号应自表2.1起连续编号")
+        expected_names = [str(name).strip() for name in building_names if str(name).strip()]
+        normalized_expected_names = [
+            re.sub(r"\s+", "", name) for name in expected_names
+        ]
+        if expected_names and caption_names != normalized_expected_names:
+            issues.append(
+                "表题建筑名应按 data.json 顺序为："
+                + "、".join(expected_names)
+            )
+
+    if not issues:
+        return []
+    return [
+        Finding(
+            code="V3.STRUCT.PB_BLDG_TABLE",
+            category="章节完整性",
+            severity=SEV_P1,
+            title=f"公共建筑建筑信息统计表结构不符（{len(issues)} 处）",
+            detail="；".join(issues[:10]),
+            location="第2章 2.2",
+            expected=(
+                "逐栋一张固定16字段、4列、8行、无表头、全表不加粗的表；"
+                "表题按表2.N连续编号；表内不得有未解析占位符"
+            ),
+            actual=f"{len(candidates)} 张候选表，{len(issues)} 处问题",
+            suggestion="由写章上下文注入的固定表直接落稿，删除旧10字段或公共机构18字段表后重新生成",
+        )
+    ]
 
 
 def check_energy_consistency(blocks: Sequence[Block]) -> List[Finding]:
@@ -2328,7 +2486,16 @@ def run(
     findings += check_ch5_narrative(blocks)
     # 5.2 归因下沉（律 1）——2026-09-29 由"手动建议性检查"升级为 V3 自动闸门项（P1，不阻塞）
     findings += check_attribution_layering(project)
-    findings += check_building_tables(blocks)
+    unit_type = str(base.get("unit_type") or "").strip()
+    findings += check_building_tables(
+        blocks,
+        public_building=unit_type == "公共建筑",
+        building_names=[
+            str(building.get("name") or "")
+            for building in buildings
+            if str(building.get("name") or "").strip()
+        ],
+    )
     findings += check_area_consistency(extract_areas(blocks), truth_area, garage_area, unit_areas)
     findings += check_energy_consistency(blocks)
     if years:

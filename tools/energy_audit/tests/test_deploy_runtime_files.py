@@ -20,8 +20,13 @@ def test_deploy_scan_includes_dictionary_runtime_files():
     assert "energy_audit/db_config.py" in files
     assert "energy_audit/_paths.py" in files
     assert "energy_audit/indicators.py" in files
+    assert "energy_audit/climate_zone.py" in files
     assert "energy_audit/institution_classifier.py" in files
+    assert "energy_audit/institution_org_map.py" in files
     assert "energy_audit/file_resolver.py" in files
+    assert "energy_audit/public_building_table.py" in files
+    assert "energy_audit/public_building_audit_basis.py" in files
+    assert "energy_audit/reporting_periods.py" in files
 
 
 def test_source_tree_imports_the_collection_chain():

@@ -140,6 +140,67 @@ def _load_dictionary_contracts():
         raise ImportError("无法加载单位类型字典解析器") from exc
 
 
+def _load_public_building_table_contracts():
+    """从 repo 的 tools/energy_audit 加载公共建筑建筑信息表唯一字段目录。"""
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path,
+            "tools",
+            "energy_audit",
+            "public_building_table.py",
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "writing_context_public_building_table", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit import public_building_table  # type: ignore
+        return public_building_table
+    except ImportError as exc:
+        raise ImportError("无法加载公共建筑建筑信息统计表字段目录") from exc
+
+
+def _load_public_building_audit_basis_contracts():
+    """从 repo 的 tools/energy_audit 加载公共建筑审计依据选择器。"""
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path,
+            "tools",
+            "energy_audit",
+            "public_building_audit_basis.py",
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "writing_context_public_building_audit_basis", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit import (  # type: ignore
+            public_building_audit_basis,
+        )
+
+        return public_building_audit_basis
+    except ImportError as exc:
+        raise ImportError("无法加载公共建筑审计依据选择器") from exc
+
+
 (
     CHAPTER6_SECTIONS,
     chapter6_route_for_equipment,
@@ -153,6 +214,8 @@ def _load_dictionary_contracts():
     resolve_unit_codes,
     DictionaryCodeError,
 ) = _load_dictionary_contracts()
+PUBLIC_BUILDING_TABLE = _load_public_building_table_contracts()
+PUBLIC_BUILDING_AUDIT_BASIS = _load_public_building_audit_basis_contracts()
 CHAPTER6_PREFIX = {
     "air_heating": "6.1",
     "lighting": "6.1",
@@ -164,6 +227,115 @@ CHAPTER6_PREFIX = {
     "water_system": "6.2",
     "gas_system": "6.4",
 }
+
+
+def public_building_table_context_lines(buildings) -> list[str]:
+    """Render the approved 16-field table contract for public-building writers."""
+    raw_buildings = [item for item in (buildings or []) if isinstance(item, dict)]
+    entries = raw_buildings or [{}]
+    lines = [
+        "### 2.2 建筑信息统计表（固定 16 字段、4 列、8 行）",
+        "",
+        "> 仅公共建筑报告族使用。逐栋一张表，表题固定为"
+        " `表2.N {建筑名}建筑信息统计`；表中无表头，字段顺序不得变化，"
+        "值照录 `data.json`，空值和未解析模板统一写 `—`。",
+        "",
+    ]
+    for index, raw_building in enumerate(entries, 1):
+        values = PUBLIC_BUILDING_TABLE.format_public_building_table_values(
+            raw_building
+        )
+        building_name = values["name"]
+        if building_name == "—":
+            building_name = "【待补充】"
+        caption = f"表2.{index} {building_name}建筑信息统计"
+        lines += [
+            f"**{caption}**",
+            "",
+            "```markdown",
+            caption,
+            "",
+        ]
+        lines += [
+            "| " + " | ".join(row) + " |"
+            for row in PUBLIC_BUILDING_TABLE.table_rows(raw_building)
+        ]
+        lines += [
+            "```",
+            "",
+        ]
+
+        if not raw_buildings:
+            missing = [
+                field.label
+                for field in PUBLIC_BUILDING_TABLE.PUBLIC_BUILDING_TABLE_FIELDS
+            ]
+        else:
+            missing = [
+                field.label
+                for field in PUBLIC_BUILDING_TABLE.PUBLIC_BUILDING_TABLE_FIELDS
+                if values[field.key] == "—"
+            ]
+        lines += [
+            f"- 缺失字段：{'、'.join(missing) if missing else '无'}",
+            "",
+        ]
+    return lines
+
+
+def public_building_ch1_context_lines(base, data) -> list[str]:
+    """Render the chapter 1 period and applicable audit-basis contract."""
+    base = base or {}
+    data = data or {}
+    audit_time = PUBLIC_BUILDING_AUDIT_BASIS.format_month_range(
+        base.get("audit_start"), base.get("audit_end")
+    )
+    if not audit_time:
+        audit_time = str(base.get("audit_period") or "【待补充】")
+
+    data_start = str(base.get("data_start") or "").strip()
+    data_end = str(base.get("data_end") or "").strip()
+    audit_cycle = PUBLIC_BUILDING_AUDIT_BASIS.format_full_period(
+        f"{data_start}—{data_end}"
+        if data_start and data_end
+        else base.get("audit_period")
+    )
+    if not audit_cycle:
+        audit_cycle = "【待补充】"
+
+    base_period = PUBLIC_BUILDING_AUDIT_BASIS.format_full_period(
+        base.get("base_period")
+    )
+    if not base_period and data_end[:4].isdigit():
+        base_period = PUBLIC_BUILDING_AUDIT_BASIS.format_full_period(
+            data_end[:4]
+        )
+    if not base_period:
+        base_period = "【待补充】"
+
+    lines = [
+        "### 1.3 审计周期（固定三段）",
+        "",
+        "> `1.3` 只照写以下三个标签。第三段标签固定为 `基准期：`，"
+        "不得增补其他前缀。",
+        "",
+        "```text",
+        f"审计时间：{audit_time}",
+        f"审计周期：{audit_cycle}",
+        f"基准期：{base_period}",
+        "```",
+        "",
+        "### 1.6 审计依据（动态适用）",
+        "",
+        "> 以下清单已按本项目的地区、建筑类型、用水/供暖空调/用电系统和"
+        "既有建筑改造范围筛选。正文从该清单逐项照写为 Markdown 无序列表"
+        "（每行以 `- ` 开头），不得添加“国家法规与导则”“浙江省规章”等"
+        "分组标题，不得改成数字序号。`参照`对象必须保留“参照”二字。",
+        "",
+    ]
+    lines.extend(PUBLIC_BUILDING_AUDIT_BASIS.render_public_building_audit_basis(data))
+    lines.append("")
+    return lines
 
 
 def chapter6_section_label(key: str, title: str) -> str:
@@ -181,9 +353,8 @@ PUBLIC_BUILDING_OFFICE_LABELS = [
 ]
 
 PUBLIC_BUILDING_HOTEL_LABELS = [
-    ("unit_energy", "单位综合能耗（参考）", "kgce/m²"),
     ("unit_comparable_energy", "单位可比综合能耗", "kgce/m²"),
-    ("water_indicator", "单位用水量", "m³/(床·年)"),
+    ("water_indicator", "单位床年用水量", "m³/(床·年)"),
 ]
 
 SHANDONG_PUBLIC_BUILDING_LABELS = {
@@ -846,7 +1017,22 @@ def main(argv=None) -> int:
             "hospital": "DB37/T 5079-2024",
         }.get(pb_subtype)
         if standard_id:
-            lines.append(f"| standard_id | {standard_id} | 标准路由 |")
+            lines.append(f"| standard_id | {standard_id} | 标准路由（内部标识） |")
+            if not is_shandong_pb and pb_subtype == "hotel":
+                lines += [
+                    (
+                        "| standard_name | "
+                        f"{PUBLIC_BUILDING_AUDIT_BASIS.ZJ_HOTEL_STANDARD_TITLE} "
+                        "| 报告正文引用名 |"
+                    ),
+                    "",
+                    (
+                        "> 浙江旅游饭店正文首次引用必须写标准全名"
+                        "《旅游饭店单位综合能耗限额及计算方法》；"
+                        "不得单独用 DB33/T 760-2023 代替标准名称，"
+                        "后文统一写“该标准”。"
+                    ),
+                ]
         if is_shandong_pb and pb_subtype == "agency_office":
             lines += [
                 "| standard_status | 废止 | DB37/T 5077-2016 |",
@@ -898,14 +1084,30 @@ def main(argv=None) -> int:
                 str(bench.get(k)) for k in quota_keys if bench.get(k) is not None
             ) or "—"
             std = bench.get("标准") or "—"
+            if is_pb and key == "water_indicator":
+                industry_code = bench.get("行业代码") or ""
+                category_name = bench.get("类别名称") or ""
+                subitem = bench.get("分项名称") or ""
+                if industry_code and category_name and subitem:
+                    std = (
+                        f"{std}（{industry_code} {category_name}—{subitem}）"
+                    )
             if is_pb or is_zhejiang_pi:
                 anchor = bench.get("来源") or "—"
                 _anchored = bool(bench.get("来源"))
             else:
                 anchor, _anchored = resolve_anchor(key, bench, anchors)
+            grade_text = bench.get("评价结果") or "—"
+            if is_pb and pb_subtype == "hotel" and key == "unit_comparable_energy":
+                grade_text = {
+                    "低于1级（先进值）": "低于引导值",
+                    "低于2级（约束值）": "低于基准值",
+                    "低于3级（限额值）": "低于约束值",
+                    "高于3级（限额值）": "高于约束值",
+                }.get(str(grade_text), grade_text)
             lines.append(
                 f"| {label} | {value if value is not None else '【待补充】'} {unit} | {quota} "
-                f"| {std}（来源 {bench.get('来源') or '—'}；锚点 {anchor}） | {bench.get('评价结果') or '—'} |"
+                f"| {std}（来源 {bench.get('来源') or '—'}；锚点 {anchor}） | {grade_text} |"
             )
         baseline = ind.get("baseline") or {}
         usage = (baseline.get("usage") or {}) if isinstance(baseline, dict) else {}
@@ -918,6 +1120,11 @@ def main(argv=None) -> int:
                     )
     else:
         lines.append("> ⚠️ 未找到 `indicators.json`：请先跑 `caliber_agent.py` 再写章（第5章与指标以它为唯一来源）。")
+
+    if is_zhejiang_pb:
+        lines += public_building_ch1_context_lines(base, data)
+    if is_pb:
+        lines += public_building_table_context_lines(data.get("buildings") or [])
 
     # 供暖与热价（2026-09-21 新增）：供暖热价只有一个来源 —— data.json → metering.*
     # （采集自 `ts_institution_scene.heat_price` / `heat_pay_type`）；
@@ -1236,7 +1443,9 @@ def main(argv=None) -> int:
             "- 第2章章名：**建筑概况**；不得出现“公共机构概况”。",
             "- 第6章：**6.1 用电 / 6.2 用水 / 6.3 其他**；不套公共机构 R7 的 6.1.1~6.1.6。",
             "- 折标：电力 **0.1229**；饭店新水 **0.2571**。",
-            "- 736 按省级/市级/县级（场馆按科技馆/文化馆/博物馆）；760 按星级/建设性质。",
+            "- 736 按省级/市级/县级（场馆按科技馆/文化馆/博物馆）；"
+            "760 按星级取原表值，报告三档统一映射为约束值/基准值/引导值，"
+            "评价采用公共机构四档短语。",
             "- 可分项计量的特殊/食堂/浴室/健身按标准剔除；2005 年前无中央空调办公建筑 ×1.2。",
             "- 写作指南：`ea-authoring/references/families/public-building/chapter-guides-1-4.md` / `chapter-guides-5-8.md`。",
             "- **上文公共机构的 5.4 托管基准、7.1 C 类八方向、公共机构 8 章口径不适用于本族**；以本族指南为准。",

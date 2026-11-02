@@ -2,6 +2,7 @@ import importlib.util
 import io
 import os
 import sys
+import tempfile
 import types
 import unittest
 from contextlib import redirect_stdout
@@ -118,10 +119,15 @@ def load_caliber_module():
     zhejiang_institution_indicators.compute_project = mock.Mock()
     standard_chapter5 = types.ModuleType("standard_chapter5")
     standard_chapter5.render = mock.Mock()
+    reporting_periods = load_module(
+        "reporting_periods_under_test",
+        ROOT / "tools" / "energy_audit" / "reporting_periods.py",
+    )
 
     substitutes = {
         "tools.energy_audit.dept_dict": load_dept_dict_module(),
         "tools.energy_audit.report_family": report_family,
+        "tools.energy_audit.reporting_periods": reporting_periods,
         "tools.energy_audit.project_data": project_data,
         "tools.energy_audit.indicators": indicators,
         "tools.energy_audit.chapter5_agent": chapter5,
@@ -357,6 +363,77 @@ class PublicBuildingCodeRoutingTests(unittest.TestCase):
         self.assertEqual(spec["subtype"], "hotel")
         self.assertEqual(spec["star"], "4")
 
+    def test_incomplete_year_is_flagged_without_removing_chart_inputs(self):
+        project = self._project(
+            unit_func="zj_hotel",
+            children_func="zj_hotel_3",
+        )
+        project.energy_yearly = [
+            SimpleNamespace(
+                year=2022,
+                electricity_kwh=100,
+                water_m3=0,
+                natural_gas_m3=0,
+                heating_energy_heat_gj=0,
+                heating_energy_kwh=0,
+            ),
+            SimpleNamespace(
+                year=2023,
+                electricity_kwh=1200,
+                water_m3=80,
+                natural_gas_m3=0,
+                heating_energy_heat_gj=0,
+                heating_energy_kwh=0,
+            ),
+        ]
+        raw = {
+            "buildings": [{"begin_date": "2022-08"}],
+            "energy_yearly": [
+                {
+                    "year": 2022,
+                    "monthly_electricity_kwh": [
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        20,
+                        20,
+                        20,
+                        20,
+                        20,
+                    ],
+                },
+                {
+                    "year": 2023,
+                    "monthly_electricity_kwh": [100] * 12,
+                },
+            ],
+        }
+
+        spec = self.module.build_public_building_spec(project, raw)
+
+        self.assertIn("2022", spec["incomplete_report_years"])
+        self.assertEqual(
+            [row["year"] for row in spec["years"]],
+            [2022, 2023],
+        )
+
+    def test_platform_hotel_star_overrides_stale_water_category(self):
+        project = self._project(
+            unit_func="zj_hotel",
+            children_func="zj_hotel_3",
+        )
+        spec = self.module.build_public_building_spec(
+            project,
+            {"public_building": {"water_category": "below"}},
+        )
+
+        self.assertEqual(spec["star"], "3")
+        self.assertEqual(spec["water_category"], "3")
+
     def test_zhejiang_public_building_without_codes_is_blocked(self):
         project = self._project(unit_name="某办公建筑")
         with self.assertRaisesRegex(ValueError, "customer_func"):
@@ -418,7 +495,106 @@ class PublicBuildingCodeRoutingTests(unittest.TestCase):
 
 
 class HotelWaterDenominatorTests(unittest.TestCase):
-    def test_water_grade_keeps_the_standard_occupancy_adjustment(self):
+    def test_all_hotel_water_quota_tiers_match_the_2019_table(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        cases = (
+            ("5", [350, 216], "H6110", "旅游饭店", "四、五星级（含白金五星级或具有同等规模、质量、水平）"),
+            ("4", [350, 216], "H6110", "旅游饭店", "四、五星级（含白金五星级或具有同等规模、质量、水平）"),
+            ("3", [256, 146], "H6110", "旅游饭店", "三星级（或具有同等规模、质量、水平）"),
+            ("2", [180, 110], "H6110", "旅游饭店", "一、二星级（或具有同等规模、质量、水平）"),
+            ("1", [180, 110], "H6110", "旅游饭店", "一、二星级（或具有同等规模、质量、水平）"),
+            ("below", [125, 70], "H6120", "一般旅馆", "星级以下（招待所、旅社）"),
+        )
+
+        for water_category, expected, code, category, subitem in cases:
+            with self.subTest(water_category=water_category):
+                project = {
+                    "subtype": "hotel",
+                    "star": "3",
+                    "water_category": water_category,
+                    "area_m2": 10000,
+                    "beds": 100,
+                    "occupancy": 0.8,
+                    "years": [
+                        {
+                            "year": 2024,
+                            "electricity_kwh": 100000,
+                            "water_t": 20000,
+                        }
+                    ],
+                }
+
+                result = module.compute_project(project, quota)[0]
+
+                self.assertEqual(result["quota"]["water"], expected)
+                self.assertEqual(
+                    result["notes"]["water_industry_code"], code
+                )
+                self.assertEqual(
+                    result["notes"]["water_category_name"], category
+                )
+                self.assertEqual(result["notes"]["water_subitem"], subitem)
+
+    def test_platform_star_routes_water_quota_to_h6110(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "3",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0.8,
+            "years": [
+                {
+                    "year": 2024,
+                    "electricity_kwh": 100000,
+                    "water_t": 20000,
+                }
+            ],
+        }
+
+        result = module.compute_project(project, quota)[0]
+
+        self.assertEqual(result["quota"]["water"], [256, 146])
+        self.assertEqual(result["notes"]["water_category"], "3")
+        self.assertEqual(result["notes"]["water_industry_code"], "H6110")
+        self.assertEqual(result["notes"]["water_category_name"], "旅游饭店")
+        self.assertEqual(
+            result["notes"]["water_subitem"],
+            "三星级（或具有同等规模、质量、水平）",
+        )
+
+    def test_only_explicit_below_uses_general_hotel_h6120(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "3",
+            "water_category": "below",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0.8,
+            "years": [
+                {
+                    "year": 2024,
+                    "electricity_kwh": 100000,
+                    "water_t": 20000,
+                }
+            ],
+        }
+
+        result = module.compute_project(project, quota)[0]
+
+        self.assertEqual(result["quota"]["water"], [125, 70])
+        self.assertEqual(result["notes"]["water_industry_code"], "H6120")
+        self.assertEqual(result["notes"]["water_category_name"], "一般旅馆")
+        self.assertEqual(
+            result["notes"]["water_subitem"],
+            "星级以下（招待所、旅社）",
+        )
+
+    def test_unit_energy_is_intermediate_not_a_graded_indicator(self):
         module = load_indicator_module()
         quota = module.load_quota_values()
         project = {
@@ -439,9 +615,286 @@ class HotelWaterDenominatorTests(unittest.TestCase):
 
         result = module.compute_project(project, quota)[0]
 
-        self.assertEqual(result["values"]["water_per_bed"], 200.0)
+        self.assertIn("unit_energy", result["values"])
+        self.assertNotIn("unit_energy", result["grade"])
+        self.assertEqual(result["notes"]["unit_energy_role"], "intermediate")
+
+    def test_water_metric_uses_bed_count_and_occupancy_denominator(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "5",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0.8,
+            "hotel_corrections": {"occupancy": 1.0},
+            "years": [
+                {
+                    "year": 2024,
+                    "electricity_kwh": 100000,
+                    "water_t": 20000,
+                }
+            ],
+        }
+
+        result = module.compute_project(project, quota)[0]
+
+        self.assertEqual(result["values"]["water_per_bed"], 250.0)
+        self.assertEqual(
+            result["values"]["water_per_bed_unadjusted"], 200.0
+        )
         self.assertEqual(result["grade"]["water"], "低于通用值")
         self.assertEqual(result["values"]["water_per_bed_normalized"], 250.0)
+
+    def test_water_metric_rejects_zero_occupancy_instead_of_falling_back(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "3",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0,
+            "hotel_corrections": {"occupancy": 1.0},
+            "years": [
+                {
+                    "year": 2024,
+                    "electricity_kwh": 100000,
+                    "water_t": 20000,
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(ValueError, "occupancy"):
+            module.compute_project(project, quota)
+
+
+class ZhejiangPublicBuildingGradeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_indicator_module()
+
+    def test_760_uses_public_institution_four_level_evaluation(self):
+        cases = (
+            (12.0, "低于引导值"),
+            (12.1, "低于基准值"),
+            (18.0, "低于基准值"),
+            (18.1, "低于约束值"),
+            (25.0, "低于约束值"),
+            (25.1, "高于约束值"),
+        )
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.module._grade_760(value, [25.0, 18.0, 12.0]),
+                    expected,
+                )
+
+
+class HotelIndicatorJsonTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_caliber_module()
+
+    def test_hotel_json_omits_independent_unit_energy_indicator(self):
+        project = SimpleNamespace(
+            base=SimpleNamespace(unit_name="测试饭店")
+        )
+        spec = {
+            "subtype": "hotel",
+            "area_m2": 10000,
+            "people": 0,
+            "star": "5",
+        }
+        results = [
+            {
+                "year": 2024,
+                "values": {
+                    "unit_energy": 6.0,
+                    "unit_comparable_energy": 5.4,
+                    "water_per_bed": 100.0,
+                    "water_per_bed_normalized": 60.0,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25.0, 18.0, 12.0],
+                    "water": [125.0, 70.0],
+                },
+                "grade": {
+                    "unit_comparable_energy": "低于引导值",
+                    "water": "低于先进值",
+                },
+            }
+        ]
+
+        payload = self.module.build_public_building_indicators_json(
+            project, spec, results
+        )
+
+        self.assertNotIn("unit_energy", payload)
+        self.assertIn("unit_comparable_energy", payload)
+        self.assertIn("water_indicator", payload)
+        self.assertEqual(
+            payload["public_building"]["results"][0]["values"]["unit_energy"],
+            6.0,
+        )
+        benchmark = payload["unit_comparable_energy"]["benchmark"]
+        self.assertEqual(
+            benchmark,
+            {
+                "约束值": 25.0,
+                "基准值": 18.0,
+                "引导值": 12.0,
+                "标准": "DB33/T 760-2023",
+                "来源": "表1",
+                "评价结果": "低于引导值",
+            },
+        )
+
+    def test_hotel_water_benchmark_exposes_industry_and_subitem(self):
+        project = SimpleNamespace(
+            base=SimpleNamespace(unit_name="测试饭店")
+        )
+        spec = {
+            "subtype": "hotel",
+            "area_m2": 10000,
+            "people": 0,
+            "star": "3",
+        }
+        results = [
+            {
+                "year": 2024,
+                "values": {
+                    "unit_energy": 6.0,
+                    "unit_comparable_energy": 5.4,
+                    "water_per_bed": 100.0,
+                    "water_per_bed_normalized": 80.0,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25.0, 18.0, 12.0],
+                    "water": [256.0, 146.0],
+                },
+                "grade": {
+                    "unit_comparable_energy": "低于引导值",
+                    "water": "低于先进值",
+                },
+                "notes": {
+                    "water_category": "3",
+                    "water_industry_code": "H6110",
+                    "water_category_name": "旅游饭店",
+                    "water_subitem": "三星级（或具有同等规模、质量、水平）",
+                },
+            }
+        ]
+
+        payload = self.module.build_public_building_indicators_json(
+            project, spec, results
+        )
+
+        self.assertEqual(
+            payload["water_indicator"]["benchmark"],
+            {
+                "通用值": 256.0,
+                "先进值": 146.0,
+                "标准": "浙江省用（取）水定额（2019）",
+                "来源": "表47",
+                "评价结果": "低于先进值",
+                "行业代码": "H6110",
+                "类别名称": "旅游饭店",
+                "分项名称": "三星级（或具有同等规模、质量、水平）",
+                "定额单位": "m³/(床·年)",
+            },
+        )
+
+    def test_hotel_indicator_report_marks_unit_energy_as_intermediate(self):
+        project = SimpleNamespace(
+            base=SimpleNamespace(unit_name="测试饭店"),
+            energy_flow_trees=[],
+            equipment=[],
+        )
+        spec = {
+            "subtype": "hotel",
+            "area_m2": 10000,
+            "people": 0,
+            "star": "5",
+            "years": [
+                {
+                    "year": 2024,
+                    "electricity_kwh": 100000,
+                    "water_t": 20000,
+                }
+            ],
+        }
+        results = [
+            {
+                "year": 2024,
+                "values": {
+                    "unit_energy": 6.0,
+                    "unit_comparable_energy": 5.4,
+                    "water_per_bed": 100.0,
+                    "water_per_bed_normalized": 60.0,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25.0, 18.0, 12.0],
+                    "water": [125.0, 70.0],
+                },
+                "grade": {
+                    "unit_comparable_energy": "低于引导值",
+                    "water": "低于先进值",
+                },
+            }
+        ]
+        indicators = {"project": "测试饭店", "year": 2024}
+        family = SimpleNamespace(is_public_building=True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                mock.patch.object(
+                    self.module, "_report_family_context", return_value=family
+                ),
+                mock.patch.object(
+                    self.module, "_load_raw_project_data", return_value={}
+                ),
+                mock.patch.object(
+                    self.module, "build_public_building_spec", return_value=spec
+                ),
+                mock.patch.object(
+                    self.module,
+                    "compute_public_building_indicators",
+                    return_value=results,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "build_public_building_indicators_json",
+                    return_value=indicators,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "load_chapter5_manifest",
+                    return_value={"figures": []},
+                ),
+                mock.patch.object(
+                    self.module,
+                    "render_public_building_chapter5",
+                    return_value="# 第5章",
+                ),
+            ):
+                with redirect_stdout(io.StringIO()):
+                    self.module.run_public_building_caliber(
+                        "测试饭店",
+                        proj=project,
+                        skip_charts=True,
+                        output_dir=tmp,
+                    )
+                report = (Path(tmp) / "indicators_report.txt").read_text(
+                    encoding="utf-8"
+                )
+
+        self.assertIn(
+            "unit_energy: 6.0  [中间量，不评价]",
+            report,
+        )
+        self.assertNotIn("[参考指标]", report)
 
 
 class ShandongPublicBuildingCalculatorTests(unittest.TestCase):

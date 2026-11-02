@@ -130,7 +130,59 @@ def _load_report_family_contracts():
         raise ImportError("无法加载报告族路由") from exc
 
 
+def _load_public_building_table_contracts():
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path, "tools", "energy_audit", "public_building_table.py"
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "docx_builder_public_building_table", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit import public_building_table  # type: ignore
+        return public_building_table
+    except ImportError as exc:
+        raise ImportError("无法加载公共建筑建筑信息统计表字段目录") from exc
+
+
+def _load_reporting_period_contracts():
+    path = os.path.abspath(__file__)
+    while True:
+        target = os.path.join(
+            path, "tools", "energy_audit", "reporting_periods.py"
+        )
+        if os.path.isfile(target):
+            spec = importlib.util.spec_from_file_location(
+                "docx_builder_reporting_periods", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        parent = os.path.dirname(path)
+        if parent == path:
+            break
+        path = parent
+    try:
+        from tools.energy_audit import reporting_periods  # type: ignore
+        return reporting_periods
+    except ImportError as exc:
+        raise ImportError("无法加载报告年度完整性规则") from exc
+
+
 resolve_report_family, ReportFamilyUnsupported = _load_report_family_contracts()
+PUBLIC_BUILDING_TABLE = _load_public_building_table_contracts()
+REPORTING_PERIODS = _load_reporting_period_contracts()
 
 
 def _sha256_file(path: str) -> str:
@@ -547,7 +599,15 @@ def _diag_header_cell(cell, top_text: str, bottom_text: str):
         tcPr.append(borders)
 
 
-def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_cm=1.01):
+def _add_table(
+    doc,
+    rows,
+    bold_first_row=True,
+    equal_width_cm=None,
+    row_height_cm=1.01,
+    keep_together=None,
+    repeat_header=True,
+):
     """通用表格：12pt 居中、垂直居中、行高 1.01cm，首行加粗（对齐 45 页终稿）。
 
     bold_first_row=False：无表头行的表（建筑基本信息表：全表不加粗，2026-09-20）；
@@ -587,10 +647,12 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
         row.height = Cm(row_height_cm)
         # 2026-10-21：表头跨页重复 + 单行不跨页；小表（≤8 行）整表保持在同一页
         trPr = row._tr.get_or_add_trPr()
-        if ri == 0:
+        if ri == 0 and repeat_header:
             trPr.append(OxmlElement("w:tblHeader"))
         trPr.append(OxmlElement("w:cantSplit"))
-        keep_together = len(rows) <= 8
+        keep_table_together = (
+            len(rows) <= 8 if keep_together is None else bool(keep_together)
+        )
         for ci in range(n_cols):
             cell = row.cells[ci]
             if equal_width_cm:
@@ -610,7 +672,7 @@ def _add_table(doc, rows, bold_first_row=True, equal_width_cm=None, row_height_c
             pf.space_before = Pt(0)
             pf.space_after = Pt(0)
             pf.line_spacing = 1.0
-            if keep_together and ri < len(rows) - 1:
+            if keep_table_together and ri < len(rows) - 1:
                 pf.keep_with_next = True
             set_font(p.add_run(txt), 12, bool(bold_first_row and ri == 0))
     return t
@@ -1063,7 +1125,7 @@ def _add_image_para(doc, path, width_cm=12.0):
 
         _im = _DocxImage.from_file(path)
         _h_cm = width_cm * _im.px_height / max(1, _im.px_width)
-        if _h_cm > 10.0:
+        if _im.px_height > _im.px_width and _h_cm > 10.0:
             width_cm = 10.0 * _im.px_width / max(1, _im.px_height)
     except Exception:
         pass
@@ -1185,7 +1247,11 @@ def _render_chapter6_photos(doc, captions, images, project_dir):
             if not os.path.isfile(path):
                 print(f"WARN: 图文件不存在: {path}")
                 continue
-            _add_image_para(doc, path, width_cm=12.0)
+            _add_image_para(
+                doc,
+                path,
+                width_cm=CHAPTER6_PHOTO_WIDTH_CM,
+            )
             inserted = True
         if not srcs:
             print(f"WARN: 图清单缺少: {caption}")
@@ -1299,6 +1365,38 @@ def _load_images(project_dir):
     return out
 
 
+def _validate_public_building_table_rows(rows) -> None:
+    errors = []
+    if len(rows) != 8:
+        errors.append(f"应为 8 行，实际 {len(rows)} 行")
+    if any(len(row) != 4 for row in rows):
+        errors.append("每行必须为 4 列")
+    if any(not all(str(cell).strip() for cell in row) for row in rows):
+        errors.append("所有单元格必须非空，缺值写“—”")
+
+    # Interleave the two label columns back into display order.
+    ordered_labels = []
+    for row in rows:
+        if len(row) > 0:
+            ordered_labels.append(str(row[0]).strip())
+        if len(row) > 2:
+            ordered_labels.append(str(row[2]).strip())
+    errors.extend(
+        PUBLIC_BUILDING_TABLE.missing_or_misordered_fields(ordered_labels)
+    )
+    if any(
+        re.search(r"\{\{[^{}]+\}\}", str(cell))
+        for row in rows
+        for cell in row
+    ):
+        errors.append("含未解析模板占位符")
+    if errors:
+        raise ValueError(
+            "公共建筑建筑信息统计表不符合固定 16 字段、4 列、8 行规则："
+            + "；".join(dict.fromkeys(errors))
+        )
+
+
 def _render_md(doc, md_path, ctx, appendix=False):
     """行级 md 渲染器（内容层不变：只做元素映射，不做写作）。
 
@@ -1317,6 +1415,10 @@ def _render_md(doc, md_path, ctx, appendix=False):
     in_apx2 = False  # 附录2 横向节区段（2026-09-28）
     apx2_tables = 0  # 附录2 内已渲染的附表数（首张不另起页，避免出现空页）
     apx1_tables = 0  # 附录1 内已渲染的附表数（逐月表每张单独起页）
+    family_context = ctx.get("family_context")
+    is_public_building_report = bool(
+        getattr(family_context, "is_public_building", False)
+    )
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -1377,12 +1479,20 @@ def _render_md(doc, md_path, ctx, appendix=False):
                 i += 1
             if rows:
                 # 建筑基本信息表（4 列键值对、无表头行）：首行不加粗、列等宽（2026-09-20）
-                is_bldg = bool(rows[0]) and rows[0][0].strip() == "建筑物名称"
+                first_cell = rows[0][0].strip() if rows[0] else ""
+                is_bldg = first_cell == "建筑物名称" or (
+                    is_public_building_report and first_cell == "建筑名称"
+                )
+                is_pb_bldg = is_bldg and is_public_building_report
+                if is_pb_bldg:
+                    _validate_public_building_table_rows(rows)
                 # 附录2 的逐月表（表头首列=月份）：行高收到 0.8cm，14 行 + 表题恰好一页（2026-09-28）
                 _add_table(doc, rows, bold_first_row=not is_bldg,
                            equal_width_cm=3.66 if is_bldg else None,
                            row_height_cm=0.8 if (in_apx2 and bool(rows[0])
-                                                 and rows[0][0].strip() == "月份") else 1.01)
+                                                 and rows[0][0].strip() == "月份") else 1.01,
+                           keep_together=True if is_pb_bldg else None,
+                           repeat_header=False if is_pb_bldg else True)
                 # 表格下缘与后续正文、注释保留一个可读的短间距。
                 gap = doc.add_paragraph()
                 gap.paragraph_format.line_spacing = Pt(6)
@@ -1577,6 +1687,45 @@ def validate_family_inputs(project_dir, family_context):
         )
 
 
+def validate_reporting_period_tables(project_dir, data):
+    """不完整年度只能出现在正文说明中，不得进入任何报告表格。"""
+    incomplete_years = set(REPORTING_PERIODS.incomplete_report_years(data))
+    if not incomplete_years:
+        return None
+
+    violations = []
+    report_paths = [
+        _chapter_path(project_dir, number)
+        for number in range(1, 9)
+    ]
+    report_paths.append(
+        os.path.join(project_dir, "chapter_md", "appendix.md")
+    )
+    for path in (item for item in report_paths if os.path.isfile(item)):
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line_no, line in enumerate(fh, 1):
+                stripped = line.strip()
+                table_text = stripped.lstrip("*").strip()
+                is_table_content = stripped.startswith("|")
+                is_table_title = bool(re.match(r"^(?:附?表\d)", table_text))
+                if not (is_table_content or is_table_title):
+                    continue
+                for year in sorted(incomplete_years):
+                    if re.search(rf"(?<!\d){year}\s*年", stripped):
+                        violations.append(
+                            f"{os.path.basename(path)}:{line_no} "
+                            f"含不完整年度{year}年"
+                        )
+
+    if violations:
+        raise ReportFamilyContractError(
+            "不完整年度数据不得出现在表格中；请在正文保留说明并从年度表、"
+            "指标表及逐月附表中移除："
+            + "；".join(violations[:8])
+        )
+    return None
+
+
 def _info_rows(base, data):
     institution = [
         ["机构名称", base.get("audit_org_name") or ""],
@@ -1603,6 +1752,8 @@ def build(project_dir, out_path=None, figure_policy="placeholder"):
     data = _load_report_data(project_dir)
     family_context = resolve_project_family(project_dir)
     validate_family_inputs(project_dir, family_context)
+    if getattr(family_context, "is_public_building", False):
+        validate_reporting_period_tables(project_dir, data)
     strict = figure_policy == "strict"
     figure_validation = _validate_chapter5_figures(project_dir, strict=False)
     issue_payload = {
@@ -1657,6 +1808,7 @@ def build(project_dir, out_path=None, figure_policy="placeholder"):
             figure_issues[caption] = issue
     ctx = {
         "project_dir": project_dir,
+        "family_context": family_context,
         "omml": _load_omml(),
         "images": images,
         "figure_issues": figure_issues,

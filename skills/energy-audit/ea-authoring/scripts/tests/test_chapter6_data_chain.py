@@ -12,6 +12,33 @@ REPO_ROOT = ROOT.parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+_STUB_MODULE_NAMES = (
+    "tools",
+    "tools.energy_audit",
+    "tools.energy_audit.project_data",
+    "tools.energy_audit.db_config",
+    "tools.energy_audit.pg_query",
+    "tools.energy_audit._paths",
+    "tools.energy_audit.indicators",
+    "tools.energy_audit.institution_classifier",
+    "tools.energy_audit.dept_dict",
+    "tools.energy_audit.file_resolver",
+    "tools.energy_audit.pg_collector",
+)
+_ORIGINAL_MODULES = {
+    name: sys.modules.get(name)
+    for name in _STUB_MODULE_NAMES
+}
+
+
+def restore_import_surface():
+    """Remove collection-time stubs so later test modules see real packages."""
+    for name, module in _ORIGINAL_MODULES.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
+
 
 def load_module(name, path, module_name=None):
     spec = importlib.util.spec_from_file_location(module_name or name, path)
@@ -117,6 +144,7 @@ COLLECTOR = install_module(
         "tools.energy_audit.pg_collector",
     ),
 )
+restore_import_surface()
 
 
 class CollectorImportContractTests(unittest.TestCase):

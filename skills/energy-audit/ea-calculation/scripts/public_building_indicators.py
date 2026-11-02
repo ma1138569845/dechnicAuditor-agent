@@ -73,15 +73,15 @@ def _grade_two(value: float, tiers: list[float]) -> str:
 
 
 def _grade_760(value: float, tiers: list[float]) -> str:
-    """760：tiers = [3级限额, 2级约束, 1级先进]，越低越好。"""
+    """760 三档按公共机构口径评价，越低越好。"""
     level3, level2, level1 = tiers
     if value <= level1:
-        return "低于1级（先进值）"
+        return "低于引导值"
     if value <= level2:
-        return "低于2级（约束值）"
+        return "低于基准值"
     if value <= level3:
-        return "低于3级（限额值）"
-    return "高于3级（限额值）"
+        return "低于约束值"
+    return "高于约束值"
 
 
 def _energy_kgce(year: dict[str, Any], coeff: dict[str, Any], *,
@@ -187,12 +187,15 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
     area_mm = area - 30.0 * parking
     beds = _f(project.get("beds"))
     occupancy = _f(project.get("occupancy"), 1.0)
-    if area_mm <= 0 or beds <= 0:
-        raise ValueError("area_mm 与 beds 必须大于 0")
+    if area_mm <= 0 or beds <= 0 or occupancy <= 0:
+        raise ValueError("area_mm、beds 与 occupancy 必须大于 0")
 
     coeff = quota["coefficients"]
     tiers = quota["db33_t_760_2023"]["unit_comparable_energy"][star]
     water_tiers = quota["water_2019"]["hotel"][water_category]
+    water_meta = (
+        quota["water_2019"].get("hotel_meta", {}).get(water_category, {})
+    )
 
     corrections = dict(project.get("hotel_corrections") or {})
     if occupancy > 0 and "occupancy" not in corrections:
@@ -222,8 +225,10 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
         year_area_mm = year_area - 30.0 * year_parking
         year_beds = _f(year.get("beds"), beds)
         year_occupancy = _f(year.get("occupancy"), occupancy)
-        if year_area_mm <= 0 or year_beds <= 0:
-            raise ValueError(f"{year.get('year')} 年 area_mm / beds 必须大于 0")
+        if year_area_mm <= 0 or year_beds <= 0 or year_occupancy <= 0:
+            raise ValueError(
+                f"{year.get('year')} 年 area_mm / beds / occupancy 必须大于 0"
+            )
 
         year_corrections = dict(corrections)
         year_corrections.update(year.get("hotel_corrections") or {})
@@ -234,11 +239,8 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
         unit_comparable = unit_energy / year_factor
         water = _f(year.get("water_t"))
         water_missing = water <= 0
-        water_per_bed = water / year_beds
-        water_normalized = (
-            water / (year_beds * year_occupancy)
-            if year_occupancy > 0 else water_per_bed
-        )
+        water_per_bed_unadjusted = water / year_beds
+        water_per_bed = water / (year_beds * year_occupancy)
 
         results.append({
             "year": year.get("year"),
@@ -248,17 +250,19 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "unit_energy": round(unit_energy, 2),
                 "unit_comparable_energy": round(unit_comparable, 2),
                 "water_per_bed": round(water_per_bed, 2),
-                "water_per_bed_normalized": round(water_normalized, 2),
+                "water_per_bed_unadjusted": round(
+                    water_per_bed_unadjusted, 2
+                ),
+                "water_per_bed_normalized": round(water_per_bed, 2),
             },
             "quota": {
                 "unit_comparable_energy": tiers,
                 "water": water_tiers,
             },
             "grade": {
-                "unit_energy": "参考指标",
                 "unit_comparable_energy": _grade_760(unit_comparable, tiers),
                 "water": ("无数据，不评价" if water_missing
-                          else _grade_two(water_normalized, water_tiers)),
+                          else _grade_two(water_per_bed, water_tiers)),
             },
             "notes": {
                 "area_mm": round(year_area_mm, 2),
@@ -266,8 +270,15 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "correction_product": round(year_factor, 4),
                 "includes_new_water": True,
                 "water_category": water_category,
+                "water_industry_code": water_meta.get("industry_code", ""),
+                "water_category_name": water_meta.get("category", ""),
+                "water_subitem": water_meta.get("subitem", ""),
                 "water_missing": water_missing,
-                "water_quota_basis": "定额×床位数×入住率；water_per_bed_normalized 用于对标",
+                "water_quota_basis": (
+                    "年度用水量÷（总床位数×宾馆床位出租率）；"
+                    "water_per_bed_unadjusted 仅为后台中间量"
+                ),
+                "unit_energy_role": "intermediate",
             },
         })
     return results
@@ -324,7 +335,7 @@ def _self_test() -> int:
     hotel_results = compute_project(hotel, quota)
     assert abs(hotel_results[0]["values"]["unit_comparable_energy"] - 5.17) <= 0.011
     assert abs(hotel_results[1]["values"]["unit_comparable_energy"] - 5.39) <= 0.02
-    assert abs(hotel_results[1]["values"]["water_per_bed"] - 60.70) <= 0.011
+    assert abs(hotel_results[1]["values"]["water_per_bed"] - 67.44) <= 0.011
 
     print("self-test passed")
     print("AB 2022:", ab_result["values"], ab_result["grade"])

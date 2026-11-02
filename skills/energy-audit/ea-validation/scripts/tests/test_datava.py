@@ -500,7 +500,7 @@ def test_public_building_rejects_cross_family_and_db37():
     assert "V2.PB.GRADE" in codes
 
 
-def test_public_building_hotel_water_uses_occupancy_normalized_value():
+def test_public_building_hotel_water_uses_bed_year_value():
     payload = {
         "family": "公共建筑",
         "institution_type": "public_building",
@@ -510,37 +510,34 @@ def test_public_building_hotel_water_uses_occupancy_normalized_value():
                 {
                     "year": 2024,
                     "values": {
-                        "unit_energy": 6.0,
                         "unit_comparable_energy": 5.4,
-                        "water_per_bed": 100.0,
-                        "water_per_bed_normalized": 60.0,
+                        "water_per_bed": 60.0,
+                        "water_per_bed_unadjusted": 100.0,
                     },
                     "quota": {
                         "unit_comparable_energy": [25.0, 18.0, 12.0],
                         "water": [125.0, 70.0],
                     },
                     "grade": {
-                        "unit_energy": "参考指标",
-                        "unit_comparable_energy": "低于1级（先进值）",
+                        "unit_comparable_energy": "低于引导值",
                         "water": "低于先进值",
                     },
                     "notes": {"water_missing": False},
                 }
             ],
         },
-        "unit_energy": {"kgce_per_m2": 6.0, "benchmark": None},
         "unit_comparable_energy": {
             "kgce_per_m2": 5.4,
             "benchmark": {
-                "3级（限额值）": 25.0,
-                "2级（约束值）": 18.0,
-                "1级（先进值）": 12.0,
+                "约束值": 25.0,
+                "基准值": 18.0,
+                "引导值": 12.0,
                 "标准": "DB33/T 760-2023",
-                "评价结果": "低于1级（先进值）",
+                "评价结果": "低于引导值",
             },
         },
         "water_indicator": {
-            "m3_per_bed": 100.0,
+            "m3_per_bed": 60.0,
             "benchmark": {
                 "通用值": 125.0,
                 "先进值": 70.0,
@@ -555,7 +552,7 @@ def test_public_building_hotel_water_uses_occupancy_normalized_value():
     assert findings == []
 
 
-def test_public_building_hotel_requires_reference_grade_and_top_benchmark_sync():
+def test_public_building_hotel_requires_top_benchmark_sync():
     payload = {
         "family": "公共建筑",
         "institution_type": "public_building",
@@ -565,36 +562,34 @@ def test_public_building_hotel_requires_reference_grade_and_top_benchmark_sync()
                 {
                     "year": 2024,
                     "values": {
-                        "unit_energy": 6.0,
                         "unit_comparable_energy": 5.4,
-                        "water_per_bed": 100.0,
-                        "water_per_bed_normalized": 60.0,
+                        "water_per_bed": 60.0,
+                        "water_per_bed_unadjusted": 100.0,
                     },
                     "quota": {
                         "unit_comparable_energy": [25.0, 18.0, 12.0],
                         "water": [125.0, 70.0],
                     },
                     "grade": {
-                        "unit_comparable_energy": "低于1级（先进值）",
+                        "unit_comparable_energy": "低于引导值",
                         "water": "低于先进值",
                     },
                     "notes": {"water_missing": False},
                 }
             ],
         },
-        "unit_energy": {"kgce_per_m2": 6.0, "benchmark": None},
         "unit_comparable_energy": {
             "kgce_per_m2": 5.4,
             "benchmark": {
-                "3级（限额值）": 25.0,
-                "2级（约束值）": 18.0,
-                "1级（先进值）": 12.0,
+                "约束值": 25.0,
+                "基准值": 18.0,
+                "引导值": 12.0,
                 "标准": "DB33/T 760-2023",
-                "评价结果": "低于2级（约束值）",
+                "评价结果": "低于基准值",
             },
         },
         "water_indicator": {
-            "m3_per_bed": 100.0,
+            "m3_per_bed": 60.0,
             "benchmark": {
                 "通用值": 125.0,
                 "先进值": 70.0,
@@ -611,8 +606,25 @@ def test_public_building_hotel_requires_reference_grade_and_top_benchmark_sync()
         )
     }
 
-    assert "V2.PB.GRADE" in codes
     assert "V2.PB.TOP_BENCHMARK" in codes
+
+
+def test_public_building_760_expected_grade_uses_institution_boundaries():
+    cases = (
+        (12.0, "低于引导值"),
+        (12.1, "低于基准值"),
+        (18.0, "低于基准值"),
+        (18.1, "低于约束值"),
+        (25.0, "低于约束值"),
+        (25.1, "高于约束值"),
+    )
+    for value, expected in cases:
+        assert (
+            v2._public_building_expected_grade(
+                value, [25.0, 18.0, 12.0], "level"
+            )
+            == expected
+        )
 
 
 def test_public_building_v2_run_does_not_require_legacy_yearly_schema(
@@ -1243,6 +1255,50 @@ def _table_block(
     return v3.Block("tbl", 0, "", table, chapter)
 
 
+def _fixed_public_building_rows():
+    return (
+        ("建筑物名称", "专家公寓", "建筑面积（m²）", "19418.41"),
+        ("建筑地址", "—", "投用年份", "2022"),
+        ("建筑层数", "地上19层", "建筑高度（m）", "66.95"),
+        (
+            "建筑结构形式",
+            "钢筋混凝土框架核心筒",
+            "建筑透明围护结构",
+            "中空双层玻璃窗",
+        ),
+        ("夏季空调冷源", "空气源热泵", "冬季供暖热源", "空气源热泵"),
+        ("夏季空调末端形式", "风机盘管", "冬季供暖末端形式", "风机盘管"),
+        (
+            "建筑外墙保温",
+            "外墙保温",
+            "生活热水系统",
+            "空气源热泵热水系统",
+        ),
+        ("建筑给水系统", "市政供水", "能耗在线监测系统", "有"),
+    )
+
+
+def _public_institution_eighteen_field_rows():
+    return (
+        ("建筑物名称", "某楼", "建筑地址", "某路1号"),
+        ("建造年代", "2010年", "建筑功能", "科研办公"),
+        ("建筑层数及朝向", "地上8层", "建筑面积", "12000 m²"),
+        ("建筑功能分区", "办公、会议", "建筑结构形式", "框架"),
+        ("建筑外窗类型", "中空玻璃", "建筑外墙保温", "有"),
+        ("夏季空调冷源", "冷水机组", "冬季供暖热源", "市政热力"),
+        ("夏季空调末端形式", "风机盘管", "冬季供暖末端形式", "散热器"),
+        ("建筑给水系统", "市政供水", "建筑消防给水系统", "市政供水"),
+        ("生活热水系统", "电热水器", "能耗在线监测系统", "有"),
+    )
+
+
+def _public_building_table_blocks(rows, caption="表2.1 专家公寓建筑信息统计"):
+    return [
+        _block(caption, 2),
+        _table_block(2, header=rows[0], rows=rows[1:]),
+    ]
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [("第1章 审计概况", 1), ("第八章 结论", 8), ("1.1 概况", 0), ("", 0)],
@@ -1266,6 +1322,112 @@ def test_extract_areas_ignores_heating_area_after_building_area_phrase():
         _block("供暖按建筑面积计缴热费，供暖面积为 54,523.3 m²。", 6),
     ]
     assert v3.extract_areas(blocks) == {}
+
+
+def test_public_building_table_accepts_exact_16_fields():
+    blocks = _public_building_table_blocks(_fixed_public_building_rows())
+
+    assert v3.check_building_tables(
+        blocks,
+        public_building=True,
+        building_names=["专家公寓"],
+    ) == []
+
+
+def test_public_building_table_accepts_caption_name_with_spaces():
+    building_name = "创新大厦 AB 座"
+    rows = list(_fixed_public_building_rows())
+    rows[0] = ("建筑物名称", building_name, "建筑面积（m²）", "95000")
+    blocks = _public_building_table_blocks(
+        tuple(rows),
+        caption=f"表2.1 {building_name}建筑信息统计",
+    )
+
+    assert v3.check_building_tables(
+        blocks,
+        public_building=True,
+        building_names=[building_name],
+    ) == []
+
+
+def test_public_building_ignores_unrelated_numbered_chapter2_table():
+    blocks = _public_building_table_blocks(_fixed_public_building_rows())
+    blocks += [
+        _block("表2.2 区域面积统计", 2),
+        _table_block(
+            2,
+            header=("序号", "区域", "面积（m²）", "备注"),
+            rows=(("1", "北区", "100", "—"),),
+        ),
+    ]
+
+    assert v3.check_building_tables(
+        blocks,
+        public_building=True,
+        building_names=["专家公寓"],
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        (
+            (
+                "建筑名称",
+                "专家公寓",
+                "建筑面积（m²）",
+                "19418.41",
+                "建筑层数",
+                "地上19层",
+                "建筑高度（m）",
+                "66.95",
+                "投用年份",
+                "2022",
+            ),
+        ),
+        _public_institution_eighteen_field_rows(),
+    ],
+)
+def test_public_building_table_rejects_legacy_or_institution_contract(rows):
+    findings = v3.check_building_tables(
+        _public_building_table_blocks(rows),
+        public_building=True,
+        building_names=["专家公寓"],
+    )
+
+    finding = findings[0]
+    assert finding.code == "V3.STRUCT.PB_BLDG_TABLE"
+    assert finding.severity == SEV_P1
+
+
+def test_public_building_table_rejects_field_order_and_unresolved_address():
+    rows = list(_fixed_public_building_rows())
+    rows[1], rows[2] = rows[2], rows[1]
+    unresolved = "{" * 2 + "ADDRESS_" + "x" + "}" * 2
+    rows[0] = ("建筑物名称", "专家公寓", "建筑面积（m²）", unresolved)
+    findings = v3.check_building_tables(
+        _public_building_table_blocks(tuple(rows)),
+        public_building=True,
+        building_names=["专家公寓"],
+    )
+
+    detail = "；".join(f.detail for f in findings)
+    assert "字段顺序错误" in detail
+    assert "未解析占位符" in detail
+
+
+def test_public_institution_table_is_not_checked_against_public_building_catalog():
+    rows = _public_institution_eighteen_field_rows()
+    blocks = [
+        _block("表2.1 某楼基本信息", 2),
+        _table_block(2, header=rows[0], rows=rows[1:]),
+    ]
+
+    assert v3.check_building_tables(
+        blocks,
+        public_building=False,
+        building_names=["某楼"],
+    ) == []
 
 
 def test_area_consistency_cross_chapter_mismatch_is_p0():

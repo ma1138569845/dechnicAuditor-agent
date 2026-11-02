@@ -73,6 +73,7 @@ try:
         ReportFamilyUnsupported,
         resolve_report_family,
     )
+    from tools.energy_audit.reporting_periods import incomplete_report_years
     from tools.energy_audit.dept_dict import (
         DictionaryCodeError,
         resolve_unit_codes,
@@ -439,11 +440,15 @@ def build_public_building_spec(proj: AuditProject, raw: dict) -> dict:
 
     return {
         "subtype": subtype,
+        "incomplete_report_years": {
+            str(year): list(reasons)
+            for year, reasons in incomplete_report_years(raw).items()
+        },
         "level": resolved.get("agency_level") or "",
         "venue_type": resolved.get("venue_type") or "",
         "star": resolved.get("star") or "",
         "water_category": str(
-            pb.get("water_category") or resolved.get("star") or ""
+            resolved.get("star") or pb.get("water_category") or ""
         ),
         "area_m2": area,
         "underground_parking_spaces": float(pb.get("underground_parking_spaces") or 0),
@@ -1545,15 +1550,11 @@ def build_public_building_indicators_json(proj: AuditProject, spec: dict,
                 latest["grade"]["unit_water"]),
         }
     else:
-        out["unit_energy"] = {
-            "kgce_per_m2": latest["values"]["unit_energy"],
-            "benchmark": None,
-        }
         out["unit_comparable_energy"] = {
             "kgce_per_m2": latest["values"]["unit_comparable_energy"],
             "benchmark": _pb_benchmark(
                 latest["quota"]["unit_comparable_energy"],
-                ["3级（限额值）", "2级（约束值）", "1级（先进值）"],
+                ["约束值", "基准值", "引导值"],
                 "DB33/T 760-2023", "表1",
                 latest["grade"]["unit_comparable_energy"]),
         }
@@ -1564,6 +1565,15 @@ def build_public_building_indicators_json(proj: AuditProject, spec: dict,
                 ["通用值", "先进值"], "浙江省用（取）水定额（2019）", "表47",
                 latest["grade"]["water"]),
         }
+        notes = latest.get("notes") or {}
+        out["water_indicator"]["benchmark"].update(
+            {
+                "行业代码": notes.get("water_industry_code", ""),
+                "类别名称": notes.get("water_category_name", ""),
+                "分项名称": notes.get("water_subitem", ""),
+                "定额单位": "m³/(床·年)",
+            }
+        )
     return out
 
 
@@ -1686,13 +1696,16 @@ def run_public_building_caliber(project_name: str, proj: AuditProject,
     for r in results:
         report_lines.append(f"{r['year']}年：")
         for key, value in r["values"].items():
+            if key == "unit_energy":
+                report_lines.append(
+                    f"  {key}: {value}  [中间量，不评价]"
+                )
+                continue
             if key in ("water_per_bed", "water_per_bed_normalized"):
                 grade_key = "water"
-            elif key == "unit_energy":
-                grade_key = None
             else:
                 grade_key = key
-            grade = r["grade"].get(grade_key, "参考指标") if grade_key else "参考指标"
+            grade = r["grade"].get(grade_key, "参考指标")
             report_lines.append(f"  {key}: {value}  [{grade}]")
         report_lines.append("")
     report_path = out_dir / "indicators_report.txt"

@@ -83,6 +83,38 @@
       "2": [180, 110],
       "1": [180, 110],
       "below": [125, 70]
+    },
+    "hotel_meta": {
+      "5": {
+        "industry_code": "H6110",
+        "category": "旅游饭店",
+        "subitem": "四、五星级（含白金五星级或具有同等规模、质量、水平）"
+      },
+      "4": {
+        "industry_code": "H6110",
+        "category": "旅游饭店",
+        "subitem": "四、五星级（含白金五星级或具有同等规模、质量、水平）"
+      },
+      "3": {
+        "industry_code": "H6110",
+        "category": "旅游饭店",
+        "subitem": "三星级（或具有同等规模、质量、水平）"
+      },
+      "2": {
+        "industry_code": "H6110",
+        "category": "旅游饭店",
+        "subitem": "一、二星级（或具有同等规模、质量、水平）"
+      },
+      "1": {
+        "industry_code": "H6110",
+        "category": "旅游饭店",
+        "subitem": "一、二星级（或具有同等规模、质量、水平）"
+      },
+      "below": {
+        "industry_code": "H6120",
+        "category": "一般旅馆",
+        "subitem": "星级以下（招待所、旅社）"
+      }
     }
   }
 }

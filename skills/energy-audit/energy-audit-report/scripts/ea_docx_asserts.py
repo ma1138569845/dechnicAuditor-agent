@@ -137,7 +137,27 @@ def _load_report_family_contracts():
         raise ImportError("无法加载报告族路由") from exc
 
 
+def _load_public_building_table_contracts():
+    path = Path(__file__).resolve()
+    for parent in [path.parent, *path.parents]:
+        target = parent / "tools" / "energy_audit" / "public_building_table.py"
+        if target.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "docx_asserts_public_building_table", target
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+    try:
+        from tools.energy_audit import public_building_table  # type: ignore
+        return public_building_table
+    except ImportError as exc:
+        raise ImportError("无法加载公共建筑建筑信息统计表字段目录") from exc
+
+
 resolve_report_family, ReportFamilyUnsupported = _load_report_family_contracts()
+PUBLIC_BUILDING_TABLE = _load_public_building_table_contracts()
 
 
 def detect_family_context(docx_path: str):
@@ -177,8 +197,193 @@ def detect_family(docx_path: str) -> str:
     return detect_family_context(docx_path).family
 
 
-def public_building_checks(text: str):
+def _has_760_comparable_formula_object(doc_xml: str) -> bool:
+    for formula in re.findall(r"<m:oMath[ >].*?</m:oMath>", doc_xml, re.S):
+        tokens = "".join(
+            re.findall(r"<m:t(?: [^>]*)?>([^<]*)</m:t>", formula)
+        )
+        compact = norm(tokens)
+        # 线性公式可能直接以 "/" 表示除法；Office 原生分式则把分子、
+        # 分母分别放在 m:num / m:den 中，拍平后不会出现 "/"。
+        if "Ekd=Ej/(a1a2" in compact and compact.endswith("am)"):
+            return True
+        fractions = re.findall(
+            r"<m:f(?: [^>]*)?>.*?<m:num>(.*?)</m:num>"
+            r".*?<m:den>(.*?)</m:den>.*?</m:f>",
+            formula,
+            re.S,
+        )
+        for numerator_xml, denominator_xml in fractions:
+            numerator = norm(
+                "".join(
+                    re.findall(
+                        r"<m:t(?: [^>]*)?>([^<]*)</m:t>",
+                        numerator_xml,
+                    )
+                )
+            )
+            denominator = norm(
+                "".join(
+                    re.findall(
+                        r"<m:t(?: [^>]*)?>([^<]*)</m:t>",
+                        denominator_xml,
+                    )
+                )
+            )
+            if (
+                compact.startswith("Ekd=Ej")
+                and numerator == "Ej"
+                and denominator.startswith("a1")
+                and "a2" in denominator
+                and denominator.endswith("am")
+            ):
+                return True
+    return False
+
+
+def _has_bed_year_water_formula_object(doc_xml: str) -> bool:
+    for formula in re.findall(r"<m:oMath[ >].*?</m:oMath>", doc_xml, re.S):
+        tokens = "".join(
+            re.findall(r"<m:t(?: [^>]*)?>([^<]*)</m:t>", formula)
+        )
+        compact = norm(tokens).replace("*", "×").replace("x", "×")
+        if compact == "Vuc=VkN×Q":
+            return True
+    return False
+
+
+def public_building_checks(text: str, doc_xml: str | None = None):
     tn = norm(text)
+    has_comparable_metric = "单位可比综合能耗" in tn
+    water_start = tn.rfind("5.3.2单位床年用水量")
+    water_section = ""
+    if water_start >= 0:
+        ends = [
+            pos
+            for marker in ("第6章", "附录1")
+            if (pos := tn.find(marker, water_start)) >= 0
+        ]
+        water_section = tn[water_start:min(ends) if ends else len(tn)]
+    water_quota_ok = True
+    water_quota_why = ""
+    if water_section:
+        def labeled_number(label: str, value: str) -> bool:
+            return bool(
+                re.search(
+                    rf"{label}[^0-9]{{0,30}}{value}(?:\.0+)?"
+                    rf"(?:{value}(?:\.0+)?)*(?!\d)",
+                    water_section,
+                )
+            )
+
+        h6110 = "H6110" in water_section and "旅游饭店" in water_section
+        h6120 = "H6120" in water_section and "一般旅馆" in water_section
+        if h6110 and h6120:
+            water_quota_ok = False
+            water_quota_why = "5.3.2 同时出现 H6110 与 H6120，用水定额类别不唯一"
+        elif h6110:
+            h6110_tiers = (
+                ("四、五星级", 350, 216),
+                ("三星级", 256, 146),
+                ("一、二星级", 180, 110),
+            )
+            matches = [
+                tier
+                for tier in h6110_tiers
+                if tier[0] in water_section
+                and labeled_number("通用值", str(tier[1]))
+                and labeled_number("先进值", str(tier[2]))
+            ]
+            if len(matches) != 1:
+                water_quota_ok = False
+                water_quota_why = (
+                    "5.3.2 H6110 旅游饭店须且只能匹配一个星级分项，"
+                    "并按表47写对应通用值/先进值"
+                )
+        elif h6120:
+            if not (
+                "星级以下" in water_section
+                and labeled_number("通用值", "125")
+                and labeled_number("先进值", "70")
+            ):
+                water_quota_ok = False
+                water_quota_why = (
+                    "5.3.2 H6120 一般旅馆须匹配星级以下分项，"
+                    "并写通用值125、先进值70"
+                )
+        else:
+            water_quota_ok = False
+            water_quota_why = (
+                "5.3.2 未标明 H6110 旅游饭店或 H6120 一般旅馆的用水定额类别"
+            )
+    formula_definitions_ok = all(
+        definition in tn
+        for definition in (
+            "Ekd——单位可比综合能耗，单位为千克标准煤每平方米（kgce/m²）；",
+            "Ej——单位综合能耗，单位为千克标准煤每平方米（kgce/m²）；",
+            "a——综合能耗修正系数；",
+            "m——第m项综合能耗修正系数。",
+        )
+    )
+    formula_object_ok = (
+        doc_xml is None
+        or not has_comparable_metric
+        or _has_760_comparable_formula_object(doc_xml)
+    )
+    bed_year_water_definitions_ok = all(
+        definition in tn
+        for definition in (
+            "单位床年用水量按下式计算：",
+            "Vuc——单位床年用水量，单位为立方米每床年（m³/(床·年)）；",
+            "Vk——年度用水量，单位为立方米每年（m³/a）；",
+            "N——总床位数，单位为床；",
+            "Q——宾馆床位出租率。",
+        )
+    )
+    has_hotel_water_metric = (
+        "单位床年用水量" in tn or "5.3.2单位用水量" in tn
+    )
+    bed_year_water_formula_ok = (
+        not has_hotel_water_metric
+        or (
+            bed_year_water_definitions_ok
+            and "5.3.2单位用水量" not in tn
+            and (
+                doc_xml is None
+                or _has_bed_year_water_formula_object(doc_xml)
+            )
+        )
+    )
+    unified_760_tiers_ok = (
+        not has_comparable_metric
+        or (
+            all(
+                label in tn
+                for label in (
+                    "定额标准约束值",
+                    "定额标准基准值",
+                    "定额标准引导值",
+                )
+            )
+            and not any(
+                label in tn
+                for label in (
+                    "定额标准3级",
+                    "定额标准2级",
+                    "定额标准1级",
+                )
+            )
+            and any(
+                grade in tn
+                for grade in (
+                    "低于引导值",
+                    "低于基准值",
+                    "低于约束值",
+                    "高于约束值",
+                )
+            )
+        )
+    )
     office_metrics = all(
         label in tn
         for label in (
@@ -192,13 +397,64 @@ def public_building_checks(text: str):
     hotel_metrics = all(
         label in tn
         for label in (
-            "5.3.1单位综合能耗",
-            "5.3.2单位可比综合能耗",
-            "5.3.3单位用水量",
+            "5.3.1单位可比综合能耗",
+            "5.3.2单位床年用水量",
+        )
+    ) and "5.3.1单位综合能耗" not in tn
+    expected_metrics = hotel_metrics if "单位可比综合能耗" in tn else office_metrics
+    period_anchor = re.search(
+        r"基准期[:：]?\d{4}年\d{1,2}月\d{1,2}日"
+        r"[—–-]\d{4}年\d{1,2}月\d{1,2}日",
+        tn,
+    )
+    # Word 更新目录后，“1.6 审计依据”会同时出现在目录和正文。
+    # 逐一截取到下一个“第2章”，取最长候选，避免误读目录中的短条目。
+    basis_candidates = []
+    search_from = 0
+    while True:
+        basis_start = tn.find("1.6审计依据", search_from)
+        if basis_start < 0:
+            break
+        basis_end = tn.find("第2章", basis_start + 1)
+        basis_candidates.append(
+            tn[basis_start:basis_end if basis_end >= 0 else None]
+        )
+        search_from = basis_start + len("1.6审计依据")
+    basis_section = max(basis_candidates, key=len, default="")
+    has_quota_standard = any(
+        title in basis_section
+        for title in (
+            "《行政机关、场馆能耗定额及计算方法》",
+            "《旅游饭店单位综合能耗限额及计算方法》",
         )
     )
-    expected_metrics = hotel_metrics if "单位可比综合能耗" in tn else office_metrics
+    basis_group_headings = (
+        "国家法规与导则",
+        "浙江省规章",
+        "定额标准",
+        "用水定额",
+        "项目资料",
+    )
+    # 判断分组标题时先剔除书名号内名称，避免
+    # 《浙江省用水定额》这类正式标准名被“用水定额”字符串误伤。
+    basis_prose = re.sub(r"《[^》]*》", "", basis_section)
+    long_survey_markers = (
+        "用能设备台账",
+        "电、水能源账单",
+        "现场勘察记录及被审计单位提供的其他相关资料",
+    )
     checks = {
+        "pb_ch1_period": bool(period_anchor) and "能耗对标基准期" not in tn,
+        "pb_ch1_basis_list": (
+            bool(basis_section)
+            and has_quota_standard
+            and "JGJ176-2009" in basis_section
+            and not any(heading in basis_prose for heading in basis_group_headings)
+        ),
+        "pb_ch1_research_compact": (
+            "调研资料及其他相关资料。" in tn
+            and not any(marker in tn for marker in long_survey_markers)
+        ),
         "pb_ch2_title": ("第2章建筑概况" in tn and "公共机构概况" not in tn),
         "pb_ch6_structure": all(
             x in tn for x in ("6.1用电系统运行分析", "6.2用水系统运行分析", "6.3其他用能系统运行分析")
@@ -206,6 +462,13 @@ def public_building_checks(text: str):
         "pb_ch5_metrics": (
             expected_metrics and "单位建筑面积非供暖能耗" not in tn
         ),
+        "pb_ch5_760_formula": (
+            not has_comparable_metric
+            or (formula_definitions_ok and formula_object_ok)
+        ),
+        "pb_ch5_bed_year_water_formula": bed_year_water_formula_ok,
+        "pb_ch5_760_tiers": unified_760_tiers_ok,
+        "pb_ch5_water_quota": water_quota_ok,
         "pb_coefficient": ("0.1229" in tn and "0.31" not in tn),
         "pb_appendix1": bool(
             re.search(r"附录1[：:]?建筑能耗数据信息表", tn)
@@ -219,15 +482,51 @@ def public_building_checks(text: str):
         "pb_no_public_institution": ("公共机构概况" not in tn and "非供暖能耗" not in tn),
     }
     details = {}
+    if not checks["pb_ch1_period"]:
+        details["pb_ch1_period"] = (
+            "1.3 审计周期第三段标签应为「基准期」，并写全年月日；"
+            "不得增补其他前缀"
+        )
+    if not checks["pb_ch1_basis_list"]:
+        details["pb_ch1_basis_list"] = (
+            "1.6 审计依据应包含适用的浙江定额标准全名、JGJ 176-2009，"
+            "且不得出现国家法规与导则等分组标题"
+        )
+    if not checks["pb_ch1_research_compact"]:
+        details["pb_ch1_research_compact"] = (
+            "1.6 调研资料应统一写「调研资料及其他相关资料。」，"
+            "不得展开账单、设备台账和现场记录长清单"
+        )
     if not checks["pb_ch2_title"]:
         details["pb_ch2_title"] = "第2章应为「建筑概况」，且不得出现「公共机构概况」"
     if not checks["pb_ch6_structure"]:
         details["pb_ch6_structure"] = "第6章应为 6.1 用电 / 6.2 用水 / 6.3 其他"
     if not checks["pb_ch5_metrics"]:
         details["pb_ch5_metrics"] = (
-            "5.3 指标节不足（办公/场馆应有 5 项，饭店应有 3 项），"
+            "5.3 指标节不足（办公/场馆应有 5 项，饭店应为"
+            "5.3.1 单位可比综合能耗、5.3.2 单位床年用水量 2 项），"
             "或出现公共机构「非供暖能耗」口径"
         )
+    if not checks["pb_ch5_760_formula"]:
+        details["pb_ch5_760_formula"] = (
+            "5.3.1 须用 OMML 公式写 Ekd = Ej / (a1a2…am)，并按 "
+            "DB33/T 760-2023 第5.2.4条列示 Ekd、Ej，以及 "
+            "a（综合能耗修正系数）、m（第m项综合能耗修正系数）"
+        )
+    if not checks["pb_ch5_bed_year_water_formula"]:
+        details["pb_ch5_bed_year_water_formula"] = (
+            "5.3.2 须写“单位床年用水量”，并用 OMML 公式表达 "
+            "Vuc = Vk /（N×Q），同时列明年度用水量、总床位数和"
+            "宾馆床位出租率；不得退回仅按床位数计算"
+        )
+    if not checks["pb_ch5_760_tiers"]:
+        details["pb_ch5_760_tiers"] = (
+            "5.3.1 定额行必须统一为约束值、基准值、引导值，"
+            "评价结果按公共机构口径写低于引导值/低于基准值/"
+            "低于约束值/高于约束值；不得保留 1/2/3 级旧标签"
+        )
+    if not checks["pb_ch5_water_quota"]:
+        details["pb_ch5_water_quota"] = water_quota_why
     if not checks["pb_coefficient"]:
         details["pb_coefficient"] = "电力折标应为 0.1229，且不得出现 0.31"
     if not checks["pb_appendix1"]:
@@ -1605,6 +1904,163 @@ def ch5_52_water_ok(doc_xml: str, heading_ids=None):
     return True, ""
 
 
+def _xml_table_rows(table_xml: str):
+    rows = []
+    for tr in re.findall(r"<w:tr[ >].*?</w:tr>", table_xml, flags=re.S):
+        rows.append(
+            [
+                _ptext(tc)
+                for tc in re.findall(
+                    r"<w:tc[ >].*?</w:tc>", tr, flags=re.S
+                )
+            ]
+        )
+    return rows
+
+
+def _xml_has_bold(table_xml: str) -> bool:
+    for match in re.finditer(
+        r"<w:(?:b|bCs)(?:\s+[^>]*)?/?>",
+        table_xml,
+    ):
+        value = re.search(r'w:val="([^"]+)"', match.group(0))
+        if value is None or value.group(1).lower() not in {
+            "0",
+            "false",
+            "off",
+        }:
+            return True
+    return False
+
+
+def public_building_table_checks(doc_xml: str):
+    blocks = re.findall(
+        r"<w:p[ >].*?</w:p>|<w:tbl[ >].*?</w:tbl>",
+        doc_xml,
+        flags=re.S,
+    )
+    candidates = []
+    for index, block in enumerate(blocks):
+        if not block.startswith("<w:tbl"):
+            continue
+        rows = _xml_table_rows(block)
+        if (
+            rows
+            and rows[0]
+            and norm(rows[0][0]) in {"建筑物名称", "建筑名称"}
+        ):
+            candidates.append((index, block, rows))
+
+    checks = {
+        "pb_bldg_table": bool(candidates),
+        "pb_bldg_table_title": bool(candidates),
+        "pb_bldg_table_no_repeat_header": bool(candidates),
+        "pb_bldg_table_no_placeholders": bool(candidates),
+    }
+    details = {}
+    if not candidates:
+        message = "未识别到公共建筑建筑信息统计表"
+        details["pb_bldg_table"] = message
+        details["pb_bldg_table_title"] = message
+        details["pb_bldg_table_no_repeat_header"] = message
+        details["pb_bldg_table_no_placeholders"] = message
+        return checks, details
+
+    expected_labels = PUBLIC_BUILDING_TABLE.expected_public_building_table_labels()
+    structure_errors = []
+    caption_errors = []
+    placeholder_errors = []
+    repeat_header_errors = []
+    table_numbers = []
+
+    for candidate_index, (block_index, table_xml, rows) in enumerate(candidates, 1):
+        if len(rows) != 8:
+            structure_errors.append(f"第{candidate_index}表应8行，实际{len(rows)}行")
+        if any(len(row) != 4 for row in rows):
+            structure_errors.append(f"第{candidate_index}表不是4列")
+        if any(
+            not cell.strip()
+            for row in rows
+            for cell in row
+        ):
+            structure_errors.append(f"第{candidate_index}表存在空白单元格")
+
+        labels = []
+        for row in rows:
+            if row:
+                labels.append(norm(row[0]))
+            if len(row) > 2:
+                labels.append(norm(row[2]))
+        structure_errors.extend(
+            f"第{candidate_index}表{issue}"
+            for issue in PUBLIC_BUILDING_TABLE.missing_or_misordered_fields(labels)
+        )
+        if _xml_has_bold(table_xml):
+            structure_errors.append(f"第{candidate_index}表存在加粗文本")
+        if any(
+            "<w:cantSplit" not in tr
+            for tr in re.findall(r"<w:tr[ >].*?</w:tr>", table_xml, flags=re.S)
+        ):
+            structure_errors.append(f"第{candidate_index}表存在允许拆分的行")
+        if len(labels) != len(expected_labels):
+            structure_errors.append(
+                f"第{candidate_index}表应16个字段，实际{len(labels)}个"
+            )
+
+        if "<w:tblHeader" in table_xml:
+            repeat_header_errors.append(f"第{candidate_index}表重复表头")
+        if re.search(r"\{\{[^{}]+\}\}", _ptext(table_xml)):
+            placeholder_errors.append(f"第{candidate_index}表含未解析占位符")
+
+        previous = None
+        for position in range(block_index - 1, -1, -1):
+            previous = blocks[position]
+            if previous.startswith("<w:p") and norm(_ptext(previous)):
+                break
+        previous_text = (
+            norm(_ptext(previous))
+            if previous is not None and previous.startswith("<w:p")
+            else ""
+        )
+        caption_match = re.fullmatch(
+            r"表2\.(\d+)(.+?)建筑信息统计",
+            previous_text,
+        )
+        if not caption_match:
+            caption_errors.append(
+                f"第{candidate_index}表题缺失或与表格不相邻"
+            )
+        else:
+            table_numbers.append(int(caption_match.group(1)))
+
+    checks["pb_bldg_table"] = not structure_errors
+    checks["pb_bldg_table_no_repeat_header"] = not repeat_header_errors
+    checks["pb_bldg_table_no_placeholders"] = not placeholder_errors
+    if not caption_errors and table_numbers != list(
+        range(1, len(candidates) + 1)
+    ):
+        caption_errors.append(
+            "建筑信息统计表表号应自表2.1连续编号"
+        )
+    checks["pb_bldg_table_title"] = not caption_errors
+
+    if structure_errors:
+        details["pb_bldg_table"] = "；".join(dict.fromkeys(structure_errors))
+    if caption_errors:
+        details["pb_bldg_table_title"] = "；".join(
+            dict.fromkeys(caption_errors)
+        )
+    if repeat_header_errors:
+        details["pb_bldg_table_no_repeat_header"] = "；".join(
+            repeat_header_errors
+        )
+    if placeholder_errors:
+        details["pb_bldg_table_no_placeholders"] = "；".join(
+            placeholder_errors
+        )
+    return checks, details
+
+
 def building_tables_info(doc_xml: str):
     """建筑基本信息表检测（2026-09-20 新增）：返回各建筑表「首行列数」列表。
 
@@ -1738,11 +2194,14 @@ _APX_NUM_RE = re.compile(r"^附录\s*\d+\s*[:：]")
 _APX2_RE = re.compile(r"^附录\s*2\s*[:：]")
 
 
-def _chapter_pagebreak_ok(doc_xml: str) -> tuple[bool, str]:
+def _chapter_pagebreak_ok(
+    doc_xml: str, apx2_sectioned: bool = True
+) -> tuple[bool, str]:
     """大章节另起一页（2026-09-29 用户定）：H1（第1~8章、「附录：」总页）与附录区段的
     「附录N：」H2 **必须带 `<w:pageBreakBefore/>`**（段落属性，不用手工分页符）。
 
-    同时防"重复分页造成空白页"：**附录2** 已由横向分节符另起一页，**不得**再设分页。
+    同时防"重复分页造成空白页"：分节式附录2 已由横向分节符另起一页，
+    不得再设分页；公共建筑纵向附录2 没有分节符，仍须设置段前分页。
     """
     missing: list[str] = []
     dup: list[str] = []
@@ -1762,8 +2221,10 @@ def _chapter_pagebreak_ok(doc_xml: str) -> tuple[bool, str]:
                 missing.append(text[:24] or "(H1 空标题)")
         elif style == "Heading2" and _APX_NUM_RE.match(text):
             if _APX2_RE.match(text):
-                if has_brk:
+                if apx2_sectioned and has_brk:
                     dup.append(text[:24])
+                elif not apx2_sectioned and not has_brk and not prev_sect:
+                    missing.append(text[:24])
             elif not has_brk and not prev_sect:
                 # 紧跟分节符（新页）的附录标题无需再设 pageBreakBefore —— 分节符本身即另起一页，
                 # 重复设反而可能多出空白页（实测：附录3 由"切回纵向"的分节符另起一页）。
@@ -1929,7 +2390,12 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
         "apx2_table": _apx2_table_ok(sect_detail),
         "no_field_names": not _FIELDNAME_RE.findall(text) and "`" not in text,
         # 大章节/附录另起一页（2026-09-29 用户定）：见 _chapter_pagebreak_ok
-        "chapter_new_page": _chapter_pagebreak_ok(doc)[0],
+        "chapter_new_page": _chapter_pagebreak_ok(
+            doc,
+            apx2_sectioned=not getattr(
+                family_context, "is_public_building", False
+            ),
+        )[0],
         # 2026-09-29 用户定：正文引语一律中文全角引号；ASCII 直引号判不合格
         "cn_quotes": '"' not in text,
     }
@@ -1966,7 +2432,12 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
             "正文含 %d 个 ASCII 直引号（应为 0）；引语一律用中文全角引号“”"
             "（见 report-format-spec.md《正文禁忌》，2026-09-29 用户定）" % n_ascii)
     if not checks["chapter_new_page"]:
-        details["chapter_new_page"] = _chapter_pagebreak_ok(doc)[1]
+        details["chapter_new_page"] = _chapter_pagebreak_ok(
+            doc,
+            apx2_sectioned=not getattr(
+                family_context, "is_public_building", False
+            ),
+        )[1]
     if not c531_ok:
         details["ch5_531_leadin"] = c531_why
     if not c222_ok:
@@ -2034,9 +2505,12 @@ def run(docx: str, pdf: str = None, family: str = "auto"):
                 text, subtype=public_building_subtype
             )
         else:
-            pb_checks, pb_details = public_building_checks(text)
+            pb_checks, pb_details = public_building_checks(text, doc)
         checks.update(pb_checks)
         details.update(pb_details)
+        pb_table_checks, pb_table_details = public_building_table_checks(doc)
+        checks.update(pb_table_checks)
+        details.update(pb_table_details)
     elif family_context.is_zhejiang_public_institution:
         pi_checks, pi_details = zhejiang_public_institution_checks(text)
         checks.update(pi_checks)

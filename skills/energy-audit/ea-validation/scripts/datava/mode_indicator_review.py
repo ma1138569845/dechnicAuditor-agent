@@ -111,9 +111,8 @@ PUBLIC_BUILDING_METRICS: Dict[str, Tuple[Tuple[str, str, str, str, str, str], ..
         ("unit_water", "单位用水量", "unit_water", "m³/(人·a)", "water", "unit_water"),
     ),
     "hotel": (
-        ("unit_energy", "单位综合能耗", "unit_energy", "kgce/m²", "reference", "unit_energy"),
         ("unit_comparable_energy", "单位可比综合能耗", "unit_comparable_energy", "kgce/m²", "level", "unit_comparable_energy"),
-        ("water_per_bed", "单位用水量", "water_per_bed", "m³/(床·年)", "water", "water"),
+        ("water_per_bed", "单位床年用水量", "water_per_bed", "m³/(床·年)", "water", "water"),
     ),
 }
 
@@ -126,7 +125,6 @@ PUBLIC_BUILDING_TOP_METRICS: Dict[str, Tuple[Tuple[str, str, str], ...]] = {
         ("water_indicator", "m3_per_person", "unit_water"),
     ),
     "hotel": (
-        ("unit_energy", "kgce_per_m2", "unit_energy"),
         ("unit_comparable_energy", "kgce_per_m2", "unit_comparable_energy"),
         ("water_indicator", "m3_per_bed", "water_per_bed"),
     ),
@@ -415,12 +413,12 @@ def _public_building_expected_grade(
     first, second, third = (safe_float(v) for v in tiers[:3])
     if kind == "level":
         if third > 0 and value <= third:
-            return "低于1级（先进值）"
+            return "低于引导值"
         if second > 0 and value <= second:
-            return "低于2级（约束值）"
+            return "低于基准值"
         if first > 0 and value <= first:
-            return "低于3级（限额值）"
-        return "高于3级（限额值）"
+            return "低于约束值"
+        return "高于约束值"
     if third > 0 and value <= third:
         return "低于引导值"
     if second > 0 and value <= second:
@@ -552,8 +550,6 @@ def review_public_building_payload(
             raw_value = values.get(value_field)
             value = safe_float(raw_value)
             compare_value = value
-            if metric_family == "hotel" and key == "water_per_bed":
-                compare_value = safe_float(values.get("water_per_bed_normalized"))
             if raw_value is None:
                 findings.append(
                     Finding(
@@ -732,7 +728,7 @@ def review_public_building_payload(
                         code="V2.PB.WATER_STANDARD",
                         category="对标合理性",
                         severity=SEV_P0,
-                        title="单位用水量未引用浙江省用水定额",
+                        title="单位床年用水量未引用浙江省用水定额",
                         actual=standard,
                         suggestion="用水指标改引浙江省用（取）水定额（2019）",
                     )

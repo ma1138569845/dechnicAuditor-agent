@@ -189,7 +189,7 @@ V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indi
 | 山东公共机构 | 山东现行 `yearly[]` / 指标包 / 现算链 | 保持既有公共机构指标与 DB37 检查 |
 | 山东公共建筑 | `indicators.json → public_building.results[]` | 按 `A1～A3/B/C/D1～D4` 路由 5076/5077/5078/5079；eA/eB 必查，医院另查 eC，机关办公另查总等效电耗；只允许约束值/先进值 |
 | 浙江公共建筑（办公、场馆） | `indicators.json → public_building.results[]` | 单位建筑面积能耗、常规用能系统单位建筑面积电耗、人均综合能耗、人均电耗、单位用水量共 5 项 |
-| 浙江公共建筑（饭店） | `indicators.json → public_building.results[]` | 单位综合能耗（参考指标）、单位可比综合能耗、单位用水量共 3 项；水耗按入住率折算值对标 |
+| 浙江公共建筑（饭店） | `indicators.json → public_building.results[]` | 单位可比综合能耗、单位床年用水量共 2 项；正式水耗为年度用水量 ÷（总床位数×宾馆床位出租率） |
 | 浙江公共机构 | `indicators.json → public_institution.results[]` | DB33/T 736 机关/场馆、737 普通高校、738 二级及以上医院；约束值/基准值/引导值三档 |
 
 山东公共建筑检查为阻塞项：
@@ -209,7 +209,10 @@ V2 直接读取 `data.json → base.unit_type + base.province`，不得让 `indi
 - 不得出现 DB37；能耗指标必须匹配 DB33/T 736-2021，饭店可比能耗必须匹配 DB33/T 760-2023；
 - 用水指标必须引用浙江省用（取）水定额；
 - 年度 `grade`、顶层指标、顶层 benchmark 评价结果和最新年度结果必须同源；
-- 饭店 `unit_energy` 的年度评价必须明确写“参考指标”。
+- 饭店 `unit_energy` 只作为计算 `unit_comparable_energy` 的中间量；不得设置
+  独立报告指标节、写入 `grade` 或评价为“参考指标”；
+- 饭店 760 报告三档统一写约束值/基准值/引导值；评价必须按公共机构四档逻辑
+  输出“低于引导值/低于基准值/低于约束值/高于约束值”，不得保留 1/2/3 级旧短语。
 
 浙江公共机构检查为阻塞项：
 
