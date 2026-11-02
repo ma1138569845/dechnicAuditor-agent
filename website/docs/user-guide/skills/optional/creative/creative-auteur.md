@@ -15,13 +15,13 @@ Design and build cinematic, award-level web pages.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/auteur` |
-| Path | `optional-skills/creative/auteur` |
+| Path | `optional-skills/creative\auteur` |
 | Version | `1.3.1` |
 | Author | agiwhitelist (https://github.com/agiwhitelist, upstream agiwhitelist/auteur), ported by Hermes Agent |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `web-design`, `cinematic`, `scroll-animation`, `design-system`, `anti-slop`, `frontend` |
-| Related skills | [`popular-web-designs`](../../bundled/creative/creative-popular-web-designs.md), [`design-md`](../../bundled/creative/creative-design-md.md), [`p5js`](../../bundled/creative/creative-p5js.md) |
+| Related skills | [`popular-web-designs`](../../bundled/creative/creative-popular-web-designs.md), [`design-md`](../../optional/creative/creative-design-md.md), [`p5js`](../../bundled/creative/creative-p5js.md) |
 
 ## Reference: full SKILL.md
 

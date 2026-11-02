@@ -15,7 +15,7 @@ Explain an idea as an interactive isometric machine figure.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/anatomy` |
-| Path | `optional-skills/creative/anatomy` |
+| Path | `optional-skills/creative\anatomy` |
 | Version | `1.0.0` |
 | Author | Ryan (wheresryan22), ported to Hermes by Nous Research |
 | License | MIT |

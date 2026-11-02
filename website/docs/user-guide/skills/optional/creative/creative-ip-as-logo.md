@@ -15,7 +15,7 @@ Design minimal cute IP mascot marks readable at 32px.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/ip-as-logo` |
-| Path | `optional-skills/creative/ip-as-logo` |
+| Path | `optional-skills/creative\ip-as-logo` |
 | Version | `1.0.0` |
 | Author | s1dashu (https://github.com/s1dashu, upstream s1dashu/ip-as-logo-skill), ported by Hermes Agent |
 | License | MIT |

@@ -15,7 +15,7 @@ Validated interactive HTML diagrams, upstream-maintained.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/archify` |
-| Path | `optional-skills/creative/archify` |
+| Path | `optional-skills/creative\archify` |
 | Version | `2.17.0` |
 | Author | tt-a1i |
 | License | MIT |

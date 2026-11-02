@@ -328,7 +328,6 @@ export const arChrome = {
       ownedByProfile: profile => `مملوكة للملف الشخصي ${profile}`,
       untitledChat: id => `محادثة ${id}`,
       handoffOrigin: platform => `قادمة من ${platform}`,
-      continuationOrigin: 'متابعة تلقائية — تم ضغط هذه المحادثة ومتابعتها',
       renamed: 'تمت إعادة التسمية',
       renameFailed: 'فشلت إعادة التسمية',
       renameTitle: 'إعادة تسمية الجلسة',
@@ -564,7 +563,8 @@ export const arChrome = {
     saveApply: 'حفظ وتطبيق',
     notExpressible: 'هذا الترتيب متشابك — لا يمكن تمثيله كتقسيمات متداخلة بعد',
     zoneCount: count => `${count} مناطق`,
-    tabCount: count => `${count} تبويبات`
+    tabCount: count => `${count} تبويبات`,
+    tabActions: title => `إجراءات ${title}`
   },
   contextMenu: {
     link: {

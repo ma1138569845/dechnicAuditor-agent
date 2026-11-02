@@ -15,13 +15,13 @@ Delegate coding to Claude Code CLI (features, PRs).
 | | |
 |---|---|
 | Source | Bundled (installed by default) |
-| Path | `skills/autonomous-ai-agents/claude-code` |
+| Path | `skills/autonomous-ai-agents\claude-code` |
 | Version | `2.2.1` |
 | Author | Hermes Agent + Teknium |
 | License | MIT |
 | Platforms | linux, macos, windows |
 | Tags | `Coding-Agent`, `Claude`, `Anthropic`, `Code-Review`, `Refactoring`, `PTY`, `Automation` |
-| Related skills | [`codex`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-codex.md), [`hermes-agent`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent.md), [`opencode`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-opencode.md) |
+| Related skills | [`codex`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-codex.md), [`hermes-agent`](../../bundled/autonomous-ai-agents/autonomous-ai-agents-hermes-agent.md), [`opencode`](../../optional/autonomous-ai-agents/autonomous-ai-agents-opencode.md) |
 
 ## Reference: full SKILL.md
 

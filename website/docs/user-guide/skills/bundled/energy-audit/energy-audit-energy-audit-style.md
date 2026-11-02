@@ -1,0 +1,83 @@
+---
+title: "Energy Audit Style — 能源审计报告写作风格规则包：跨章论证链、句法、评价短语、防抄三闸门"
+sidebar_label: "Energy Audit Style"
+description: "能源审计报告写作风格规则包：跨章论证链、句法、评价短语、防抄三闸门"
+---
+
+{/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
+
+# Energy Audit Style
+
+能源审计报告写作风格规则包：跨章论证链、句法、评价短语、防抄三闸门.
+
+## Skill metadata
+
+| | |
+|---|---|
+| Source | Bundled (installed by default) |
+| Path | `skills/energy-audit\energy-audit-style` |
+| Version | `1.0.0` |
+| Author | 马天远 |
+| License | MIT |
+| Platforms | linux, macos, windows |
+| Tags | `energy-audit`, `writing-style`, `argument-logic`, `anti-plagiarism` |
+| Related skills | [`energy-audit-core`](../../bundled/energy-audit/energy-audit-energy-audit-core.md), [`energy-audit-report`](../../bundled/energy-audit/energy-audit-energy-audit-report.md), [`ea-authoring`](../../bundled/energy-audit/energy-audit-ea-authoring.md), [`energy-audit-imitate`](../../bundled/energy-audit/energy-audit-energy-audit-imitate.md), [`energy-audit-report-qa`](../../bundled/energy-audit/energy-audit-energy-audit-report-qa.md) |
+
+## Reference: full SKILL.md
+
+:::info
+The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+:::
+
+# 能源审计报告写作逻辑与语言风格规则包
+
+从正式样板报告（法院/医院/学校实例）中提取的**跨章写作规则**：怎么写才像
+一份合格的能源审计报告——不是"每章写什么"（那是 `ea-authoring` 的章节指南），
+而是"拿到数据后怎么推理、怎么下结论、用什么句式写、怎么不抄参考报告"。
+
+## 与现有技能的边界（防止权威分裂）
+
+| 问题 | 权威位置（本包不重复） |
+|---|---|
+| 8 章结构 / 章间联动铁律 | `ea-authoring/references/chapter-guides-1-4.md`（第1~4章）+ `chapter-guides-6-8.md`（第6~8章）+ `energy-audit-report/references/city-template-guide.md`（市州模板） |
+| 市州 0-11 章模板骨架 | `energy-audit-report/references/city-template-guide.md` |
+| 每章写作模板与数据源 | `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md` |
+| 指标计算 / 第5章 | `ea-calculation` + `ea-calculation/references/` |
+| 定额数值 | `energy-audit-core/references/standards-values.md`（权威单点） |
+| 折标系数 | `energy-audit-core/references/coefficient-caliber.md`（权威单点） |
+| 格式（字体/表格/页眉/水印） | `energy-audit-core/references/report-format-spec.md` |
+
+**本技能 `scripts/similarity_check.py`**：查重器（lcs_ratio / ngram_overlap / 最长连续相同 / 匹配片段；`--strict` 关白名单）。
+阈值与 rules 见 `references/rules.md`《变量一致性闸门》——**注意它与 `verify_variables_provenance.py` 分工相反**：
+相似度查重只作参考信息，判"该变的是否真变"用后者。
+
+本包只负责**跨章共性**：论证链怎么走、语言怎么组织、防抄怎么查。
+
+## 本包文件
+
+| 文件 | 内容 | 使用场景 |
+|---|---|---|
+| `references/rules.md` | 分章/分系统论证链（输入→推理→输出→触发） | 写作前查"这节该怎么推" |
+| `references/rules.md` | 句法模式骨架、占位体系、禁词、评价短语 | 写句时对齐句式与用词 |
+| `references/rules.md` | 防抄三闸门 + 查重步骤与阈值 | 仿写后/终审前查重 |
+
+## 通用写作铁律（先于一切章节规则）
+
+1. **有数据才写段**：H2/H3 按实际系统动态生成，数据缺失的章节跳过或占位，
+   禁止用模板句凑节。
+2. **数值只取自本项目数据**，禁止从参考报告或前章文本复制数值；第8章结论
+   复用第5/7章数值，不得引入新数值。
+3. **证据先行**：先给数据/图表，再给分析，最后给结论与建议——禁止无数据的
+   定性判断（"明显偏高"必须跟上对比依据）。
+4. **问题从数据推断**：第4章计量问题、第7章现状问题只能从本项目
+   metering/equipment/energy 字段推断，禁止罗列通用问题凑数。
+5. **缺失即占位**：【待补充】/【待核验】/【待核实】三占位语义见
+   `rules.md`，禁止用编造内容填补。
+6. **防抄三闸门**：仿写参考报告时，事实层、句法层、查重层三道闸全部通过才
+   算合格（见 `rules.md`）。
+
+## 维护
+
+- 规则更新走 `energy-audit-style-extractor` 技能（样板报告→三遍提取→泛化→
+  编译进本包），只改 repo `skills/energy-audit/energy-audit-style/` 后 sync。
+- 与正式报告口径冲突时，以正式报告/标准原文为准，修订后记录来源与日期。

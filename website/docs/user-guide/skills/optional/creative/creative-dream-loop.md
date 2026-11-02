@@ -15,7 +15,7 @@ Build stunning 3D scenes via a concept-art fidelity loop.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/dream-loop` |
-| Path | `optional-skills/creative/dream-loop` |
+| Path | `optional-skills/creative\dream-loop` |
 | Version | `1.0.0` |
 | Author | Anshu Chimala (adapted by Nous Research) |
 | License | MIT |

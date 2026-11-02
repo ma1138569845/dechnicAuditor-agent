@@ -15,7 +15,7 @@ Search arXiv papers by keyword, author, category, or ID.
 | | |
 |---|---|
 | Source | Bundled (installed by default) |
-| Path | `skills/research/arxiv` |
+| Path | `skills/research\arxiv` |
 | Version | `1.0.0` |
 | Author | Hermes Agent |
 | License | MIT |

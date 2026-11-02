@@ -15,7 +15,7 @@ Generate one- or two-ink editorial print poster images.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/mono-color` |
-| Path | `optional-skills/creative/mono-color` |
+| Path | `optional-skills/creative\mono-color` |
 | Version | `1.0.0` |
 | Author | Yan Liu (adapted by Nous Research) |
 | License | MIT |

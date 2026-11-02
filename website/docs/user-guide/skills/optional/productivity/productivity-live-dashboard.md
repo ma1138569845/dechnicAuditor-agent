@@ -15,7 +15,7 @@ Build self-updating dashboards from live sources.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/productivity/live-dashboard` |
-| Path | `optional-skills/productivity/live-dashboard` |
+| Path | `optional-skills/productivity\live-dashboard` |
 | Version | `0.2.0` |
 | Author | Teknium (teknium1), Hermes Agent |
 | License | MIT |

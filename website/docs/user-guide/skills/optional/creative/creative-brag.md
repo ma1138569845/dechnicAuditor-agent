@@ -15,7 +15,7 @@ Project launch video via Hyperframes, upstream-maintained.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/brag` |
-| Path | `optional-skills/creative/brag` |
+| Path | `optional-skills/creative\brag` |
 | Version | `0.4.0` |
 | Author | Shunit Haviv Hakimi (shunithaviv) |
 | License | MIT |

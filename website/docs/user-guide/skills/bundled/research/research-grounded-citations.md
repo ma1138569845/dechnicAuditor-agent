@@ -15,7 +15,7 @@ Ground answers and documents in cited, verifiable sources.
 | | |
 |---|---|
 | Source | Bundled (installed by default) |
-| Path | `skills/research/grounded-citations` |
+| Path | `skills/research\grounded-citations` |
 | Version | `1.2.0` |
 | Author | Hermes Agent + Teknium |
 | License | MIT |

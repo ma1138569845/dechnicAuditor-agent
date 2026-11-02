@@ -15,7 +15,7 @@ Launch video from a project or URL, upstream-maintained.
 | | |
 |---|---|
 | Source | Optional — install with `hermes skills install official/creative/brag-slim` |
-| Path | `optional-skills/creative/brag-slim` |
+| Path | `optional-skills/creative\brag-slim` |
 | Version | `0.4.0` |
 | Author | Shunit Haviv Hakimi (shunithaviv) |
 | License | MIT |

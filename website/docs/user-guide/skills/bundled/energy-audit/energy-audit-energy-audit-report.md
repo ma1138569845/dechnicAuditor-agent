@@ -1,0 +1,89 @@
+---
+title: "Energy Audit Report — 能源审计报告共享资产库：实例库、市州模板、装配链与数值断言、附录规范"
+sidebar_label: "Energy Audit Report"
+description: "能源审计报告共享资产库：实例库、市州模板、装配链与数值断言、附录规范"
+---
+
+{/* This page is auto-generated from the skill's SKILL.md by website/scripts/generate-skill-docs.py. Edit the source SKILL.md, not this page. */}
+
+# Energy Audit Report
+
+能源审计报告共享资产库：实例库、市州模板、装配链与数值断言、附录规范.
+
+## Skill metadata
+
+| | |
+|---|---|
+| Source | Bundled (installed by default) |
+| Path | `skills/energy-audit\energy-audit-report` |
+| Version | `1.1.0` |
+| Author | 马天远 |
+| License | MIT |
+| Platforms | windows |
+| Tags | `energy-audit`, `report-assets`, `templates`, `assembly` |
+
+## Reference: full SKILL.md
+
+:::info
+The following is the complete skill definition that Hermes loads when this skill is triggered. This is what the agent sees as instructions when the skill is active.
+:::
+
+# Energy Audit Report 共享资产库（实例库 + 装配工艺 + Word 成品）
+
+> **本 skill 不再定义"编制报告"的写作规则**（2026-09-03 定位修正）。
+> - 第1/2/3/4/6/7/8章正文写作 → `ea-authoring`（author 专属）
+> - 第5章计算与写作 → `ea-calculation`（caliber 专属）
+> - 报告 8 章结构与章间联动铁律 → 逐章指南 `ea-authoring/references/chapter-guides-1-4.md`、`chapter-guides-6-8.md` + `references/city-template-guide.md`
+> - 定额矩阵/折标系数/版本归一权威单点 → `energy-audit-core/references/`
+>
+> 本 skill 提供的是**跨角色共享的资产与工艺**：同类报告实例、市州模板骨架、
+> 装配工作流、Word 成品工艺、附录规范、数据导出。
+
+## 内部结构导航
+
+| 路径 | 内容 |
+|------|------|
+| `references/audit-examples.md` | **法院/党政机关实例**（烟台法院 8 章工作流、指标口径、Word 参数） |
+| `references/audit-examples.md` | 医院实例（DB37/T 2673-2019、床日用水量、特殊用能） |
+| `references/audit-examples.md` | 学校实例（寄宿制修正、寒暑假日历） |
+| `references/city-template-guide.md` | 市州模板 0-11 章骨架 + 单位类型适配 + 示例数据自洽规则 |
+| `references/script-assembly-chain.md` | **报告装配主链（唯一权威，2026-09-17 起）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py`；断言数以**实跑输出**为准（**docx 级 15 项**，给 `--pdf` 时另加 **2 项**，共 17 行 `[OK]`；勿再写"11 项/3 项/40+ 项"）。**文件内另含"仿写轨"工艺**（spec.json → `assemble_report.py` → 附录 → `report_qa` 数值断言），仅走 `energy-audit-imitate` 时适用 |
+| ~~`references/word-finishing.md`~~ | 已归档至 `_archive/2026-09-17/energy-audit-report/references/`（旧 report_generator/assemble 链路工艺）；**当前主链 = 装配脚本链**（见下行 `script-assembly-chain.md`），office_editor 路径为备用 |
+| `references/quota-supplement.md` | 定额补充（EUE 表5、区域供热办法、省级规章验证铁律） |
+| `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py` | Markdown → Word 转换（通用化参数；**legacy**，新链见下行）——路径相对 **repo 根** |
+| `skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/fix_chapter5_formulas.py` | 存量第5章公式修复（方案B，**仅旧 docx 后处理；新报告不得走**；用法见 ea-authoring/references/docx-tools.md） |
+| `scripts/build_energy_audit_docx.py` | **装配主链①**：一次构建报告 docx（封面/信息表/目录/8章/附录/页眉水印/页脚） |
+| `scripts/finalize_energy_audit_pdf.py` | **装配主链②**：Word COM 刷目录缓存 + 导出签章 PDF |
+| `scripts/ea_docx_asserts.py` | 交付断言器（docx+PDF 级硬检查与度量，每份必跑） |
+| `references/families/public-building/blueprint.md` | 浙江公共建筑（办公/公寓）去事实化蓝本 |
+| `assets/`（header_template.xml、**header_template_prebody.xml**（前置节专用，2026-09-22 分节改造新增）、footer_template.xml、omml_formulas.json） | 页眉/页脚/OMML 模板资产 |
+
+装配器启动时按 `data.json → base.unit_type + base.province` 解析报告族：
+
+- 山东、浙江公共建筑固定 8 章；
+- 只有浙江公共建筑强制 `chapter_md/appendix.md` 包含附录1（建筑能耗数据信息表）和附录2（折标系数），且不得出现附录3；
+- 山东公共建筑不套用浙江附录契约；山东/浙江公共机构继续按公共机构附录规则；
+- 其他省份公共建筑直接拒绝，不静默套用既有地区标准。
+
+## 资产使用场景
+
+1. **找同类报告参考（蓝本）**：按机构类型查 `references/audit-examples.md`（法院/医院/学校 三合一），写报告前先读同型实例——**只学形态**（章节骨架/表格习惯/措辞粒度），项目变量一律取本项目数据源。
+2. **市州项目**：按 `city-template-guide.md` 的 0-11 章骨架选模板。
+3. **报告装配**（仿写/组装模式）：按 `script-assembly-chain.md`——正文写进 spec.json，`assemble_report.py` 组装，附录手动追加，最后 40+ 项数值断言。
+4. **Word 成品处理**：一律走 `references/script-assembly-chain.md` 的装配主链（构建→收尾→断言三命令、页眉/水印/页脚/目录要点）。旧链脚本（`skills/energy-audit/_archive/2026-09-18/energy-audit-report/scripts/md_to_docx_energy_audit.py`，路径相对 repo 根）为 **legacy，仅存量报告**。
+5. **数据导出**：PG 整库导出流程已移至 `energy-audit-pg-data/references/data-export.md`。
+6. **报告装配（脚本主链，默认）**：`build_energy_audit_docx.py` → `finalize_energy_audit_pdf.py` → `ea_docx_asserts.py` 三步，见 `references/script-assembly-chain.md`；office_editor 路径降为**备用**（存量修改/应急）。
+
+## 章节写作规则去向（合并后单点）
+
+| 章 | 权威位置 |
+|---|---|
+| 第1章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第2章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第3章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第4章 | `ea-authoring/references/chapter-guides-1-4.md` |
+| 第5章 | `ea-calculation/references/chapter5-templates.md`（模板+生成逻辑）+ `chapter5-spec.md`（结构+逻辑+细节）★2026-09-18 合并 |
+| 第6章 | `ea-authoring/references/chapter-guides-6-8.md` |
+| 第7章 | `ea-authoring/references/chapter-guides-6-8.md` |
+| 第8章 | `ea-authoring/references/chapter-guides-6-8.md` |
+| 8章结构/章间联动 | `ea-authoring/references/chapter-guides-1-4.md`（第1~4章）+ `chapter-guides-6-8.md`（第6~8章）+ `references/city-template-guide.md`（市州模板） |
