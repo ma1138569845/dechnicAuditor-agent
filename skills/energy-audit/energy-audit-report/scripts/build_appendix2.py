@@ -113,7 +113,7 @@ def build_year_table(year: dict, idx: int, report: list) -> tuple[str, list]:
                 residuals.append((yr, key, label, r))
                 report.append(f"  {yr} {key} {label} 尾差 {r} 元/单位 → 调进 12 月")
 
-    lines = [f"附表2-{idx} {yr}年逐月能源资源消耗及费用统计表", ""]
+    lines = [f"表{idx} {yr}年逐月能源资源消耗及费用统计表", ""]
     head = HEAD + (["天然气（m³）"] if has_gas else [])
     lines.append("| " + " | ".join(head) + " |")
     lines.append("|" + "---|" * len(head))
@@ -146,14 +146,18 @@ def split_apx2(md: str) -> tuple[int, int] | None:
     return m0.start(), end
 
 
-def keep_summary(old_span: str) -> str:
-    """保留原有的"三年…汇总表"，表号顺延为附表2-4。"""
+def keep_summary(old_span: str, summary_index: int) -> str:
+    """保留原有的汇总表，按新口径改为“表N”，其中 N 接在逐月表之后。"""
     om = re.search(
-        r"(附表2-\d+\s*[^\n]*汇总[^\n]*\n\n?\|[^\n]+\|\n\|[-| ]+\|\n(?:\|[^\n]+\|\n)+)",
+        r"((?:附表2-|表)\d+\s*[^\n]*汇总[^\n]*\n\n?\|[^\n]+\|\n\|[-| ]+\|\n(?:\|[^\n]+\|\n)+)",
         old_span)
     if not om:
         return ""
-    return re.sub(r"^附表2-\d+", "附表2-4", om.group(1).strip()) + "\n"
+    return re.sub(
+        r"^(?:附表2-|表)\d+",
+        f"表{summary_index}",
+        om.group(1).strip(),
+    ) + "\n"
 
 
 def verify(appendix_md: str, data: dict) -> list[str]:
@@ -165,7 +169,7 @@ def verify(appendix_md: str, data: dict) -> list[str]:
     bad = []
     for year in (data.get("energy_yearly") or []):
         yr = year.get("year")
-        m = re.search(rf"^附表2-\d+\s*{yr}年逐月.*?$", seg, re.M)
+        m = re.search(rf"^表\s*\d+\s+{yr}年逐月.*?$", seg, re.M)
         if not m:
             bad.append(f"{yr}: 未找到该年逐月表")
             continue
@@ -222,10 +226,10 @@ def main() -> int:
     if not span:
         print("未找到『## 附录2：』段落，已中止")
         return 1
-    summary = keep_summary(md[span[0]:span[1]])
+    years = sorted((data.get("energy_yearly") or []), key=lambda r: r.get("year") or 0)
+    summary = keep_summary(md[span[0]:span[1]], len(years) + 1)
     report: list[str] = []
     parts = ["## 附录2：建筑能耗数据信息表", ""]
-    years = sorted((data.get("energy_yearly") or []), key=lambda r: r.get("year") or 0)
     for idx, year in enumerate(years, start=1):
         text, _ = build_year_table(year, idx, report)
         parts.append(text)

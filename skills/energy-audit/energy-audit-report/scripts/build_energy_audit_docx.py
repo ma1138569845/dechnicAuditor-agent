@@ -6,7 +6,7 @@
   三张信息表（能源审计机构 / 审计组 / 配合人员，数据源 data.json）
   目录页（'目  录' 标题无标题样式防自收录 + TOC 域 \\o "1-2"（只收章/节两级，2026-10-10 定），其后插「下一页」分节符（前置节｜正文节分界）
   第 1~8 章渲染（chapter_md/chN.md → Heading 样式 + 正文 + 表格 + 图 + OMML 公式）
-  附录渲染（chapter_md/appendix.md → '附录：'总页 + 附表 + 附录说明文字）
+  附录渲染（chapter_md/appendix.md → '附录：'总页 + 附录内表格 + 附录说明文字）
 
 T2 章节渲染（md 元素映射，对齐 45 页终稿）：
   - H1 宋体15pt居中 / H2 宋体14pt / H3 宋体12pt（Heading 样式 + 直接格式）
@@ -21,7 +21,7 @@ T2 章节渲染（md 元素映射，对齐 45 页终稿）：
 T3 附录渲染特例：
   - '# 附录：'：H1 样式但 12pt 不加粗左对齐
   - '附录N：…' 清单行：1.5 行距、无缩进、无对齐覆盖
-  - '附表X-Y …' 行：居中 12pt 加粗表题；其余同章节（正文/表格/说明段）
+  - '表N …' 行：附录内表题，居中 12pt 加粗；每个附录独立从表1计数
 
 T4 页眉/水印/页脚（构建内直写；2026-09-22 起分两节，页眉页脚按节装配）：
   - 分节：目录后插「下一页」分节符——前置节（封面/信息表/目录）｜正文节（第1~8章+附录）
@@ -70,6 +70,21 @@ HEAD_COLOR = RGBColor(0x1A, 0x1A, 0x1A)  # 与终稿标题色一致
 RED_NOTE_COLOR = RGBColor(0xC0, 0x00, 0x00)  # 5.2 逐月段“异常原因请核实”红字注（2026-10-14）
 # 红字注识别：以“注：”开头且含“异常原因请核实”（其他“注：”保持黑色）
 RED_NOTE_RE = re.compile(r"^注：.*异常原因请核实")
+APPENDIX_TABLE_CAPTION_RE = re.compile(r"^表\s*(\d+)\s+(.+)$")
+LEGACY_APPENDIX_TABLE_CAPTION_RE = re.compile(
+    r"^附表\s*\d+\s*[.\-–—]\s*\d+\s+(.+)$"
+)
+
+
+def _appendix_caption_title(line):
+    """返回附录表题名；兼容旧“附表X-Y”输入，输出统一由调用方重编号。"""
+    match = APPENDIX_TABLE_CAPTION_RE.match(line)
+    if match:
+        return match.group(2).strip()
+    match = LEGACY_APPENDIX_TABLE_CAPTION_RE.match(line)
+    return match.group(1).strip() if match else None
+
+
 # 正文占位标记（2026-10-16 用户定）：含【待核实】/【待补充】/【待核验】/【待确认】的**句子**
 # 一律渲染成红字（与 5.2.1 的"注：…异常原因请核实"红注同一色 C00000，但作用于句子级）。
 # 背景：实测岚山"热力数据待补录核实【待核实】"这类话混在长段落里，黑字不易被审核人抓到。
@@ -1401,7 +1416,7 @@ def _render_md(doc, md_path, ctx, appendix=False):
     """行级 md 渲染器（内容层不变：只做元素映射，不做写作）。
 
     appendix=True 启用附录特例：'# 附录：' H1=12pt 不加粗左对齐；
-    '附录N：…' 清单行=1.5 行距无缩进；'附表X-Y …' 行=居中加粗表题。
+    '附录N：…' 清单行=1.5 行距无缩进；'表N …' 行=居中加粗表题。
     """
     with open(md_path, encoding="utf-8") as f:
         lines = f.read().splitlines()
@@ -1413,8 +1428,8 @@ def _render_md(doc, md_path, ctx, appendix=False):
     # 公共建筑族附录2 仅 3 列系数表，横向页会把表格拉宽 → 由 ctx 关闭横向（2026-10-29）
     apx2_landscape = ctx.get("apx2_landscape", True)
     in_apx2 = False  # 附录2 横向节区段（2026-09-28）
-    apx2_tables = 0  # 附录2 内已渲染的附表数（首张不另起页，避免出现空页）
-    apx1_tables = 0  # 附录1 内已渲染的附表数（逐月表每张单独起页）
+    current_appendix = 0
+    appendix_table_counts = {}  # 各附录内已渲染表数；每个附录独立计数
     family_context = ctx.get("family_context")
     is_public_building_report = bool(
         getattr(family_context, "is_public_building", False)
@@ -1433,6 +1448,9 @@ def _render_md(doc, md_path, ctx, appendix=False):
         elif line.startswith("## "):
             listing = False
             head = line[3:].strip()
+            appendix_heading = re.match(r"^附录\s*(\d+)\s*[:：]", head)
+            if appendix and appendix_heading:
+                current_appendix = int(appendix_heading.group(1))
             _apx_new_page = False      # 每个附录另起一页（2026-09-29 用户定）
             if appendix:
                 if in_apx2 and not head.startswith(APX2_LANDSCAPE_HEADING):
@@ -1441,7 +1459,6 @@ def _render_md(doc, md_path, ctx, appendix=False):
                 elif (not in_apx2) and apx2_landscape and head.startswith(APX2_LANDSCAPE_HEADING):
                     _start_landscape_section(doc)  # 附录2 开始 → 切横向
                     in_apx2 = True
-                    apx2_tables = 0
                 else:
                     # 非分节切换的「附录N：」标题 → 另起一页。
                     # ⚠️ 附录2 走上面的 elif（已由分节符另起一页）→ **不重复设分页**，否则多一张空白页；
@@ -1508,22 +1525,20 @@ def _render_md(doc, md_path, ctx, appendix=False):
             # 裸表题（无 ** 包裹）：2026-09-20 新增，避免表题被当正文（两端对齐）导致 V3 P2
             p_cap = _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
             p_cap.paragraph_format.keep_with_next = True
-        elif appendix and re.match(r"^附表\d", line):
-            if re.match(r"^附表1-", line):
-                p_cap = _para(doc, line, size=12, bold=True,
-                              align=WD_ALIGN_PARAGRAPH.CENTER)
-                if apx1_tables > 0:
-                    p_cap.paragraph_format.page_break_before = True
-                apx1_tables += 1
-            else:
-                # 附录2 内每张附表另起一页（2026-09-28）：横向页可用高 15.9cm，
-                # 配合 0.8cm 行高，14 行 + 表题可整表放一页，避免"12月/合计行"被拆到次页。
-                # 首张不另起页——横向分节符本身已经换页，再加页会多出一张空白页。
-                if in_apx2 and apx2_tables > 0:
-                    _page_break(doc)
-                if in_apx2:
-                    apx2_tables += 1
-                _para(doc, line, size=12, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
+        elif appendix and (
+            appendix_caption_title := _appendix_caption_title(line)
+        ):
+            table_number = appendix_table_counts.get(current_appendix, 0) + 1
+            caption_line = f"表{table_number} {appendix_caption_title}"
+            p_cap = _para(doc, caption_line, size=12, bold=True,
+                          align=WD_ALIGN_PARAGRAPH.CENTER)
+            p_cap.paragraph_format.keep_with_next = True
+            # 附录1 内每张表、附录2 内除首张外的每张表继续执行原有分页规则。
+            if current_appendix == 1 and table_number > 1:
+                p_cap.paragraph_format.page_break_before = True
+            elif current_appendix == 2 and in_apx2 and table_number > 1:
+                _page_break(doc)
+            appendix_table_counts[current_appendix] = table_number
         elif line.startswith("**") and line.endswith("**") and len(line) > 4:
             _para(doc, line[2:-2].strip(), size=12, bold=True,
                   align=WD_ALIGN_PARAGRAPH.CENTER)

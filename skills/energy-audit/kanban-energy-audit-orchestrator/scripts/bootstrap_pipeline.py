@@ -432,7 +432,7 @@ echo "    → ${r2_var}"''')
 
 本卡职责:
 1. 第8章 审计结论——LLM 自然语言综合，拉前7章数据（数值以 {DATA}/{IND} 为准），生成 markdown 落盘 {CH_MD}/ch8.md
-2. 附录落盘 {CH_MD}/appendix.md（附表题用「附表X-Y 标题」，正文附表X.Y；无发票照片则无附录3、后续序号依次前移）
+2. 附录落盘 {CH_MD}/appendix.md（附录表题用「表N 标题」，每个附录从表1独立计数；正文用表X.Y；无发票照片则无附录3、后续序号依次前移）
 3. **装配主链三命令**（本步才第一次产出 docx，2026-09-22 定）：
    - `python <skills>/energy-audit-report/scripts/build_energy_audit_docx.py --project-dir <项目目录>`
    - `python <skills>/energy-audit-report/scripts/finalize_energy_audit_pdf.py --project-dir <项目目录>`

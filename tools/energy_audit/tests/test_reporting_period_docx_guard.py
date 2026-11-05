@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,7 +80,7 @@ def test_guard_rejects_incomplete_year_in_any_table_or_monthly_appendix(
             "| 单位综合能耗 | 1 | 2 |\n"
         ),
         appendix=(
-            "附表1-1 2022年逐月能源资源消耗及费用统计表\n\n"
+            "表1 2022年逐月能源资源消耗及费用统计表\n\n"
             "| 月份 | 电量 |\n"
             "| --- | --- |\n"
             "| 8月 | 20 |\n"
@@ -105,7 +106,7 @@ def test_guard_allows_narrative_explanation_without_incomplete_year_tables(
             "| 单位综合能耗 | 2 |\n"
         ),
         appendix=(
-            "附表1-1 2023年逐月能源资源消耗及费用统计表\n\n"
+            "表1 2023年逐月能源资源消耗及费用统计表\n\n"
             "| 月份 | 电量 |\n"
             "| --- | --- |\n"
             "| 1月 | 100 |\n"
@@ -130,7 +131,7 @@ def test_guard_ignores_non_report_context_markdown(tmp_path):
             "| --- | --- |\n"
             "| 单位综合能耗 | 2 |\n"
         ),
-        appendix="附表2-1 各种能源折标准煤参考系数\n",
+        appendix="表1 各种能源折标准煤参考系数\n",
     )
     (tmp_path / "chapter_md" / "_context.md").write_text(
         "| 年份 | 电量 |\n"
@@ -145,3 +146,49 @@ def test_guard_ignores_non_report_context_markdown(tmp_path):
         )
         is None
     )
+
+
+def test_new_appendix_table_captions_render_as_appendix_captions(tmp_path):
+    builder = load_builder()
+    appendix = (
+        "# 附录：\n\n"
+        "## 附录1：建筑基本信息及设备统计表\n\n"
+        "附表1-1 建筑基本信息表\n\n"
+        "| 项目 | 内容 |\n"
+        "| --- | --- |\n"
+        "| 建筑物名称 | 测试楼 |\n\n"
+        "## 附录2：建筑能耗数据信息表\n\n"
+        "表1 2024年逐月能源资源消耗及费用统计表\n\n"
+        "| 月份 | 电量 |\n"
+        "| --- | --- |\n"
+        "| 1月 | 100 |\n"
+    )
+    appendix_path = tmp_path / "appendix.md"
+    appendix_path.write_text(appendix, encoding="utf-8")
+
+    document = builder.Document()
+    builder._setup_styles(document)
+    builder._render_md(
+        document,
+        str(appendix_path),
+        {
+            "project_dir": str(tmp_path),
+            "omml": {},
+            "images": {},
+            "figure_issues": {},
+            "family_context": SimpleNamespace(is_public_building=False),
+        },
+        appendix=True,
+    )
+
+    captions = [
+        paragraph
+        for paragraph in document.paragraphs
+        if paragraph.text.startswith("表1 ")
+    ]
+    assert len(captions) == 2
+    assert all(
+        paragraph.alignment == builder.WD_ALIGN_PARAGRAPH.CENTER
+        for paragraph in captions
+    )
+    assert all(paragraph.runs[0].bold for paragraph in captions)

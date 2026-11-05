@@ -2488,10 +2488,42 @@ def test_chapter7_711_cover_only_requires_actual_energy_classes():
 
 def test_appendix2_wide_tables_are_exempt_from_standard_row_height():
     blocks = [
-        _block("附表2-1 2022年建筑能耗数据统计表", 8),
+        _block("附录2：建筑能耗数据信息表", 8),
+        _block("表1 2022年建筑能耗数据统计表", 8),
         _table_block(8, ("月份", "用电量", "用水量")),
     ]
-    assert v3.is_appendix2_table(blocks, 1)
+    assert v3.is_appendix2_table(blocks, 2)
+
+
+def test_appendix_table_captions_restart_at_one_per_appendix():
+    blocks = [
+        _block("附录1：建筑基本信息及设备统计表", 8),
+        _block("表1 建筑基本信息表", 8),
+        _table_block(8, ("项目", "内容")),
+        _block("表2 主要用能设备统计表", 8),
+        _table_block(8, ("序号", "设备名称")),
+        _block("附录2：建筑能耗数据信息表", 8),
+        _block("表1 2024年逐月能源资源消耗及费用统计表", 8),
+        _table_block(8, ("月份", "电量")),
+    ]
+    codes = {finding.code for finding in v3.check_tables_and_placeholders(blocks)}
+    assert "V3.STRUCT.TABLE_CAPTION" not in codes
+    assert "V3.STRUCT.APPENDIX_TABLE_NUMBER" not in codes
+
+
+def test_old_appendix_table_caption_is_rejected():
+    blocks = [
+        _block("附录1：建筑基本信息及设备统计表", 8),
+        _block("附表1-1 建筑基本信息表", 8),
+        _table_block(8, ("项目", "内容")),
+    ]
+
+    findings = v3.check_tables_and_placeholders(blocks)
+
+    assert any(
+        finding.code == "V3.STRUCT.TABLE_CAPTION"
+        for finding in findings
+    )
 
 
 def _chapter8_blocks(*, inline_suggestions: bool = False):

@@ -53,9 +53,11 @@ MISSING_REGISTRY_FILE = "missing_items.json"
 
 # 图注/表题（居中），不参与正文对齐/行距/缩进判定；字号与加粗不判
 # （format-spec 与装配脚本对图注字号表述不一致，避免制造新的矛盾）
-RE_CAPTION = re.compile(r"^(图|表|附表)\s*\d+\s*[.\-–—]\s*\d+")
-RE_TABLE_CAPTION = re.compile(r"^(表|附表)\s*\d+\s*[.\-–—]\s*\d+")
-RE_APPENDIX2_TABLE_CAPTION = re.compile(r"^附表\s*2\s*[.\-–—]\s*\d+")
+RE_BODY_TABLE_CAPTION = re.compile(r"^表\s*\d+\.\s*\d+\s+\S")
+RE_APPENDIX_TABLE_CAPTION = re.compile(r"^表\s*(\d+)\s+\S")
+RE_APPENDIX_HEADING = re.compile(r"^附录\s*(\d+)\s*[：:]")
+RE_CAPTION = re.compile(r"^(?:图\s*\d+\.\d+|表\s*\d+\.\d+|表\s*\d+)\s+\S")
+RE_TABLE_CAPTION = RE_BODY_TABLE_CAPTION
 # 合法无表号的表（来源：封面三张信息表由装配脚本直写）
 CAPTIONLESS_ALLOWED = {
     "能源审计机构信息表", "能源审计组人员名单", "能源审计配合人员名单",
@@ -77,15 +79,15 @@ KIND_LABELS = {
 
 
 def is_appendix2_table(blocks: Sequence["Block"], index: int) -> bool:
-    """判断题注为附表2-x的横向宽表；该类表按装配规则使用 0.8cm 行高。"""
-    if index <= 0:
-        return False
-    for block in reversed(blocks[:index]):
-        if block.kind == "tbl":
-            return False
-        if block.kind == "p" and block.text.strip():
-            return bool(RE_APPENDIX2_TABLE_CAPTION.match(block.text.strip()))
-    return False
+    """判断表格是否位于附录2；该附录的宽表按装配规则使用 0.8cm 行高。"""
+    appendix_number = 0
+    for block in blocks[:index]:
+        if block.kind != "p":
+            continue
+        match = RE_APPENDIX_HEADING.match(block.text.strip())
+        if match:
+            appendix_number = int(match.group(1))
+    return appendix_number == 2
 
 REQUIRED_TABLES: Tuple[str, ...] = (
     "能源审计机构信息表",
@@ -2077,16 +2079,23 @@ def check_tables_and_placeholders(
             )
         )
 
-    # 表题检查（2026-09-20 新增）：**正文**每张表的上方一行应为「表X.Y 标题」/「附表X-Y 标题」
+    # 表题检查：正文为「表X.Y 标题」；附录为「表N 标题」，每个附录独立从1编号。
     # 封面/信息表区域（第1章之前）不计；封面三表在 CAPTIONLESS_ALLOWED 内豁免；5.1 参考表走 CH5_REF_TABLES 专项检查。
     captionless: List[str] = []
     ch5_ref: List[str] = []
+    appendix_numbering: List[str] = []
+    last_appendix_table: Dict[int, int] = {}
     prev_text, prev_chapter = "", None
+    current_appendix, prev_appendix = 0, 0
     for b in blocks:
         text = (b.text or "").strip()
         if b.kind == "p":
             if text:
+                appendix_heading = RE_APPENDIX_HEADING.match(text)
+                if appendix_heading:
+                    current_appendix = int(appendix_heading.group(1))
                 prev_text, prev_chapter = text, getattr(b, "chapter", None)
+                prev_appendix = current_appendix
             continue
         if b.kind != "tbl":
             continue
@@ -2095,7 +2104,25 @@ def check_tables_and_placeholders(
         if prev_text in CH5_REF_TABLES:
             ch5_ref.append(prev_text[:30] or "（表格上方无段落）")
             continue
-        if RE_TABLE_CAPTION.match(prev_text) or prev_text in CAPTIONLESS_ALLOWED:
+        appendix_caption = (
+            RE_APPENDIX_TABLE_CAPTION.match(prev_text)
+            if prev_appendix
+            else None
+        )
+        valid_caption = (
+            bool(appendix_caption)
+            if prev_appendix
+            else bool(RE_BODY_TABLE_CAPTION.match(prev_text))
+        )
+        if valid_caption or prev_text in CAPTIONLESS_ALLOWED:
+            if appendix_caption:
+                number = int(appendix_caption.group(1))
+                expected = last_appendix_table.get(prev_appendix, 0) + 1
+                if number != expected:
+                    appendix_numbering.append(
+                        f"附录{prev_appendix}：表{number}，应为表{expected}"
+                    )
+                last_appendix_table[prev_appendix] = number
             continue
         captionless.append(prev_text[:30] or "（表格上方无段落）")
     if captionless:
@@ -2106,9 +2133,23 @@ def check_tables_and_placeholders(
                 severity=SEV_P2,
                 title=f"有 {len(captionless)} 张正文表缺表题（表X.Y）",
                 detail="；".join(f"第{i+1}处「{t}」" for i, t in enumerate(captionless[:5])),
-                expected="每张正文表上方一行是 `表X.Y 标题`（附录用 `附表X-Y`）",
+                expected="正文表用 `表X.Y 标题`；附录表用 `表N 标题`",
                 actual=f"{len(captionless)} 张表上方不是表题行",
-                suggestion="给每张表补 `表X.Y 标题` 行（章内连续编号、独占一行、紧邻表格上方；附录用附表X-Y）",
+                suggestion="正文按章内连续编号；附录从表1起独立连续编号，表题独占一行并紧邻表格上方",
+            )
+        )
+
+    if appendix_numbering:
+        findings.append(
+            Finding(
+                code="V3.STRUCT.APPENDIX_TABLE_NUMBER",
+                category="章节完整性",
+                severity=SEV_P2,
+                title=f"有 {len(appendix_numbering)} 处附录表号不连续",
+                detail="；".join(appendix_numbering[:5]),
+                expected="每个附录均从 `表1` 开始连续编号",
+                actual="附录内表号未按1、2、3…连续排列",
+                suggestion="按附录分别重排表号，不使用表1-1、表1.1或跨附录连续编号",
             )
         )
 
