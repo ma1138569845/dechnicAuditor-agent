@@ -148,14 +148,15 @@ _db_global_conn: sqlite3.Connection | None = None  # main thread fallback
 _stale_jobs_cleaned = False  # one-time cleanup guard for orphaned jobs
 
 
-def _ensure_default_kb() -> None:
+def _ensure_default_kb(db: sqlite3.Connection | None = None) -> None:
     """Create the 3 default knowledge bases if they do not exist.
 
     Each KB maps 1:1:
       - Remote Qdrant collection: {kb_id}
       - Local directory:          rag/data/{kb_id}/
     """
-    db = _get_db()
+    if db is None:
+        db = _get_db()
     now = _now_iso()
     for kb_def in _DEFAULT_KBS:
         kb_id = kb_def["id"]
@@ -461,7 +462,7 @@ def _get_db() -> sqlite3.Connection:
                     _db_global_conn.execute("PRAGMA foreign_keys=ON")
                     _init_schema(_db_global_conn)
                     _migrate_schema(_db_global_conn)
-                    _ensure_default_kb()
+                    _ensure_default_kb(_db_global_conn)
         return _db_global_conn
 
     conn = getattr(_db_local, "conn", None)
@@ -475,6 +476,7 @@ def _get_db() -> sqlite3.Connection:
             conn.execute("PRAGMA foreign_keys=ON")
             _init_schema(conn)
             _migrate_schema(conn)
+            _ensure_default_kb(conn)
         _db_local.conn = conn
     return conn
 

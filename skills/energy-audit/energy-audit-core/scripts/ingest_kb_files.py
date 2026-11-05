@@ -81,7 +81,19 @@ _utf8_stdout()
 REPO = os.environ.get("EA_REPO_ROOT") or r"D:\data\pyProject\dc_agent\dechnicAuditor-agent"
 sys.path.insert(0, REPO)
 
-HERMES = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "hermes"
+
+def _resolve_hermes_home() -> Path:
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+    except ImportError:
+        env_home = os.environ.get("HERMES_HOME", "").strip()
+        if env_home:
+            return Path(os.path.expanduser(os.path.expandvars(env_home)))
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "hermes"
+
+
+HERMES = _resolve_hermes_home()
 RAG = HERMES / "rag"
 DATA = RAG / "data"
 INBOX = RAG / "standards" / "_inbox"
