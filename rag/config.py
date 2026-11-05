@@ -141,13 +141,18 @@ def _load_yaml(path: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        import yaml
+        import hermes_yaml as yaml
     except ImportError:
+        try:
+            import yaml
+        except ImportError:
+            yaml = None
+    if yaml is None:
         if not _YAML_WARNED:
             _YAML_WARNED = True
-            print(f"[rag.config] 警告：当前 Python 缺 PyYAML，配置文件被忽略（{path}）"
+            print(f"[rag.config] 警告：当前 Python 缺 YAML 解析器（hermes_yaml/PyYAML），配置文件被忽略（{path}）"
                   f"——将回落到内置默认值（Qdrant 默认 127.0.0.1:6334）。"
-                  f"修法：uv pip install pyyaml --python <该解释器>", file=sys.stderr)
+                  f"修法：确认 hermes_yaml 可用，或安装 PyYAML。", file=sys.stderr)
         return {}
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

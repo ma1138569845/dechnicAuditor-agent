@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,26 @@ def _reset_rag_config(monkeypatch, tmp_path):
 def _write_config(home: Path, payload: dict) -> None:
     path = home / "config.yaml"
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+
+def test_yaml_loader_uses_hermes_yaml_when_pyyaml_is_missing(tmp_path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "knowledge_base:\n  qdrant_host: 10.10.2.55\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    assert rag_config._load_yaml(path)["knowledge_base"]["qdrant_host"] == "10.10.2.55"
+
+
+def test_yaml_loader_falls_back_to_pyyaml_when_hermes_yaml_is_missing(tmp_path, monkeypatch):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "knowledge_base:\n  qdrant_host: 10.10.2.55\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(sys.modules, "hermes_yaml", None)
+    assert rag_config._load_yaml(path)["knowledge_base"]["qdrant_host"] == "10.10.2.55"
 
 
 def test_defaults_are_localhost_and_hermes_home_paths(tmp_path):
