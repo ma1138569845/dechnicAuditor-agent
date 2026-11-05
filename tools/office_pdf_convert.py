@@ -43,7 +43,12 @@ def com_to_pdf(file_path: str, doc_type: str) -> str:
             document.ExportAsFixedFormat(out_path, 17)  # 17 = wdExportFormatPDF
             document.Close(False)
         finally:
-            app.Quit()
+            # WPS quits itself once the last document closes; a late Quit then
+            # raises "RPC server unavailable" after the PDF is already written.
+            try:
+                app.Quit()
+            except Exception:
+                pass
     elif doc_type == "sheet":
         app = win32com.client.DispatchEx("Excel.Application")
         app.Visible = False
@@ -53,7 +58,10 @@ def com_to_pdf(file_path: str, doc_type: str) -> str:
             workbook.ExportAsFixedFormat(0, out_path)  # 0 = xlTypePDF
             workbook.Close(False)
         finally:
-            app.Quit()
+            try:
+                app.Quit()
+            except Exception:
+                pass
     elif doc_type == "slide":
         app = win32com.client.DispatchEx("PowerPoint.Application")
         try:
@@ -62,7 +70,10 @@ def com_to_pdf(file_path: str, doc_type: str) -> str:
             presentation.ExportAsFixedFormat(out_path, 2)  # 2 = ppFixedFormatTypePDF
             presentation.Close()
         finally:
-            app.Quit()
+            try:
+                app.Quit()
+            except Exception:
+                pass
     else:
         raise RuntimeError(f"unsupported doc_type for COM conversion: {doc_type}")
 
