@@ -58,7 +58,7 @@ beforeEach(() => {
         drawImage: vi.fn(),
         fill: vi.fn(),
         stroke: vi.fn()
-      }) as unknown as CanvasRenderingContext2D
+      }) as never
   )
   vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue(BADGED)
   link = document.createElement('link')
