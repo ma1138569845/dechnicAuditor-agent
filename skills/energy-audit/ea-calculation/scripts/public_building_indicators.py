@@ -50,6 +50,18 @@ def _f(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _electricity_complete(year: dict[str, Any]) -> bool:
+    """判断年度电量统计是否完整；月度数组存在时须覆盖 12 个月。
+
+    电量完整性不能与用水完整性合并。某年缺少新水数据只影响含新水的综合
+    能耗指标，不能据此把该年已经完整统计的电量排除出用电分析。
+    """
+    monthly = year.get("monthly_electricity_kwh")
+    if isinstance(monthly, list):
+        return len(monthly) == 12 and all(value is not None for value in monthly)
+    return _f(year.get("electricity_kwh")) > 0
+
+
 def _grade_three(value: float, tiers: list[float]) -> str:
     """736：tiers = [约束值, 基准值, 引导值]，越低越好。"""
     constraint, base, guide = tiers
@@ -84,17 +96,66 @@ def _grade_760(value: float, tiers: list[float]) -> str:
     return "高于约束值"
 
 
+def _energy_breakdown(
+    year: dict[str, Any],
+    coeff: dict[str, Any],
+    *,
+    include_water: bool,
+) -> dict[str, dict[str, Any]]:
+    """返回可复核的能源品种拆分明细。
+
+    报告表 5.2 必须按能源品种分别展示实物量与折标准煤系数，不能把电力和
+    新水的系数合并到同一单元格。这里把“实物量、系数、折标煤量”一次算成
+    同一份结果，避免生成层自行硬编码或重复推算。
+    """
+    definitions = (
+        (
+            "electricity",
+            "electricity_kwh",
+            "electricity_kgce_per_kwh",
+            "kWh",
+        ),
+        ("natural_gas", "gas_m3", "gas_kgce_per_m3", "m³"),
+        ("heat", "heat_gj", "heat_kgce_per_gj", "GJ"),
+    )
+    breakdown: dict[str, dict[str, Any]] = {}
+    for key, amount_key, coefficient_key, unit in definitions:
+        amount = _f(year.get(amount_key))
+        coefficient = _f(coeff[coefficient_key])
+        breakdown[key] = {
+            "amount": amount,
+            "coefficient": coefficient,
+            "kgce": amount * coefficient,
+            "unit": unit,
+        }
+    if include_water:
+        amount = _f(year.get("water_t"))
+        coefficient = _f(coeff["water_kgce_per_t"])
+        breakdown["new_water"] = {
+            "amount": amount,
+            "coefficient": coefficient,
+            "kgce": amount * coefficient,
+            "unit": "t",
+        }
+    other_kgce = _f(year.get("other_kgce"))
+    if other_kgce:
+        breakdown["other"] = {
+            "amount": other_kgce,
+            "coefficient": 1.0,
+            "kgce": other_kgce,
+            "unit": "kgce",
+        }
+    return breakdown
+
+
 def _energy_kgce(year: dict[str, Any], coeff: dict[str, Any], *,
                  include_water: bool) -> float:
-    energy = (
-        _f(year.get("electricity_kwh")) * _f(coeff["electricity_kgce_per_kwh"])
-        + _f(year.get("gas_m3")) * _f(coeff["gas_kgce_per_m3"])
-        + _f(year.get("heat_gj")) * _f(coeff["heat_kgce_per_gj"])
-        + _f(year.get("other_kgce"))
+    return sum(
+        item["kgce"]
+        for item in _energy_breakdown(
+            year, coeff, include_water=include_water
+        ).values()
     )
-    if include_water:
-        energy += _f(year.get("water_t")) * _f(coeff["water_kgce_per_t"])
-    return energy
 
 
 def compute_office_or_venue(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[str, Any]]:
@@ -216,8 +277,6 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
         else:
             corrections["occupancy"] = 1.10
 
-    factor = math.prod(_f(v, 1.0) for v in corrections.values()) or 1.0
-
     results: list[dict[str, Any]] = []
     for year in project.get("years", []):
         year_area = _f(year.get("area_m2"), area)
@@ -234,11 +293,15 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
         year_corrections.update(year.get("hotel_corrections") or {})
         year_factor = math.prod(_f(v, 1.0) for v in year_corrections.values()) or 1.0
 
-        energy = _energy_kgce(year, coeff, include_water=True)
+        energy_components = _energy_breakdown(
+            year, coeff, include_water=True
+        )
+        energy = sum(item["kgce"] for item in energy_components.values())
         unit_energy = energy / year_area_mm
         unit_comparable = unit_energy / year_factor
         water = _f(year.get("water_t"))
         water_missing = water <= 0
+        electricity_complete = _electricity_complete(year)
         water_per_bed_unadjusted = water / year_beds
         water_per_bed = water / (year_beds * year_occupancy)
 
@@ -260,7 +323,11 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "water": water_tiers,
             },
             "grade": {
-                "unit_comparable_energy": _grade_760(unit_comparable, tiers),
+                "unit_comparable_energy": (
+                    "无数据，不评价"
+                    if water_missing
+                    else _grade_760(unit_comparable, tiers)
+                ),
                 "water": ("无数据，不评价" if water_missing
                           else _grade_two(water_per_bed, water_tiers)),
             },
@@ -268,7 +335,16 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "area_mm": round(year_area_mm, 2),
                 "correction_factors": year_corrections,
                 "correction_product": round(year_factor, 4),
-                "includes_new_water": True,
+                "energy_kgce": round(energy, 2),
+                "energy_tce": round(energy / 1000, 2),
+                "energy_components": energy_components,
+                "electricity_complete": electricity_complete,
+                "electricity_missing": not electricity_complete,
+                "energy_complete": not water_missing,
+                "missing_energy_components": (
+                    ["new_water"] if water_missing else []
+                ),
+                "includes_new_water": not water_missing,
                 "water_category": water_category,
                 "water_industry_code": water_meta.get("industry_code", ""),
                 "water_category_name": water_meta.get("category", ""),
@@ -336,6 +412,11 @@ def _self_test() -> int:
     assert abs(hotel_results[0]["values"]["unit_comparable_energy"] - 5.17) <= 0.011
     assert abs(hotel_results[1]["values"]["unit_comparable_energy"] - 5.39) <= 0.02
     assert abs(hotel_results[1]["values"]["water_per_bed"] - 67.44) <= 0.011
+    assert hotel_results[0]["notes"]["includes_new_water"] is False
+    assert hotel_results[0]["notes"]["energy_complete"] is False
+    assert hotel_results[0]["grade"]["unit_comparable_energy"] == "无数据，不评价"
+    assert hotel_results[1]["notes"]["includes_new_water"] is True
+    assert hotel_results[1]["notes"]["energy_complete"] is True
 
     print("self-test passed")
     print("AB 2022:", ab_result["values"], ab_result["grade"])

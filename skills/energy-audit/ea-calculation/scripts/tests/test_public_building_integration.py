@@ -619,6 +619,38 @@ class HotelWaterDenominatorTests(unittest.TestCase):
         self.assertNotIn("unit_energy", result["grade"])
         self.assertEqual(result["notes"]["unit_energy_role"], "intermediate")
 
+    def test_hotel_missing_new_water_is_not_graded_as_complete_760_energy(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "3",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0.9,
+            "hotel_corrections": {"occupancy": 1.1},
+            "years": [
+                {
+                    "year": 2023,
+                    "electricity_kwh": 100000,
+                    "water_t": 0,
+                }
+            ],
+        }
+
+        result = module.compute_project(project, quota)[0]
+
+        self.assertFalse(result["notes"]["includes_new_water"])
+        self.assertFalse(result["notes"]["energy_complete"])
+        self.assertTrue(result["notes"]["electricity_complete"])
+        self.assertFalse(result["notes"]["electricity_missing"])
+        self.assertEqual(
+            result["grade"]["unit_comparable_energy"],
+            "无数据，不评价",
+        )
+        self.assertIn("new_water", result["notes"]["missing_energy_components"])
+        self.assertIn("electricity", result["notes"]["energy_components"])
+
     def test_water_metric_uses_bed_count_and_occupancy_denominator(self):
         module = load_indicator_module()
         quota = module.load_quota_values()

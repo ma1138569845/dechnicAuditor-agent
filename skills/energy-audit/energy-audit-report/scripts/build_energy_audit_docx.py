@@ -1029,13 +1029,14 @@ def _split_by_verify(text: str):
     return out
 
 
-def _body(doc, text, color=None):
+def _body(doc, text, color=None, keep_with_next=False):
     """正文自然段：两端对齐、1.5 行距、首行缩进 2 字符（firstLineChars=200）。"""
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     pf = p.paragraph_format
     pf.line_spacing = 1.5
     pf.first_line_indent = Pt(24)
+    pf.keep_with_next = keep_with_next
     ppr = p._p.get_or_add_pPr()
     ind = ppr.find(qn("w:ind"))
     if ind is not None:
@@ -1309,6 +1310,7 @@ def _formula_para(doc, omml_xml):
     pf.space_before = Pt(0)
     pf.space_after = Pt(0)
     pf.line_spacing = 1.5
+    pf.keep_with_next = True
     p._p.append(parse_xml(omml_xml))
     return p
 
@@ -1503,12 +1505,22 @@ def _render_md(doc, md_path, ctx, appendix=False):
                 is_pb_bldg = is_bldg and is_public_building_report
                 if is_pb_bldg:
                     _validate_public_building_table_rows(rows)
+                is_pb_metric_table = (
+                    is_public_building_report
+                    and len(rows) <= 14
+                    and bool(rows[0])
+                    and rows[0][0].strip() == "项目"
+                    and any(
+                        re.fullmatch(r"20\d{2}年", str(cell).strip())
+                        for cell in rows[0][1:]
+                    )
+                )
                 # 附录2 的逐月表（表头首列=月份）：行高收到 0.8cm，14 行 + 表题恰好一页（2026-09-28）
                 _add_table(doc, rows, bold_first_row=not is_bldg,
                            equal_width_cm=3.66 if is_bldg else None,
                            row_height_cm=0.8 if (in_apx2 and bool(rows[0])
                                                  and rows[0][0].strip() == "月份") else 1.01,
-                           keep_together=True if is_pb_bldg else None,
+                           keep_together=True if (is_pb_bldg or is_pb_metric_table) else None,
                            repeat_header=False if is_pb_bldg else True)
                 # 表格下缘与后续正文、注释保留一个可读的短间距。
                 gap = doc.add_paragraph()
@@ -1553,7 +1565,21 @@ def _render_md(doc, md_path, ctx, appendix=False):
             if RED_NOTE_RE.match(line):
                 _body(doc, line, color=RED_NOTE_COLOR)
             else:
-                _body(doc, line)
+                next_nonempty = ""
+                for lookahead in lines[i:]:
+                    if lookahead.strip():
+                        next_nonempty = lookahead.strip()
+                        break
+                keep_with_next = (
+                    line.endswith("按下式计算：")
+                    or line.endswith("按下列公式计算：")
+                    or line == "式中："
+                    or (
+                        "——" in line
+                        and "——" in next_nonempty
+                    )
+                )
+                _body(doc, line, keep_with_next=keep_with_next)
 
 
 def _render_chapters(doc, project_dir, ctx):

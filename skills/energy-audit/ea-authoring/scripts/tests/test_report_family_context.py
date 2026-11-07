@@ -676,6 +676,26 @@ class PublicBuildingAssertionContractTests(unittest.TestCase):
 
         self.assertFalse(checks["pb_ch5_metrics"], details)
 
+    def test_hotel_ch5_requires_full_standard_name_in_chapter_text(self):
+        checks, details = DOCX_ASSERTS.public_building_checks(
+            "5.3.1 单位可比综合能耗 5.3.2 单位床年用水量 "
+            "低于该标准表1三星级及以下分项对应的引导值"
+        )
+
+        self.assertFalse(checks["pb_ch5_full_standard_name"], details)
+        self.assertIn("旅游饭店单位综合能耗限额及计算方法", details[
+            "pb_ch5_full_standard_name"
+        ])
+
+    def test_hotel_ch5_accepts_full_standard_name(self):
+        checks, details = DOCX_ASSERTS.public_building_checks(
+            "5.3.1 单位可比综合能耗 5.3.2 单位床年用水量 "
+            "低于《旅游饭店单位综合能耗限额及计算方法》"
+            "（DB33/T 760-2023）表1三星级及以下分项对应的引导值"
+        )
+
+        self.assertTrue(checks["pb_ch5_full_standard_name"], details)
+
     def test_valid_public_building_checks_cover_appendix_and_db33_only(self):
         checks, details = DOCX_ASSERTS.public_building_checks(
             "第1章 能源审计执行概要 1.3 审计周期 "
@@ -825,6 +845,7 @@ class PublicBuildingAssertionContractTests(unittest.TestCase):
             "pb_ch5_metrics",
             "pb_ch5_760_formula",
             "pb_ch5_760_tiers",
+            "pb_ch5_full_standard_name",
             "pb_ch5_water_quota",
             "pb_coefficient",
             "pb_appendix1",

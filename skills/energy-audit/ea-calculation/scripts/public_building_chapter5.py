@@ -33,6 +33,8 @@ LEGACY_760_GRADES = {
     "高于3级（限额值）": "高于约束值",
 }
 
+DB33_T_760_2023 = "《旅游饭店单位综合能耗限额及计算方法》（DB33/T 760-2023）"
+
 
 def _f(value: Any, default: float = 0.0) -> float:
     try:
@@ -65,8 +67,105 @@ def _year_int(value: Any) -> int | None:
         return None
 
 
+def _electricity_complete(year: dict[str, Any]) -> bool:
+    """判断电量是否完整；月度数据存在时须覆盖 12 个月。"""
+    monthly = year.get("monthly_electricity_kwh")
+    if isinstance(monthly, list):
+        return len(monthly) == 12 and all(value is not None for value in monthly)
+    return _f(year.get("electricity_kwh")) > 0
+
+
+def _year_spec(spec: dict[str, Any], year: Any) -> dict[str, Any]:
+    for item in spec.get("years", []) or []:
+        if _year_int(item.get("year")) == _year_int(year):
+            return item
+    return {}
+
+
+def _complete_hotel_results(
+    results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """只保留能够形成 760 完整综合能耗口径的年度。"""
+    complete = []
+    for result in results:
+        notes = result.get("notes") or {}
+        if notes.get("energy_complete", not notes.get("water_missing", False)):
+            complete.append(result)
+    return complete
+
+
+def _unit_energy_table(
+    spec: dict[str, Any],
+    results: list[dict[str, Any]],
+) -> str:
+    """表 5.2：按能源品种分行列示实物量和折标准煤系数。"""
+    headers = ["项目"] + [f"{r['year']}年" for r in results]
+    component_specs = (
+        ("electricity", "年耗电量（kWh）",
+         "折标准煤系数（kgce/kWh）"),
+        ("natural_gas", "年天然气消耗量（m³）",
+         "折标准煤系数（kgce/m³）"),
+        ("heat", "年供热量（GJ）",
+         "折标准煤系数（kgce/GJ）"),
+        ("new_water", "年取水量（m³）",
+         "折标准煤系数（kgce/t）"),
+        ("other", "其他能源折标准煤量（kgce）", "折标准煤系数"),
+    )
+    rows: list[list[Any]] = []
+    for key, amount_label, coefficient_label in component_specs:
+        component_rows = [
+            (r.get("notes") or {}).get("energy_components", {}).get(key) or {}
+            for r in results
+        ]
+        if key not in ("electricity", "new_water") and not any(
+            _f(item.get("amount")) > 0 or _f(item.get("kgce")) > 0
+            for item in component_rows
+        ):
+            continue
+        rows.append(
+            [amount_label]
+            + [_num(round(_f(item.get("amount")), 2)) for item in component_rows]
+        )
+        rows.append(
+            [coefficient_label]
+            + [
+                _num(round(_f(item.get("coefficient")), 4))
+                if item else "—"
+                for item in component_rows
+            ]
+        )
+
+    total_tce: list[Any] = []
+    area_values: list[Any] = []
+    unit_values: list[Any] = []
+    for result in results:
+        notes = result.get("notes") or {}
+        components = notes.get("energy_components") or {}
+        energy_kgce = _f(notes.get("energy_kgce"))
+        if not energy_kgce:
+            energy_kgce = sum(
+                _f(item.get("kgce")) for item in components.values()
+            )
+        total_tce.append(_num(round(energy_kgce / 1000, 2)))
+        area_values.append(
+            _num(round(_f(notes.get("area_mm"), _f(spec.get("area_m2"))), 2))
+        )
+        unit_values.append(_num(result.get("values", {}).get("unit_energy", "—")))
+    rows.extend(
+        [
+            ["综合能耗（tce）"] + total_tce,
+            ["建筑面积统计值（m²）"] + area_values,
+            ["单位综合能耗（kgce/m²）"] + unit_values,
+        ]
+    )
+    return _table(headers, rows)
+
+
 def _metric_table(metric_key: str, label: str, unit: str,
-                  results: list[dict[str, Any]], hotel: bool) -> str:
+                  results: list[dict[str, Any]], hotel: bool,
+                  spec: dict[str, Any] | None = None) -> str:
+    if not results:
+        return "暂无可纳入对标评价的完整年度数据。"
     years = [r["year"] for r in results]
     headers = ["项目"] + [f"{y}年" for y in years]
     rows: list[list[Any]] = []
@@ -77,6 +176,92 @@ def _metric_table(metric_key: str, label: str, unit: str,
             value = "—"
         values.append(_num(value))
     rows.append([f"{label}（{unit}）"] + values)
+
+    if hotel and metric_key == "unit_comparable_energy":
+        component_rows = []
+        area_values = []
+        unit_energy_values = []
+        correction_labels = {
+            "laundry": "洗衣房修正系数",
+            "pool": "恒温游泳池和恒温水池修正系数",
+            "heat_network": "热力管网修正系数",
+            "floor_area_ratio": "建筑容积率修正系数",
+            "dining_meeting_ratio": "餐饮、会议设施面积占比修正系数",
+            "occupancy": "客房出租率修正系数",
+        }
+        correction_keys: list[str] = []
+        for result in results:
+            notes = result.get("notes") or {}
+            components = notes.get("energy_components") or {}
+            energy_kgce = _f(notes.get("energy_kgce")) or sum(
+                _f(item.get("kgce")) for item in components.values()
+            )
+            component_rows.append(_num(round(energy_kgce / 1000, 2)))
+            area_values.append(
+                _num(round(
+                    _f(
+                        notes.get("area_mm"),
+                        _f((spec or {}).get("area_m2")),
+                    ),
+                    2,
+                ))
+            )
+            unit_energy_values.append(
+                _num(result.get("values", {}).get("unit_energy", "—"))
+            )
+            for key in (notes.get("correction_factors") or {}):
+                if key not in correction_keys:
+                    correction_keys.append(key)
+        rows.extend(
+            [
+                ["综合能耗（tce）"] + component_rows,
+                ["建筑面积统计值（m²）"] + area_values,
+                ["单位综合能耗（kgce/m²）"] + unit_energy_values,
+            ]
+        )
+        correction_values = {
+            key: [
+                _f(
+                    (r.get("notes") or {})
+                    .get("correction_factors", {})
+                    .get(key, "—")
+                )
+                for r in results
+            ]
+            for key in correction_keys
+        }
+        for key in correction_keys:
+            rows.append(
+                [correction_labels.get(key, key)]
+                + [f"{value:.2f}" for value in correction_values[key]]
+            )
+        correction_products = [
+            _f((r.get("notes") or {}).get("correction_product"))
+            for r in results
+        ]
+        rows.append(
+            ["修正系数连乘值"]
+            + [f"{value:.2f}" for value in correction_products]
+        )
+        # 基础数据 → 指标 → 对标 → 评价；指标行不能跑到基础数据之前。
+        rows = rows[1:] + [rows[0]]
+    elif hotel and metric_key == "water_per_bed":
+        water_values = []
+        bed_values = []
+        occupancy_values = []
+        for result in results:
+            source = _year_spec(spec or {}, result["year"])
+            water_values.append(_num(round(_f(source.get("water_t")), 2)))
+            bed_values.append(_num(round(_f(source.get("beds")), 2)))
+            occupancy_values.append(
+                _num(round(_f(source.get("occupancy")) * 100, 2))
+            )
+        rows = [
+            ["年度用水量（m³）"] + water_values,
+            ["总床位数（床）"] + bed_values,
+            ["宾馆床位出租率（%）"] + occupancy_values,
+            [f"{label}（{unit}）"] + values,
+        ]
 
     quota_key = "water" if (hotel and metric_key == "water_per_bed") else metric_key
     tiers = results[0].get("quota", {}).get(quota_key) or []
@@ -143,6 +328,34 @@ def render(
         result for result in results
         if _year_int(result.get("year")) not in blocked_years
     ]
+    electricity_years = [
+        year for year in table_years
+        if _electricity_complete(year)
+    ]
+    partial_electricity_years = [
+        year
+        for year in table_years
+        if not _electricity_complete(year)
+    ]
+    complete_electricity_year_values = [
+        _year_int(year.get("year")) for year in electricity_years
+    ]
+    partial_electricity_year_values = [
+        _year_int(year.get("year")) for year in partial_electricity_years
+    ]
+    missing_water_years: list[Any] = []
+    if hotel:
+        missing_water_years = [
+            result["year"]
+            for result in table_results
+            if not (result.get("notes") or {}).get(
+                "energy_complete",
+                not (result.get("notes") or {}).get(
+                    "water_missing", False
+                ),
+            )
+        ]
+        table_results = _complete_hotel_results(table_results)
     year_label = "、".join(str(y) for y in years)
     flow_fig = _manifest_figure(figures_manifest, "energy_flow")
     flow_block = [flow_fig["caption"], ""] if flow_fig else []
@@ -162,6 +375,40 @@ def render(
         ),
         "",
         *flow_block,
+    ]
+
+    if hotel:
+        complete_electricity_text = "、".join(
+            f"{year}年"
+            for year in complete_electricity_year_values
+            if year is not None
+        )
+        if complete_electricity_text:
+            scope_sentence = (
+                f"电量数据完整的{complete_electricity_text}纳入用电分析。"
+            )
+            partial_text = "、".join(
+                f"{year}年"
+                for year in partial_electricity_year_values
+                if year is not None
+            )
+            if partial_text:
+                scope_sentence += (
+                    f"{partial_text}电量记录不足12个月，仅作正文说明。"
+                )
+            missing_water_text = "、".join(
+                f"{year}年"
+                for year in missing_water_years
+                if _year_int(year) is not None
+            )
+            if missing_water_text:
+                scope_sentence += (
+                    f"{missing_water_text}缺少独立新水计量，仍纳入用电分析，"
+                    "但不纳入含新水的完整综合能耗口径和用水指标评价。"
+                )
+            lines += [scope_sentence, ""]
+
+    lines += [
         "## 5.2 能源资源消耗/消费数据",
         "",
         "### 5.2.1 用电情况分析",
@@ -169,7 +416,7 @@ def render(
     ]
 
     elec_rows = []
-    for y in table_years:
+    for y in electricity_years:
         elec_rows.append([
             f"{y.get('year')}年",
             f"{_f(y.get('electricity_kwh')):.0f}",
@@ -249,10 +496,13 @@ def render(
 
     lines += ["## 5.3 能耗资源消耗/消费指标", ""]
     metrics = HOTEL_METRICS if hotel else OFFICE_METRICS
+    table_no = 2
     for idx, (key, label, unit) in enumerate(metrics, 1):
         lines += [f"### 5.3.{idx} {label}", ""]
         if hotel and idx == 1:
             lines += [
+                f"本指标依据{DB33_T_760_2023}计算。",
+                "",
                 "单位可比综合能耗按下列公式计算：",
                 "",
                 "[FORMULA10]",
@@ -266,9 +516,46 @@ def render(
                 "a——综合能耗修正系数；",
                 "m——第m项综合能耗修正系数。",
                 "",
-                f"统计结果见表5.{idx}。",
+                "单位综合能耗是计算单位可比综合能耗的中间量，"
+                "按下列公式计算：",
+                "",
+                "[FORMULA7]",
+                "",
+                "式中：",
+                "",
+                "E_{j}——单位综合能耗，单位为千克标准煤每平方米"
+                "（kgce/m²）；",
+                "E——综合能耗，即各类能源实物量与其折标准煤系数"
+                "乘积之和，单位为千克标准煤（kgce）；",
+                "M_{m}——建筑面积统计值，单位为平方米（m²）。",
                 "",
             ]
+            if missing_water_years:
+                missing_label = "、".join(
+                    f"{year}年" for year in missing_water_years
+                )
+                lines += [
+                    f"{missing_label}取水量数据缺失，不纳入"
+                    f"{DB33_T_760_2023}完整口径计算；"
+                    "具备完整数据的年度，其单位综合能耗计算结果见表5.2。",
+                ]
+            else:
+                lines += ["完整年度单位综合能耗计算结果见表5.2。"]
+            lines += [
+                "",
+                "表5.2 单位综合能耗",
+                "",
+                (
+                    _unit_energy_table(spec, table_results)
+                    if table_results
+                    else "暂无可纳入760完整综合能耗口径的年度数据。"
+                ),
+                "",
+                "以单位综合能耗为中间量，按修正系数连乘值折算后，"
+                "完整年度单位可比综合能耗计算结果见表5.3。",
+                "",
+            ]
+            table_no = 3
         elif hotel and key == "water_per_bed":
             water_notes = results[0].get("notes") or {}
             industry_code = water_notes.get("water_industry_code", "")
@@ -287,7 +574,7 @@ def render(
                 "N——总床位数，单位为床；",
                 "Q——宾馆床位出租率。",
                 "",
-                f"统计结果见表5.{idx}。",
+                f"统计结果见表5.{table_no}。",
                 "",
                 (
                     f"本项目按 {industry_code} {category_name}—{subitem}"
@@ -299,15 +586,18 @@ def render(
             ]
         else:
             lines += [
-                f"{label}按标准口径计算，统计结果见表5.{idx}。",
+                f"{label}按标准口径计算，统计结果见表5.{table_no}。",
                 "",
             ]
         lines += [
-            f"表5.{idx} {label}",
+            f"表5.{table_no} {label}",
             "",
-            _metric_table(key, label, unit, table_results, hotel),
+            _metric_table(
+                key, label, unit, table_results, hotel, spec
+            ),
             "",
         ]
+        table_no += 1
         if hotel and idx == 1:
             lines += [
                 "单位综合能耗 E_{j} 仅为计算单位可比综合能耗的中间量，"
@@ -315,7 +605,8 @@ def render(
                 "",
             ]
         sentences = []
-        for r in results:
+        narrative_results = table_results if hotel else results
+        for r in narrative_results:
             value = r["values"].get(key)
             grade = r["grade"].get("water" if (hotel and key == "water_per_bed") else key, "—")
             if hotel and key == "unit_comparable_energy":
@@ -323,6 +614,17 @@ def render(
             if key in ("unit_water", "water_per_bed") and _f(value) == 0:
                 value = "—"
             sentences.append(f"{r['year']}年为{value}{unit}，{grade}")
-        lines += [f"{unit_name}{year_label}年{label}分别为：" + "；".join(sentences) + "。", ""]
+        if sentences:
+            lines += [
+                f"{unit_name}{year_label}年{label}分别为：" +
+                "；".join(sentences) + "。",
+                "",
+            ]
+        else:
+            lines += [
+                f"{unit_name}{year_label}年{label}因完整口径数据不足，"
+                "本次不开展对标评价。",
+                "",
+            ]
 
     return "\n".join(lines)

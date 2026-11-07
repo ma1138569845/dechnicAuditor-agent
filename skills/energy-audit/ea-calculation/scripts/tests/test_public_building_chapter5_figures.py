@@ -69,6 +69,12 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
         )
         self.assertIn("a——综合能耗修正系数；", markdown)
         self.assertIn("m——第m项综合能耗修正系数。", markdown)
+        self.assertIn(
+            "《旅游饭店单位综合能耗限额及计算方法》"
+            "（DB33/T 760-2023）",
+            markdown,
+        )
+        self.assertNotIn("该标准表", markdown)
         self.assertNotIn("a1×a2×…×am——各项修正系数连乘值", markdown)
 
     def test_hotel_metrics_start_with_comparable_energy_without_reference_section(
@@ -162,6 +168,8 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
 
         markdown = module.render(spec, results, "测试饭店")
 
+        self.assertIn("表5.2 单位综合能耗", markdown)
+        self.assertIn("表5.3 单位可比综合能耗", markdown)
         self.assertIn("| 定额标准约束值（kgce/m²） | 25 |", markdown)
         self.assertIn("| 定额标准基准值（kgce/m²） | 18 |", markdown)
         self.assertIn("| 定额标准引导值（kgce/m²） | 12 |", markdown)
@@ -169,6 +177,232 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
         self.assertNotIn("3级（限额值）", markdown)
         self.assertNotIn("2级（约束值）", markdown)
         self.assertNotIn("1级（先进值）", markdown)
+
+    def test_hotel_unit_energy_table_splits_coefficient_rows_and_excludes_missing_water(
+        self,
+    ):
+        module = load_module()
+        spec = {
+            "subtype": "hotel",
+            "area_m2": 1000,
+            "years": [
+                {
+                    "year": 2023,
+                    "electricity_kwh": 900,
+                    "water_t": 0,
+                    "beds": 100,
+                    "occupancy": 0.9,
+                },
+                {
+                    "year": 2024,
+                    "electricity_kwh": 1000,
+                    "water_t": 100,
+                    "beds": 100,
+                    "occupancy": 0.9,
+                },
+            ],
+        }
+        results = [
+            {
+                "year": 2023,
+                "values": {
+                    "unit_energy": 5.5,
+                    "unit_comparable_energy": 5.0,
+                    "water_per_bed": 0,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25, 18, 12],
+                    "water": [125, 70],
+                },
+                "grade": {
+                    "unit_comparable_energy": "无数据，不评价",
+                    "water": "无数据，不评价",
+                },
+                "notes": {
+                    "water_missing": True,
+                    "energy_complete": False,
+                    "energy_kgce": 110.61,
+                    "area_mm": 1000,
+                    "energy_components": {
+                        "electricity": {
+                            "amount": 900,
+                            "coefficient": 0.1229,
+                            "kgce": 110.61,
+                            "unit": "kWh",
+                        }
+                    },
+                },
+            },
+            {
+                "year": 2024,
+                "values": {
+                    "unit_energy": 6.0,
+                    "unit_comparable_energy": 5.4,
+                    "water_per_bed": 100,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25, 18, 12],
+                    "water": [125, 70],
+                },
+                "grade": {
+                    "unit_comparable_energy": "低于引导值",
+                    "water": "低于先进值",
+                },
+                "notes": {
+                    "water_missing": False,
+                    "energy_complete": True,
+                    "energy_kgce": 148.61,
+                    "area_mm": 1000,
+                    "correction_factors": {"occupancy": 1.1},
+                    "correction_product": 1.1,
+                    "energy_components": {
+                        "electricity": {
+                            "amount": 1000,
+                            "coefficient": 0.1229,
+                            "kgce": 122.9,
+                            "unit": "kWh",
+                        },
+                        "new_water": {
+                            "amount": 100,
+                            "coefficient": 0.2571,
+                            "kgce": 25.71,
+                            "unit": "t",
+                        },
+                    },
+                },
+            },
+        ]
+
+        markdown = module.render(spec, results, "测试饭店")
+        table_52 = markdown.split("表5.2 单位综合能耗", 1)[1].split(
+            "以单位综合能耗为中间量", 1
+        )[0]
+
+        self.assertIn("| 项目 | 2024年 |", table_52)
+        self.assertNotIn("2023年", table_52)
+        self.assertIn("| 年耗电量（kWh） | 1000 |", table_52)
+        self.assertIn("| 折标准煤系数（kgce/kWh） | 0.1229 |", table_52)
+        self.assertIn("| 年取水量（m³） | 100 |", table_52)
+        self.assertIn("| 折标准煤系数（kgce/t） | 0.2571 |", table_52)
+        self.assertNotIn("kgce/kWh、kgce/t", table_52)
+        self.assertNotIn("评价结果", table_52)
+
+    def test_hotel_5_1_keeps_complete_electricity_year_when_water_missing(
+        self,
+    ):
+        module = load_module()
+        spec = {
+            "subtype": "hotel",
+            "area_m2": 1000,
+            "years": [
+                {
+                    "year": 2022,
+                    "electricity_kwh": 100,
+                    "monthly_electricity_kwh": [None] * 7
+                    + [20, 20, 20, 20, 20],
+                    "water_t": 0,
+                    "beds": 100,
+                    "occupancy": 0.9,
+                },
+                {
+                    "year": 2023,
+                    "electricity_kwh": 900,
+                    "monthly_electricity_kwh": [75] * 12,
+                    "water_t": 0,
+                    "beds": 100,
+                    "occupancy": 0.9,
+                },
+                {
+                    "year": 2024,
+                    "electricity_kwh": 1000,
+                    "monthly_electricity_kwh": [83.33] * 12,
+                    "water_t": 100,
+                    "beds": 100,
+                    "occupancy": 0.9,
+                },
+            ],
+        }
+        results = [
+            {
+                "year": 2023,
+                "values": {
+                    "unit_energy": 5.5,
+                    "unit_comparable_energy": 5.0,
+                    "water_per_bed": 0,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25, 18, 12],
+                    "water": [125, 70],
+                },
+                "grade": {
+                    "unit_comparable_energy": "无数据，不评价",
+                    "water": "无数据，不评价",
+                },
+                "notes": {
+                    "water_missing": True,
+                    "energy_complete": False,
+                    "area_mm": 1000,
+                    "energy_components": {
+                        "electricity": {
+                            "amount": 900,
+                            "coefficient": 0.1229,
+                            "kgce": 110.61,
+                        }
+                    },
+                },
+            },
+            {
+                "year": 2024,
+                "values": {
+                    "unit_energy": 6.0,
+                    "unit_comparable_energy": 5.4,
+                    "water_per_bed": 100,
+                },
+                "quota": {
+                    "unit_comparable_energy": [25, 18, 12],
+                    "water": [125, 70],
+                },
+                "grade": {
+                    "unit_comparable_energy": "低于引导值",
+                    "water": "低于先进值",
+                },
+                "notes": {
+                    "water_missing": False,
+                    "energy_complete": True,
+                    "area_mm": 1000,
+                    "correction_factors": {"occupancy": 1.1},
+                    "correction_product": 1.1,
+                    "energy_components": {
+                        "electricity": {
+                            "amount": 1000,
+                            "coefficient": 0.1229,
+                            "kgce": 122.9,
+                        },
+                        "new_water": {
+                            "amount": 100,
+                            "coefficient": 0.2571,
+                            "kgce": 25.71,
+                        },
+                    },
+                },
+            },
+        ]
+
+        markdown = module.render(spec, results, "测试饭店")
+        section_51 = markdown.split("## 5.1", 1)[1].split("## 5.2", 1)[0]
+        section_521 = markdown.split("### 5.2.1", 1)[1].split(
+            "### 5.2.2", 1
+        )[0]
+
+        self.assertIn("电量数据完整的2023年、2024年", section_51)
+        self.assertIn(
+            "2023年缺少独立新水计量，仍纳入用电分析，但不纳入含新水的"
+            "完整综合能耗口径和用水指标评价。",
+            section_51,
+        )
+        self.assertIn("| 2023年 | 900 |", section_521)
+        self.assertIn("| 2024年 | 1000 |", section_521)
+        self.assertNotIn("| 2022年 |", section_521)
 
     def test_hotel_water_table_uses_selected_h6110_tiers_and_subitem(self):
         module = load_module()

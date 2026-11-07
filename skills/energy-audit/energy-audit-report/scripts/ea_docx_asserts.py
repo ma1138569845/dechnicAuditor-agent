@@ -384,6 +384,28 @@ def public_building_checks(text: str, doc_xml: str | None = None):
             )
         )
     )
+    split_760_coefficients_ok = (
+        not has_comparable_metric
+        or (
+            "年耗电量" in tn
+            and "折标准煤系数（kgce/kWh）" in tn
+            and "年取水量" in tn
+            and "折标准煤系数（kgce/t）" in tn
+            and "折标准煤系数（kgce/kWh、kgce/t）" not in tn
+        )
+    )
+    guide_value_label_ok = (
+        not has_comparable_metric
+        or "既有饭店定额标准引导值" not in tn
+    )
+    full_hotel_standard_name_ok = (
+        not has_comparable_metric
+        or (
+            "《旅游饭店单位综合能耗限额及计算方法》" in tn
+            and "DB33/T760-2023" in tn
+            and "该标准表" not in tn
+        )
+    )
     office_metrics = all(
         label in tn
         for label in (
@@ -468,6 +490,9 @@ def public_building_checks(text: str, doc_xml: str | None = None):
         ),
         "pb_ch5_bed_year_water_formula": bed_year_water_formula_ok,
         "pb_ch5_760_tiers": unified_760_tiers_ok,
+        "pb_ch5_full_standard_name": full_hotel_standard_name_ok,
+        "pb_ch5_760_guide_value_label": guide_value_label_ok,
+        "pb_ch5_760_split_coefficients": split_760_coefficients_ok,
         "pb_ch5_water_quota": water_quota_ok,
         "pb_coefficient": ("0.1229" in tn and "0.31" not in tn),
         "pb_appendix1": bool(
@@ -519,11 +544,29 @@ def public_building_checks(text: str, doc_xml: str | None = None):
             "Vuc = Vk /（N×Q），同时列明年度用水量、总床位数和"
             "宾馆床位出租率；不得退回仅按床位数计算"
         )
+    if not checks["pb_ch5_760_split_coefficients"]:
+        details["pb_ch5_760_split_coefficients"] = (
+            "表5.2 必须按“年耗电量→折标准煤系数（kgce/kWh）→年取水量"
+            "→折标准煤系数（kgce/t）”逐行列示，不得把两个系数合并到"
+            "同一单元格"
+        )
     if not checks["pb_ch5_760_tiers"]:
         details["pb_ch5_760_tiers"] = (
             "5.3.1 定额行必须统一为约束值、基准值、引导值，"
             "评价结果按公共机构口径写低于引导值/低于基准值/"
             "低于约束值/高于约束值；不得保留 1/2/3 级旧标签"
+        )
+    if not checks["pb_ch5_760_guide_value_label"]:
+        details["pb_ch5_760_guide_value_label"] = (
+            "12 kgce/m² 对应三星级及以下分项 1级（先进值）映射后的"
+            "引导值，不得写成「既有饭店定额标准引导值」；"
+            "25 kgce/m² 才对应原表既有饭店限额值"
+        )
+    if not checks["pb_ch5_full_standard_name"]:
+        details["pb_ch5_full_standard_name"] = (
+            "饭店能耗对标首次引用须写"
+            "《旅游饭店单位综合能耗限额及计算方法》（DB33/T 760-2023），"
+            "不得只写“该标准表”；全文统一使用完整正式名称和标准号"
         )
     if not checks["pb_ch5_water_quota"]:
         details["pb_ch5_water_quota"] = water_quota_why
@@ -1512,7 +1555,8 @@ def ch5_53_conclusion_ok(doc_xml: str, heading_ids=None):
     """5.3 各指标表后结论段＝纯事实句（2026-10-19 新增，P1 只告警）。
 
     口径（形态基准＝莘县样板四节，均为一句话）：
-      ① 表后必须有一句「…分别为v1、v2、v3…」的数值句；
+      ① 表后必须有数值结论句；多年表写「…分别为v1、v2、v3…」，
+         单年表写「…为v1…」；
       ② 禁判词与建议（节能空间／须重点说明／整改／成效／压力／潜力／幅度约／短板／差距／建议）
          —— 判词与整改建议归第7章，构成分析归第6章；
       ③ 三年同档才可用「均」：表内「评价结果」行若逐年不同，结论段出现「均」即告警。
@@ -1532,19 +1576,37 @@ def ch5_53_conclusion_ok(doc_xml: str, heading_ids=None):
             continue
         if not b.startswith("<w:tbl") or not cur:
             continue
+        table_text = norm(re.sub(r"<[^>]+>", "", b))
+        if (
+            "年耗电量" in table_text
+            and "年取水量" in table_text
+            and "评价结果" not in table_text
+        ):
+            # 公共建筑 5.3.1 的表5.2是单位综合能耗中间量表，
+            # 表后引语不是指标结论段；继续检查同一小节的表5.3。
+            continue
         # 表后第一段非空正文 = 结论段
         concl = ""
         for b2 in region[i + 1:]:
             if not b2.startswith("<w:p"):
                 break
             t2 = _ptext(b2).strip()
-            if t2:
-                concl = t2
-                break
+            if not t2:
+                continue
+            if t2.startswith("单位综合能耗") and "中间量" in t2:
+                # 公共建筑表5.3后的固定说明段，不替代数值结论段。
+                continue
+            concl = t2
+            break
         if not concl:
             bad.append(f"{cur} 表后缺结论段")
             continue
-        if "分别为" not in concl:
+        year_cells = set(re.findall(r"20\d{2}年", table_text))
+        single_year_ok = (
+            len(year_cells) == 1
+            and re.search(r"为\s*[−-]?\d", concl) is not None
+        )
+        if "分别为" not in concl and not single_year_ok:
             bad.append(f"{cur} 结论段缺「分别为…」数值句")
         hit = [w for w in CONCL_BANNED if w in concl]
         if hit:

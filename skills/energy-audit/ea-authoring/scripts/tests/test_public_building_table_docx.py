@@ -93,18 +93,21 @@ def markdown_for(rows, *, caption="表2.1 专家公寓建筑信息统计", inclu
     return "\n".join(lines) + "\n"
 
 
-def render_markdown(tmp: Path, text: str, family_context):
+def render_markdown(tmp: Path, text: str, family_context, ctx_extra=None):
     md_path = tmp / "ch2.md"
     md_path.write_text(text, encoding="utf-8")
     doc = Document()
     BUILD_MOD._setup_bullet_numbering(doc)
+    ctx = {
+        "project_dir": str(tmp),
+        "family_context": family_context,
+    }
+    if ctx_extra:
+        ctx.update(ctx_extra)
     BUILD_MOD._render_md(
         doc,
         str(md_path),
-        {
-            "project_dir": str(tmp),
-            "family_context": family_context,
-        },
+        ctx,
     )
     return doc
 
@@ -187,6 +190,87 @@ class PublicBuildingTableAssemblyTests(unittest.TestCase):
         for row in table.rows:
             self.assertIsNotNone(row._tr.trPr.find(qn("w:cantSplit")))
             self.assertAlmostEqual(row.height.cm, 1.01, places=2)
+
+    def test_public_building_metric_table_stays_together_beyond_eight_rows(self):
+        rows = [["项目", "2024年"]]
+        rows.extend([[f"指标{i}", str(i)] for i in range(1, 11)])
+        markdown = "\n".join(
+            [
+                "# 第5章 能耗资源消耗/消费指标",
+                "",
+                "### 5.3.1 单位可比综合能耗",
+                "",
+                "表5.3 单位可比综合能耗",
+                "",
+                "| " + " | ".join(rows[0]) + " |",
+                "| --- | --- |",
+                *[
+                    "| " + " | ".join(row) + " |"
+                    for row in rows[1:]
+                ],
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = render_markdown(Path(tmp), markdown, PUBLIC_BUILDING)
+
+        table = doc.tables[0]
+        self.assertEqual(len(table.rows), 11)
+        for row in table.rows[:-1]:
+            self.assertTrue(row.cells[0].paragraphs[0].paragraph_format.keep_with_next)
+
+    def test_formula_leadin_and_symbol_legend_stay_with_formula(self):
+        text = (
+            "# 第5章 能耗资源消耗/消费指标\n\n"
+            "单位床年用水量按下式计算：\n\n"
+            "[FORMULA9]\n\n"
+            "式中：\n\n"
+            "V_{uc}——单位床年用水量；\n\n"
+            "V_{k}——年度用水量；\n\n"
+            "N——总床位数；\n\n"
+            "Q——宾馆床位出租率。\n"
+        )
+        omml = (
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/'
+            'officeDocument/2006/math"><m:r><m:t>Vuc=Vk/(N*Q)</m:t>'
+            "</m:r></m:oMath>"
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = render_markdown(
+                Path(tmp),
+                text,
+                PUBLIC_BUILDING,
+                {"omml": {"FORMULA9": omml}},
+            )
+
+        paragraphs = {p.text: p for p in doc.paragraphs if p.text}
+        variable_vuc = next(
+            p
+            for p in doc.paragraphs
+            if p.text.startswith("V") and "单位床年用水量" in p.text
+        )
+        variable_vk = next(
+            p
+            for p in doc.paragraphs
+            if p.text.startswith("V") and "年度用水量" in p.text
+        )
+        self.assertTrue(
+            paragraphs["单位床年用水量按下式计算："].paragraph_format.keep_with_next
+        )
+        formula_p = next(
+            p for p in doc.paragraphs if p._p.xpath(".//m:oMath")
+        )
+        self.assertTrue(formula_p.paragraph_format.keep_with_next)
+        self.assertTrue(paragraphs["式中："].paragraph_format.keep_with_next)
+        self.assertTrue(variable_vuc.paragraph_format.keep_with_next)
+        self.assertTrue(variable_vk.paragraph_format.keep_with_next)
+        self.assertTrue(
+            paragraphs["N——总床位数；"].paragraph_format.keep_with_next
+        )
+        self.assertFalse(
+            paragraphs["Q——宾馆床位出租率。"].paragraph_format.keep_with_next
+        )
 
     def test_public_building_rejects_wrong_table_contract(self):
         legacy_ten_columns = [
