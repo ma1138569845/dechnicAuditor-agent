@@ -422,7 +422,9 @@ def public_building_checks(text: str, doc_xml: str | None = None):
             "5.3.1单位可比综合能耗",
             "5.3.2单位床年用水量",
         )
-    ) and "5.3.1单位综合能耗" not in tn
+    ) and not _has_standalone_metric_heading(
+        tn, "5.3.1单位综合能耗", doc_xml
+    )
     expected_metrics = hotel_metrics if "单位可比综合能耗" in tn else office_metrics
     period_anchor = re.search(
         r"基准期[:：]?\d{4}年\d{1,2}月\d{1,2}日"
@@ -761,6 +763,24 @@ def visible_text(doc_xml: str) -> str:
 
 def norm(s: str) -> str:
     return re.sub(r"\s+", "", s)
+
+
+def _has_standalone_metric_heading(
+    normalized_text: str, heading: str, doc_xml: str | None = None
+) -> bool:
+    """识别独立指标节标题，避免把正文中的指标编号叙述当成节标题。"""
+    if doc_xml is not None:
+        for block in re.findall(r"<w:p[ >].*?</w:p>", doc_xml, re.S):
+            style = _pstyle(block)
+            if style.lower().startswith("toc"):
+                continue
+            if norm(_ptext(block)) == heading:
+                return True
+    # 纯文本单元测试没有段落边界；只有紧邻下一指标编号或位于末尾时，
+    # 才能把“5.3.1单位综合能耗”视为独立旧节标题。
+    return bool(
+        re.search(rf"{re.escape(heading)}(?=5\.3\.\d|$)", normalized_text)
+    )
 
 
 def count_captions(doc_xml: str) -> int:

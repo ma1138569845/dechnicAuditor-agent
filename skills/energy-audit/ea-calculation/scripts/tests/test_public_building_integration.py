@@ -619,7 +619,7 @@ class HotelWaterDenominatorTests(unittest.TestCase):
         self.assertNotIn("unit_energy", result["grade"])
         self.assertEqual(result["notes"]["unit_energy_role"], "intermediate")
 
-    def test_hotel_missing_new_water_is_not_graded_as_complete_760_energy(self):
+    def test_hotel_missing_new_water_still_grades_complete_electricity_year(self):
         module = load_indicator_module()
         quota = module.load_quota_values()
         project = {
@@ -642,14 +642,51 @@ class HotelWaterDenominatorTests(unittest.TestCase):
 
         self.assertFalse(result["notes"]["includes_new_water"])
         self.assertFalse(result["notes"]["energy_complete"])
+        self.assertFalse(result["notes"]["water_complete"])
         self.assertTrue(result["notes"]["electricity_complete"])
         self.assertFalse(result["notes"]["electricity_missing"])
+        self.assertTrue(result["notes"]["unit_comparable_energy_applicable"])
+        self.assertEqual(
+            result["grade"]["unit_comparable_energy"],
+            "低于引导值",
+        )
+        self.assertEqual(result["grade"]["water"], "无数据，不评价")
+        self.assertIn("new_water", result["notes"]["missing_energy_components"])
+        self.assertIn("electricity", result["notes"]["energy_components"])
+
+    def test_hotel_incomplete_reporting_year_is_not_graded(self):
+        module = load_indicator_module()
+        quota = module.load_quota_values()
+        project = {
+            "subtype": "hotel",
+            "star": "3",
+            "area_m2": 10000,
+            "beds": 100,
+            "occupancy": 0.9,
+            "hotel_corrections": {"occupancy": 1.1},
+            "incomplete_report_years": {
+                "2022": ["建筑自2022年8月投入使用"],
+            },
+            "years": [
+                {
+                    "year": 2022,
+                    "electricity_kwh": 100000,
+                    "monthly_electricity_kwh": [0] * 7 + [20000] * 5,
+                    "water_t": 2000,
+                }
+            ],
+        }
+
+        result = module.compute_project(project, quota)[0]
+
+        self.assertTrue(result["notes"]["electricity_complete"])
+        self.assertFalse(result["notes"]["reporting_period_complete"])
+        self.assertFalse(result["notes"]["unit_comparable_energy_applicable"])
         self.assertEqual(
             result["grade"]["unit_comparable_energy"],
             "无数据，不评价",
         )
-        self.assertIn("new_water", result["notes"]["missing_energy_components"])
-        self.assertIn("electricity", result["notes"]["energy_components"])
+        self.assertEqual(result["grade"]["water"], "无数据，不评价")
 
     def test_water_metric_uses_bed_count_and_occupancy_denominator(self):
         module = load_indicator_module()

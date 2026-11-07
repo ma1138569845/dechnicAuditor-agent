@@ -667,6 +667,14 @@ class PublicBuildingAssertionContractTests(unittest.TestCase):
 
         self.assertTrue(checks["pb_ch5_metrics"], details)
 
+    def test_hotel_ch5_allows_metric_reference_in_prose(self):
+        checks, details = DOCX_ASSERTS.public_building_checks(
+            "5.3.1 单位可比综合能耗 5.3.2 单位床年用水量 "
+            "费用分析及5.3.1单位综合能耗计算和评价"
+        )
+
+        self.assertTrue(checks["pb_ch5_metrics"], details)
+
     def test_hotel_ch5_rejects_legacy_three_metric_numbering(self):
         checks, details = DOCX_ASSERTS.public_building_checks(
             "5.3.1 单位综合能耗 "

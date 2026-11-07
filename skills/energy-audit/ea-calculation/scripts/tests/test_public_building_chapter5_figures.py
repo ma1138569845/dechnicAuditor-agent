@@ -178,7 +178,7 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
         self.assertNotIn("2级（约束值）", markdown)
         self.assertNotIn("1级（先进值）", markdown)
 
-    def test_hotel_unit_energy_table_splits_coefficient_rows_and_excludes_missing_water(
+    def test_hotel_unit_energy_table_keeps_complete_electricity_when_water_missing(
         self,
     ):
         module = load_module()
@@ -215,21 +215,32 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
                     "water": [125, 70],
                 },
                 "grade": {
-                    "unit_comparable_energy": "无数据，不评价",
+                    "unit_comparable_energy": "低于引导值",
                     "water": "无数据，不评价",
                 },
                 "notes": {
                     "water_missing": True,
                     "energy_complete": False,
+                    "water_complete": False,
+                    "electricity_complete": True,
+                    "unit_comparable_energy_applicable": True,
                     "energy_kgce": 110.61,
                     "area_mm": 1000,
+                    "correction_factors": {"occupancy": 1.1},
+                    "correction_product": 1.1,
                     "energy_components": {
                         "electricity": {
                             "amount": 900,
                             "coefficient": 0.1229,
                             "kgce": 110.61,
                             "unit": "kWh",
-                        }
+                        },
+                        "new_water": {
+                            "amount": 0,
+                            "coefficient": 0.2571,
+                            "kgce": 0,
+                            "unit": "t",
+                        },
                     },
                 },
             },
@@ -251,6 +262,9 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
                 "notes": {
                     "water_missing": False,
                     "energy_complete": True,
+                    "water_complete": True,
+                    "electricity_complete": True,
+                    "unit_comparable_energy_applicable": True,
                     "energy_kgce": 148.61,
                     "area_mm": 1000,
                     "correction_factors": {"occupancy": 1.1},
@@ -277,15 +291,39 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
         table_52 = markdown.split("表5.2 单位综合能耗", 1)[1].split(
             "以单位综合能耗为中间量", 1
         )[0]
+        table_53 = markdown.split("表5.3 单位可比综合能耗", 1)[1].split(
+            "表5.4 单位床年用水量", 1
+        )[0]
+        table_54 = markdown.split("表5.4 单位床年用水量", 1)[1]
 
-        self.assertIn("| 项目 | 2024年 |", table_52)
-        self.assertNotIn("2023年", table_52)
-        self.assertIn("| 年耗电量（kWh） | 1000 |", table_52)
-        self.assertIn("| 折标准煤系数（kgce/kWh） | 0.1229 |", table_52)
-        self.assertIn("| 年取水量（m³） | 100 |", table_52)
-        self.assertIn("| 折标准煤系数（kgce/t） | 0.2571 |", table_52)
+        self.assertIn("| 项目 | 2023年 | 2024年 |", table_52)
+        self.assertIn("| 年耗电量（kWh） | 900 | 1000 |", table_52)
+        self.assertIn(
+            "| 折标准煤系数（kgce/kWh） | 0.1229 | 0.1229 |",
+            table_52,
+        )
+        self.assertIn("| 年取水量（m³） | — | 100 |", table_52)
+        self.assertIn(
+            "| 折标准煤系数（kgce/t） | 0.2571 | 0.2571 |",
+            table_52,
+        )
         self.assertNotIn("kgce/kWh、kgce/t", table_52)
         self.assertNotIn("评价结果", table_52)
+        self.assertIn("| 项目 | 2023年 | 2024年 |", table_53)
+        self.assertIn(
+            "| 评价结果 | 低于引导值 | 低于引导值 |",
+            table_53,
+        )
+        self.assertIn("| 项目 | 2024年 |", table_54)
+        self.assertNotIn("2023年", table_54)
+        self.assertIn(
+            "测试饭店2023年、2024年单位可比综合能耗分别为：",
+            markdown,
+        )
+        self.assertIn(
+            "测试饭店2024年单位床年用水量分别为：",
+            markdown,
+        )
 
     def test_hotel_5_1_keeps_complete_electricity_year_when_water_missing(
         self,
@@ -335,19 +373,29 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
                     "water": [125, 70],
                 },
                 "grade": {
-                    "unit_comparable_energy": "无数据，不评价",
+                    "unit_comparable_energy": "低于引导值",
                     "water": "无数据，不评价",
                 },
                 "notes": {
                     "water_missing": True,
                     "energy_complete": False,
+                    "water_complete": False,
+                    "electricity_complete": True,
+                    "unit_comparable_energy_applicable": True,
                     "area_mm": 1000,
+                    "correction_factors": {"occupancy": 1.1},
+                    "correction_product": 1.1,
                     "energy_components": {
                         "electricity": {
                             "amount": 900,
                             "coefficient": 0.1229,
                             "kgce": 110.61,
-                        }
+                        },
+                        "new_water": {
+                            "amount": 0,
+                            "coefficient": 0.2571,
+                            "kgce": 0,
+                        },
                     },
                 },
             },
@@ -369,6 +417,9 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
                 "notes": {
                     "water_missing": False,
                     "energy_complete": True,
+                    "water_complete": True,
+                    "electricity_complete": True,
+                    "unit_comparable_energy_applicable": True,
                     "area_mm": 1000,
                     "correction_factors": {"occupancy": 1.1},
                     "correction_product": 1.1,
@@ -393,16 +444,25 @@ class PublicBuildingChapter5FigureTests(unittest.TestCase):
         section_521 = markdown.split("### 5.2.1", 1)[1].split(
             "### 5.2.2", 1
         )[0]
+        section_524 = markdown.split("### 5.2.4", 1)[1].split(
+            "## 5.3", 1
+        )[0]
 
         self.assertIn("电量数据完整的2023年、2024年", section_51)
         self.assertIn(
-            "2023年缺少独立新水计量，仍纳入用电分析，但不纳入含新水的"
-            "完整综合能耗口径和用水指标评价。",
+            "2023年未形成独立新水计量，仍纳入用电分析、5.3.1单位综合"
+            "能耗计算和评价；该年取水量及新水折标量以“—”表示，"
+            "不纳入5.3.2用水指标评价。",
             section_51,
         )
         self.assertIn("| 2023年 | 900 |", section_521)
         self.assertIn("| 2024年 | 1000 |", section_521)
         self.assertNotIn("| 2022年 |", section_521)
+        fee_2023 = next(
+            line for line in section_524.splitlines()
+            if line.startswith("| 2023年 |")
+        )
+        self.assertIn("| — |", fee_2023)
 
     def test_hotel_water_table_uses_selected_h6110_tiers_and_subitem(self):
         module = load_module()

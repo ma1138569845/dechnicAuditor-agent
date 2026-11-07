@@ -53,8 +53,8 @@ def _f(value: Any, default: float = 0.0) -> float:
 def _electricity_complete(year: dict[str, Any]) -> bool:
     """判断年度电量统计是否完整；月度数组存在时须覆盖 12 个月。
 
-    电量完整性不能与用水完整性合并。某年缺少新水数据只影响含新水的综合
-    能耗指标，不能据此把该年已经完整统计的电量排除出用电分析。
+    电量完整性不能与用水完整性合并。某年缺少新水数据只限制用水指标，
+    不能据此把该年已经完整统计的电量排除出用电分析或5.3.1评价。
     """
     monthly = year.get("monthly_electricity_kwh")
     if isinstance(monthly, list):
@@ -278,6 +278,11 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
             corrections["occupancy"] = 1.10
 
     results: list[dict[str, Any]] = []
+    incomplete_report_years = {
+        int(year)
+        for year in (project.get("incomplete_report_years") or {})
+        if str(year).isdigit()
+    }
     for year in project.get("years", []):
         year_area = _f(year.get("area_m2"), area)
         year_parking = _f(year.get("underground_parking_spaces"), parking)
@@ -302,6 +307,17 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
         water = _f(year.get("water_t"))
         water_missing = water <= 0
         electricity_complete = _electricity_complete(year)
+        try:
+            year_number = int(year.get("year"))
+        except (TypeError, ValueError):
+            year_number = None
+        reporting_period_complete = (
+            year_number is None or year_number not in incomplete_report_years
+        )
+        unit_comparable_energy_applicable = (
+            reporting_period_complete and electricity_complete
+        )
+        water_complete = reporting_period_complete and not water_missing
         water_per_bed_unadjusted = water / year_beds
         water_per_bed = water / (year_beds * year_occupancy)
 
@@ -325,10 +341,10 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
             "grade": {
                 "unit_comparable_energy": (
                     "无数据，不评价"
-                    if water_missing
+                    if not unit_comparable_energy_applicable
                     else _grade_760(unit_comparable, tiers)
                 ),
-                "water": ("无数据，不评价" if water_missing
+                "water": ("无数据，不评价" if not water_complete
                           else _grade_two(water_per_bed, water_tiers)),
             },
             "notes": {
@@ -340,7 +356,15 @@ def compute_hotel(project: dict[str, Any], quota: dict[str, Any]) -> list[dict[s
                 "energy_components": energy_components,
                 "electricity_complete": electricity_complete,
                 "electricity_missing": not electricity_complete,
-                "energy_complete": not water_missing,
+                "reporting_period_complete": reporting_period_complete,
+                "unit_comparable_energy_applicable": (
+                    unit_comparable_energy_applicable
+                ),
+                # 保留“所有参与760综合能耗的品种均完整”的追溯状态。
+                # 它不再作为5.3.1的年度筛选条件。
+                "energy_complete": water_complete,
+                "energy_components_complete": water_complete,
+                "water_complete": water_complete,
                 "missing_energy_components": (
                     ["new_water"] if water_missing else []
                 ),
@@ -414,7 +438,10 @@ def _self_test() -> int:
     assert abs(hotel_results[1]["values"]["water_per_bed"] - 67.44) <= 0.011
     assert hotel_results[0]["notes"]["includes_new_water"] is False
     assert hotel_results[0]["notes"]["energy_complete"] is False
-    assert hotel_results[0]["grade"]["unit_comparable_energy"] == "无数据，不评价"
+    assert hotel_results[0]["notes"]["water_complete"] is False
+    assert hotel_results[0]["notes"]["unit_comparable_energy_applicable"] is True
+    assert hotel_results[0]["grade"]["unit_comparable_energy"] == "低于引导值"
+    assert hotel_results[0]["grade"]["water"] == "无数据，不评价"
     assert hotel_results[1]["notes"]["includes_new_water"] is True
     assert hotel_results[1]["notes"]["energy_complete"] is True
 
